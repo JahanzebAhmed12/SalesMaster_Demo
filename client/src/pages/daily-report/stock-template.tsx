@@ -1,41 +1,119 @@
-import PageLayout from "@/components/common/page-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { File } from "lucide-react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
+import { Printer, FileText, Settings } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { Product } from "@shared/schema";
 
 export default function StockTemplate() {
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const { data: products = [], isLoading } = useQuery({
+    queryKey: ["/api/products"],
+    queryFn: () => apiRequest<Product[]>("/api/products")
+  });
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handlePrintAll = () => {
+    window.print();
+  };
+
+  const handleCustomPrint = () => {
+    window.print();
+  };
+
+  if (isLoading) {
+    return <div className="flex items-center justify-center h-96">Loading stock template...</div>;
+  }
+
   return (
-    <PageLayout title="Stock Template" breadcrumb="Stock Template">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <File size={20} />
-            Stock Template & Sales Analysis
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <File className="text-gray-400 text-2xl" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Stock Template</h3>
-            <p className="text-gray-500 mb-6">Print-ready stock templates and sales analysis reports.</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
-              <div className="p-4 border border-gray-200 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Template Design</h4>
-                <p className="text-sm text-gray-500">Customizable stock templates</p>
-              </div>
-              <div className="p-4 border border-gray-200 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Print Options</h4>
-                <p className="text-sm text-gray-500">Various print formats</p>
-              </div>
-              <div className="p-4 border border-gray-200 rounded-lg">
-                <h4 className="font-medium text-gray-900 mb-2">Sales Analysis</h4>
-                <p className="text-sm text-gray-500">Integrated sales insights</p>
-              </div>
-            </div>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Stock Template</h1>
+        <div className="text-sm text-gray-500">
+          TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="date">Date:</Label>
+            <Input
+              id="date"
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-40"
+            />
+            <Button variant="outline">Search</Button>
           </div>
-        </CardContent>
-      </Card>
-    </PageLayout>
+          
+          <div className="ml-auto flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={handlePrint}
+              className="flex items-center gap-2"
+            >
+              <Printer className="h-4 w-4" />
+              Print
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handlePrintAll}
+              className="flex items-center gap-2"
+            >
+              <Printer className="h-4 w-4" />
+              Print All
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={handleCustomPrint}
+              className="flex items-center gap-2"
+            >
+              <Settings className="h-4 w-4" />
+              Custom Print
+            </Button>
+          </div>
+        </div>
+
+        <Card>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b bg-gray-50">
+                    <th className="text-left p-3 border-r">Sl.No</th>
+                    <th className="text-left p-3 border-r">Product Description</th>
+                    <th className="text-left p-3">Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product, index) => (
+                    <tr key={product.id} className="border-b hover:bg-gray-50">
+                      <td className="p-3 border-r">{index + 1}</td>
+                      <td className="p-3 border-r">
+                        <span className="text-blue-600 hover:underline cursor-pointer">
+                          {product.description}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <div className="w-20 h-8 border border-gray-300"></div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }

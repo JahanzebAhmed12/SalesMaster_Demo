@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { cn } from "@/lib/utils";
+
 import { 
   LayoutDashboard, 
   Edit, 
@@ -11,7 +13,10 @@ import {
   ShoppingCart,
   LogOut,
   Menu,
-  X
+  X,
+  Users,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
@@ -58,7 +63,8 @@ const menuSections: MenuSection[] = [
       { title: "Product Sales Report", path: "/daily-report/product-sales-report" },
       { title: "Product Purchase Report", path: "/daily-report/product-purchase-report" },
       { title: "Profit Loss", path: "/daily-report/profit-loss" },
-      { title: "Stock Template-print Sales Analysis", path: "/daily-report/stock-template" },
+      { title: "Stock Template-print ", path: "/daily-report/stock-template" },
+      { title: "Sales Analysis", path: "/daily-report/sales-analysis" },
       { title: "Daily Accounts", path: "/daily-report/daily-accounts" },
     ],
   },
@@ -92,6 +98,28 @@ const menuSections: MenuSection[] = [
       { title: "Supplier Payment", path: "/payments/supplier-payment" },
       { title: "Customer Payment History", path: "/payments/customer-payment-history" },
       { title: "Sup Payment History", path: "/payments/sup-payment-history" },
+    ],
+  },
+  {
+    title: "Payroll",
+    icon: Users,
+    items: [
+      { title: "Daily Attendance", path: "/payroll/payroll" },
+      { title: "Monthly Reports", path: "/payroll/monthly-report" },
+  
+    ],
+  },
+  {
+    title: "Admin Setup",
+    icon: Settings,
+    items: [
+      { title: "User Setup", path: "/admin/user-setup" },
+      { title: "Products Database", path: "/admin/products-database" },
+      { title: "Customer Database", path: "/admin/customer-database" },
+      { title: "Supplier Database", path: "/admin/supplier-database" },
+      { title: "Expenses Database", path: "/admin/expenses-database" },
+      { title: "Company Details", path: "/admin/company-details" },
+      { title: "Admin Functions", path: "/admin/admin-functions" },
     ],
   },
 ];
@@ -138,7 +166,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
               <ShoppingCart className="text-white" size={20} />
             </div>
             <div className="ml-3">
-              <h2 className="font-bold text-gray-900">POS System</h2>
+              <h2 className="font-bold text-gray-900">Tropi Fruit</h2>
               <p className="text-sm text-gray-500">Management Portal</p>
             </div>
           </div>
@@ -201,13 +229,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             );
           })}
 
-          {/* Admin Setup */}
-          <Link href="/admin-setup">
+          {/* Closing Time */}
+          <Link href="/closing-time">
             <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${
-              location === '/admin-setup' ? 'active' : ''
+              location === '/closing-time' ? 'active' : ''
             }`}>
               <Settings size={20} />
-              <span className="ml-3 font-medium">Admin Setup</span>
+              <span className="ml-3 font-medium">Timings Setup</span>
             </a>
           </Link>
         </nav>

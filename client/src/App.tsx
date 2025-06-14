@@ -9,9 +9,12 @@ import DashboardLayout from "@/components/layout/dashboard-layout";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
+import MonthlyReports from "@/pages/payroll/monthly-reports";
+import Payroll from "@/pages/payroll/payroll";
 
 // Data Entry Pages
 import SalesEntry from "@/pages/data-entry/sales-entry";
+import SalesInvoice from "./pages/data-entry/sales-invoice";
 import PurchaseEntry from "@/pages/data-entry/purchase-entry";
 import ClosingStock from "@/pages/data-entry/closing-stock";
 import ReturnFromCustomer from "@/pages/data-entry/return-from-customer";
@@ -32,6 +35,7 @@ import ProductPurchaseReport from "@/pages/daily-report/product-purchase-report"
 import ProfitLoss from "@/pages/daily-report/profit-loss";
 import StockTemplate from "@/pages/daily-report/stock-template";
 import DailyAccounts from "@/pages/daily-report/daily-accounts";
+import SalesAnalysis from "@/pages/daily-report/sales-analysis";
 
 // Historical Reports Pages
 import CustomerHistory from "@/pages/historical-reports/customer-history";
@@ -58,8 +62,23 @@ import SupplierPayment from "@/pages/payments/supplier-payment";
 import CustomerPaymentHistory from "@/pages/payments/customer-payment-history";
 import SupPaymentHistory from "@/pages/payments/sup-payment-history";
 
+// Admin Pages
+import ProductsDatabase from "@/pages/admin/products-database";
+import ViewNonProducts from "./pages/admin/view-nonproduct";
+import AddNonProducts from "./pages/admin/add-nonproduct";
+import UserDatabase from "@/pages/admin/user-database";
+import UserDatabaseEdit from "@/pages/admin/user-database-edit";
+import CustomerDatabase from "@/pages/admin/customer-database";
+import CustomerDatabaseEdit from "@/pages/admin/customer-database-edit";
+import SupplierDatabase from "@/pages/admin/supplier-database";
+import SupplierDatabaseEdit from "@/pages/admin/supplier-database-edit";
+import ExpensesDatabase from "@/pages/admin/expenses-database";
+import ExpensesDatabaseEdit from "@/pages/admin/expenses-database-edit";
+import CompanyDetails from "@/pages/admin/company-details";
+import AdminFunctions from "./pages/admin/admin-functions";
 // Admin Setup
-import AdminSetup from "@/pages/admin-setup";
+import ClosingTime from "@/pages/closing-time";
+import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
 
 function AuthenticatedRoute({ component: Component, title, breadcrumb }: { component: React.ComponentType; title: string; breadcrumb: string }) {
   const { isAuthenticated } = useAuth();
@@ -87,8 +106,14 @@ function Router() {
       <Route path="/data-entry/sales-entry">
         <AuthenticatedRoute component={SalesEntry} title="Sales Entry" breadcrumb="Data Entry > Sales Entry" />
       </Route>
+      <Route path="/data-entry/sales-invoice">
+        <AuthenticatedRoute component={SalesInvoice} title="Sales Invoice" breadcrumb="Data Entry > Sales Invoice" />
+      </Route>
       <Route path="/data-entry/purchase-entry">
         <AuthenticatedRoute component={PurchaseEntry} title="Purchase Entry" breadcrumb="Data Entry > Purchase Entry" />
+      </Route>
+      <Route path="/data-entry/purchase-invoice">
+        <AuthenticatedRoute component={PurchaseInvoice} title="Purchase Invoice" breadcrumb="Data Entry > Purchase Invoice" />
       </Route>
       <Route path="/data-entry/closing-stock">
         <AuthenticatedRoute component={ClosingStock} title="Closing Stock" breadcrumb="Data Entry > Closing Stock" />
@@ -140,6 +165,10 @@ function Router() {
       <Route path="/daily-report/stock-template">
         <AuthenticatedRoute component={StockTemplate} title="Stock Template" breadcrumb="Daily Report > Stock Template" />
       </Route>
+      <Route path="/daily-report/sales-analysis">
+        <AuthenticatedRoute component={SalesAnalysis} title="Sales Analysis" breadcrumb="Daily Report > Sales Analysis" />
+      </Route>
+     
       <Route path="/daily-report/daily-accounts">
         <AuthenticatedRoute component={DailyAccounts} title="Daily Accounts" breadcrumb="Daily Report > Daily Accounts" />
       </Route>
@@ -210,10 +239,59 @@ function Router() {
       <Route path="/payments/sup-payment-history">
         <AuthenticatedRoute component={SupPaymentHistory} title="Supplier Payment History" breadcrumb="Payments > Supplier Payment History" />
       </Route>
-      
+      {/* Attenedence and Payroll */}
+
+      <Route path="/payroll/monthly-report">
+        <AuthenticatedRoute component={MonthlyReports} title="Monthly Report" breadcrumb="Monthly Report" />
+      </Route>
+      <Route path="/payroll/payroll">
+        <AuthenticatedRoute component={Payroll} title="Yearly Report" breadcrumb="Yearly Report" />
+      </Route>
+      {/* Admin Pages */}
+     <Route path="/admin/products-database">
+        <AuthenticatedRoute component={ProductsDatabase} title="Products Database" breadcrumb="Products Database" />
+      </Route>
+      <Route path="/admin/view-nonproduct">
+        <AuthenticatedRoute component={ViewNonProducts} title="View NonProduct" breadcrumb="View Non Product" />
+      </Route>
+      <Route path="/admin/add-nonproduct/:id?">
+        <AuthenticatedRoute component={AddNonProducts} title="Add/Edit NonProduct" breadcrumb="Add/Edit NonProduct" />
+      </Route>
+      <Route path="/admin/user-setup">
+        <AuthenticatedRoute component={UserDatabase} title="User Database" breadcrumb="User Database" />
+      </Route>
+      <Route path="/admin/user-database-edit">
+        <AuthenticatedRoute component={UserDatabaseEdit} title="User Database Edit" breadcrumb="User Database Edit" />
+      </Route>
+      <Route path="/admin/customer-database">
+        <AuthenticatedRoute component={CustomerDatabase} title="Customer Database" breadcrumb="Customer Database" />
+      </Route>
+      <Route path="/admin/customer-database-edit/:id?">
+        <AuthenticatedRoute component={CustomerDatabaseEdit} title="Customer Database Edit" breadcrumb="Customer Database Edit" />
+      </Route>
+      <Route path="/admin/supplier-database">
+        <AuthenticatedRoute component={SupplierDatabase} title="Supplier Database" breadcrumb="Supplier Database" />
+      </Route>
+      <Route path="/admin/supplier-database-edit/:id?">
+        <AuthenticatedRoute component={SupplierDatabaseEdit} title="Supplier Database Edit" breadcrumb="Supplier Database Edit" />
+      </Route>
+      <Route path="/admin/expenses-database">
+        <AuthenticatedRoute component={ExpensesDatabase} title="Expenses Database" breadcrumb="Expenses Database" />
+      </Route>
+      <Route path="/admin/expenses-database-edit/:id?">
+        <AuthenticatedRoute component={ExpensesDatabaseEdit} title="Expenses Database Edit" breadcrumb="Expenses Database Edit" />
+      </Route>
+      <Route path="/admin/company-details">
+        <AuthenticatedRoute component={CompanyDetails} title="Company Details" breadcrumb="Company Details" />
+      </Route>
+      <Route path="/admin/admin-functions">
+        <AuthenticatedRoute component={AdminFunctions} title="Admin Functions" breadcrumb="Admin Functions" />
+      </Route>
+
+
       {/* Admin Setup */}
-      <Route path="/admin-setup">
-        <AuthenticatedRoute component={AdminSetup} title="Admin Setup" breadcrumb="Admin Setup" />
+      <Route path="/closing-time">
+        <AuthenticatedRoute component={ClosingTime} title="Closing Time" breadcrumb="Closing Time" />
       </Route>
       
       {/* Fallback to 404 */}

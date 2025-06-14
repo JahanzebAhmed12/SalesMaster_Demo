@@ -40,8 +40,8 @@ export default function PageLayout({ children, title, breadcrumb }: PageLayoutPr
     <div className="min-h-screen bg-gray-50">
       <Sidebar isOpen={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
       
-      <div className="md:ml-64 min-h-screen">
-        <Header title={title} breadcrumb={breadcrumb} />
+      <div >
+    
         
         <main className="p-4 md:p-6">
           {children}

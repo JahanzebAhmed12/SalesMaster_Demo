@@ -11,7 +11,7 @@ import { ShoppingCart } from "lucide-react";
 
 export default function Login() {
   const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("password");
+  const [password, setPassword] = useState("admin123");
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [, setLocation] = useLocation();

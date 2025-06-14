@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+const API_URL = "http://localhost:5000";
+
 interface User {
   id: number;
   username: string;
@@ -21,7 +23,7 @@ export const useAuth = create<AuthState>()(
       isAuthenticated: false,
       login: async (username: string, password: string) => {
         try {
-          const response = await fetch("/api/auth/login", {
+          const response = await fetch(`${API_URL}/api/auth/login`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import { Plus, MoreHorizontal, ChevronDown, ChevronUp } from "lucide-react";
+import { useLocation } from "wouter";
 
 const salesSchema = z.object({
   invoiceNumber: z.string().min(1, "Invoice number is required"),
@@ -28,6 +29,7 @@ type SalesFormData = z.infer<typeof salesSchema>;
 export default function SalesEntry() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const [showMoreFields, setShowMoreFields] = useState(false);
   
   const form = useForm<SalesFormData>({
@@ -55,6 +57,7 @@ export default function SalesEntry() {
         description: "Sale entry created successfully",
       });
       form.reset();
+      setLocation("/data-entry/sales-invoice");
     },
     onError: () => {
       toast({
@@ -66,7 +69,11 @@ export default function SalesEntry() {
   });
 
   const onSubmit = (data: SalesFormData) => {
-    createSaleMutation.mutate(data);
+    // Temporarily comment out database save
+    // createSaleMutation.mutate(data);
+    
+    // Just navigate to sales invoice page
+    setLocation("/data-entry/sales-invoice");
   };
 
   return (
