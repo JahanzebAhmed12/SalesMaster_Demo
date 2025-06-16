@@ -6,9 +6,9 @@ import { Link, useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "@/components/ui/toast";
+import { Toast, ToastTitle, ToastDescription } from "@/components/ui/toast";
 import { apiRequest } from "@/lib/queryClient";
-import { insertNonProductSchema, NonProduct, InsertNonProduct, nonProductSchema } from "@/shared/schema";
+import { insertNonProductSchema, NonProduct, InsertNonProduct, nonProductSchema } from "@shared/schema";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -18,8 +18,8 @@ const AddNonProducts = () => {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
-  const form = useForm<NonProduct>({
-    resolver: zodResolver(nonProductSchema),
+  const form = useForm<InsertNonProduct>({
+    resolver: zodResolver(insertNonProductSchema),
     defaultValues: {
       productCode: "",
       sageCode: "",
@@ -29,65 +29,145 @@ const AddNonProducts = () => {
       vatCode: "",
       status: "active",
     },
+    mode: "onChange",
   });
 
-  const { data: existingNonProduct, isLoading, isError, error } = useQuery<NonProduct>({
+  const { data: existingNonProduct, isLoading, isError, error } = useQuery({
     queryKey: ["nonProduct", nonProductId],
-    queryFn: () => apiRequest<NonProduct>(`/api/products/non/${nonProductId}`, "GET"),
+    queryFn: () => apiRequest("GET", `/api/products/non/${nonProductId}`),
     enabled: !!nonProductId,
   });
 
-  const createNonProductMutation = useMutation<NonProduct, Error, InsertNonProduct>({
-    mutationFn: (newNonProduct) => apiRequest<NonProduct>("/api/products/non", "POST", newNonProduct),
-    onSuccess: () => {
+  const createNonProductMutation = useMutation({
+    mutationFn: async (newNonProduct: InsertNonProduct) => {
+      console.log('Creating non-product with data:', newNonProduct);
+      try {
+        const response = await apiRequest("POST", "/api/products/non", newNonProduct);
+        console.log('Server response:', response);
+        return response;
+      } catch (error) {
+        console.error('Error in mutation:', error);
+        if (error instanceof Error) {
+          throw new Error(`Failed to create non-product: ${error.message}`);
+        }
+        throw new Error('Failed to create non-product: Unknown error');
+      }
+    },
+    onSuccess: (data) => {
+      console.log('Mutation successful, response:', data);
       queryClient.invalidateQueries({ queryKey: ["nonProducts"] });
-      toast({
-        title: "Success!",
-        description: "Non-product created successfully.",
+      Toast({
+        children: (
+          <>
+            <ToastTitle>Success!</ToastTitle>
+            <ToastDescription>Non-product created successfully.</ToastDescription>
+          </>
+        ),
       });
       form.reset();
       setLocation("/admin/view-nonproduct");
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to create non-product: ${error.message}`,
+      console.error('Error creating non-product:', error);
+      Toast({
         variant: "destructive",
+        children: (
+          <>
+            <ToastTitle>Error</ToastTitle>
+            <ToastDescription>Failed to create non-product: {error.message}</ToastDescription>
+          </>
+        ),
       });
     },
   });
 
-  const updateNonProductMutation = useMutation<NonProduct, Error, NonProduct>({
-    mutationFn: (updatedNonProduct) => apiRequest<NonProduct>(`/api/products/non/${nonProductId}`, "PUT", updatedNonProduct),
+  const updateNonProductMutation = useMutation({
+    mutationFn: (updatedNonProduct: NonProduct) => {
+      console.log('Updating non-product:', updatedNonProduct);
+      return apiRequest("PUT", `/api/products/non/${nonProductId}`, updatedNonProduct);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["nonProduct", nonProductId] });
       queryClient.invalidateQueries({ queryKey: ["nonProducts"] });
-      toast({
-        title: "Success!",
-        description: "Non-product updated successfully.",
+      Toast({
+        children: (
+          <>
+            <ToastTitle>Success!</ToastTitle>
+            <ToastDescription>Non-product updated successfully.</ToastDescription>
+          </>
+        ),
       });
       setLocation("/admin/view-nonproduct");
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to update non-product: ${error.message}`,
+      console.error('Error updating non-product:', error);
+      Toast({
         variant: "destructive",
+        children: (
+          <>
+            <ToastTitle>Error</ToastTitle>
+            <ToastDescription>Failed to update non-product: {error.message}</ToastDescription>
+          </>
+        ),
       });
     },
   });
 
   useEffect(() => {
     if (existingNonProduct) {
+      console.log('Loading existing non-product:', existingNonProduct);
       form.reset(existingNonProduct);
     }
   }, [existingNonProduct, form]);
 
-  const onSubmit = (data: NonProduct) => {
+  // Add form state logging
+  useEffect(() => {
+    const subscription = form.watch((value) => {
+      console.log('Form values changed:', value);
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  const onSubmit = (data: InsertNonProduct) => {
+    console.log('Form submitted with data:', data);
+    console.log('Form is valid:', form.formState.isValid);
+    console.log('Form errors:', form.formState.errors);
+    
+    // Validate numeric fields
+    const sellingPrice = Number(data.sellingPrice);
+    const taxRate = Number(data.taxRate);
+    
+    if (isNaN(sellingPrice) || isNaN(taxRate)) {
+      console.error('Invalid numeric values:', { sellingPrice, taxRate });
+      Toast({
+        variant: "destructive",
+        children: (
+          <>
+            <ToastTitle>Error</ToastTitle>
+            <ToastDescription>Invalid numeric values for price or tax rate.</ToastDescription>
+          </>
+        ),
+      });
+      return;
+    }
+
+    // Convert numeric fields to numbers and ensure they're not negative
+    const formData = {
+      ...data,
+      sellingPrice: Math.max(0, sellingPrice),
+      taxRate: Math.max(0, taxRate)
+    };
+    
+    console.log('Processed form data:', formData);
+    console.log('Form validation state:', form.formState);
+    console.log('Form errors:', form.formState.errors);
+
     if (nonProductId) {
-      updateNonProductMutation.mutate(data);
+      console.log('Updating existing non-product:', nonProductId);
+      updateNonProductMutation.mutate({ ...formData, id: nonProductId } as NonProduct);
     } else {
-      createNonProductMutation.mutate(data);
+      console.log('Creating new non-product');
+      createNonProductMutation.mutate(formData);
     }
   };
 
@@ -153,7 +233,12 @@ const AddNonProducts = () => {
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="productCode" className="block text-sm font-medium mb-2">Product Code</label>
-                    <Input id="productCode" placeholder="Z1018" {...form.register("productCode")} />
+                    <Input 
+                      id="productCode" 
+                      placeholder="Z1018" 
+                      {...form.register("productCode")}
+                      disabled={!!nonProductId}
+                    />
                     {form.formState.errors.productCode && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.productCode.message}</p>
                     )}
@@ -161,7 +246,11 @@ const AddNonProducts = () => {
 
                   <div>
                     <label htmlFor="sageCode" className="block text-sm font-medium mb-2">Sage Code</label>
-                    <Input id="sageCode" placeholder="Z1018" {...form.register("sageCode")} />
+                    <Input 
+                      id="sageCode" 
+                      placeholder="Z1018" 
+                      {...form.register("sageCode")}
+                    />
                     {form.formState.errors.sageCode && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.sageCode.message}</p>
                     )}
@@ -169,7 +258,11 @@ const AddNonProducts = () => {
 
                   <div>
                     <label htmlFor="description" className="block text-sm font-medium mb-2">Product Description</label>
-                    <Input id="description" placeholder="Enter description" {...form.register("description")} />
+                    <Input 
+                      id="description" 
+                      placeholder="Enter description" 
+                      {...form.register("description")}
+                    />
                     {form.formState.errors.description && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.description.message}</p>
                     )}
@@ -179,7 +272,12 @@ const AddNonProducts = () => {
                 <div className="space-y-4">
                   <div>
                     <label htmlFor="sellingPrice" className="block text-sm font-medium mb-2">Selling Price</label>
-                    <Input id="sellingPrice" type="number" step="0.01" {...form.register("sellingPrice", { valueAsNumber: true })} />
+                    <Input 
+                      id="sellingPrice" 
+                      type="number" 
+                      step="0.01" 
+                      {...form.register("sellingPrice", { valueAsNumber: true })}
+                    />
                     {form.formState.errors.sellingPrice && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.sellingPrice.message}</p>
                     )}
@@ -187,7 +285,12 @@ const AddNonProducts = () => {
 
                   <div>
                     <label htmlFor="taxRate" className="block text-sm font-medium mb-2">Tax/Vat %</label>
-                    <Input id="taxRate" type="number" step="0.01" {...form.register("taxRate", { valueAsNumber: true })} />
+                    <Input 
+                      id="taxRate" 
+                      type="number" 
+                      step="0.01" 
+                      {...form.register("taxRate", { valueAsNumber: true })}
+                    />
                     {form.formState.errors.taxRate && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.taxRate.message}</p>
                     )}
@@ -195,14 +298,22 @@ const AddNonProducts = () => {
 
                   <div>
                     <label htmlFor="vatCode" className="block text-sm font-medium mb-2">VAT Code</label>
-                    <Input id="vatCode" placeholder="VAT Code" {...form.register("vatCode")} />
+                    <Input 
+                      id="vatCode" 
+                      placeholder="VAT Code" 
+                      {...form.register("vatCode")}
+                    />
                     {form.formState.errors.vatCode && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.vatCode.message}</p>
                     )}
                   </div>
+
                   <div>
                     <label htmlFor="status" className="block text-sm font-medium mb-2">Status</label>
-                    <Select onValueChange={(value) => form.setValue("status", value)} defaultValue={form.watch("status")}>
+                    <Select 
+                      onValueChange={(value) => form.setValue("status", value)} 
+                      defaultValue={form.watch("status")}
+                    >
                       <SelectTrigger id="status">
                         <SelectValue placeholder="Select status" />
                       </SelectTrigger>
@@ -223,6 +334,7 @@ const AddNonProducts = () => {
                   type="submit"
                   className="bg-green-600 hover:bg-green-700 text-white px-8"
                   disabled={createNonProductMutation.isPending || updateNonProductMutation.isPending}
+                  onClick={() => console.log('Save button clicked')}
                 >
                   {buttonText}
                 </Button>

@@ -262,22 +262,24 @@ export default function Products() {
             <Plus className="h-4 w-4" />
             {editingProduct ? "Edit Product" : "Add Products"}
           </Button>
-          <Button 
-            variant={activeView === "viewNonProducts" ? "default" : "outline"}
-            onClick={() => setActiveView("viewNonProducts")}
-            className="flex items-center gap-2"
-          >
-            <Eye className="h-4 w-4" />
-            View NonProducts
-          </Button>
-          <Button 
-            variant={activeView === "addNonProducts" ? "default" : "outline"}
-            onClick={() => setActiveView("addNonProducts")}
-            className="flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Add NonProducts
-          </Button>
+          <Link href="/admin/view-nonproduct">
+            <Button 
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              View NonProducts
+            </Button>
+          </Link>
+          <Link href="/admin/add-nonproduct">
+            <Button 
+              variant="outline"
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add NonProducts
+            </Button>
+          </Link>
         </div>
 
         {activeView === "view" && (

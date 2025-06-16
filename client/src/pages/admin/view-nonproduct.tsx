@@ -5,33 +5,43 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/api-request";
+import { apiRequest } from "@/lib/queryClient";
 import { NonProduct } from "@shared/schema";
-import { toast } from "@/components/ui/use-toast";
-import { Loader2 } from "lucide-react";
+import { Toast, ToastTitle, ToastDescription } from "@/components/ui/toast";
+import { Loader2, Edit, Trash2 } from "lucide-react";
+import { useState } from "react";
 
 const ViewNonProducts = () => {
   const queryClient = useQueryClient();
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const { data: nonProducts, isLoading, isError, error } = useQuery<NonProduct[]>({ 
-    queryKey: ["nonProducts"], 
-    queryFn: () => apiRequest<NonProduct[]>("/api/products/non", "GET"),
+  const { data: nonProducts, isLoading, isError, error } = useQuery({
+    queryKey: ["nonProducts"],
+    queryFn: () => apiRequest("GET", "/api/products/non"),
   });
 
-  const deleteNonProductMutation = useMutation<void, Error, number>({
-    mutationFn: (id) => apiRequest<void>(`/api/products/non/${id}`, "DELETE"),
+  const deleteNonProductMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/products/non/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["nonProducts"] });
-      toast({
-        title: "Success!",
-        description: "Non-product deleted successfully.",
+      Toast({
+        children: (
+          <>
+            <ToastTitle>Success!</ToastTitle>
+            <ToastDescription>Non-product deleted successfully.</ToastDescription>
+          </>
+        ),
       });
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: `Failed to delete non-product: ${error.message}`,
+      Toast({
         variant: "destructive",
+        children: (
+          <>
+            <ToastTitle>Error</ToastTitle>
+            <ToastDescription>Failed to delete non-product: {error.message}</ToastDescription>
+          </>
+        ),
       });
     },
   });
@@ -41,6 +51,11 @@ const ViewNonProducts = () => {
       deleteNonProductMutation.mutate(id);
     }
   };
+
+  const filteredNonProducts = nonProducts?.filter((product) =>
+    product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.productCode.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   if (isLoading) {
     return (
@@ -100,7 +115,12 @@ const ViewNonProducts = () => {
               </div>
               <div className="flex items-center space-x-2">
                 <span className="text-sm">Search:</span>
-                <Input placeholder="Search..." className="w-48" />
+                <Input 
+                  placeholder="Search..." 
+                  className="w-48"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
             </div>
 
@@ -120,7 +140,7 @@ const ViewNonProducts = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {nonProducts?.map((item, index) => (
+                {filteredNonProducts?.map((item: NonProduct, index: number) => (
                   <TableRow key={item.id} className="hover:bg-gray-50">
                     <TableCell>{index + 1}</TableCell>
                     <TableCell className="text-blue-600">{item.productCode}</TableCell>
@@ -130,9 +150,9 @@ const ViewNonProducts = () => {
                     <TableCell>{item.taxRate !== null ? `${item.taxRate}%` : '0%'}</TableCell>
                     <TableCell>{item.vatCode}</TableCell>
                     <TableCell>
-                      <Link href={`/admin/non-product-edit/${item.id}`}>
+                      <Link href={`/admin/add-nonproduct/${item.id}`}>
                         <Button variant="ghost" size="sm" className="text-blue-600">
-                          Edit
+                          <Edit className="h-4 w-4" />
                         </Button>
                       </Link>
                     </TableCell>
@@ -144,7 +164,7 @@ const ViewNonProducts = () => {
                         onClick={() => handleDelete(item.id)}
                         disabled={deleteNonProductMutation.isPending}
                       >
-                        {deleteNonProductMutation.isPending ? "Deleting..." : "Delete"}
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                     <TableCell>
@@ -158,7 +178,7 @@ const ViewNonProducts = () => {
             </Table>
 
             <div className="p-4 border-t flex items-center justify-between">
-              <span className="text-sm text-gray-500">Showing {nonProducts?.length || 0} entries</span>
+              <span className="text-sm text-gray-500">Showing {filteredNonProducts?.length || 0} entries</span>
               <div className="flex space-x-2">
                 <Button variant="outline" size="sm">Previous</Button>
                 <Button variant="outline" size="sm" className="bg-blue-600 text-white">1</Button>
