@@ -8,17 +8,19 @@ export const userSchema = z.object({
   status: z.string(),
   email: z.string().email().nullable(),
   phone: z.string().nullable(),
-  joinDate: z.string().nullable(),
-  hourlyRate: z.number().nullable(),
-  overtimeRate: z.number().nullable(),
+  dailyWage: z.number().nullable(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
 
-export const insertUserSchema = userSchema.omit({ 
-  id: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertUserSchema = z.object({
+  username: z.string().min(1, "Username is required"),
+  password: z.string().min(1, "Password is required"),
+  userType: z.string(),
+  status: z.string(),
+  email: z.string().email().optional().nullable(),
+  phone: z.string().optional().nullable(),
+  dailyWage: z.number().optional().nullable()
 });
 
 // Customer Schema
@@ -53,6 +55,27 @@ export const insertCustomerSchema = customerSchema.omit({
   updated_at: true
 });
 
+// Sale Item Schema (Defined before SaleSchema)
+export const saleItemSchema = z.object({
+  id: z.number(),
+  saleId: z.number(),
+  productId: z.number().nullable(),
+  nonProductId: z.number().nullable(),
+  quantity: z.number(),
+  unitPrice: z.number(),
+  totalPrice: z.number(),
+  productName: z.string().nullable(), // For frontend display
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const insertSaleItemSchema = saleItemSchema.omit({
+  id: true,
+  productName: true,
+  createdAt: true,
+  updatedAt: true
+});
+
 // Sale Schema
 export const saleSchema = z.object({
   id: z.number(),
@@ -64,6 +87,16 @@ export const saleSchema = z.object({
   gateNumber: z.string().nullable(),
   date: z.string().nullable(),
   status: z.string(),
+  customerType: z.string(),
+  paymentStatus: z.string(),
+  subtotal: z.number(),
+  porterage: z.number(),
+  vatRate: z.number(),
+  vatAmount: z.number(),
+  totalAmount: z.number(),
+  paidAmount: z.number().default(0),
+  notes: z.string().nullable(),
+  items: z.array(saleItemSchema), // Now saleItemSchema is defined
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -72,7 +105,9 @@ export const insertSaleSchema = saleSchema.omit({
   id: true,
   customerName: true,
   createdAt: true,
-  updatedAt: true
+  updatedAt: true,
+}).extend({
+  items: z.array(insertSaleItemSchema) // Explicitly include items with the correct schema
 });
 
 // Attendance Schema
@@ -122,10 +157,8 @@ export const payrollSchema = z.object({
   userId: z.number(),
   year: z.number(),
   month: z.number(),
-  regularHours: z.number(),
-  overtimeHours: z.number(),
-  hourlyRate: z.number(),
-  overtimeRate: z.number(),
+  workingDays: z.number(),
+  dailyWage: z.number(),
   grossPay: z.number(),
   tax: z.number(),
   nationalInsurance: z.number(),
@@ -260,7 +293,31 @@ export const regularProductSchema = z.object({
 
 // Non-Product Schema
 export const nonProductSchema = z.object({
-  ...baseProductSchema
+  id: z.number(),
+  productCode: z.string(),
+  sageCode: z.string().nullable(),
+  description: z.string(),
+  sellingPrice: z.number(),
+  taxRate: z.number(),
+  vatCode: z.string().nullable(),
+  unitOfPurchase: z.string().nullable(),
+  unitOfSale: z.string().nullable(),
+  location: z.string().nullable(),
+  nominalCode: z.string().nullable(),
+  stockCategory: z.string().nullable(),
+  departmentNumber: z.string().nullable(),
+  supplierRef: z.string().nullable(),
+  supplierPartNumber: z.string().nullable(),
+  reorderLevel: z.number(),
+  stockLevelFlag: z.boolean(),
+  commodityCode: z.string().nullable(),
+  unitWeight: z.number(),
+  stockTakeDate: z.date().nullable(),
+  reorderQuantity: z.number(),
+  lastStockTake: z.number(),
+  status: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string()
 });
 
 // Insert schemas
@@ -274,6 +331,17 @@ export const insertNonProductSchema = nonProductSchema.omit({
   id: true,
   createdAt: true,
   updatedAt: true
+}).extend({
+  productCode: z.string().min(1, "Product code is required"),
+  description: z.string().min(1, "Description is required"),
+  sellingPrice: z.number().min(0, "Selling price must be positive").default(0),
+  taxRate: z.number().min(0, "Tax rate must be positive").default(0),
+  stockLevelFlag: z.boolean().default(false),
+  reorderLevel: z.number().default(0),
+  unitWeight: z.number().default(0),
+  reorderQuantity: z.number().default(0),
+  lastStockTake: z.number().default(0),
+  status: z.string().default("active")
 });
 
 // Company Schema
@@ -303,6 +371,20 @@ export const insertCompanySchema = companySchema.omit({
   updatedAt: true
 });
 
+// User with Attendance Schema
+export const userWithAttendanceSchema = z.object({
+  id: z.number(),
+  username: z.string(),
+  userType: z.string(),
+  status: z.string(),
+  dailyWage: z.number().nullable(),
+  attendance: z.object({
+    status: z.string(),
+    leaveType: z.string().nullable(),
+    holidayName: z.string().nullable()
+  })
+});
+
 // Type definitions
 export type User = z.infer<typeof userSchema>;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -312,6 +394,9 @@ export type InsertCustomer = z.infer<typeof insertCustomerSchema>;
 
 export type Sale = z.infer<typeof saleSchema>;
 export type InsertSale = z.infer<typeof insertSaleSchema>;
+
+export type SaleItem = z.infer<typeof saleItemSchema>;
+export type InsertSaleItem = z.infer<typeof insertSaleItemSchema>;
 
 export type Attendance = z.infer<typeof attendanceSchema>;
 export type InsertAttendance = z.infer<typeof insertAttendanceSchema>;
@@ -340,3 +425,27 @@ export type UpdateRegularProduct = Omit<RegularProduct, 'createdAt' | 'updatedAt
 
 export type Company = z.infer<typeof companySchema>;
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
+
+export type UserWithAttendance = z.infer<typeof userWithAttendanceSchema>;
+
+// Payment Schema
+export const paymentSchema = z.object({
+  id: z.number(),
+  customerId: z.number(),
+  saleId: z.number().nullable(), // Can be null for on-account payments
+  amount: z.number(),
+  paymentMode: z.string(),
+  paymentDate: z.string(),
+  remarks: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const insertPaymentSchema = paymentSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type Payment = z.infer<typeof paymentSchema>;
+export type InsertPayment = z.infer<typeof insertPaymentSchema>;

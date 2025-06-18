@@ -12,16 +12,13 @@ class User(db.Model):
     status = db.Column(db.String(20), nullable=False, default='Active')
     email = db.Column(db.String(120), unique=True)
     phone = db.Column(db.String(20))
-    join_date = db.Column(db.Date)
-    hourly_rate = db.Column(db.Numeric(10, 2))  # in pounds
-    overtime_rate = db.Column(db.Numeric(10, 2))  # in pounds
+    daily_wage = db.Column(db.Numeric(10, 2))  # in pounds
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships with explicit foreign keys
     attendance_records = db.relationship('Attendance', backref='user', lazy=True, foreign_keys='Attendance.user_id')
     leaves = db.relationship('Leave', backref='user', lazy=True, foreign_keys='Leave.user_id')
-    payroll_records = db.relationship('Payroll', backref='user', lazy=True, foreign_keys='Payroll.user_id')
     approved_leaves = db.relationship('Leave', backref='approver', lazy=True, foreign_keys='Leave.approved_by')
 
     def to_dict(self):
@@ -32,11 +29,9 @@ class User(db.Model):
             'status': self.status,
             'email': self.email,
             'phone': self.phone,
-            'joinDate': self.join_date.isoformat() if self.join_date else None,
-            'hourlyRate': float(self.hourly_rate) if self.hourly_rate else None,
-            'overtimeRate': float(self.overtime_rate) if self.overtime_rate else None,
-            'createdAt': self.created_at.isoformat(),
-            'updatedAt': self.updated_at.isoformat()
+            'dailyWage': float(self.daily_wage) if self.daily_wage else None,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class Sale(db.Model):
@@ -51,6 +46,7 @@ class Sale(db.Model):
     vat_rate = db.Column(db.Numeric(5, 2), default=0)
     vat_amount = db.Column(db.Numeric(10, 2), default=0)
     total_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    paid_amount = db.Column(db.Numeric(10, 2), default=0)
     vehicle_details = db.Column(db.String(200))
     gate_number = db.Column(db.String(50))
     notes = db.Column(db.Text)
@@ -76,6 +72,7 @@ class Sale(db.Model):
             'vatRate': float(self.vat_rate),
             'vatAmount': float(self.vat_amount),
             'totalAmount': float(self.total_amount),
+            'paidAmount': float(self.paid_amount),
             'vehicleDetails': self.vehicle_details,
             'gateNumber': self.gate_number,
             'notes': self.notes,
@@ -205,6 +202,21 @@ class NonProduct(db.Model):
     selling_price = db.Column(db.Numeric(10, 2), default=0)
     tax_rate = db.Column(db.Numeric(5, 2), default=0)
     vat_code = db.Column(db.String(50))
+    unit_of_purchase = db.Column(db.String(50))
+    unit_of_sale = db.Column(db.String(50))
+    location = db.Column(db.String(100))
+    nominal_code = db.Column(db.String(50))
+    stock_category = db.Column(db.String(50))
+    department_number = db.Column(db.String(50))
+    supplier_ref = db.Column(db.String(50))
+    supplier_part_number = db.Column(db.String(50))
+    reorder_level = db.Column(db.Integer, default=0)
+    stock_level_flag = db.Column(db.Boolean, default=False)
+    commodity_code = db.Column(db.String(50))
+    unit_weight = db.Column(db.Numeric(10, 2), default=0)
+    stock_take_date = db.Column(db.Date)
+    reorder_quantity = db.Column(db.Integer, default=0)
+    last_stock_take = db.Column(db.Integer, default=0)
     status = db.Column(db.String(20), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -218,6 +230,21 @@ class NonProduct(db.Model):
             'sellingPrice': float(self.selling_price) if self.selling_price else 0,
             'taxRate': float(self.tax_rate) if self.tax_rate else 0,
             'vatCode': self.vat_code,
+            'unitOfPurchase': self.unit_of_purchase,
+            'unitOfSale': self.unit_of_sale,
+            'location': self.location,
+            'nominalCode': self.nominal_code,
+            'stockCategory': self.stock_category,
+            'departmentNumber': self.department_number,
+            'supplierRef': self.supplier_ref,
+            'supplierPartNumber': self.supplier_part_number,
+            'reorderLevel': self.reorder_level,
+            'stockLevelFlag': self.stock_level_flag,
+            'commodityCode': self.commodity_code,
+            'unitWeight': float(self.unit_weight) if self.unit_weight else 0,
+            'stockTakeDate': self.stock_take_date.isoformat() if self.stock_take_date else None,
+            'reorderQuantity': self.reorder_quantity,
+            'lastStockTake': self.last_stock_take,
             'status': self.status,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
@@ -274,6 +301,33 @@ class Customer(db.Model):
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
+        }
+
+class Payment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sale.id')) # Optional, for payments linked to specific invoices
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    payment_mode = db.Column(db.String(50), nullable=False) # e.g., 'cash', 'card', 'bank transfer'
+    payment_date = db.Column(db.Date, nullable=False)
+    remarks = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    customer = db.relationship('Customer', backref='payments')
+    sale = db.relationship('Sale', backref='payments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'customerId': self.customer_id,
+            'saleId': self.sale_id,
+            'amount': float(self.amount),
+            'paymentMode': self.payment_mode,
+            'paymentDate': self.payment_date.isoformat(),
+            'remarks': self.remarks,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
 
 class Supplier(db.Model):
@@ -367,6 +421,8 @@ class Attendance(db.Model):
     regular_hours = db.Column(db.Numeric(5, 2))
     overtime_hours = db.Column(db.Numeric(5, 2))
     notes = db.Column(db.String(200))
+    leave_type = db.Column(db.String(20))  # 'annual', 'sick', 'unpaid', 'other'
+    holiday_name = db.Column(db.String(100))  # Name of the holiday if status is 'holiday'
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -381,6 +437,8 @@ class Attendance(db.Model):
             'regularHours': float(self.regular_hours) if self.regular_hours else None,
             'overtimeHours': float(self.overtime_hours) if self.overtime_hours else None,
             'notes': self.notes,
+            'leaveType': self.leave_type,
+            'holidayName': self.holiday_name,
             'createdAt': self.created_at.isoformat(),
             'updatedAt': self.updated_at.isoformat()
         }
@@ -412,23 +470,26 @@ class Leave(db.Model):
         }
 
 class Payroll(db.Model):
+    __tablename__ = 'payroll'
+    
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     year = db.Column(db.Integer, nullable=False)
     month = db.Column(db.Integer, nullable=False)
-    regular_hours = db.Column(db.Numeric(10, 2), nullable=False)
-    overtime_hours = db.Column(db.Numeric(10, 2), nullable=False)
-    hourly_rate = db.Column(db.Numeric(10, 2), nullable=False)
-    overtime_rate = db.Column(db.Numeric(10, 2), nullable=False)
+    working_days = db.Column(db.Integer, nullable=False)
+    daily_wage = db.Column(db.Numeric(10, 2), nullable=False)
     gross_pay = db.Column(db.Numeric(10, 2), nullable=False)
     tax = db.Column(db.Numeric(10, 2), nullable=False)
     national_insurance = db.Column(db.Numeric(10, 2), nullable=False)
     net_pay = db.Column(db.Numeric(10, 2), nullable=False)
-    status = db.Column(db.String(20), nullable=False, default='pending')  # 'pending', 'processed', 'paid'
-    payment_date = db.Column(db.Date)
-    notes = db.Column(db.String(200))
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    payment_date = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Define the relationship to User
+    user = db.relationship('User', backref=db.backref('payroll_records', lazy=True))
 
     def to_dict(self):
         return {
@@ -436,10 +497,8 @@ class Payroll(db.Model):
             'userId': self.user_id,
             'year': self.year,
             'month': self.month,
-            'regularHours': float(self.regular_hours),
-            'overtimeHours': float(self.overtime_hours),
-            'hourlyRate': float(self.hourly_rate),
-            'overtimeRate': float(self.overtime_rate),
+            'workingDays': self.working_days,
+            'dailyWage': float(self.daily_wage),
             'grossPay': float(self.gross_pay),
             'tax': float(self.tax),
             'nationalInsurance': float(self.national_insurance),

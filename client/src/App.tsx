@@ -76,6 +76,8 @@ import ExpensesDatabase from "@/pages/admin/expenses-database";
 import ExpensesDatabaseEdit from "@/pages/admin/expenses-database-edit";
 import CompanyDetails from "@/pages/admin/company-details";
 import AdminFunctions from "./pages/admin/admin-functions";
+import UserAdd from "./pages/admin/user-database-add";
+
 // Admin Setup
 import ClosingTime from "@/pages/closing-time";
 import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
@@ -260,8 +262,8 @@ function Router() {
       <Route path="/admin/user-setup">
         <AuthenticatedRoute component={UserDatabase} title="User Database" breadcrumb="User Database" />
       </Route>
-      <Route path="/admin/user-database-edit">
-        <AuthenticatedRoute component={UserDatabaseEdit} title="User Database Edit" breadcrumb="User Database Edit" />
+      <Route path="/admin/user-database-add/:id?">
+        <AuthenticatedRoute component={UserAdd} title="User Add" breadcrumb="User Add" />
       </Route>
       <Route path="/admin/customer-database">
         <AuthenticatedRoute component={CustomerDatabase} title="Customer Database" breadcrumb="Customer Database" />
@@ -293,6 +295,7 @@ function Router() {
       <Route path="/closing-time">
         <AuthenticatedRoute component={ClosingTime} title="Closing Time" breadcrumb="Closing Time" />
       </Route>
+      
       
       {/* Fallback to 404 */}
       <Route component={NotFound} />

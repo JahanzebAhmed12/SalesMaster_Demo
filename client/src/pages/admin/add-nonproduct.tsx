@@ -6,17 +6,23 @@ import { Link, useLocation, useParams } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Toast, ToastTitle, ToastDescription } from "@/components/ui/toast";
+import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertNonProductSchema, NonProduct, InsertNonProduct, nonProductSchema } from "@shared/schema";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const AddNonProducts = () => {
   const { id } = useParams<{ id: string }>();
   const nonProductId = id ? parseInt(id) : undefined;
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const form = useForm<InsertNonProduct>({
     resolver: zodResolver(insertNonProductSchema),
@@ -27,6 +33,21 @@ const AddNonProducts = () => {
       sellingPrice: 0,
       taxRate: 0,
       vatCode: "",
+      unitOfPurchase: "",
+      unitOfSale: "",
+      location: "",
+      nominalCode: "",
+      stockCategory: "",
+      departmentNumber: "",
+      supplierRef: "",
+      supplierPartNumber: "",
+      reorderLevel: 0,
+      stockLevelFlag: false,
+      commodityCode: "",
+      unitWeight: 0,
+      stockTakeDate: null,
+      reorderQuantity: 0,
+      lastStockTake: 0,
       status: "active",
     },
     mode: "onChange",
@@ -42,12 +63,26 @@ const AddNonProducts = () => {
     mutationFn: async (newNonProduct: InsertNonProduct) => {
       console.log('Creating non-product with data:', newNonProduct);
       try {
-        const response = await apiRequest("POST", "/api/products/non", newNonProduct);
+        // Convert date to YYYY-MM-DD format if it exists
+        const dataToSend = {
+          ...newNonProduct,
+          stockTakeDate: newNonProduct.stockTakeDate 
+            ? newNonProduct.stockTakeDate.toISOString().split('T')[0]  // Get only the date part
+            : null
+        };
+        console.log('Data being sent to server:', dataToSend);
+        const response = await apiRequest("POST", "/api/products/non", dataToSend);
         console.log('Server response:', response);
         return response;
       } catch (error) {
         console.error('Error in mutation:', error);
         if (error instanceof Error) {
+          // Log the full error details
+          console.error('Full error details:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack
+          });
           throw new Error(`Failed to create non-product: ${error.message}`);
         }
         throw new Error('Failed to create non-product: Unknown error');
@@ -56,27 +91,22 @@ const AddNonProducts = () => {
     onSuccess: (data) => {
       console.log('Mutation successful, response:', data);
       queryClient.invalidateQueries({ queryKey: ["nonProducts"] });
-      Toast({
-        children: (
-          <>
-            <ToastTitle>Success!</ToastTitle>
-            <ToastDescription>Non-product created successfully.</ToastDescription>
-          </>
-        ),
+      toast({
+        title: "Success!",
+        description: "Non-product created successfully.",
       });
       form.reset();
-      setLocation("/admin/view-nonproduct");
+      // Use setTimeout to ensure the toast is shown before navigation
+      setTimeout(() => {
+        setLocation("/admin/view-nonproduct");
+      }, 100);
     },
     onError: (error) => {
       console.error('Error creating non-product:', error);
-      Toast({
+      toast({
         variant: "destructive",
-        children: (
-          <>
-            <ToastTitle>Error</ToastTitle>
-            <ToastDescription>Failed to create non-product: {error.message}</ToastDescription>
-          </>
-        ),
+        title: "Error",
+        description: `Failed to create non-product: ${error.message}`,
       });
     },
   });
@@ -84,31 +114,28 @@ const AddNonProducts = () => {
   const updateNonProductMutation = useMutation({
     mutationFn: (updatedNonProduct: NonProduct) => {
       console.log('Updating non-product:', updatedNonProduct);
-      return apiRequest("PUT", `/api/products/non/${nonProductId}`, updatedNonProduct);
+      // Convert date to ISO string if it exists
+      const dataToSend = {
+        ...updatedNonProduct,
+        stockTakeDate: updatedNonProduct.stockTakeDate ? new Date(updatedNonProduct.stockTakeDate).toISOString() : null
+      };
+      return apiRequest("PUT", `/api/products/non/${nonProductId}`, dataToSend);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["nonProduct", nonProductId] });
       queryClient.invalidateQueries({ queryKey: ["nonProducts"] });
-      Toast({
-        children: (
-          <>
-            <ToastTitle>Success!</ToastTitle>
-            <ToastDescription>Non-product updated successfully.</ToastDescription>
-          </>
-        ),
+      toast({
+        title: "Success!",
+        description: "Non-product updated successfully.",
       });
       setLocation("/admin/view-nonproduct");
     },
     onError: (error) => {
       console.error('Error updating non-product:', error);
-      Toast({
+      toast({
         variant: "destructive",
-        children: (
-          <>
-            <ToastTitle>Error</ToastTitle>
-            <ToastDescription>Failed to update non-product: {error.message}</ToastDescription>
-          </>
-        ),
+        title: "Error",
+        description: `Failed to update non-product: ${error.message}`,
       });
     },
   });
@@ -116,7 +143,12 @@ const AddNonProducts = () => {
   useEffect(() => {
     if (existingNonProduct) {
       console.log('Loading existing non-product:', existingNonProduct);
-      form.reset(existingNonProduct);
+      // Convert string date to Date object if it exists
+      const data = {
+        ...existingNonProduct,
+        stockTakeDate: existingNonProduct.stockTakeDate ? new Date(existingNonProduct.stockTakeDate) : null
+      };
+      form.reset(data);
     }
   }, [existingNonProduct, form]);
 
@@ -139,14 +171,10 @@ const AddNonProducts = () => {
     
     if (isNaN(sellingPrice) || isNaN(taxRate)) {
       console.error('Invalid numeric values:', { sellingPrice, taxRate });
-      Toast({
+      toast({
         variant: "destructive",
-        children: (
-          <>
-            <ToastTitle>Error</ToastTitle>
-            <ToastDescription>Invalid numeric values for price or tax rate.</ToastDescription>
-          </>
-        ),
+        title: "Error",
+        description: "Invalid numeric values for price or tax rate.",
       });
       return;
     }
@@ -235,7 +263,7 @@ const AddNonProducts = () => {
                     <label htmlFor="productCode" className="block text-sm font-medium mb-2">Product Code</label>
                     <Input 
                       id="productCode" 
-                      placeholder="Z1018" 
+                      placeholder="Enter product code" 
                       {...form.register("productCode")}
                       disabled={!!nonProductId}
                     />
@@ -248,28 +276,36 @@ const AddNonProducts = () => {
                     <label htmlFor="sageCode" className="block text-sm font-medium mb-2">Sage Code</label>
                     <Input 
                       id="sageCode" 
-                      placeholder="Z1018" 
+                      placeholder="Enter sage code" 
                       {...form.register("sageCode")}
                     />
-                    {form.formState.errors.sageCode && (
-                      <p className="text-red-500 text-xs mt-1">{form.formState.errors.sageCode.message}</p>
-                    )}
                   </div>
 
                   <div>
                     <label htmlFor="description" className="block text-sm font-medium mb-2">Product Description</label>
-                    <Input 
-                      id="description" 
-                      placeholder="Enter description" 
-                      {...form.register("description")}
-                    />
-                    {form.formState.errors.description && (
-                      <p className="text-red-500 text-xs mt-1">{form.formState.errors.description.message}</p>
-                    )}
+                    <div className="space-y-2">
+                      <Input 
+                        id="description" 
+                        placeholder="Enter description" 
+                        {...form.register("description")}
+                      />
+                      <Select 
+                        onValueChange={(value) => form.setValue("description", value)}
+                        defaultValue={form.watch("description")}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select from existing descriptions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Service">Service</SelectItem>
+                          <SelectItem value="Consultation">Consultation</SelectItem>
+                          <SelectItem value="Maintenance">Maintenance</SelectItem>
+                          <SelectItem value="Installation">Installation</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-4">
                   <div>
                     <label htmlFor="sellingPrice" className="block text-sm font-medium mb-2">Selling Price</label>
                     <Input 
@@ -278,53 +314,191 @@ const AddNonProducts = () => {
                       step="0.01" 
                       {...form.register("sellingPrice", { valueAsNumber: true })}
                     />
-                    {form.formState.errors.sellingPrice && (
-                      <p className="text-red-500 text-xs mt-1">{form.formState.errors.sellingPrice.message}</p>
-                    )}
                   </div>
 
                   <div>
-                    <label htmlFor="taxRate" className="block text-sm font-medium mb-2">Tax/Vat %</label>
+                    <label htmlFor="taxRate" className="block text-sm font-medium mb-2">Tax/VAT %</label>
                     <Input 
                       id="taxRate" 
                       type="number" 
                       step="0.01" 
                       {...form.register("taxRate", { valueAsNumber: true })}
                     />
-                    {form.formState.errors.taxRate && (
-                      <p className="text-red-500 text-xs mt-1">{form.formState.errors.taxRate.message}</p>
-                    )}
                   </div>
 
                   <div>
                     <label htmlFor="vatCode" className="block text-sm font-medium mb-2">VAT Code</label>
                     <Input 
                       id="vatCode" 
-                      placeholder="VAT Code" 
+                      placeholder="Enter VAT code" 
                       {...form.register("vatCode")}
                     />
-                    {form.formState.errors.vatCode && (
-                      <p className="text-red-500 text-xs mt-1">{form.formState.errors.vatCode.message}</p>
-                    )}
                   </div>
 
                   <div>
-                    <label htmlFor="status" className="block text-sm font-medium mb-2">Status</label>
+                    <label htmlFor="unitOfPurchase" className="block text-sm font-medium mb-2">Unit of Purchase</label>
+                    <Input 
+                      id="unitOfPurchase" 
+                      placeholder="Enter unit of purchase" 
+                      {...form.register("unitOfPurchase")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="unitOfSale" className="block text-sm font-medium mb-2">Unit of Sale</label>
+                    <Input 
+                      id="unitOfSale" 
+                      placeholder="Enter unit of sale" 
+                      {...form.register("unitOfSale")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="location" className="block text-sm font-medium mb-2">Location</label>
+                    <Input 
+                      id="location" 
+                      placeholder="Enter location" 
+                      {...form.register("location")}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="nominalCode" className="block text-sm font-medium mb-2">Nominal Code</label>
+                    <Input 
+                      id="nominalCode" 
+                      placeholder="Enter nominal code" 
+                      {...form.register("nominalCode")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="stockCategory" className="block text-sm font-medium mb-2">Stock Category Number</label>
+                    <Input 
+                      id="stockCategory" 
+                      placeholder="Enter stock category" 
+                      {...form.register("stockCategory")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="departmentNumber" className="block text-sm font-medium mb-2">Department Number</label>
+                    <Input 
+                      id="departmentNumber" 
+                      placeholder="Enter department number" 
+                      {...form.register("departmentNumber")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="supplierRef" className="block text-sm font-medium mb-2">Supplier Ref</label>
+                    <Input 
+                      id="supplierRef" 
+                      placeholder="Enter supplier reference" 
+                      {...form.register("supplierRef")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="supplierPartNumber" className="block text-sm font-medium mb-2">Supplier Part Number</label>
+                    <Input 
+                      id="supplierPartNumber" 
+                      placeholder="Enter supplier part number" 
+                      {...form.register("supplierPartNumber")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="reorderLevel" className="block text-sm font-medium mb-2">Reorder Level</label>
+                    <Input 
+                      id="reorderLevel" 
+                      type="number" 
+                      {...form.register("reorderLevel", { valueAsNumber: true })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="stockLevelFlag" className="block text-sm font-medium mb-2">Ignore Stock Level Flag</label>
                     <Select 
-                      onValueChange={(value) => form.setValue("status", value)} 
-                      defaultValue={form.watch("status")}
+                      onValueChange={(value) => form.setValue("stockLevelFlag", value === "true")}
+                      defaultValue={form.watch("stockLevelFlag") ? "true" : "false"}
                     >
-                      <SelectTrigger id="status">
-                        <SelectValue placeholder="Select status" />
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select option" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="inactive">Inactive</SelectItem>
+                        <SelectItem value="true">Yes</SelectItem>
+                        <SelectItem value="false">No</SelectItem>
                       </SelectContent>
                     </Select>
-                    {form.formState.errors.status && (
-                      <p className="text-red-500 text-xs mt-1">{form.formState.errors.status.message}</p>
-                    )}
+                  </div>
+
+                  <div>
+                    <label htmlFor="commodityCode" className="block text-sm font-medium mb-2">Commodity Code</label>
+                    <Input 
+                      id="commodityCode" 
+                      placeholder="Enter commodity code" 
+                      {...form.register("commodityCode")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="unitWeight" className="block text-sm font-medium mb-2">Unit Weight</label>
+                    <Input 
+                      id="unitWeight" 
+                      type="number" 
+                      step="0.01" 
+                      {...form.register("unitWeight", { valueAsNumber: true })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="stockTakeDate" className="block text-sm font-medium mb-2">Stock Take Date</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal",
+                            !form.watch("stockTakeDate") && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {form.watch("stockTakeDate") ? (
+                            format(form.watch("stockTakeDate") as Date, "PPP")
+                          ) : (
+                            <span>Pick a date</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={form.watch("stockTakeDate") || undefined}
+                          onSelect={(date) => form.setValue("stockTakeDate", date || null)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+
+                  <div>
+                    <label htmlFor="reorderQuantity" className="block text-sm font-medium mb-2">Reorder Quantity</label>
+                    <Input 
+                      id="reorderQuantity" 
+                      type="number" 
+                      {...form.register("reorderQuantity", { valueAsNumber: true })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="lastStockTake" className="block text-sm font-medium mb-2">Qty Last Stock Take</label>
+                    <Input 
+                      id="lastStockTake" 
+                      type="number" 
+                      {...form.register("lastStockTake", { valueAsNumber: true })}
+                    />
                   </div>
                 </div>
               </div>
@@ -334,7 +508,6 @@ const AddNonProducts = () => {
                   type="submit"
                   className="bg-green-600 hover:bg-green-700 text-white px-8"
                   disabled={createNonProductMutation.isPending || updateNonProductMutation.isPending}
-                  onClick={() => console.log('Save button clicked')}
                 >
                   {buttonText}
                 </Button>

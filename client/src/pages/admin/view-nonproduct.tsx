@@ -17,7 +17,7 @@ const ViewNonProducts = () => {
 
   const { data: nonProducts, isLoading, isError, error } = useQuery({
     queryKey: ["nonProducts"],
-    queryFn: () => apiRequest("GET", "/api/products/non"),
+    queryFn: () => apiRequest("GET", "/api/non_products"),
   });
 
   const deleteNonProductMutation = useMutation({

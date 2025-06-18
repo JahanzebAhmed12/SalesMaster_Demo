@@ -13,19 +13,35 @@ export const queryClient = new QueryClient({
 
 export const apiRequest = async (method: string, endpoint: string, data?: any) => {
   const url = `${API_BASE_URL}${endpoint}`;
+  const token = localStorage.getItem('jwt_token');
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const response = await fetch(url, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
+    headers,
     credentials: 'include',
     body: data ? JSON.stringify(data) : undefined,
   });
 
+  const responseData = await response.json();
+
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    if (response.status === 401) {
+      // Handle unauthorized access
+      localStorage.removeItem('jwt_token');
+      window.location.href = '/';
+      throw new Error('Session expired. Please login again.');
+    }
+    throw new Error(responseData.message || `HTTP error! status: ${response.status}`);
   }
 
-  return response.json();
+  return responseData;
 };

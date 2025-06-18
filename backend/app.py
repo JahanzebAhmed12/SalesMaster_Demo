@@ -1,26 +1,33 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
-    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema
+    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema
 )
-from users import verify_password
+from users import verify_password, create_admin_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_migrate import Migrate
+from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
+from calendar import monthrange
 
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 
+# Configure session
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')  # Change this in production
+
 # Configure CORS
 CORS(app, 
      resources={r"/api/*": {
          "origins": ["http://localhost:5173"],
          "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         "allow_headers": ["Content-Type"],
+         "allow_headers": ["Content-Type", "Authorization"],
          "supports_credentials": True
      }})
 
@@ -30,39 +37,72 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database
 db.init_app(app)
+migrate = Migrate(app, db)
 
 # Create database tables
 with app.app_context():
     db.create_all()
+    create_admin_user()  # Create admin user if it doesn't exist
+
+# Configure Flask-JWT-Extended
+app.config["JWT_SECRET_KEY"] = "super-secret-key"
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
+jwt = JWTManager(app)
+
+# Configure user identity loader
+@jwt.user_identity_loader
+def user_identity_lookup(user_id):
+    return str(user_id)
 
 # Auth routes
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.get_json()
-    print("Login attempt with data:", data)  # Debug log
     username = data.get('username')
     password = data.get('password')
     
-    if not username or not password:
-        print("Missing username or password")  # Debug log
-        return jsonify({'message': 'Username and password are required'}), 400
+    user = User.query.filter_by(username=username).first()
+    if user and check_password_hash(user.password, password):
+        # Debugging: Print type of user.id before creating token
+        print(f"Type of user.id: {type(user.id)}, value: {user.id}")
+        # Create access token
+        access_token = create_access_token(identity=str(user.id))
+        
+        # Store user info in session
+        session['user_id'] = user.id
+        session['username'] = user.username
+        session['user_type'] = user.user_type
+        
+        user_dict = user.to_dict()
+        return jsonify({
+            'id': user_dict['id'],
+            'username': user_dict['username'],
+            'userType': user_dict['userType'],
+            'status': user_dict['status'],
+            'token': access_token
+        })
+    return jsonify({'error': 'Invalid credentials'}), 401
+
+@app.route('/api/auth/me', methods=['GET'])
+def get_current_user():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
     
-    user = verify_password(username, password)
-    print("User found:", user)  # Debug log
-    
+    user = User.query.get(session['user_id'])
     if not user:
-        print("Invalid credentials")  # Debug log
-        return jsonify({'message': 'Invalid username or password'}), 401
-    
-    response_data = {
-        'user': {
-            'id': user['id'],
-            'username': user['username'],
-            'role': user['role']
-        }
-    }
-    print("Login successful, returning:", response_data)  # Debug log
-    return jsonify(response_data)
+        return jsonify({'error': 'User not found'}), 404
+        
+    return jsonify({
+        'id': user.id,
+        'username': user.username,
+        'userType': user.user_type,
+        'status': user.status
+    })
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'message': 'Logged out successfully'})
 
 # Sales routes
 @app.route('/api/sales', methods=['GET'])
@@ -71,13 +111,18 @@ def get_sales():
     return jsonify([sale.to_dict() for sale in sales])
 
 @app.route('/api/sales', methods=['POST'])
+@jwt_required()
 def create_sale():
-    data = request.get_json()
     try:
+        data = request.get_json()
         sale_data = SaleSchema(**data)
-        
-        # Create the sale
-        sale = Sale(
+
+        # Fetch customer by ID or name if needed, or assume customer_id is provided correctly
+        customer = Customer.query.get(sale_data.customer_id)
+        if not customer:
+            return jsonify({"error": "Customer not found"}), 404
+
+        new_sale = Sale(
             invoice_number=sale_data.invoice_number,
             customer_id=sale_data.customer_id,
             customer_type=sale_data.customer_type,
@@ -92,31 +137,40 @@ def create_sale():
             notes=sale_data.notes,
             status=sale_data.status
         )
-        
+        db.session.add(new_sale)
+        db.session.commit()
+
         # Add sale items
         for item_data in sale_data.items:
-            sale_item = SaleItem(
+            new_item = SaleItem(
+                sale_id=new_sale.id,
                 product_id=item_data.product_id,
                 non_product_id=item_data.non_product_id,
                 quantity=item_data.quantity,
                 unit_price=item_data.unit_price,
                 total_price=item_data.total_price
             )
-            sale.items.append(sale_item)
-        
-        db.session.add(sale)
+            db.session.add(new_item)
         db.session.commit()
-        return jsonify(sale.to_dict())
+
+        return jsonify(new_sale.to_dict()), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/api/sales/<int:id>', methods=['GET'])
-def get_sale(id):
-    sale = Sale.query.get_or_404(id)
-    return jsonify(sale.to_dict())
+@app.route('/api/sales/<string:invoice_number>', methods=['GET'])
+@jwt_required()
+def get_sale_by_invoice(invoice_number):
+    try:
+        sale = Sale.query.filter_by(invoice_number=invoice_number).first()
+        if not sale:
+            return jsonify({"message": "Sale not found"}), 404
+        return jsonify(sale.to_dict()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/sales/<int:id>', methods=['PUT'])
+@jwt_required()
 def update_sale(id):
     data = request.get_json()
     try:
@@ -184,13 +238,13 @@ def get_products():
         'nonProducts': [product.to_dict() for product in non_products]
     })
 
-@app.route('/api/products/regular', methods=['GET'])
+@app.route('/api/regular_products', methods=['GET'])
 def get_regular_products():
     try:
         products = RegularProduct.query.all()
-        return jsonify([product.to_dict() for product in products])
+        return jsonify([product.to_dict() for product in products]), 200
     except Exception as e:
-        return jsonify({'message': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/products/regular/<int:id>', methods=['GET'])
 def get_regular_product(id):
@@ -311,13 +365,13 @@ def delete_regular_product(id):
         return jsonify({'message': str(e)}), 400
 
 # Non-Product routes
-@app.route('/api/products/non', methods=['GET'])
+@app.route('/api/non_products', methods=['GET'])
 def get_non_products():
     try:
         products = NonProduct.query.all()
-        return jsonify([product.to_dict() for product in products])
+        return jsonify([product.to_dict() for product in products]), 200
     except Exception as e:
-        return jsonify({'message': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/products/non/<int:id>', methods=['GET'])
 def get_non_product(id):
@@ -340,6 +394,21 @@ def create_non_product():
             'selling_price': data.get('sellingPrice'),
             'tax_rate': data.get('taxRate'),
             'vat_code': data.get('vatCode'),
+            'unit_of_purchase': data.get('unitOfPurchase'),
+            'unit_of_sale': data.get('unitOfSale'),
+            'location': data.get('location'),
+            'nominal_code': data.get('nominalCode'),
+            'stock_category': data.get('stockCategory'),
+            'department_number': data.get('departmentNumber'),
+            'supplier_ref': data.get('supplierRef'),
+            'supplier_part_number': data.get('supplierPartNumber'),
+            'reorder_level': data.get('reorderLevel'),
+            'stock_level_flag': data.get('stockLevelFlag'),
+            'commodity_code': data.get('commodityCode'),
+            'unit_weight': data.get('unitWeight'),
+            'stock_take_date': data.get('stockTakeDate'),
+            'reorder_quantity': data.get('reorderQuantity'),
+            'last_stock_take': data.get('lastStockTake'),
             'status': data.get('status', 'active')
         }
         
@@ -372,6 +441,21 @@ def update_non_product(id):
             'selling_price': data.get('sellingPrice'),
             'tax_rate': data.get('taxRate'),
             'vat_code': data.get('vatCode'),
+            'unit_of_purchase': data.get('unitOfPurchase'),
+            'unit_of_sale': data.get('unitOfSale'),
+            'location': data.get('location'),
+            'nominal_code': data.get('nominalCode'),
+            'stock_category': data.get('stockCategory'),
+            'department_number': data.get('departmentNumber'),
+            'supplier_ref': data.get('supplierRef'),
+            'supplier_part_number': data.get('supplierPartNumber'),
+            'reorder_level': data.get('reorderLevel'),
+            'stock_level_flag': data.get('stockLevelFlag'),
+            'commodity_code': data.get('commodityCode'),
+            'unit_weight': data.get('unitWeight'),
+            'stock_take_date': data.get('stockTakeDate'),
+            'reorder_quantity': data.get('reorderQuantity'),
+            'last_stock_take': data.get('lastStockTake'),
             'status': data.get('status', 'active')
         }
         
@@ -408,8 +492,11 @@ def delete_non_product(id):
 # Customer routes
 @app.route('/api/customers', methods=['GET'])
 def get_customers():
-    customers = Customer.query.all()
-    return jsonify([customer.to_dict() for customer in customers])
+    try:
+        customers = Customer.query.all()
+        return jsonify([customer.to_dict() for customer in customers]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/customers', methods=['POST'])
 def create_customer():
@@ -738,6 +825,585 @@ def delete_expense(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
+
+# User routes
+@app.route('/api/users', methods=['GET'])
+def get_users():
+    users = User.query.all()
+    return jsonify([user.to_dict() for user in users])
+
+@app.route('/api/users/<int:id>', methods=['GET'])
+def get_user(id):
+    user = User.query.get_or_404(id)
+    return jsonify(user.to_dict())
+
+@app.route('/api/users', methods=['POST'])
+def create_user():
+    data = request.get_json()
+    print('DEBUG: Received user data:', data)
+    try:
+        # Validate required fields
+        if not data.get('username'):
+            return jsonify({'message': 'Username is required'}), 400
+        if not data.get('password'):
+            return jsonify({'message': 'Password is required'}), 400
+
+        # Check if username already exists
+        if User.query.filter_by(username=data['username']).first():
+            return jsonify({'message': 'Username already exists'}), 400
+        
+        # Check if email already exists (if provided)
+        if data.get('email') and User.query.filter_by(email=data['email']).first():
+            return jsonify({'message': 'Email already exists'}), 400
+
+        # Create new user
+        user = User(
+            username=data['username'],
+            password=generate_password_hash(data['password']),
+            user_type=data.get('userType', 'user'),
+            status=data.get('status', 'Active'),
+            email=data.get('email'),
+            phone=data.get('phone'),
+            daily_wage=data.get('dailyWage')
+        )
+        print('DEBUG: User object to be committed:', user.to_dict())
+        db.session.add(user)
+        db.session.commit()
+        return jsonify(user.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        print('DEBUG: Exception occurred:', str(e))
+        return jsonify({'message': f'Error creating user: {str(e)}'}), 400
+
+@app.route('/api/users/<int:id>', methods=['PUT'])
+def update_user(id):
+    data = request.get_json()
+    try:
+        user = User.query.get_or_404(id)
+        
+        # Check if username is being changed and if it already exists
+        if data.get('username') and data['username'] != user.username:
+            if User.query.filter_by(username=data['username']).first():
+                return jsonify({'message': 'Username already exists'}), 400
+            user.username = data['username']
+        
+        # Check if email is being changed and if it already exists
+        if data.get('email') and data['email'] != user.email:
+            if User.query.filter_by(email=data['email']).first():
+                return jsonify({'message': 'Email already exists'}), 400
+            user.email = data['email']
+        
+        # Update other fields
+        if 'password' in data:
+            user.password = generate_password_hash(data['password'])
+        if 'userType' in data:
+            user.user_type = data['userType']
+        if 'status' in data:
+            user.status = data['status']
+        if 'phone' in data:
+            user.phone = data['phone']
+        if 'dailyWage' in data:
+            user.daily_wage = data['dailyWage']
+        
+        db.session.commit()
+        return jsonify(user.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 400
+
+@app.route('/api/users/<int:id>', methods=['DELETE'])
+def delete_user(id):
+    try:
+        user = User.query.get_or_404(id)
+        db.session.delete(user)
+        db.session.commit()
+        return jsonify({'message': 'User deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 400
+
+@app.route('/api/users/attendance', methods=['GET'])
+def get_users_attendance():
+    today = datetime.now().date()
+    users = User.query.all()
+    result = []
+    
+    for user in users:
+        attendance = Attendance.query.filter_by(
+            user_id=user.id,
+            date=today
+        ).first()
+        
+        result.append({
+            'id': user.id,
+            'username': user.username,
+            'userType': user.user_type,
+            'status': user.status,
+            'dailyWage': float(user.daily_wage) if user.daily_wage else None,
+            'attendance': {
+                'status': attendance.status if attendance else 'absent',
+                'leaveType': attendance.leave_type if attendance else None,
+                'holidayName': attendance.holiday_name if attendance else None
+            }
+        })
+    
+    return jsonify(result)
+
+@app.route('/api/users/attendance/<int:user_id>', methods=['POST'])
+def mark_attendance(user_id):
+    data = request.get_json()
+    today = datetime.now().date()
+    
+    # Validate required fields
+    if not data or 'status' not in data:
+        return jsonify({'error': 'Status is required'}), 400
+    
+    # Validate status
+    valid_statuses = ['present', 'absent', 'leave', 'holiday']
+    if data['status'] not in valid_statuses:
+        return jsonify({'error': 'Invalid status'}), 400
+    
+    # Validate leave type if status is leave
+    if data['status'] == 'leave' and not data.get('leaveType'):
+        return jsonify({'error': 'Leave type is required for leave status'}), 400
+    
+    # Validate holiday name if status is holiday
+    if data['status'] == 'holiday' and not data.get('holidayName'):
+        return jsonify({'error': 'Holiday name is required for holiday status'}), 400
+    
+    # Check if attendance record exists for today
+    attendance = Attendance.query.filter_by(
+        user_id=user_id,
+        date=today
+    ).first()
+    
+    if attendance:
+        # Update existing record
+        attendance.status = data['status']
+        attendance.leave_type = data.get('leaveType')
+        attendance.holiday_name = data.get('holidayName')
+        
+        # Set check-in time if marking as present
+        if data['status'] == 'present' and not attendance.check_in:
+            attendance.check_in = datetime.now()
+    else:
+        # Create new record
+        attendance = Attendance(
+            user_id=user_id,
+            date=today,
+            status=data['status'],
+            leave_type=data.get('leaveType'),
+            holiday_name=data.get('holidayName'),
+            check_in=datetime.now() if data['status'] == 'present' else None
+        )
+        db.session.add(attendance)
+    
+    try:
+        db.session.commit()
+        return jsonify(attendance.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/users/<int:id>/daily-wage', methods=['PUT'])
+def update_daily_wage(id):
+    data = request.get_json()
+    try:
+        user = User.query.get_or_404(id)
+        
+        if 'dailyWage' not in data:
+            return jsonify({'message': 'Daily wage is required'}), 400
+            
+        # Validate daily wage is a positive number
+        try:
+            daily_wage = float(data['dailyWage'])
+            if daily_wage < 0:
+                return jsonify({'message': 'Daily wage must be positive'}), 400
+        except ValueError:
+            return jsonify({'message': 'Daily wage must be a valid number'}), 400
+        
+        user.daily_wage = daily_wage
+        db.session.commit()
+        
+        return jsonify({
+            'id': user.id,
+            'username': user.username,
+            'dailyWage': float(user.daily_wage) if user.daily_wage else None
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 400
+
+# Monthly Reports Routes
+@app.route('/api/reports/monthly-stats', methods=['GET'])
+def get_monthly_stats():
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    
+    if not year or not month:
+        return jsonify({'error': 'Year and month are required'}), 400
+    
+    # Get all days in the month
+    start_date = datetime(year, month, 1)
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = datetime(year, month + 1, 1) - timedelta(days=1)
+    
+    # Calculate working days (all days)
+    working_days = (end_date - start_date).days + 1
+    
+    # Get attendance records for the month
+    attendance_records = Attendance.query.filter(
+        Attendance.date >= start_date.date(),
+        Attendance.date <= end_date.date()
+    ).all()
+    
+    # Calculate statistics
+    total_leaves = sum(1 for record in attendance_records if record.status == 'leave')
+    total_present = sum(1 for record in attendance_records if record.status == 'present')
+    total_employees = User.query.count()
+    
+    avg_attendance = (total_present / (working_days * total_employees)) * 100 if total_employees > 0 else 0
+    
+    return jsonify({
+        'workingDays': working_days,
+        'totalLeaves': total_leaves,
+        'avgAttendance': round(avg_attendance, 2)
+    })
+
+@app.route('/api/reports/payroll', methods=['GET'])
+def get_payroll_report():
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    employee_id = request.args.get('employeeId', type=int)
+    
+    if not year or not month:
+        return jsonify({'error': 'Year and month are required'}), 400
+    
+    # Get date range for the month
+    start_date = datetime(year, month, 1)
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        end_date = datetime(year, month + 1, 1) - timedelta(days=1)
+    
+    # Get users (filter by employee_id if provided)
+    query = User.query
+    if employee_id:
+        query = query.filter(User.id == employee_id)
+    users = query.all()
+    
+    result = []
+    for user in users:
+        # Get attendance records for the user in the specified month
+        attendance_records = Attendance.query.filter(
+            Attendance.user_id == user.id,
+            Attendance.date >= start_date.date(),
+            Attendance.date <= end_date.date()
+        ).all()
+        
+        # Calculate attendance statistics
+        present_days = sum(1 for record in attendance_records if record.status == 'present')
+        absent_days = sum(1 for record in attendance_records if record.status == 'absent')
+        leave_days = sum(1 for record in attendance_records if record.status == 'leave')
+        holiday_days = sum(1 for record in attendance_records if record.status == 'holiday')
+        
+        # Calculate working days (all days)
+        working_days = (end_date - start_date).days + 1
+        
+        # Calculate attendance percentage
+        attendance_percentage = (present_days / working_days) * 100 if working_days > 0 else 0
+        
+        # Calculate payroll
+        daily_wage = float(user.daily_wage) if user.daily_wage else 0
+        gross_pay = present_days * daily_wage
+        
+        # Calculate tax (20%) and National Insurance (12%)
+        tax = gross_pay * 0.20
+        national_insurance = gross_pay * 0.12
+        net_pay = gross_pay - tax - national_insurance
+        
+        result.append({
+            'employee': {
+                'id': user.id,
+                'name': user.username,
+                'employeeId': user.id,
+                'department': user.user_type
+            },
+            'attendance': {
+                'presentDays': present_days,
+                'absentDays': absent_days,
+                'leaveDays': leave_days,
+                'holidayDays': holiday_days,
+                'attendancePercentage': round(attendance_percentage, 2)
+            },
+            'payroll': {
+                'workingDays': working_days,
+                'dailyWage': daily_wage,
+                'grossPay': round(gross_pay, 2),
+                'tax': round(tax, 2),
+                'nationalInsurance': round(national_insurance, 2),
+                'netPay': round(net_pay, 2)
+            }
+        })
+    
+    return jsonify(result)
+
+@app.route('/api/reports/weekly-stats', methods=['GET'])
+def get_weekly_stats():
+    year = request.args.get('year', type=int)
+    week = request.args.get('week', type=int)
+    
+    if not year or not week:
+        return jsonify({'error': 'Year and week are required'}), 400
+    
+    # Get the start and end dates for the week
+    start_date = datetime.strptime(f'{year}-W{week}-1', '%Y-W%W-%w')
+    end_date = start_date + timedelta(days=6)
+    
+    # Get attendance records for the week
+    attendance_records = Attendance.query.filter(
+        Attendance.date >= start_date.date(),
+        Attendance.date <= end_date.date()
+    ).all()
+    
+    # Calculate statistics
+    total_leaves = sum(1 for record in attendance_records if record.status == 'leave')
+    total_present = sum(1 for record in attendance_records if record.status == 'present')
+    total_employees = User.query.count()
+    
+    # All days are working days
+    working_days = 7
+    avg_attendance = (total_present / (working_days * total_employees)) * 100 if total_employees > 0 else 0
+    
+    return jsonify({
+        'workingDays': working_days,
+        'totalLeaves': total_leaves,
+        'avgAttendance': round(avg_attendance, 2)
+    })
+
+@app.route('/api/reports/weekly-payroll', methods=['GET'])
+def get_weekly_payroll():
+    year = request.args.get('year', type=int)
+    week = request.args.get('week', type=int)
+    employee_id = request.args.get('employeeId', type=int)
+    
+    if not year or not week:
+        return jsonify({'error': 'Year and week are required'}), 400
+    
+    # Get the start and end dates for the week
+    start_date = datetime.strptime(f'{year}-W{week}-1', '%Y-W%W-%w')
+    end_date = start_date + timedelta(days=6)
+    
+    # Get users (filter by employee_id if provided)
+    query = User.query
+    if employee_id:
+        query = query.filter(User.id == employee_id)
+    users = query.all()
+    
+    result = []
+    for user in users:
+        # Get attendance records for the user in the specified week
+        attendance_records = Attendance.query.filter(
+            Attendance.user_id == user.id,
+            Attendance.date >= start_date.date(),
+            Attendance.date <= end_date.date()
+        ).all()
+        
+        # Calculate attendance statistics
+        present_days = sum(1 for record in attendance_records if record.status == 'present')
+        absent_days = sum(1 for record in attendance_records if record.status == 'absent')
+        leave_days = sum(1 for record in attendance_records if record.status == 'leave')
+        holiday_days = sum(1 for record in attendance_records if record.status == 'holiday')
+        
+        # All days are working days
+        working_days = 7
+        
+        # Calculate attendance percentage
+        attendance_percentage = (present_days / working_days) * 100
+        
+        # Calculate payroll
+        daily_wage = float(user.daily_wage) if user.daily_wage else 0
+        gross_pay = present_days * daily_wage
+        
+        # Calculate tax (20%) and National Insurance (12%)
+        tax = gross_pay * 0.20
+        national_insurance = gross_pay * 0.12
+        net_pay = gross_pay - tax - national_insurance
+        
+        result.append({
+            'employee': {
+                'id': user.id,
+                'name': user.username,
+                'employeeId': user.id,
+                'department': user.user_type
+            },
+            'attendance': {
+                'presentDays': present_days,
+                'absentDays': absent_days,
+                'leaveDays': leave_days,
+                'holidayDays': holiday_days,
+                'attendancePercentage': round(attendance_percentage, 2)
+            },
+            'payroll': {
+                'workingDays': working_days,
+                'dailyWage': daily_wage,
+                'grossPay': round(gross_pay, 2),
+                'tax': round(tax, 2),
+                'nationalInsurance': round(national_insurance, 2),
+                'netPay': round(net_pay, 2)
+            }
+        })
+    
+    return jsonify(result)
+
+# Payment routes
+@app.route('/api/payments', methods=['POST'])
+@jwt_required()
+def create_payment():
+    try:
+        data = request.get_json()
+        print("Received payment data:", data)  # Debug log
+        
+        payment_data = PaymentSchema(**data)
+        print("Validated payment data:", payment_data.dict())  # Debug log
+
+        customer = Customer.query.get(payment_data.customer_id)
+        if not customer:
+            return jsonify({"error": "Customer not found"}), 404
+
+        # If sale_id is provided, link payment to a specific sale/invoice
+        sale = None
+        if payment_data.sale_id:
+            sale = Sale.query.get(payment_data.sale_id)
+            if not sale:
+                return jsonify({"error": "Sale (invoice) not found"}), 404
+
+            # Update sale's payment status and paid_amount
+            current_paid = float(sale.paid_amount or 0)
+            new_paid = current_paid + float(payment_data.amount)
+            
+            if new_paid >= float(sale.total_amount):
+                sale.payment_status = "paid"
+                sale.paid_amount = sale.total_amount
+            else:
+                sale.payment_status = "partial"
+                sale.paid_amount = new_paid
+            db.session.add(sale)
+
+        new_payment = Payment(
+            customer_id=payment_data.customer_id,
+            sale_id=payment_data.sale_id,
+            amount=payment_data.amount,
+            payment_mode=payment_data.payment_mode,
+            payment_date=payment_data.payment_date,
+            remarks=payment_data.remarks
+        )
+        print("Created payment object:", new_payment.to_dict())  # Debug log
+        
+        db.session.add(new_payment)
+        db.session.commit()
+        return jsonify(new_payment.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print("Error creating payment:", str(e))  # Debug log
+        import traceback
+        print("Full traceback:", traceback.format_exc())  # Debug log
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/payments', methods=['GET'])
+@jwt_required()
+def get_payments():
+    try:
+        payments = Payment.query.all()
+        return jsonify([payment.to_dict() for payment in payments]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customers/<int:customer_id>/outstanding_invoices', methods=['GET'])
+@jwt_required()
+def get_customer_outstanding_invoices(customer_id):
+    try:
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            return jsonify({"error": "Customer not found"}), 404
+
+        # Fetch sales where total_amount > paid_amount and status is finalized
+        outstanding_sales = Sale.query.filter(
+            Sale.customer_id == customer_id,
+            Sale.status == 'finalized',
+            Sale.total_amount > (Sale.paid_amount or 0)
+        ).all()
+
+        return jsonify([sale.to_dict() for sale in outstanding_sales]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/payments/history', methods=['GET'])
+@jwt_required()
+def get_payment_history():
+    try:
+        # Get query parameters
+        customer_id = request.args.get('customerId', type=int)
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        payment_mode = request.args.get('paymentMode')
+        
+        # Build query
+        query = Payment.query
+        
+        # Filter by customer if provided
+        if customer_id:
+            query = query.filter(Payment.customer_id == customer_id)
+        
+        # Filter by date range if provided
+        if from_date:
+            query = query.filter(Payment.payment_date >= from_date)
+        if to_date:
+            query = query.filter(Payment.payment_date <= to_date)
+        
+        # Filter by payment mode if provided
+        if payment_mode and payment_mode != 'All':
+            query = query.filter(Payment.payment_mode == payment_mode)
+        
+        # Order by payment date descending
+        query = query.order_by(Payment.payment_date.desc())
+        
+        payments = query.all()
+        
+        # Create detailed payment history with invoice information
+        payment_history = []
+        for payment in payments:
+            # Get customer name
+            customer_name = payment.customer.customer_name if payment.customer else 'Unknown'
+            
+            # Get invoice information if linked
+            invoice_number = None
+            invoice_date = None
+            invoice_amount = None
+            if payment.sale:
+                invoice_number = payment.sale.invoice_number
+                invoice_date = payment.sale.date.isoformat() if payment.sale.date else None
+                invoice_amount = float(payment.sale.total_amount) if payment.sale.total_amount else 0
+            
+            payment_history.append({
+                'id': payment.id,
+                'paymentDate': payment.payment_date.isoformat(),
+                'paymentMode': payment.payment_mode,
+                'amount': float(payment.amount),
+                'customerName': customer_name,
+                'customerId': payment.customer_id,
+                'invoiceNumber': invoice_number,
+                'invoiceDate': invoice_date,
+                'invoiceAmount': invoice_amount,
+                'remarks': payment.remarks,
+                'createdAt': payment.created_at.isoformat() if payment.created_at else None
+            })
+        
+        return jsonify(payment_history), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,11 +15,11 @@ import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import { Plus, MoreHorizontal, ChevronDown, ChevronUp } from "lucide-react";
 import { useLocation } from "wouter";
+import type { Customer } from "@shared/schema";
 
 const salesSchema = z.object({
   invoiceNumber: z.string().min(1, "Invoice number is required"),
-  customerName: z.string().min(1, "Customer is required"),
-  amount: z.string().min(1, "Amount is required").transform(val => parseFloat(val)),
+  customerId: z.string().min(1, "Customer is required"),
   vehicleDetails: z.string().optional(),
   gateNumber: z.string().optional(),
 });
@@ -28,7 +28,6 @@ type SalesFormData = z.infer<typeof salesSchema>;
 
 export default function SalesEntry() {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [showMoreFields, setShowMoreFields] = useState(false);
   
@@ -36,44 +35,25 @@ export default function SalesEntry() {
     resolver: zodResolver(salesSchema),
     defaultValues: {
       invoiceNumber: "",
-      customerName: "",
-      amount: "" as any,
+      customerId: "",
       vehicleDetails: "",
       gateNumber: "",
     },
   });
 
-  const { data: sales = [], isLoading } = useQuery({
-    queryKey: ["/api/sales"],
-  });
-
-  const createSaleMutation = useMutation({
-    mutationFn: (data: SalesFormData) => apiRequest("POST", "/api/sales", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      toast({
-        title: "Success",
-        description: "Sale entry created successfully",
-      });
-      form.reset();
-      setLocation("/data-entry/sales-invoice");
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to create sale entry",
-        variant: "destructive",
-      });
-    },
+  const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
+    queryKey: ["/api/customers"],
+    queryFn: () => apiRequest("GET", "/api/customers"),
   });
 
   const onSubmit = (data: SalesFormData) => {
-    // Temporarily comment out database save
-    // createSaleMutation.mutate(data);
-    
-    // Just navigate to sales invoice page
-    setLocation("/data-entry/sales-invoice");
+    const queryParams = new URLSearchParams();
+    queryParams.append("invoiceNumber", data.invoiceNumber);
+    queryParams.append("customerId", data.customerId);
+    if (data.vehicleDetails) queryParams.append("vehicleDetails", data.vehicleDetails);
+    if (data.gateNumber) queryParams.append("gateNumber", data.gateNumber);
+
+    setLocation(`/data-entry/sales-invoice?${queryParams.toString()}`);
   };
 
   return (
@@ -104,46 +84,39 @@ export default function SalesEntry() {
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="customerName">Customer</Label>
+                  <Label htmlFor="customerId">Customer</Label>
                   <Select
-                    value={form.watch("customerName")}
-                    onValueChange={(value) => form.setValue("customerName", value)}
+                    value={form.watch("customerId")}
+                    onValueChange={(value) => form.setValue("customerId", value)}
+                    disabled={isLoadingCustomers}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select customer" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Walk-in Customer">Walk-in Customer</SelectItem>
-                      <SelectItem value="ABC Corp">ABC Corp</SelectItem>
-                      <SelectItem value="XYZ Ltd">XYZ Ltd</SelectItem>
-                      <SelectItem value="John Doe">John Doe</SelectItem>
-                      <SelectItem value="Jane Smith">Jane Smith</SelectItem>
+                      {isLoadingCustomers ? (
+                        <SelectItem value="disabled" disabled>Loading customers...</SelectItem>
+                      ) : customers && customers.length > 0 ? (
+                        customers.map((customer) => (
+                          <SelectItem key={customer.id} value={customer.id.toString()}>
+                            {customer.customer_name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="disabled" disabled>No customers found</SelectItem>
+                      )}
                     </SelectContent>
                   </Select>
-                  {form.formState.errors.customerName && (
+                  {form.formState.errors.customerId && (
                     <p className="text-sm text-red-500 mt-1">
-                      {form.formState.errors.customerName.message}
+                      {form.formState.errors.customerId.message}
                     </p>
                   )}
                 </div>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="amount">Amount ($)</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    {...form.register("amount")}
-                    placeholder="Enter amount"
-                  />
-                  {form.formState.errors.amount && (
-                    <p className="text-sm text-red-500 mt-1">
-                      {form.formState.errors.amount.message}
-                    </p>
-                  )}
-                </div>
+                <div></div> {/* Empty div to align layout */}
                 <div className="flex items-end">
                   <Button
                     type="button"
@@ -178,85 +151,25 @@ export default function SalesEntry() {
                       />
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        form.setValue("vehicleDetails", "");
-                        form.setValue("gateNumber", "");
-                        toast({
-                          title: "Fields Saved",
-                          description: "Additional fields have been saved",
-                        });
-                      }}
-                    >
-                      Save Additional Fields
-                    </Button>
-                  </div>
                 </div>
               )}
               <Button 
                 type="submit" 
-                disabled={createSaleMutation.isPending}
                 className="w-full md:w-auto"
               >
-                {createSaleMutation.isPending ? "Creating..." : "Create Sale Entry"}
+                Create Sale Entry
               </Button>
             </form>
           </CardContent>
         </Card>
 
-        {/* Sales List */}
+        {/* Sales List is removed from here as per the new workflow */}
         <Card>
           <CardHeader>
             <CardTitle>Recent Sales</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8">Loading...</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[80px]">ID</TableHead>
-                      <TableHead className="min-w-[150px]">Customer Name</TableHead>
-                      <TableHead className="min-w-[100px]">Amount</TableHead>
-                      <TableHead className="min-w-[100px]">Date</TableHead>
-                      <TableHead className="min-w-[100px]">Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {Array.isArray(sales) && sales.length > 0 ? (
-                      sales.map((sale: any) => (
-                        <TableRow key={sale.id}>
-                          <TableCell className="font-medium">#{sale.id}</TableCell>
-                          <TableCell>{sale.customerName}</TableCell>
-                          <TableCell className="font-medium text-green-600">
-                            ${parseFloat(sale.amount).toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            {new Date(sale.date).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="default" className="bg-green-100 text-green-800">
-                              {sale.status}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-gray-500 py-8">
-                          No sales found
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+            <div className="text-center py-8">Sales data will be displayed on the Sales Invoice page after creation.</div>
           </CardContent>
         </Card>
       </div>

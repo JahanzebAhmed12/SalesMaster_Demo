@@ -1,10 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,15 +14,19 @@ import { useToast } from "@/hooks/use-toast";
 import { insertUserSchema } from "@shared/schema";
 import { Plus } from "lucide-react";
 import type { User, InsertUser } from "@shared/schema";
+import { z } from "zod";
+import ProtectedRoute from "@/components/protected-route";
 
-export default function Users() {
+function UsersContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState("All");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   
   const { data: users, isLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
+    queryFn: () => apiRequest("GET", "/api/users")
   });
 
   const deleteUserMutation = useMutation({
@@ -45,39 +49,7 @@ export default function Users() {
     },
   });
 
-  const addUserForm = useForm<InsertUser>({
-    resolver: zodResolver(insertUserSchema),
-    defaultValues: {
-      username: "",
-      password: "",
-      userType: "user",
-      status: "Active",
-    },
-  });
-
-  const addUserMutation = useMutation({
-    mutationFn: async (data: InsertUser) => {
-      return apiRequest("POST", "/api/users", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({
-        title: "Success",
-        description: "User added successfully",
-      });
-      setIsAddDialogOpen(false);
-      addUserForm.reset();
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to add user",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const filteredUsers = users?.filter(user => {
+  const filteredUsers = users?.filter((user: User) => {
     const matchesSearch = user.username.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === "All" || user.userType === filterType.toLowerCase();
     return matchesSearch && matchesType;
@@ -87,10 +59,6 @@ export default function Users() {
     if (confirm(`Are you sure you want to delete user "${username}"?`)) {
       deleteUserMutation.mutate(id);
     }
-  };
-
-  const onAddUser = (data: InsertUser) => {
-    addUserMutation.mutate(data);
   };
 
   return (
@@ -120,99 +88,13 @@ export default function Users() {
                   </SelectContent>
                 </Select>
                 <span className="text-sm tropifruit-text-secondary">records per page</span>
-                <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="tropifruit-success hover:bg-green-600 ml-4">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add New User
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Add New User</DialogTitle>
-                    </DialogHeader>
-                    <Form {...addUserForm}>
-                      <form onSubmit={addUserForm.handleSubmit(onAddUser)} className="space-y-4">
-                        <FormField
-                          control={addUserForm.control}
-                          name="userType"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>User Type</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select user type" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="admin">admin</SelectItem>
-                                  <SelectItem value="user">user</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={addUserForm.control}
-                          name="username"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Username</FormLabel>
-                              <FormControl>
-                                <Input {...field} />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={addUserForm.control}
-                          name="password"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Password</FormLabel>
-                              <FormControl>
-                                <Input type="password" {...field} />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={addUserForm.control}
-                          name="status"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Status</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select status" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="Active">Active</SelectItem>
-                                  <SelectItem value="Inactive">Inactive</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </FormItem>
-                          )}
-                        />
-                        <div className="flex justify-end space-x-2 pt-4">
-                          <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>
-                            Cancel
-                          </Button>
-                          <Button 
-                            type="submit" 
-                            className="tropifruit-success hover:bg-green-600"
-                            disabled={addUserMutation.isPending}
-                          >
-                            {addUserMutation.isPending ? "Adding..." : "Add User"}
-                          </Button>
-                        </div>
-                      </form>
-                    </Form>
-                  </DialogContent>
-                </Dialog>
+                <Button 
+                  onClick={() => setLocation("/admin/user-database-add")}
+                  className="tropifruit-success hover:bg-green-600 ml-4"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add New User
+                </Button>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="text-sm tropifruit-text-secondary">Search:</span>
@@ -261,7 +143,7 @@ export default function Users() {
                       <td className="p-4 text-sm tropifruit-text">{user.username}</td>
                       <td className="p-4 text-sm tropifruit-text-secondary">••••••••••</td>
                       <td className="p-4 text-center">
-                        <Link href={`/users/${user.id}/edit`}>
+                        <Link href={`/admin/user-database-add/${user.id}`}>
                           <button className="text-[hsl(207,90%,54%)] hover:text-[hsl(207,75%,45%)]">
                             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
@@ -315,5 +197,13 @@ export default function Users() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Users() {
+  return (
+    <ProtectedRoute requireAdmin>
+      <UsersContent />
+    </ProtectedRoute>
   );
 }

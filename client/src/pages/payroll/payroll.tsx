@@ -1,11 +1,19 @@
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { UserWithAttendance } from "@shared/schema";
 import AttendanceTable from "@/components/layout/attendance-table";
 
 export default function Payroll() {
+  const { data: users, isLoading } = useQuery<UserWithAttendance[]>({
+    queryKey: ["/api/users/attendance"],
+    queryFn: () => apiRequest("GET", "/api/users/attendance")
+  });
+
   return (
     <div className="space-y-6">
       <div className="bg-gradient-to-r from-primary to-blue-600 rounded-xl p-6 text-white">
         <div className="flex justify-between items-center">
-          <div >
+          <div>
             <h2 className="text-xl font-semibold">Daily Attendance Management</h2>
             <p className="text-blue-100 mt-1">Track daily attendance and manage employee records</p>
           </div>
@@ -23,7 +31,11 @@ export default function Payroll() {
         </div>
       </div>
 
-      <AttendanceTable />
+      {isLoading ? (
+        <div className="text-center py-8">Loading attendance data...</div>
+      ) : (
+        <AttendanceTable users={users || []} />
+      )}
     </div>
   );
 }

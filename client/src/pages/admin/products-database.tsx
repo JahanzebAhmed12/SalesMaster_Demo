@@ -46,7 +46,7 @@ export default function Products() {
 
   const { data: products = [], isLoading } = useQuery<RegularProduct[]>({
     queryKey: ["products"],
-    queryFn: () => apiRequest("GET", "/api/products/regular")
+    queryFn: () => apiRequest("GET", "/api/regular_products")
   });
 
   const createProductMutation = useMutation<RegularProduct, Error, InsertRegularProduct>({

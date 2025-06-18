@@ -5,3 +5,5 @@ sqlalchemy==2.0.28
 psycopg2-binary==2.9.9
 pydantic==2.6.3 
 flask_sqlalchemy
+flask_migrate
+flask-jwt-extended

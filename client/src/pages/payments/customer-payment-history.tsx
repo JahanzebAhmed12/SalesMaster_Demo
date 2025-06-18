@@ -8,19 +8,22 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { Customer } from "@shared/schema";
 
 interface PaymentHistoryData {
-  slNo: number;
+  id: number;
   paymentDate: string;
   paymentMode: string;
-  paymentId: string;
-  recvAmt: number;
-  invNo: string;
-  invDt: string;
-  customer: string;
-  invoiceAmt: number;
-  allocated: number;
-  remarks: string;
+  amount: number;
+  customerName: string;
+  customerId: number;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  invoiceAmount: number | null;
+  remarks: string | null;
+  createdAt: string | null;
 }
 
 export default function CustomerPaymentHistory() {
@@ -29,9 +32,38 @@ export default function CustomerPaymentHistory() {
   const [toDate, setToDate] = useState<Date>();
   const [selectedFilter, setSelectedFilter] = useState<string>("All");
 
-  const paymentData: PaymentHistoryData[] = [
-    // No data found
-  ];
+  // Fetch customers for the dropdown
+  const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
+    queryKey: ["/api/customers"],
+    queryFn: () => apiRequest("GET", "/api/customers"),
+  });
+
+  // Build query parameters for payment history
+  const queryParams = new URLSearchParams();
+  if (selectedCustomer && selectedCustomer !== "all") {
+    queryParams.append("customerId", selectedCustomer);
+  }
+  if (fromDate) {
+    queryParams.append("fromDate", format(fromDate, "yyyy-MM-dd"));
+  }
+  if (toDate) {
+    queryParams.append("toDate", format(toDate, "yyyy-MM-dd"));
+  }
+  if (selectedFilter && selectedFilter !== "All") {
+    queryParams.append("paymentMode", selectedFilter);
+  }
+
+  // Fetch payment history
+  const { data: paymentHistory, isLoading: isLoadingPayments, refetch } = useQuery<PaymentHistoryData[]>({
+    queryKey: ["/api/payments/history", queryParams.toString()],
+    queryFn: () => apiRequest("GET", `/api/payments/history?${queryParams.toString()}`),
+  });
+
+  const handleSubmit = () => {
+    refetch();
+  };
+
+  const totalAmount = paymentHistory?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -60,8 +92,15 @@ export default function CustomerPaymentHistory() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Customer</SelectItem>
-                    <SelectItem value="customer1">Customer 1</SelectItem>
-                    <SelectItem value="customer2">Customer 2</SelectItem>
+                    {isLoadingCustomers ? (
+                      <SelectItem value="loading" disabled>Loading customers...</SelectItem>
+                    ) : (
+                      customers?.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id.toString()}>
+                          {customer.customer_name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -78,7 +117,7 @@ export default function CustomerPaymentHistory() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "20250610"}
+                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -104,7 +143,7 @@ export default function CustomerPaymentHistory() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyy-MM-dd") : "20250610"}
+                      {toDate ? format(toDate, "yyyy-MM-dd") : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -125,12 +164,12 @@ export default function CustomerPaymentHistory() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All</SelectItem>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Card">Card</SelectItem>
-                    <SelectItem value="Bank">Bank</SelectItem>
+                    <SelectItem value="CASH">Cash</SelectItem>
+                    <SelectItem value="CARD">Card</SelectItem>
+                    <SelectItem value="BANK">Bank</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button className="bg-blue-600 hover:bg-blue-700">
+                <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSubmit}>
                   Submit
                 </Button>
               </div>
@@ -160,22 +199,56 @@ export default function CustomerPaymentHistory() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8">
-                      No data found.
-                    </TableCell>
-                  </TableRow>
+                  {isLoadingPayments ? (
+                    <TableRow>
+                      <TableCell colSpan={11} className="text-center py-8">
+                        Loading payment history...
+                      </TableCell>
+                    </TableRow>
+                  ) : paymentHistory && paymentHistory.length > 0 ? (
+                    paymentHistory.map((payment, index) => (
+                      <TableRow key={payment.id}>
+                        <TableCell className="text-center">{index + 1}</TableCell>
+                        <TableCell className="text-center">
+                          {format(new Date(payment.paymentDate), "dd/MM/yyyy")}
+                        </TableCell>
+                        <TableCell className="text-center">{payment.paymentMode}</TableCell>
+                        <TableCell className="text-center">{payment.id}</TableCell>
+                        <TableCell className="text-center">£{payment.amount.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">
+                          {payment.invoiceNumber || '-'}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {payment.invoiceDate ? format(new Date(payment.invoiceDate), "dd/MM/yyyy") : '-'}
+                        </TableCell>
+                        <TableCell className="text-center">{payment.customerName}</TableCell>
+                        <TableCell className="text-center">
+                          {payment.invoiceAmount ? `£${payment.invoiceAmount.toFixed(2)}` : '-'}
+                        </TableCell>
+                        <TableCell className="text-center">£{payment.amount.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">
+                          {payment.remarks || '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={11} className="text-center py-8">
+                        No payment history found.
+                      </TableCell>
+                    </TableRow>
+                  )}
                   <TableRow className="bg-blue-100 font-semibold">
                     <TableCell className="text-center">TOTAL</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
+                    <TableCell className="text-center">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
+                    <TableCell className="text-center">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell></TableCell>
                   </TableRow>
                 </TableBody>
@@ -185,7 +258,7 @@ export default function CustomerPaymentHistory() {
             {/* Pagination */}
             <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
               <div className="text-sm text-gray-600">
-                Showing 0 to 0 of 0 entries
+                Showing {paymentHistory?.length || 0} entries
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm">Previous</span>
