@@ -37,7 +37,7 @@ interface BackendSalePayload {
 
 const SalesInvoice = () => {
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -63,6 +63,12 @@ const SalesInvoice = () => {
   const [itemQuantity, setItemQuantity] = useState<number>(1);
   const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
   const [isCreatingSale, setIsCreatingSale] = useState(false);
+
+  // Add this useEffect after state declarations and before main useEffect
+  useEffect(() => {
+    setCurrentSale(null);
+    setSaleItems([]);
+  }, [invoiceNumberFromUrl]);
 
   // Fetch sale details by invoice number
   const { data: fetchedSale, isLoading: isLoadingSale, isError: isErrorSale } = useQuery<Sale>({
@@ -145,15 +151,9 @@ const SalesInvoice = () => {
         items: []
       };
       createSaleMutation.mutate(initialSalePayload);
-    } else {
-      console.log('Conditions not met for sale creation:', {
-        isCreatingSale,
-        hasInvoiceNumber: !!invoiceNumberFromUrl,
-        isLoadingSale,
-        hasFetchedSale: !!fetchedSale,
-        hasCurrentSale: !!currentSale,
-        hasCustomerId: !!customerIdFromUrl,
-      });
+    } else if (isErrorSale && !isLoadingSale) {
+      setCurrentSale(null);
+      setSaleItems([]);
     }
   }, [
     fetchedSale, 
@@ -164,7 +164,8 @@ const SalesInvoice = () => {
     vehicleDetailsFromUrl, 
     gateNumberFromUrl, 
     createSaleMutation,
-    isCreatingSale
+    isCreatingSale,
+    isErrorSale
   ]);
 
   // Fetch customers (needed for customer name display if not directly in sale)
@@ -202,6 +203,34 @@ const SalesInvoice = () => {
       toast({
         title: "Error",
         description: error.message || "Failed to update invoice",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Add mutation for deleting the sale
+  const deleteSaleMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/sales/${currentSale?.id}`),
+    onSuccess: () => {
+      toast({
+        title: "Invoice Deleted",
+        description: "The invoice has been deleted successfully.",
+      });
+      // Invalidate sales queries to clear cache
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      if (currentSale?.invoiceNumber) {
+        queryClient.invalidateQueries({ queryKey: ["/api/sales", currentSale.invoiceNumber] });
+      }
+      // Reset local state to ensure new sale logic triggers
+      setCurrentSale(null);
+      setSaleItems([]);
+      // Auto-refresh the page by redirecting and reloading
+      window.location.replace("/data-entry/sales-entry");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete invoice.",
         variant: "destructive",
       });
     },
@@ -643,9 +672,12 @@ const SalesInvoice = () => {
                   <span>£{totalAmount.toFixed(2)}</span>
                 </div>
               </div>
-              <div className="mt-4">
+              <div className="mt-4 flex gap-2">
                 <Button variant="outline" size="sm" className="w-full" onClick={handleSaveInvoice}>
                   Save Invoice
+                </Button>
+                <Button variant="destructive" size="sm" className="w-full" onClick={() => deleteSaleMutation.mutate()} disabled={!currentSale}>
+                  Delete Invoice
                 </Button>
               </div>
             </CardContent>

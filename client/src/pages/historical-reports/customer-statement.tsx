@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { Customer } from "@shared/schema";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,29 +31,19 @@ interface StatementData {
 }
 
 export default function CustomerStatement() {
-  const [selectedCustomer, setSelectedCustomer] = useState("TROPIFRUIT STAND 100");
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [statementType, setStatementType] = useState("Full Statement");
   const [searchTerm, setSearchTerm] = useState("");
+  const [statementData, setStatementData] = useState<StatementData[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const [statementData] = useState<StatementData[]>([
-    {
-      id: 1, slNo: 1, date: "2025-06-08", invoiceNo: "INV-001", description: "Fruit Purchase",
-      creditInv: 1250.00, cashInv: 0.00, paid: 0.00, creditAdj: 0.00, discountAdj: 0.00,
-      balance: 1250.00, runningBalance: 1250.00
-    },
-    {
-      id: 2, slNo: 2, date: "2025-06-09", invoiceNo: "PAY-001", description: "Payment Received",
-      creditInv: 0.00, cashInv: 0.00, paid: 500.00, creditAdj: 0.00, discountAdj: 0.00,
-      balance: -500.00, runningBalance: 750.00
-    },
-    {
-      id: 3, slNo: 3, date: "2025-06-10", invoiceNo: "INV-002", description: "Additional Purchase",
-      creditInv: 875.50, cashInv: 0.00, paid: 0.00, creditAdj: 0.00, discountAdj: 25.50,
-      balance: 850.00, runningBalance: 1600.00
-    }
-  ]);
+  // Fetch customers for dropdown
+  const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
+    queryKey: ["/api/customers"],
+    queryFn: () => apiRequest("GET", "/api/customers"),
+  });
 
   const totals = {
     creditInv: statementData.reduce((sum, item) => sum + item.creditInv, 0),
@@ -60,6 +53,12 @@ export default function CustomerStatement() {
     discountAdj: statementData.reduce((sum, item) => sum + item.discountAdj, 0),
     balance: statementData.reduce((sum, item) => sum + item.balance, 0)
   };
+
+  // Reset date fields to today every time the page is opened
+  useEffect(() => {
+    setFromDate(new Date());
+    setToDate(new Date());
+  }, []);
 
   return (
     <PageLayout title="Customer Statement" breadcrumb="Historical Reports > Customer Statement">
@@ -82,12 +81,18 @@ export default function CustomerStatement() {
               <div>
                 <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TROPIFRUIT STAND 100">TROPIFRUIT STAND 100</SelectItem>
-                    <SelectItem value="F&R ENTERPRISE LTD">F&R ENTERPRISE LTD</SelectItem>
-                    <SelectItem value="AMER SUPER">AMER SUPER</SelectItem>
+                    {isLoadingCustomers ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : (
+                      customers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id.toString()}>
+                          {customer.customer_name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -158,8 +163,24 @@ export default function CustomerStatement() {
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
-                  Generate
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  disabled={!selectedCustomer || loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const res = await apiRequest(
+                        "GET",
+                        `/api/reports/customer-statement?customerId=${selectedCustomer}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=${encodeURIComponent(statementType)}`
+                      );
+                      setStatementData(res);
+                    } catch (err) {
+                      // handle error, e.g. show toast
+                    }
+                    setLoading(false);
+                  }}
+                >
+                  {loading ? "Loading..." : "Generate"}
                 </Button>
               </div>
               
@@ -186,8 +207,8 @@ export default function CustomerStatement() {
             <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
                 <div className="font-semibold">Customer Details:</div>
-                <div>{selectedCustomer}</div>
-                <div>Account No: C-{selectedCustomer.split(' ')[0]}</div>
+                <div>{customers.find(c => c.id.toString() === selectedCustomer)?.customer_name || ''}</div>
+                <div>Account No: C-{selectedCustomer}</div>
               </div>
               <div className="text-right">
                 <div className="font-semibold">Statement Period:</div>

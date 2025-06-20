@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { User } from "shared/schema";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,29 +32,40 @@ export default function DailyBookSales() {
   const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
   const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
   const [paymentType, setPaymentType] = useState("Cash");
-  const [userFilter, setUserFilter] = useState("admin");
+  const [userFilter, setUserFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   
-  // Sample data matching the design
-  const [salesData] = useState<SalesEntry[]>([
-    {
-      id: 1,
-      slNo: 1,
-      date: "2025-06-10",
-      salesman: "admin",
-      boxes: 2,
-      invoiceNo: "I30702",
-      customerName: "[ ALL ]",
-      vat: 0,
-      credit: 0,
-      cash: 55.00
-    }
-  ]);
+  // Fetch users for the salesman dropdown
+  const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    queryFn: () => apiRequest("GET", "/api/users"),
+  });
 
-  const totalBoxes = salesData.reduce((sum, item) => sum + item.boxes, 0);
-  const totalVAT = salesData.reduce((sum, item) => sum + item.vat, 0);
-  const totalCredit = salesData.reduce((sum, item) => sum + item.credit, 0);
-  const totalCash = salesData.reduce((sum, item) => sum + item.cash, 0);
+  // Fetch sales data from backend
+  const { data: salesData = [], isLoading: isLoadingSales } = useQuery<SalesEntry[]>({
+    queryKey: [
+      "daily-book-sales",
+      fromDate,
+      toDate,
+      paymentType,
+      userFilter,
+      searchTerm,
+    ],
+    queryFn: () =>
+      apiRequest(
+        "GET",
+        `/api/reports/daily-book-sales?fromDate=${fromDate ? format(fromDate, "yyyy-MM-dd") : ""}` +
+          `&toDate=${toDate ? format(toDate, "yyyy-MM-dd") : ""}` +
+          `&paymentType=${paymentType}` +
+          `&salesman=${userFilter}` +
+          `&search=${encodeURIComponent(searchTerm)}`
+      ),
+  });
+
+  const totalBoxes = useMemo(() => salesData.reduce((sum, item) => sum + item.boxes, 0), [salesData]);
+  const totalVAT = useMemo(() => salesData.reduce((sum, item) => sum + item.vat, 0), [salesData]);
+  const totalCredit = useMemo(() => salesData.reduce((sum, item) => sum + item.credit, 0), [salesData]);
+  const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
 
   return (
     <PageLayout title="Daily Book" breadcrumb="Daily Report > Daily Book Sales">
@@ -59,7 +73,7 @@ export default function DailyBookSales() {
         {/* Header Section */}
         <Card>
           <CardHeader className="pb-4">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-2">
               <CardTitle className="flex items-center gap-2">
                 <BarChart3 size={20} />
                 Daily Book
@@ -70,7 +84,7 @@ export default function DailyBookSales() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+            <div className="flex flex-wrap grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
               <div>
                 <Label>From Date:</Label>
                 <Popover>
@@ -139,11 +153,19 @@ export default function DailyBookSales() {
               <div>
                 <Select value={userFilter} onValueChange={setUserFilter}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="All Salesmen" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="admin">admin</SelectItem>
+                    {isLoadingUsers ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : (
+                      users?.map((user: User) => (
+                        <SelectItem key={user.id} value={user.username}>
+                          {user.username}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -225,41 +247,47 @@ export default function DailyBookSales() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {salesData.map((sale) => (
-                  <TableRow key={sale.id}>
-                    <TableCell>
-                      <input type="checkbox" className="rounded" />
-                    </TableCell>
-                    <TableCell>{sale.slNo}</TableCell>
-                    <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
-                    <TableCell>{sale.salesman}</TableCell>
-                    <TableCell className="text-center">{sale.boxes}</TableCell>
-                    <TableCell>{sale.invoiceNo}</TableCell>
-                    <TableCell className="text-blue-600">
-                      <div className="flex items-center gap-1">
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                          <Eye size={12} />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                          <Download size={12} />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                          <FileText size={12} />
-                        </Button>
-                        {sale.customerName}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">£{sale.vat.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">£{sale.credit.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">£{sale.cash.toFixed(2)}</TableCell>
+                {isLoadingSales ? (
+                  <TableRow>
+                    <TableCell colSpan={10}>Loading...</TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  salesData.map((sale) => (
+                    <TableRow key={sale.id}>
+                      <TableCell>
+                        <input type="checkbox" className="rounded" />
+                      </TableCell>
+                      <TableCell>{sale.slNo}</TableCell>
+                      <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
+                      <TableCell>{sale.salesman}</TableCell>
+                      <TableCell className="text-center">{sale.boxes}</TableCell>
+                      <TableCell>{sale.invoiceNo}</TableCell>
+                      <TableCell className="text-blue-600">
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+                            <Eye size={12} />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+                            <Download size={12} />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+                            <FileText size={12} />
+                          </Button>
+                          {sale.customerName}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">£{sale.vat.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">£{sale.credit.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">£{sale.cash.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
                 
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                   <TableCell></TableCell>
                   <TableCell></TableCell>
-                  <TableCell className="font-bold">1 Items</TableCell>
+                  <TableCell className="font-bold">{salesData.length} Items</TableCell>
                   <TableCell></TableCell>
                   <TableCell className="text-center font-bold">{totalBoxes}</TableCell>
                   <TableCell></TableCell>

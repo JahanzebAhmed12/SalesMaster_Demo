@@ -13,6 +13,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
 from calendar import monthrange
+from sqlalchemy import func
 
 # Load environment variables
 load_dotenv()
@@ -116,12 +117,10 @@ def create_sale():
     try:
         data = request.get_json()
         sale_data = SaleSchema(**data)
-
-        # Fetch customer by ID or name if needed, or assume customer_id is provided correctly
         customer = Customer.query.get(sale_data.customer_id)
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
-
+        user_id = get_jwt_identity()
         new_sale = Sale(
             invoice_number=sale_data.invoice_number,
             customer_id=sale_data.customer_id,
@@ -135,12 +134,11 @@ def create_sale():
             vehicle_details=sale_data.vehicle_details,
             gate_number=sale_data.gate_number,
             notes=sale_data.notes,
-            status=sale_data.status
+            status=sale_data.status,
+            created_by=user_id
         )
         db.session.add(new_sale)
         db.session.commit()
-
-        # Add sale items
         for item_data in sale_data.items:
             new_item = SaleItem(
                 sale_id=new_sale.id,
@@ -152,7 +150,6 @@ def create_sale():
             )
             db.session.add(new_item)
         db.session.commit()
-
         return jsonify(new_sale.to_dict()), 201
     except Exception as e:
         db.session.rollback()
@@ -200,9 +197,13 @@ def update_sale(id):
         return jsonify({'message': str(e)}), 400
 
 @app.route('/api/sales/<int:id>', methods=['DELETE'])
+@jwt_required()
 def delete_sale(id):
     sale = Sale.query.get_or_404(id)
     try:
+        # Delete all related sale items first
+        for item in sale.items:
+            db.session.delete(item)
         db.session.delete(sale)
         db.session.commit()
         return jsonify({'message': 'Sale deleted successfully'})
@@ -1404,6 +1405,208 @@ def get_payment_history():
         return jsonify(payment_history), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/daily-book-sales', methods=['GET'])
+@jwt_required()
+def daily_book_sales():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    payment_type = request.args.get('paymentType', 'All')
+    salesman = request.args.get('salesman', 'all')
+    search = request.args.get('search', '')
+    query = Sale.query.join(User, Sale.created_by == User.id)
+    if from_date:
+        query = query.filter(func.date(Sale.date) >= from_date)
+    if to_date:
+        query = query.filter(func.date(Sale.date) <= to_date)
+    if payment_type and payment_type != 'All':
+        pass  # We'll filter by payment mode after fetching sales
+    if salesman and salesman != 'all':
+        query = query.filter(User.username == salesman)
+    if search:
+        query = query.join(Customer).filter(
+            (Sale.invoice_number.ilike(f'%{search}%')) |
+            (Customer.customer_name.ilike(f'%{search}%'))
+        )
+    # Only show finalized and paid sales
+    query = query.filter(Sale.status == 'finalized')
+    query = query.filter(Sale.paid_amount > 0)
+    sales = query.order_by(Sale.date.desc()).all()
+    result = []
+    for idx, sale in enumerate(sales, 1):
+        boxes = sum(item.quantity for item in sale.items)
+        # Sum payments by mode for this sale
+        cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
+        credit_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'credit')
+        result.append({
+            'id': sale.id,
+            'slNo': idx,
+            'date': sale.date.strftime('%Y-%m-%d'),
+            'salesman': sale.user.username if sale.user else '',
+            'boxes': boxes,
+            'invoiceNo': sale.invoice_number,
+            'customerName': sale.customer.customer_name if sale.customer else '',
+            'vat': float(sale.vat_amount),
+            'credit': credit_paid,
+            'cash': cash_paid,
+        })
+    # Filter result by actual payment mode if needed
+    if payment_type and payment_type != 'All':
+        payment_type_lower = payment_type.lower()
+        filtered_result = []
+        for entry, sale in zip(result, sales):
+            if any(p.payment_mode and p.payment_mode.lower() == payment_type_lower for p in sale.payments):
+                filtered_result.append(entry)
+        result = filtered_result
+    return jsonify(result)
+
+@app.route('/api/reports/customer-statement', methods=['GET'])
+@jwt_required()
+def customer_statement():
+    customer_id = request.args.get('customerId', type=int)
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    statement_type = request.args.get('type', 'Full Statement')
+
+    # Validate
+    if not customer_id or not from_date or not to_date:
+        return jsonify({'error': 'Missing required parameters'}), 400
+
+    from datetime import datetime
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+
+    # Fetch sales and payments for this customer in the date range
+    sales = Sale.query.filter(
+        Sale.customer_id == customer_id,
+        Sale.date >= from_dt,
+        Sale.date <= to_dt,
+        Sale.status == 'finalized'
+    ).all()
+    payments = Payment.query.filter(
+        Payment.customer_id == customer_id,
+        Payment.payment_date >= from_dt.date(),
+        Payment.payment_date <= to_dt.date()
+    ).all()
+
+    # Build statement entries
+    statement = []
+    running_balance = 0
+    sl_no = 1
+
+    # Combine and sort by date (sales and payments)
+    entries = []
+    for sale in sales:
+        entries.append({
+            'date': sale.date,
+            'type': 'sale',
+            'invoiceNo': sale.invoice_number,
+            'description': 'Sale Invoice',
+            'creditInv': float(sale.total_amount) if sale.customer_type == 'credit' else 0,
+            'cashInv': float(sale.total_amount) if sale.customer_type == 'cash' else 0,
+            'paid': 0,
+            'creditAdj': 0,
+            'discountAdj': 0,
+            'balance': float(sale.total_amount),
+            'sale_id': sale.id
+        })
+    for payment in payments:
+        entries.append({
+            'date': datetime.combine(payment.payment_date, datetime.min.time()),
+            'type': 'payment',
+            'invoiceNo': payment.sale.invoice_number if payment.sale else '',
+            'description': 'Payment Received',
+            'creditInv': 0,
+            'cashInv': 0,
+            'paid': float(payment.amount),
+            'creditAdj': 0,
+            'discountAdj': 0,
+            'balance': -float(payment.amount),
+            'sale_id': payment.sale_id
+        })
+    # Sort by date
+    entries.sort(key=lambda x: x['date'])
+
+    # Calculate running balance
+    for entry in entries:
+        running_balance += entry['balance']
+        statement.append({
+            'id': sl_no,
+            'slNo': sl_no,
+            'date': entry['date'].strftime("%Y-%m-%d"),
+            'invoiceNo': entry['invoiceNo'],
+            'description': entry['description'],
+            'creditInv': entry['creditInv'],
+            'cashInv': entry['cashInv'],
+            'paid': entry['paid'],
+            'creditAdj': entry['creditAdj'],
+            'discountAdj': entry['discountAdj'],
+            'balance': entry['balance'],
+            'runningBalance': running_balance
+        })
+        sl_no += 1
+
+    # Filter by statement type if needed
+    if statement_type == "Outstanding Only":
+        statement = [s for s in statement if s['runningBalance'] > 0]
+    elif statement_type == "Paid Only":
+        statement = [s for s in statement if s['paid'] > 0]
+
+    return jsonify(statement)
+
+@app.route('/api/reports/customer-history', methods=['GET'])
+@jwt_required()
+def customer_history():
+    customer_id = request.args.get('customerId', type=int)
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    filter_type = request.args.get('filterType', 'All')
+
+    if not customer_id or not from_date or not to_date:
+        return jsonify({'error': 'Missing required parameters'}), 400
+
+    from datetime import datetime
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+
+    # Fetch sales for this customer in the date range
+    sales_query = Sale.query.filter(
+        Sale.customer_id == customer_id,
+        Sale.date >= from_dt,
+        Sale.date <= to_dt,
+        Sale.status == 'finalized'
+    )
+    if filter_type == "Credit":
+        sales_query = sales_query.filter(Sale.customer_type.ilike('credit'))
+    elif filter_type == "Cast":
+        sales_query = sales_query.filter(Sale.customer_type.ilike('cash'))
+
+    sales = sales_query.order_by(Sale.date.asc()).all()
+
+    # Build history entries
+    history = []
+    running_balance = 0
+    sl_no = 1
+    for sale in sales:
+        credit_inv = float(sale.total_amount) if sale.customer_type == 'credit' else 0
+        cash_inv = float(sale.total_amount) if sale.customer_type == 'cash' else 0
+        paid = float(sale.paid_amount or 0)
+        balance = float(sale.total_amount) - paid
+        running_balance += balance
+        history.append({
+            'id': sl_no,
+            'slNo': sl_no,
+            'date': sale.date.strftime("%Y-%m-%d"),
+            'invoiceNo': sale.invoice_number,
+            'creditInv': credit_inv,
+            'cashInv': cash_inv,
+            'paid': paid,
+            'balance': balance,
+            'runningBalance': running_balance
+        })
+        sl_no += 1
+
+    return jsonify(history)
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

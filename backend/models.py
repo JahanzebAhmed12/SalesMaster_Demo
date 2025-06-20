@@ -53,10 +53,12 @@ class Sale(db.Model):
     status = db.Column(db.String(20), nullable=False, default='draft')  # draft, confirmed, cancelled
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
 
     # Relationships
     customer = db.relationship('Customer', back_populates='sales')
     items = db.relationship('SaleItem', backref='sale', cascade='all, delete-orphan')
+    user = db.relationship('User', backref='sales_created', foreign_keys=[created_by])
 
     def to_dict(self):
         return {

@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { Customer } from "@shared/schema";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,11 +16,25 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 export default function CustomerHistory() {
-  const [selectedCustomer, setSelectedCustomer] = useState("AMER SUPER");
-  const [fromDate, setFromDate] = useState<Date>(new Date(2024, 7, 5));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [filterType, setFilterType] = useState("Cast");
   const [searchTerm, setSearchTerm] = useState("");
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch customers for dropdown
+  const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
+    queryKey: ["/api/customers"],
+    queryFn: () => apiRequest("GET", "/api/customers"),
+  });
+
+  // Reset date fields to today every time the page is opened
+  useEffect(() => {
+    setFromDate(new Date());
+    setToDate(new Date());
+  }, []);
 
   return (
     <PageLayout title="Customer History" breadcrumb="Historical Reports > Customer History">
@@ -40,12 +57,18 @@ export default function CustomerHistory() {
               <div>
                 <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="AMER SUPER">AMER SUPER</SelectItem>
-                    <SelectItem value="KHAN IMRAN G 12">KHAN IMRAN G 12</SelectItem>
-                    <SelectItem value="TROPIFRUIT STAND 100">TROPIFRUIT STAND 100</SelectItem>
+                    {isLoadingCustomers ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : (
+                      customers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id.toString()}>
+                          {customer.customer_name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -116,8 +139,24 @@ export default function CustomerHistory() {
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
-                  Search
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  disabled={!selectedCustomer || loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const res = await apiRequest(
+                        "GET",
+                        `/api/reports/customer-history?customerId=${selectedCustomer}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=${encodeURIComponent(filterType)}`
+                      );
+                      setHistoryData(res);
+                    } catch (err) {
+                      // handle error, e.g. show toast
+                    }
+                    setLoading(false);
+                  }}
+                >
+                  {loading ? "Loading..." : "Search"}
                 </Button>
               </div>
               
@@ -212,11 +251,29 @@ export default function CustomerHistory() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell colSpan={11} className="text-center text-gray-500 py-8">
-                    No data available in table
-                  </TableCell>
-                </TableRow>
+                {historyData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="text-center text-gray-500 py-8">
+                      No data available in table
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  historyData.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell>{row.slNo}</TableCell>
+                      <TableCell>{format(new Date(row.date), "yyyy-MM-dd")}</TableCell>
+                      <TableCell>{row.invoiceNo}</TableCell>
+                      <TableCell></TableCell>
+                      <TableCell className="text-center">£{row.creditInv.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{row.cashInv.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{row.paid.toFixed(2)}</TableCell>
+                      <TableCell className="text-center"></TableCell>
+                      <TableCell className="text-center"></TableCell>
+                      <TableCell className="text-center font-medium">{row.balance.toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold">{row.runningBalance.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
                 
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300 bg-cyan-50">
