@@ -59,8 +59,17 @@ class PaymentSchema(BaseModel):
         populate_by_name = True
 
 class PurchaseSchema(BaseModel):
-    supplier_name: str
-    amount: float
+    invoice_date: str = Field(alias='invoiceDate')
+    delivery_no: str = Field(alias='deliveryNo')
+    supplier_invoice: str = Field(alias='supplierInvoice')
+    awb: str
+    remarks: Optional[str] = None
+    supplier_id: int = Field(alias='supplierId')
+    amount: float = 0  # Default amount, will be calculated from invoice items
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
 
 class RegularProductSchema(BaseModel):
     product_code: str
@@ -268,3 +277,15 @@ class UserSchema(BaseModel):
 
     class Config:
         from_attributes = True
+
+class SupplierPaymentSchema(BaseModel):
+    supplier_id: int = Field(alias='supplierId')
+    purchase_invoice_id: Optional[int] = Field(default=None, alias='purchaseInvoiceId') # Can be null for on-account payments
+    amount: float
+    payment_mode: str = Field(alias='paymentMode')
+    payment_date: date = Field(alias='paymentDate')
+    remarks: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True

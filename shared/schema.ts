@@ -449,3 +449,25 @@ export const insertPaymentSchema = paymentSchema.omit({
 
 export type Payment = z.infer<typeof paymentSchema>;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+
+// Supplier Payment Schema
+export const supplierPaymentSchema = z.object({
+  id: z.number(),
+  supplierId: z.number(),
+  purchaseInvoiceId: z.number().nullable(), // Can be null for on-account payments
+  amount: z.number(),
+  paymentMode: z.string(),
+  paymentDate: z.string(),
+  remarks: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const insertSupplierPaymentSchema = supplierPaymentSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type SupplierPayment = z.infer<typeof supplierPaymentSchema>;
+export type InsertSupplierPayment = z.infer<typeof insertSupplierPaymentSchema>;

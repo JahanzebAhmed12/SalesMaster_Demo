@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +15,39 @@ import { RegularProduct, InsertRegularProduct, UpdateRegularProduct } from "@sha
 import { Link } from "wouter";
 import { Table, TableHeader, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
+import { Controller } from "react-hook-form";
+
+// Zod schema for product form validation
+const productSchema = z.object({
+  productCode: z.string().min(1, "Product code is required"),
+  description: z.string().min(1, "Description is required"),
+  sellingPrice: z.coerce.number().min(0, "Selling price must be a positive number"),
+  taxRate: z.coerce.number().min(0, "Tax rate must be a positive number"),
+  // Add other fields as needed, with appropriate validation
+  sageCode: z.string().optional().nullable(),
+  hsCode: z.string().optional().nullable(),
+  vatCode: z.string().optional().nullable(),
+  unitOfPurchase: z.string().optional().nullable(),
+  unitOfSale: z.string().optional().nullable(),
+  location: z.string().optional().nullable(),
+  nominalCode: z.string().optional().nullable(),
+  stockCategory: z.string().optional().nullable(),
+  departmentNumber: z.string().optional().nullable(),
+  supplierRef: z.string().optional().nullable(),
+  supplierPartNumber: z.string().optional().nullable(),
+  reorderLevel: z.coerce.number().optional(),
+  stockLevelFlag: z.boolean().optional(),
+  commodityCode: z.string().optional().nullable(),
+  unitWeight: z.coerce.number().optional(),
+  stockTakeDate: z.string().optional().nullable(),
+  reorderQuantity: z.coerce.number().optional(),
+  lastStockTake: z.coerce.number().optional(),
+  status: z.string().optional(),
+});
+
+type ProductFormData = z.infer<typeof productSchema>;
 
 const nonProducts = [
   { slNo: 1, productCode: "Z1017", sageCode: "Z1017", description: "Bangla Radio", sellingPrice: 0, taxVat: "0%", status: "Active" },
@@ -40,130 +76,79 @@ const nonProducts = [
 ];
 
 export default function Products() {
+  const { toast } = useToast();
   const [activeView, setActiveView] = useState<"view" | "add" | "viewNonProducts" | "addNonProducts">("view");
   const [searchTerm, setSearchTerm] = useState("");
   const [editingProduct, setEditingProduct] = useState<RegularProduct | null>(null);
+
+  const form = useForm<ProductFormData>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      productCode: "",
+      description: "",
+      sellingPrice: 0,
+      taxRate: 0,
+      status: "active",
+      stockLevelFlag: false,
+    },
+  });
+
+  useEffect(() => {
+    if (editingProduct) {
+      form.reset(editingProduct);
+      setActiveView("add");
+    } else {
+      form.reset({
+        productCode: "",
+        description: "",
+        sellingPrice: 0,
+        taxRate: 0,
+        status: "active",
+        stockLevelFlag: false,
+      });
+    }
+  }, [editingProduct, form]);
 
   const { data: products = [], isLoading } = useQuery<RegularProduct[]>({
     queryKey: ["products"],
     queryFn: () => apiRequest("GET", "/api/regular_products")
   });
 
-  const createProductMutation = useMutation<RegularProduct, Error, InsertRegularProduct>({
+  const createProductMutation = useMutation<RegularProduct, Error, ProductFormData>({
     mutationFn: (product) => apiRequest("POST", "/api/products/regular", product),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       setActiveView("view");
-      setNewProduct({
-        productCode: "",
-        sageCode: "",
-        hsCode: "",
-        description: "",
-        sellingPrice: 0,
-        taxRate: 0,
-        vatCode: "",
-        unitOfPurchase: "",
-        unitOfSale: "",
-        location: "",
-        nominalCode: "",
-        stockCategory: "",
-        departmentNumber: "",
-        supplierRef: "",
-        supplierPartNumber: "",
-        reorderLevel: 0,
-        stockLevelFlag: false,
-        commodityCode: "",
-        unitWeight: 0,
-        stockTakeDate: "",
-        reorderQuantity: 0,
-        lastStockTake: 0,
-        status: "active"
-      });
+      toast({ title: "Success", description: "Product created successfully." });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   });
 
-  const updateProductMutation = useMutation<RegularProduct, Error, UpdateRegularProduct>({
+  const updateProductMutation = useMutation<RegularProduct, Error, ProductFormData & { id: number }>({
     mutationFn: (product) => apiRequest("PUT", `/api/products/regular/${product.id}`, product),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       setActiveView("view");
       setEditingProduct(null);
-      setNewProduct({
-        productCode: "",
-        sageCode: "",
-        hsCode: "",
-        description: "",
-        sellingPrice: 0,
-        taxRate: 0,
-        vatCode: "",
-        unitOfPurchase: "",
-        unitOfSale: "",
-        location: "",
-        nominalCode: "",
-        stockCategory: "",
-        departmentNumber: "",
-        supplierRef: "",
-        supplierPartNumber: "",
-        reorderLevel: 0,
-        stockLevelFlag: false,
-        commodityCode: "",
-        unitWeight: 0,
-        stockTakeDate: "",
-        reorderQuantity: 0,
-        lastStockTake: 0,
-        status: "active"
-      });
+      toast({ title: "Success", description: "Product updated successfully." });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   });
-
-  const [newProduct, setNewProduct] = useState<InsertRegularProduct>({
-    productCode: "",
-    sageCode: "",
-    hsCode: "",
-    description: "",
-    sellingPrice: 0,
-    taxRate: 0,
-    vatCode: "",
-    unitOfPurchase: "",
-    unitOfSale: "",
-    location: "",
-    nominalCode: "",
-    stockCategory: "",
-    departmentNumber: "",
-    supplierRef: "",
-    supplierPartNumber: "",
-    reorderLevel: 0,
-    stockLevelFlag: false,
-    commodityCode: "",
-    unitWeight: 0,
-    stockTakeDate: "",
-    reorderQuantity: 0,
-    lastStockTake: 0,
-    status: "active"
-  });
-
-  useEffect(() => {
-    if (editingProduct) {
-      const { createdAt, updatedAt, id, ...rest } = editingProduct;
-      setNewProduct(rest);
-      setActiveView("add");
-    }
-  }, [editingProduct]);
 
   const filteredProducts = products.filter((product) =>
     product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.productCode.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = (data: ProductFormData) => {
     if (editingProduct) {
-      updateProductMutation.mutate({
-        ...newProduct,
-        id: editingProduct.id,
-      });
+      updateProductMutation.mutate({ ...data, id: editingProduct.id });
     } else {
-      createProductMutation.mutate(newProduct);
+      createProductMutation.mutate(data);
     }
   };
 
@@ -195,30 +180,13 @@ export default function Products() {
             onClick={() => {
               setActiveView("view");
               setEditingProduct(null);
-              setNewProduct({
+              form.reset({
                 productCode: "",
-                sageCode: "",
-                hsCode: "",
                 description: "",
                 sellingPrice: 0,
                 taxRate: 0,
-                vatCode: "",
-                unitOfPurchase: "",
-                unitOfSale: "",
-                location: "",
-                nominalCode: "",
-                stockCategory: "",
-                departmentNumber: "",
-                supplierRef: "",
-                supplierPartNumber: "",
-                reorderLevel: 0,
+                status: "active",
                 stockLevelFlag: false,
-                commodityCode: "",
-                unitWeight: 0,
-                stockTakeDate: "",
-                reorderQuantity: 0,
-                lastStockTake: 0,
-                status: "active"
               });
             }}
             className="flex items-center gap-2"
@@ -231,30 +199,13 @@ export default function Products() {
             onClick={() => {
               setActiveView("add");
               setEditingProduct(null);
-              setNewProduct({
+              form.reset({
                 productCode: "",
-                sageCode: "",
-                hsCode: "",
                 description: "",
                 sellingPrice: 0,
                 taxRate: 0,
-                vatCode: "",
-                unitOfPurchase: "",
-                unitOfSale: "",
-                location: "",
-                nominalCode: "",
-                stockCategory: "",
-                departmentNumber: "",
-                supplierRef: "",
-                supplierPartNumber: "",
-                reorderLevel: 0,
+                status: "active",
                 stockLevelFlag: false,
-                commodityCode: "",
-                unitWeight: 0,
-                stockTakeDate: "",
-                reorderQuantity: 0,
-                lastStockTake: 0,
-                status: "active"
               });
             }}
             className="flex items-center gap-2"
@@ -331,7 +282,7 @@ export default function Products() {
                           <td className="p-3 border-r">{product.productCode}</td>
                           <td className="p-3 border-r">{product.sageCode || ""}</td>
                           <td className="p-3 border-r">{product.description}</td>
-                          <td className="p-3 border-r">£{((product.sellingPrice ?? 0) / 100).toFixed(2)}</td>
+                          <td className="p-3 border-r">£{(product.sellingPrice ?? 0).toFixed(2)}</td>
                           <td className="p-3 border-r">{(product.taxRate ?? 0)}%</td>
                           <td className="p-3 border-r">
                             <Button variant="ghost" size="sm" onClick={() => handleEdit(product)}>
@@ -367,14 +318,13 @@ export default function Products() {
               <CardTitle>{editingProduct ? "Edit Product" : "Add Products"}</CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="productCode">Product Code</Label>
                     <Input
                       id="productCode"
-                      value={newProduct.productCode}
-                      onChange={(e) => setNewProduct({...newProduct, productCode: e.target.value})}
+                      {...form.register("productCode")}
                       placeholder="Z1018"
                       required
                       disabled={!!editingProduct}
@@ -384,8 +334,7 @@ export default function Products() {
                     <Label htmlFor="sageCode">Sage Code</Label>
                     <Input
                       id="sageCode"
-                      value={newProduct.sageCode || ""}
-                      onChange={(e) => setNewProduct({...newProduct, sageCode: e.target.value})}
+                      {...form.register("sageCode")}
                       placeholder="Z1018"
                     />
                   </div>
@@ -393,16 +342,14 @@ export default function Products() {
                     <Label htmlFor="hsCode">HS Commodity Code</Label>
                     <Input
                       id="hsCode"
-                      value={newProduct.hsCode || ""}
-                      onChange={(e) => setNewProduct({...newProduct, hsCode: e.target.value})}
+                      {...form.register("hsCode")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="description">Product Description</Label>
                     <Input
                       id="description"
-                      value={newProduct.description}
-                      onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
+                      {...form.register("description")}
                       required
                     />
                   </div>
@@ -411,8 +358,7 @@ export default function Products() {
                     <Input
                       id="sellingPrice"
                       type="number"
-                      value={newProduct.sellingPrice / 100}
-                      onChange={(e) => setNewProduct({...newProduct, sellingPrice: Number(e.target.value) * 100})}
+                      {...form.register("sellingPrice")}
                       step="0.01"
                       min="0"
                     />
@@ -422,8 +368,7 @@ export default function Products() {
                     <Input
                       id="taxRate"
                       type="number"
-                      value={newProduct.taxRate}
-                      onChange={(e) => setNewProduct({...newProduct, taxRate: Number(e.target.value)})}
+                      {...form.register("taxRate")}
                       min="0"
                       max="100"
                     />
@@ -432,90 +377,95 @@ export default function Products() {
                     <Label htmlFor="vatCode">VAT Code</Label>
                     <Input
                       id="vatCode"
-                      value={newProduct.vatCode || ""}
-                      onChange={(e) => setNewProduct({...newProduct, vatCode: e.target.value})}
+                      {...form.register("vatCode")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="unitOfPurchase">Unit of Purchase</Label>
                     <Input
                       id="unitOfPurchase"
-                      value={newProduct.unitOfPurchase || ""}
-                      onChange={(e) => setNewProduct({...newProduct, unitOfPurchase: e.target.value})}
+                      {...form.register("unitOfPurchase")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="unitOfSale">Unit of Sale</Label>
                     <Input
                       id="unitOfSale"
-                      value={newProduct.unitOfSale || ""}
-                      onChange={(e) => setNewProduct({...newProduct, unitOfSale: e.target.value})}
+                      {...form.register("unitOfSale")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="location">Location</Label>
                     <Input
                       id="location"
-                      value={newProduct.location || ""}
-                      onChange={(e) => setNewProduct({...newProduct, location: e.target.value})}
+                      {...form.register("location")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="nominalCode">Nominal Code</Label>
                     <Input
                       id="nominalCode"
-                      value={newProduct.nominalCode || ""}
-                      onChange={(e) => setNewProduct({...newProduct, nominalCode: e.target.value})}
+                      {...form.register("nominalCode")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="stockCategory">Stock Category Number</Label>
                     <Input
                       id="stockCategory"
-                      value={newProduct.stockCategory || ""}
-                      onChange={(e) => setNewProduct({...newProduct, stockCategory: e.target.value})}
+                      {...form.register("stockCategory")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="departmentNumber">Department Number</Label>
                     <Input
                       id="departmentNumber"
-                      value={newProduct.departmentNumber || ""}
-                      onChange={(e) => setNewProduct({...newProduct, departmentNumber: e.target.value})}
+                      {...form.register("departmentNumber")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="supplierRef">Supplier Ref</Label>
                     <Input
                       id="supplierRef"
-                      value={newProduct.supplierRef || ""}
-                      onChange={(e) => setNewProduct({...newProduct, supplierRef: e.target.value})}
+                      {...form.register("supplierRef")}
                     />
                   </div>
                   <div>
                     <Label htmlFor="supplierPartNumber">Supplier part number</Label>
                     <Input
                       id="supplierPartNumber"
-                      value={newProduct.supplierPartNumber || ""}
-                      onChange={(e) => setNewProduct({...newProduct, supplierPartNumber: e.target.value})}
+                      {...form.register("supplierPartNumber")}
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="reorderLevel">Reorder level</Label>
-                    <Input
-                      id="reorderLevel"
-                      type="number"
-                      value={newProduct.reorderLevel}
-                      onChange={(e) => setNewProduct({...newProduct, reorderLevel: Number(e.target.value)})}
-                      min="0"
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="reorderLevel">Re-Order Level</Label>
+                      <Input
+                        id="reorderLevel"
+                        type="number"
+                        {...form.register("reorderLevel")}
+                        min="0"
+                      />
+                    </div>
+                    <div className="pt-2">
+                      <Label htmlFor="stockLevelFlag" className="mr-2">Stock Level Flag</Label>
+                      <Controller
+                        name="stockLevelFlag"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Switch
+                            id="stockLevelFlag"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        )}
+                      />
+                    </div>
                   </div>
                   <div>
                     <Label htmlFor="commodityCode">Commodity Code</Label>
                     <Input
                       id="commodityCode"
-                      value={newProduct.commodityCode || ""}
-                      onChange={(e) => setNewProduct({...newProduct, commodityCode: e.target.value})}
+                      {...form.register("commodityCode")}
                     />
                   </div>
                   <div>
@@ -523,8 +473,7 @@ export default function Products() {
                     <Input
                       id="unitWeight"
                       type="number"
-                      value={newProduct.unitWeight}
-                      onChange={(e) => setNewProduct({...newProduct, unitWeight: Number(e.target.value)})}
+                      {...form.register("unitWeight")}
                       min="0"
                     />
                   </div>
@@ -533,8 +482,7 @@ export default function Products() {
                     <Input
                       id="stockTakeDate"
                       type="date"
-                      value={newProduct.stockTakeDate || ""}
-                      onChange={(e) => setNewProduct({...newProduct, stockTakeDate: e.target.value})}
+                      {...form.register("stockTakeDate")}
                     />
                   </div>
                   <div>
@@ -542,8 +490,7 @@ export default function Products() {
                     <Input
                       id="reorderQuantity"
                       type="number"
-                      value={newProduct.reorderQuantity}
-                      onChange={(e) => setNewProduct({...newProduct, reorderQuantity: Number(e.target.value)})}
+                      {...form.register("reorderQuantity")}
                       min="0"
                     />
                   </div>
@@ -552,8 +499,7 @@ export default function Products() {
                     <Input
                       id="lastStockTake"
                       type="number"
-                      value={newProduct.lastStockTake}
-                      onChange={(e) => setNewProduct({...newProduct, lastStockTake: Number(e.target.value)})}
+                      {...form.register("lastStockTake")}
                       min="0"
                     />
                   </div>

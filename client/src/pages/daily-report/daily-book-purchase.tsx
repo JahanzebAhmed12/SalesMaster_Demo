@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,9 +11,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Package, FileText, Download, Copy, Printer, Search, Eye, Settings } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface PurchaseEntry {
   id: number;
+  slNo: number;
   date: string;
   supplier: string;
   invNo: number;
@@ -21,23 +25,52 @@ interface PurchaseEntry {
 }
 
 export default function DailyBookPurchase() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const { toast } = useToast();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   
-  // Sample data matching the design
-  const [purchaseData] = useState<PurchaseEntry[]>([
-    {
-      id: 1,
-      date: "2025-06-10",
-      supplier: "TROPIFRUIT",
-      invNo: 0,
-      delNo: 0,
-      invoiceAmt: 4608.15
-    }
-  ]);
+  const [filters, setFilters] = useState({
+    fromDate: format(new Date(), "yyyy-MM-dd"),
+    toDate: format(new Date(), "yyyy-MM-dd"),
+    search: "",
+  });
+
+  // Fetch purchase data
+  const {
+    data: purchaseData = [],
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useQuery<PurchaseEntry[]>({
+    queryKey: ["/api/reports/daily-book-purchase", filters],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filters.fromDate) params.append("fromDate", filters.fromDate);
+      if (filters.toDate) params.append("toDate", filters.toDate);
+      if (filters.search) params.append("search", filters.search);
+      return apiRequest("GET", `/api/reports/daily-book-purchase?${params.toString()}`);
+    },
+  });
+
+  const handleSearch = () => {
+    setFilters({
+      fromDate: format(fromDate, "yyyy-MM-dd"),
+      toDate: format(toDate, "yyyy-MM-dd"),
+      search: searchTerm,
+    });
+  };
 
   const totalInvoiceAmount = purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0);
+
+  if (isError) {
+    toast({
+      title: "Error",
+      description: (error as any)?.message || "Failed to fetch purchase data.",
+      variant: "destructive",
+    });
+  }
 
   return (
     <PageLayout title="Newstock" breadcrumb="Daily Report > Daily Book Purchase">
@@ -110,8 +143,12 @@ export default function DailyBookPurchase() {
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
-                  Search
+                <Button 
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  onClick={handleSearch}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Searching..." : "Search"}
                 </Button>
               </div>
               
@@ -187,23 +224,37 @@ export default function DailyBookPurchase() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {purchaseData.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{format(new Date(item.date), "yyyy-MM-dd")}</TableCell>
-                    <TableCell>{item.supplier}</TableCell>
-                    <TableCell className="text-center">{item.invNo}</TableCell>
-                    <TableCell className="text-center">{item.delNo}</TableCell>
-                    <TableCell className="text-center">{item.invoiceAmt.toFixed(2)}</TableCell>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8">
+                      Loading purchase data...
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : purchaseData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8">
+                      No purchase data found for the selected date range.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  purchaseData.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.date}</TableCell>
+                      <TableCell>{item.supplier}</TableCell>
+                      <TableCell className="text-center">{item.invNo}</TableCell>
+                      <TableCell className="text-center">{item.delNo}</TableCell>
+                      <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
                 
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                   <TableCell></TableCell>
-                  <TableCell className="font-bold">1 Items</TableCell>
+                  <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
                   <TableCell className="text-center font-bold"></TableCell>
                   <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold">£ {totalInvoiceAmount.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£{totalInvoiceAmount.toFixed(2)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>

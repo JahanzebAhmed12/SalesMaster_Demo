@@ -256,7 +256,7 @@ const SalesInvoice = () => {
     const product = productList?.find(p => p.id === productId);
 
     if (product) {
-      setItemUnitPrice(product.sellingPrice / 100);
+      setItemUnitPrice(product.sellingPrice);
     } else {
       setItemUnitPrice(0); // Reset if product not found
     }

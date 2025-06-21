@@ -572,4 +572,75 @@ class Company(db.Model):
             'remarks': self.remarks,
             'createdAt': self.createdAt.isoformat() if self.createdAt else None,
             'updatedAt': self.updatedAt.isoformat() if self.updatedAt else None
+        }
+
+class PurchaseInvoice(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    purchase_id = db.Column(db.Integer, db.ForeignKey('purchase.id'), nullable=False)
+    date = db.Column(db.DateTime, default=datetime.utcnow)
+    remarks = db.Column(db.String(255))
+    paid_amount = db.Column(db.Numeric(10, 2), default=0)
+    payment_status = db.Column(db.String(20), default='pending')  # pending, partial, paid
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    items = db.relationship('PurchaseInvoiceItem', backref='invoice', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'purchaseId': self.purchase_id,
+            'date': self.date.isoformat() if self.date else None,
+            'remarks': self.remarks,
+            'paidAmount': float(self.paid_amount),
+            'paymentStatus': self.payment_status,
+            'items': [item.to_dict() for item in self.items],
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class PurchaseInvoiceItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id'), nullable=False)
+    product_id = db.Column(db.Integer, nullable=False)
+    product_name = db.Column(db.String(255))
+    quantity = db.Column(db.Integer, nullable=False)
+    unit_price = db.Column(db.Numeric(10, 2), nullable=False)
+    total_price = db.Column(db.Numeric(10, 2), nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'invoiceId': self.invoice_id,
+            'productId': self.product_id,
+            'productName': self.product_name,
+            'quantity': self.quantity,
+            'unitPrice': float(self.unit_price),
+            'totalPrice': float(self.total_price)
+        }
+
+class SupplierPayment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
+    purchase_invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id')) # Optional, for payments linked to specific invoices
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    payment_mode = db.Column(db.String(50), nullable=False) # e.g., 'cash', 'card', 'bank transfer'
+    payment_date = db.Column(db.Date, nullable=False)
+    remarks = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    supplier = db.relationship('Supplier', backref='supplier_payments')
+    purchase_invoice = db.relationship('PurchaseInvoice', backref='payments')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'supplierId': self.supplier_id,
+            'purchaseInvoiceId': self.purchase_invoice_id,
+            'amount': float(self.amount),
+            'paymentMode': self.payment_mode,
+            'paymentDate': self.payment_date.isoformat(),
+            'remarks': self.remarks,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         } 

@@ -3,17 +3,17 @@ from flask_cors import CORS
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
-    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema
+    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema
 )
 from users import verify_password, create_admin_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
 from calendar import monthrange
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 # Load environment variables
 load_dotenv()
@@ -222,12 +222,33 @@ def create_purchase():
     data = request.get_json()
     try:
         purchase_data = PurchaseSchema(**data)
-        purchase = Purchase(**purchase_data.dict())
+        
+        # Get supplier name from supplier_id
+        supplier = Supplier.query.get(purchase_data.supplier_id)
+        if not supplier:
+            return jsonify({'message': 'Supplier not found'}), 404
+        
+        purchase = Purchase(
+            supplier_id=purchase_data.supplier_id,
+            supplier_name=supplier.supplier_name,
+            amount=purchase_data.amount,
+            date=datetime.strptime(purchase_data.invoice_date, "%Y-%m-%d") if purchase_data.invoice_date else datetime.utcnow(),
+            status='pending'
+        )
         db.session.add(purchase)
         db.session.commit()
         return jsonify(purchase.to_dict())
     except Exception as e:
-        return jsonify({'message': 'Invalid purchase data'}), 400
+        db.session.rollback()
+        return jsonify({'message': f'Invalid purchase data: {str(e)}'}), 400
+
+@app.route('/api/purchases/<int:id>', methods=['GET'])
+def get_purchase(id):
+    try:
+        purchase = Purchase.query.get_or_404(id)
+        return jsonify(purchase.to_dict())
+    except Exception as e:
+        return jsonify({'message': str(e)}), 404
 
 # Product routes
 @app.route('/api/products', methods=['GET'])
@@ -1607,6 +1628,461 @@ def customer_history():
         sl_no += 1
 
     return jsonify(history)
+
+@app.route('/api/reports/product-sales', methods=['GET'])
+@jwt_required()
+def product_sales_report():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    search = request.args.get('search', '')
+    
+    # Build base query for SaleItems joined with Sale, RegularProduct, NonProduct
+    query = (
+        db.session.query(
+            SaleItem.id,
+            SaleItem.product_id,
+            SaleItem.non_product_id,
+            func.coalesce(RegularProduct.sage_code, NonProduct.sage_code, '').label('sage_code'),
+            func.coalesce(RegularProduct.description, NonProduct.description, '').label('product_description'),
+            func.sum(SaleItem.quantity).label('quantity'),
+            func.sum(SaleItem.total_price).label('total'),
+            (func.sum(SaleItem.total_price) / func.nullif(func.sum(SaleItem.quantity), 0)).label('avg_price')
+        )
+        .join(Sale, SaleItem.sale_id == Sale.id)
+        .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
+        .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
+    )
+    
+    # Filter by date range
+    if from_date:
+        try:
+            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            query = query.filter(Sale.date >= from_dt)
+        except Exception:
+            pass
+    if to_date:
+        try:
+            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            query = query.filter(Sale.date <= to_dt)
+        except Exception:
+            pass
+    # Only finalized sales
+    query = query.filter(Sale.status == 'finalized')
+    # Search by product description or sage code
+    if search:
+        query = query.filter(
+            or_(
+                RegularProduct.description.ilike(f'%{search}%'),
+                NonProduct.description.ilike(f'%{search}%'),
+                RegularProduct.sage_code.ilike(f'%{search}%'),
+                NonProduct.sage_code.ilike(f'%{search}%')
+            )
+        )
+    # Group by product
+    query = query.group_by(
+        SaleItem.product_id,
+        SaleItem.non_product_id,
+        RegularProduct.sage_code,
+        NonProduct.sage_code,
+        RegularProduct.description,
+        NonProduct.description
+    )
+    # Order by total desc
+    query = query.order_by(func.sum(SaleItem.total_price).desc())
+    results = query.all()
+    # Format for frontend
+    sales_data = []
+    for idx, row in enumerate(results, 1):
+        sales_data.append({
+            'id': idx,
+            'slNo': idx,
+            'sageCode': row.sage_code,
+            'productDescription': row.product_description,
+            'quantity': int(row.quantity) if row.quantity else 0,
+            'avgPrice': float(row.avg_price) if row.avg_price else 0,
+            'total': float(row.total) if row.total else 0
+        })
+    return jsonify(sales_data)
+
+@app.route('/api/purchase-invoices', methods=['POST'])
+def create_purchase_invoice():
+    data = request.get_json()
+    invoice = PurchaseInvoice(
+        purchase_id=data['purchaseId'],
+        remarks=data.get('remarks')
+    )
+    db.session.add(invoice)
+    db.session.commit()
+    for item in data['items']:
+        invoice_item = PurchaseInvoiceItem(
+            invoice_id=invoice.id,
+            product_id=item['productId'],
+            product_name=item.get('productName'),
+            quantity=item['quantity'],
+            unit_price=item['unitPrice'],
+            total_price=item['totalPrice']
+        )
+        db.session.add(invoice_item)
+    db.session.commit()
+    return jsonify(invoice.to_dict()), 201
+
+@app.route('/api/purchase-invoices/<int:invoice_id>', methods=['GET'])
+def get_purchase_invoice(invoice_id):
+    invoice = PurchaseInvoice.query.get_or_404(invoice_id)
+    return jsonify(invoice.to_dict())
+
+@app.route('/api/debug/products', methods=['GET'])
+def debug_products():
+    """Debug endpoint to check product prices"""
+    regular_products = RegularProduct.query.all()
+    non_products = NonProduct.query.all()
+    
+    result = {
+        'regularProducts': [
+            {
+                'id': p.id,
+                'description': p.description,
+                'sellingPrice': float(p.selling_price) if p.selling_price else 0,
+                'rawSellingPrice': str(p.selling_price)
+            } for p in regular_products
+        ],
+        'nonProducts': [
+            {
+                'id': p.id,
+                'description': p.description,
+                'sellingPrice': float(p.selling_price) if p.selling_price else 0,
+                'rawSellingPrice': str(p.selling_price)
+            } for p in non_products
+        ]
+    }
+    
+    return jsonify(result)
+
+@app.route('/api/fix/product-prices', methods=['POST'])
+def fix_product_prices():
+    """Fix product prices that might be incorrectly stored"""
+    data = request.get_json()
+    product_id = data.get('productId')
+    new_price = data.get('newPrice')
+    
+    if not product_id or new_price is None:
+        return jsonify({'error': 'Product ID and new price are required'}), 400
+    
+    # Try to find in regular products first
+    product = RegularProduct.query.get(product_id)
+    if product:
+        product.selling_price = new_price
+        db.session.commit()
+        return jsonify({'message': f'Updated regular product {product_id} price to {new_price}'})
+    
+    # Try non-products
+    product = NonProduct.query.get(product_id)
+    if product:
+        product.selling_price = new_price
+        db.session.commit()
+        return jsonify({'message': f'Updated non-product {product_id} price to {new_price}'})
+    
+    return jsonify({'error': 'Product not found'}), 404
+
+# Supplier Payment routes
+@app.route('/api/supplier-payments', methods=['POST'])
+@jwt_required()
+def create_supplier_payment():
+    try:
+        data = request.get_json()
+        payment_data = SupplierPaymentSchema(**data)
+
+        supplier = Supplier.query.get(payment_data.supplier_id)
+        if not supplier:
+            return jsonify({"error": "Supplier not found"}), 404
+
+        # If purchase_invoice_id is provided, link payment to a specific purchase invoice
+        if payment_data.purchase_invoice_id:
+            purchase_invoice = PurchaseInvoice.query.get(payment_data.purchase_invoice_id)
+            if not purchase_invoice:
+                return jsonify({"error": "Purchase invoice not found"}), 404
+
+            # Update purchase_invoice's payment status and paid_amount
+            total_amount = sum(item.total_price for item in purchase_invoice.items)
+            current_paid = float(purchase_invoice.paid_amount or 0)
+            new_paid = current_paid + float(payment_data.amount)
+
+            if new_paid >= total_amount:
+                purchase_invoice.payment_status = "paid"
+                purchase_invoice.paid_amount = total_amount
+            else:
+                purchase_invoice.payment_status = "partial"
+                purchase_invoice.paid_amount = new_paid
+            db.session.add(purchase_invoice)
+
+        new_payment = SupplierPayment(
+            supplier_id=payment_data.supplier_id,
+            purchase_invoice_id=payment_data.purchase_invoice_id,
+            amount=payment_data.amount,
+            payment_mode=payment_data.payment_mode,
+            payment_date=payment_data.payment_date,
+            remarks=payment_data.remarks
+        )
+        
+        db.session.add(new_payment)
+        db.session.commit()
+        return jsonify(new_payment.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-payments', methods=['GET'])
+@jwt_required()
+def get_supplier_payments():
+    try:
+        payments = SupplierPayment.query.all()
+        return jsonify([payment.to_dict() for payment in payments]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/suppliers/<int:supplier_id>/outstanding_invoices', methods=['GET'])
+@jwt_required()
+def get_supplier_outstanding_invoices(supplier_id):
+    try:
+        supplier = Supplier.query.get(supplier_id)
+        if not supplier:
+            return jsonify({"error": "Supplier not found"}), 404
+
+        # Get purchase invoices for this supplier that are not fully paid
+        purchase_invoices = PurchaseInvoice.query.join(Purchase).filter(
+            Purchase.supplier_id == supplier_id,
+            PurchaseInvoice.payment_status != 'paid'
+        ).all()
+
+        outstanding_invoices = []
+        for invoice in purchase_invoices:
+            total_amount = sum(item.total_price for item in invoice.items)
+            paid_amount = float(invoice.paid_amount or 0)
+            outstanding_amount = float(total_amount) - paid_amount
+            
+            outstanding_invoices.append({
+                'id': invoice.id,
+                'purchaseId': invoice.purchase_id,
+                'date': invoice.date.isoformat() if invoice.date else None,
+                'remarks': invoice.remarks,
+                'totalAmount': float(total_amount),
+                'paidAmount': paid_amount,
+                'outstandingAmount': outstanding_amount
+            })
+
+        return jsonify(outstanding_invoices), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-payments/history', methods=['GET'])
+@jwt_required()
+def get_supplier_payment_history():
+    try:
+        # Get query parameters
+        supplier_id = request.args.get('supplierId', type=int)
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        payment_mode = request.args.get('paymentMode')
+        
+        # Build query
+        query = SupplierPayment.query.join(Supplier) # Eager load supplier
+        
+        # Filter by supplier if provided
+        if supplier_id:
+            query = query.filter(SupplierPayment.supplier_id == supplier_id)
+        
+        # Filter by date range if provided
+        if from_date:
+            query = query.filter(SupplierPayment.payment_date >= from_date)
+        if to_date:
+            query = query.filter(SupplierPayment.payment_date <= to_date)
+        
+        # Filter by payment mode if provided
+        if payment_mode and payment_mode != 'All':
+            query = query.filter(SupplierPayment.payment_mode == payment_mode)
+        
+        # Order by payment date descending
+        query = query.order_by(SupplierPayment.payment_date.desc())
+        
+        payments = query.all()
+        
+        # Create detailed payment history with invoice information
+        payment_history = []
+        for idx, payment in enumerate(payments, 1):
+            # Get supplier name
+            supplier_name = payment.supplier.supplier_name if payment.supplier else 'Unknown'
+            
+            # Get invoice information if linked
+            invoice_number = None
+            invoice_date = None
+            invoice_amount = None
+            if payment.purchase_invoice:
+                invoice_number = payment.purchase_invoice.id
+                invoice_date = payment.purchase_invoice.date.isoformat() if payment.purchase_invoice.date else None
+                invoice_amount = sum(item.total_price for item in payment.purchase_invoice.items)
+
+            payment_history.append({
+                'slNo': idx,
+                'paymentDate': payment.payment_date.isoformat(),
+                'paymentMode': payment.payment_mode,
+                'paymentId': str(payment.id),
+                'paidAmt': float(payment.amount),
+                'invNo': str(invoice_number) if invoice_number is not None else '',
+                'invDate': invoice_date,
+                'supplier': supplier_name,
+                'invoiceAmt': float(invoice_amount) if invoice_amount is not None else 0,
+                'allocated': float(payment.amount) if invoice_number is not None else 0,
+                'remarks': payment.remarks
+            })
+        
+        return jsonify(payment_history), 200
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/daily-book-purchase', methods=['GET'])
+@jwt_required()
+def daily_book_purchase():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    search = request.args.get('search', '')
+    
+    # Build query for PurchaseInvoices joined with Purchase and Supplier
+    query = (
+        db.session.query(
+            PurchaseInvoice.id,
+            PurchaseInvoice.date,
+            PurchaseInvoice.purchase_id,
+            Purchase.supplier_name,
+            func.sum(PurchaseInvoiceItem.total_price).label('invoice_amount')
+        )
+        .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+        .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+    )
+    
+    # Filter by date range
+    if from_date:
+        try:
+            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            query = query.filter(func.date(PurchaseInvoice.date) >= from_dt.date())
+        except Exception:
+            pass
+    if to_date:
+        try:
+            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            query = query.filter(func.date(PurchaseInvoice.date) <= to_dt.date())
+        except Exception:
+            pass
+    
+    # Search by supplier name
+    if search:
+        query = query.filter(Purchase.supplier_name.ilike(f'%{search}%'))
+    
+    # Group by purchase invoice
+    query = query.group_by(
+        PurchaseInvoice.id,
+        PurchaseInvoice.date,
+        PurchaseInvoice.purchase_id,
+        Purchase.supplier_name
+    )
+    
+    # Order by date descending
+    query = query.order_by(PurchaseInvoice.date.desc())
+    
+    results = query.all()
+    
+    # Format for frontend
+    purchase_data = []
+    for idx, row in enumerate(results, 1):
+        purchase_data.append({
+            'id': row.id,
+            'slNo': idx,
+            'date': row.date.strftime('%Y-%m-%d') if row.date else None,
+            'supplier': row.supplier_name,
+            'invNo': row.purchase_id,
+            'delNo': 0,  # Delivery number not tracked in current schema
+            'invoiceAmt': float(row.invoice_amount) if row.invoice_amount else 0
+        })
+    
+    return jsonify(purchase_data)
+
+@app.route('/api/reports/product-purchase', methods=['GET'])
+@jwt_required()
+def product_purchase_report():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    show_all = request.args.get('showAll', 'All')
+    search = request.args.get('search', '')
+    
+    # Build query for PurchaseInvoiceItems joined with PurchaseInvoice, RegularProduct, and NonProduct
+    query = (
+        db.session.query(
+            PurchaseInvoiceItem.id,
+            PurchaseInvoiceItem.product_id,
+            PurchaseInvoiceItem.product_name,
+            func.coalesce(RegularProduct.description, NonProduct.description, PurchaseInvoiceItem.product_name, '').label('product_description'),
+            func.sum(PurchaseInvoiceItem.quantity).label('quantity'),
+            func.sum(PurchaseInvoiceItem.total_price).label('total'),
+            (func.sum(PurchaseInvoiceItem.total_price) / func.nullif(func.sum(PurchaseInvoiceItem.quantity), 0)).label('avg_price')
+        )
+        .join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)
+        .outerjoin(RegularProduct, PurchaseInvoiceItem.product_id == RegularProduct.id)
+        .outerjoin(NonProduct, PurchaseInvoiceItem.product_id == NonProduct.id)
+    )
+    
+    # Filter by date range
+    if from_date:
+        try:
+            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            query = query.filter(func.date(PurchaseInvoice.date) >= from_dt.date())
+        except Exception:
+            pass
+    if to_date:
+        try:
+            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            query = query.filter(func.date(PurchaseInvoice.date) <= to_dt.date())
+        except Exception:
+            pass
+    
+    # Search by product description
+    if search:
+        query = query.filter(
+            or_(
+                RegularProduct.description.ilike(f'%{search}%'),
+                NonProduct.description.ilike(f'%{search}%'),
+                PurchaseInvoiceItem.product_name.ilike(f'%{search}%')
+            )
+        )
+    
+    # Group by product
+    query = query.group_by(
+        PurchaseInvoiceItem.product_id,
+        PurchaseInvoiceItem.product_name,
+        RegularProduct.description,
+        NonProduct.description
+    )
+    
+    # Order by total desc
+    query = query.order_by(func.sum(PurchaseInvoiceItem.total_price).desc())
+    
+    results = query.all()
+    
+    # Format for frontend
+    purchase_data = []
+    for idx, row in enumerate(results, 1):
+        purchase_data.append({
+            'id': idx,
+            'slNo': idx,
+            'productDescription': row.product_description,
+            'quantity': int(row.quantity) if row.quantity else 0,
+            'avgPrice': float(row.avg_price) if row.avg_price else 0,
+            'total': float(row.total) if row.total else 0
+        })
+    
+    return jsonify(purchase_data)
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

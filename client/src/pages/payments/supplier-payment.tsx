@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,28 +11,195 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, FileText, Copy, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Supplier, SupplierPayment, InsertSupplierPayment } from "@shared/schema";
+import { Checkbox } from "@/components/ui/checkbox";
 
-interface InvoiceData {
+interface OutstandingInvoice {
   id: number;
+  purchaseId: number;
   date: string;
-  invoiceNo: string;
-  invoiceAmt: number;
-  paid: number;
-  balance: number;
-  runningBal: number;
+  remarks: string;
+  totalAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
 }
 
 export default function SupplierPayment() {
-  const [selectedSupplier, setSelectedSupplier] = useState<string>("AT VEG LIMITED");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const [selectedSupplier, setSelectedSupplier] = useState<string>("");
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
-  const [paymentDate, setPaymentDate] = useState<Date>();
+  const [paymentDate, setPaymentDate] = useState<Date>(new Date());
   const [amountPaid, setAmountPaid] = useState<string>("0");
   const [remarks, setRemarks] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
 
-  const invoiceData: InvoiceData[] = [
-    // No data available in table
-  ];
+  // Fetch suppliers
+  const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
+    queryKey: ["/api/suppliers"],
+    queryFn: () => apiRequest("GET", "/api/suppliers"),
+  });
+
+  // Fetch outstanding invoices for selected supplier
+  const { data: outstandingInvoices = [], isLoading: invoicesLoading } = useQuery({
+    queryKey: ["/api/suppliers/outstanding_invoices", selectedSupplier],
+    queryFn: () => apiRequest("GET", `/api/suppliers/${selectedSupplier}/outstanding_invoices`),
+    enabled: !!selectedSupplier,
+  });
+
+  // Create supplier payment mutation
+  const createPaymentMutation = useMutation({
+    mutationFn: (data: InsertSupplierPayment) => apiRequest("POST", "/api/supplier-payments", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers/outstanding_invoices", selectedSupplier] });
+      toast({
+        title: "Success",
+        description: "Supplier payment created successfully",
+      });
+      // Reset form
+      setAmountPaid("0");
+      setRemarks("");
+      setSelectedInvoices([]);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create supplier payment",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Handle supplier selection
+  const handleSupplierChange = (supplierId: string) => {
+    setSelectedSupplier(supplierId);
+    setSelectedInvoices([]);
+  };
+
+  // Handle invoice selection
+  const handleInvoiceSelection = (invoiceId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedInvoices([...selectedInvoices, invoiceId]);
+    } else {
+      setSelectedInvoices(selectedInvoices.filter(id => id !== invoiceId));
+    }
+  };
+
+  // Handle payment submission
+  const handleSubmitPayment = () => {
+    if (!selectedSupplier) {
+      toast({
+        title: "Error",
+        description: "Please select a supplier",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!amountPaid || parseFloat(amountPaid) <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid amount",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const paymentData: InsertSupplierPayment = {
+      supplierId: parseInt(selectedSupplier),
+      purchaseInvoiceId: selectedInvoices.length === 1 ? selectedInvoices[0] : null,
+      amount: parseFloat(amountPaid),
+      paymentMode: paymentMode,
+      paymentDate: format(paymentDate, "yyyy-MM-dd"),
+      remarks: remarks || null,
+    };
+
+    createPaymentMutation.mutate(paymentData);
+  };
+
+  // Handle bulk payment update
+  const handleUpdatePayment = () => {
+    if (!selectedSupplier) {
+      toast({
+        title: "Error",
+        description: "Please select a supplier",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedInvoices.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one invoice to update",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Create payments for each selected invoice with its specific outstanding amount
+    const paymentPromises = selectedInvoices.map(invoiceId => {
+      const invoice = outstandingInvoices.find((inv: OutstandingInvoice) => inv.id === invoiceId);
+      if (!invoice) return Promise.reject(new Error(`Invoice data not found for ID: ${invoiceId}`));
+
+      const paymentData: InsertSupplierPayment = {
+        supplierId: parseInt(selectedSupplier),
+        purchaseInvoiceId: invoiceId,
+        amount: invoice.outstandingAmount, // Use the specific invoice's outstanding amount
+        paymentMode: paymentMode,
+        paymentDate: format(paymentDate, "yyyy-MM-dd"),
+        remarks: remarks || `Payment for invoice #${invoiceId}`,
+      };
+      return apiRequest("POST", "/api/supplier-payments", paymentData);
+    });
+
+    // Execute all payments
+    Promise.all(paymentPromises)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/supplier-payments"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/suppliers/outstanding_invoices", selectedSupplier] });
+        toast({
+          title: "Success",
+          description: `Successfully updated ${selectedInvoices.length} invoice(s)`,
+        });
+        // Reset form
+        setAmountPaid("0");
+        setRemarks("");
+        setSelectedInvoices([]);
+      })
+      .catch((error) => {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to update payments",
+          variant: "destructive",
+        });
+      });
+  };
+
+  // Calculate totals
+  const selectedInvoiceData = outstandingInvoices.filter((invoice: OutstandingInvoice) => 
+    selectedInvoices.includes(invoice.id)
+  );
+
+  const totalSelectedAmount = selectedInvoiceData.reduce((sum: number, invoice: OutstandingInvoice) => sum + invoice.outstandingAmount, 0);
+  const totalOutstandingAmount = outstandingInvoices.reduce((sum: number, invoice: OutstandingInvoice) => sum + invoice.outstandingAmount, 0);
+
+  // This effect automatically updates the "Amount Paid" field when invoices are selected
+  useEffect(() => {
+    if (selectedInvoices.length > 0) {
+      const totalSelected = outstandingInvoices
+        .filter((invoice: OutstandingInvoice) => selectedInvoices.includes(invoice.id))
+        .reduce((sum: number, invoice: OutstandingInvoice) => sum + invoice.outstandingAmount, 0);
+      setAmountPaid(totalSelected.toFixed(2));
+    } else {
+      setAmountPaid("0");
+    }
+  }, [selectedInvoices, outstandingInvoices]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -54,13 +222,22 @@ export default function SupplierPayment() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               <div>
                 <Label htmlFor="supplier">Select Supplier :</Label>
-                <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
+                <Select value={selectedSupplier} onValueChange={handleSupplierChange}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select supplier" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="AT VEG LIMITED">AT VEG LIMITED</SelectItem>
-                    <SelectItem value="other-supplier">Other Supplier</SelectItem>
+                    {suppliersLoading ? (
+                      <SelectItem value="loading" disabled>Loading suppliers...</SelectItem>
+                    ) : suppliers.length === 0 ? (
+                      <SelectItem value="no-suppliers" disabled>No suppliers available</SelectItem>
+                    ) : (
+                      suppliers.map((supplier: Supplier) => (
+                        <SelectItem key={supplier.id} value={String(supplier.id)}>
+                          {supplier.supplier_name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -91,14 +268,14 @@ export default function SupplierPayment() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {paymentDate ? format(paymentDate, "dd/MM/yyyy") : "10/06/2025"}
+                      {paymentDate ? format(paymentDate, "dd/MM/yyyy") : "Select date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
                     <Calendar
                       mode="single"
                       selected={paymentDate}
-                      onSelect={setPaymentDate}
+                      onSelect={(date) => date && setPaymentDate(date)}
                       initialFocus
                     />
                   </PopoverContent>
@@ -112,6 +289,9 @@ export default function SupplierPayment() {
                   value={amountPaid}
                   onChange={(e) => setAmountPaid(e.target.value)}
                   placeholder="0"
+                  type="number"
+                  step="0.01"
+                  min="0"
                 />
               </div>
 
@@ -127,8 +307,12 @@ export default function SupplierPayment() {
             </div>
 
             <div className="flex justify-end">
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                Submit
+              <Button 
+                className="bg-blue-600 hover:bg-blue-700"
+                onClick={handleSubmitPayment}
+                disabled={createPaymentMutation.isPending}
+              >
+                {createPaymentMutation.isPending ? "Submitting..." : "Submit"}
               </Button>
             </div>
           </CardContent>
@@ -177,7 +361,7 @@ export default function SupplierPayment() {
                     <TableHead className="text-center">Sl.No</TableHead>
                     <TableHead className="text-center">Date</TableHead>
                     <TableHead className="text-center">
-                      <input type="checkbox" className="mr-2" />
+                      <Checkbox className="mr-2" />
                       Invoice #
                     </TableHead>
                     <TableHead className="text-center">Invoice Amt</TableHead>
@@ -188,11 +372,42 @@ export default function SupplierPayment() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8">
-                      No data available in table
-                    </TableCell>
-                  </TableRow>
+                  {invoicesLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">
+                        Loading invoices...
+                      </TableCell>
+                    </TableRow>
+                  ) : outstandingInvoices.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">
+                        No outstanding invoices found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    outstandingInvoices.map((invoice: OutstandingInvoice, index: number) => (
+                      <TableRow key={invoice.id}>
+                        <TableCell className="text-center">{index + 1}</TableCell>
+                        <TableCell className="text-center">
+                          {invoice.date ? format(new Date(invoice.date), "dd/MM/yyyy") : "N/A"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <input 
+                            type="checkbox" 
+                            className="mr-2"
+                            checked={selectedInvoices.includes(invoice.id)}
+                            onChange={(e) => handleInvoiceSelection(invoice.id, e.target.checked)}
+                          />
+                          {invoice.id}
+                        </TableCell>
+                        <TableCell className="text-center">£{invoice.totalAmount.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{invoice.paidAmount.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£0.00</TableCell>
+                        <TableCell className="text-center">£{invoice.outstandingAmount.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{invoice.outstandingAmount.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                   <TableRow className="bg-blue-100">
                     <TableCell className="font-semibold">BALANCE</TableCell>
                     <TableCell className="bg-blue-200">
@@ -205,11 +420,11 @@ export default function SupplierPayment() {
                         📧
                       </Button>
                     </TableCell>
-                    <TableCell className="text-center">0.00</TableCell>
-                    <TableCell className="text-center">0.00</TableCell>
-                    <TableCell className="text-center">0.00</TableCell>
-                    <TableCell className="text-center">0.00</TableCell>
-                    <TableCell className="text-center font-semibold">Bal:0.00</TableCell>
+                    <TableCell className="text-center">£{totalOutstandingAmount.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£0.00</TableCell>
+                    <TableCell className="text-center">£0.00</TableCell>
+                    <TableCell className="text-center">£{totalOutstandingAmount.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-semibold">Bal:£{totalOutstandingAmount.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -218,7 +433,7 @@ export default function SupplierPayment() {
             {/* Pagination */}
             <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
               <div className="text-sm text-gray-600">
-                Showing 0 to 0 of 0 entries
+                Showing {outstandingInvoices.length} to {outstandingInvoices.length} of {outstandingInvoices.length} entries
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm">Previous</span>
@@ -232,7 +447,11 @@ export default function SupplierPayment() {
         {/* Update Payment Button and Balance Summary */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="flex justify-end">
-            <Button className="bg-green-600 hover:bg-green-700">
+            <Button 
+              className="bg-green-600 hover:bg-green-700"
+              onClick={handleUpdatePayment}
+              disabled={selectedInvoices.length === 0 || createPaymentMutation.isPending}
+            >
               Update Payment
             </Button>
           </div>
@@ -242,15 +461,15 @@ export default function SupplierPayment() {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span>Running balance :</span>
-                  <span>0.00</span>
+                  <span>£{totalOutstandingAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>On Account balance :</span>
-                  <span>0.00</span>
+                  <span>£0.00</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>TOTAL Outstanding balance :</span>
-                  <span>0.00</span>
+                  <span>£{totalOutstandingAmount.toFixed(2)}</span>
                 </div>
               </div>
             </CardContent>

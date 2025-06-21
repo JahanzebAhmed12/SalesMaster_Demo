@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import { Plus } from "lucide-react";
+import { useLocation } from "wouter";
 
 const purchaseSchema = z.object({
   invoiceDate: z.string().min(1, "Invoice date is required"),
@@ -21,7 +22,7 @@ const purchaseSchema = z.object({
   supplierInvoice: z.string().min(1, "Supplier invoice is required"),
   awb: z.string().min(1, "AWB is required"),
   remarks: z.string().optional(),
-  supplierName: z.string().min(1, "Supplier name is required"),
+  supplierId: z.string().min(1, "Supplier is required"),
 });
 
 type PurchaseFormData = z.infer<typeof purchaseSchema>;
@@ -29,6 +30,7 @@ type PurchaseFormData = z.infer<typeof purchaseSchema>;
 export default function PurchaseEntry() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseSchema),
@@ -38,8 +40,14 @@ export default function PurchaseEntry() {
       supplierInvoice: "",
       awb: "",
       remarks: "",
-      supplierName: "",
+      supplierId: "",
     },
+  });
+
+  // Fetch suppliers from backend
+  const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
+    queryKey: ["/api/suppliers"],
+    queryFn: () => apiRequest("GET", "/api/suppliers"),
   });
 
   const { data: purchases = [], isLoading } = useQuery({
@@ -47,15 +55,28 @@ export default function PurchaseEntry() {
   });
 
   const createPurchaseMutation = useMutation({
-    mutationFn: (data: PurchaseFormData) => apiRequest("POST", "/api/purchases", data),
-    onSuccess: () => {
+    mutationFn: (data: PurchaseFormData) => {
+      // Convert supplierId to integer and add default amount
+      const purchaseData = {
+        ...data,
+        supplierId: parseInt(data.supplierId),
+        amount: 0 // Default amount, will be calculated from invoice items
+      };
+      return apiRequest("POST", "/api/purchases", purchaseData);
+    },
+    onSuccess: (purchase) => {
       queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      
+      // Add the newly created purchase to the cache for immediate access
+      queryClient.setQueryData(["/api/purchases", purchase.id.toString()], purchase);
+      
       toast({
         title: "Success",
         description: "Purchase entry created successfully",
       });
       form.reset();
+      setLocation(`/data-entry/purchase-invoice?purchaseId=${purchase.id}`);
     },
     onError: () => {
       toast({
@@ -151,25 +172,31 @@ export default function PurchaseEntry() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="supplierName">Supplier Name</Label>
+                  <Label htmlFor="supplierId">Supplier</Label>
                   <Select
-                    value={form.watch("supplierName")}
-                    onValueChange={(value) => form.setValue("supplierName", value)}
+                    value={form.watch("supplierId")}
+                    onValueChange={(value) => form.setValue("supplierId", value)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select supplier" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ABC Suppliers Ltd">ABC Suppliers Ltd</SelectItem>
-                      <SelectItem value="Global Trade Co">Global Trade Co</SelectItem>
-                      <SelectItem value="Premium Goods Inc">Premium Goods Inc</SelectItem>
-                      <SelectItem value="Swift Logistics">Swift Logistics</SelectItem>
-                      <SelectItem value="Quality Products">Quality Products</SelectItem>
+                      {suppliersLoading ? (
+                        <SelectItem value="loading" disabled>Loading suppliers...</SelectItem>
+                      ) : suppliers.length === 0 ? (
+                        <SelectItem value="no-suppliers" disabled>No suppliers available</SelectItem>
+                      ) : (
+                        suppliers.map((supplier: any) => (
+                          <SelectItem key={supplier.id} value={String(supplier.id)}>
+                            {supplier.supplier_name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
-                  {form.formState.errors.supplierName && (
+                  {form.formState.errors.supplierId && (
                     <p className="text-sm text-red-500 mt-1">
-                      {form.formState.errors.supplierName.message}
+                      {form.formState.errors.supplierId.message}
                     </p>
                   )}
                 </div>

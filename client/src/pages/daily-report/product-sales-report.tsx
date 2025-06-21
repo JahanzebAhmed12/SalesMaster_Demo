@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, TrendingUp, FileText, Download, Copy, Printer, Search } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface SalesItem {
   id: number;
@@ -23,30 +25,33 @@ interface SalesItem {
 }
 
 export default function ProductSalesReport() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [showAll, setShowAll] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
-  
-  // Sample data matching the design
-  const [salesData] = useState<SalesItem[]>([
-    { id: 1, slNo: 1, sageCode: "P1220", productDescription: "Aloe Vera (Sp)", quantity: 1, avgPrice: 12.00, total: 12.00 },
-    { id: 2, slNo: 2, sageCode: "", productDescription: "Avocado", quantity: 12, avgPrice: 30.00, total: 360.00 },
-    { id: 3, slNo: 3, sageCode: "", productDescription: "Cassava", quantity: 6, avgPrice: 38.00, total: 228.00 },
-    { id: 4, slNo: 4, sageCode: "", productDescription: "chow chow", quantity: 2, avgPrice: 12.50, total: 25.00 },
-    { id: 5, slNo: 5, sageCode: "P1793", productDescription: "DASHEEN", quantity: 1, avgPrice: 53.00, total: 53.00 },
-    { id: 6, slNo: 6, sageCode: "P1154", productDescription: "Green banana", quantity: 5, avgPrice: 15.00, total: 75.00 },
-    { id: 7, slNo: 7, sageCode: "", productDescription: "Green Plantain", quantity: 9, avgPrice: 28.67, total: 258.03 },
-    { id: 8, slNo: 8, sageCode: "", productDescription: "JellyNut", quantity: 3, avgPrice: 30.00, total: 90.00 },
-    { id: 9, slNo: 9, sageCode: "P1792", productDescription: "Mango Dr", quantity: 258, avgPrice: 5.55, total: 1431.90 },
-    { id: 10, slNo: 10, sageCode: "", productDescription: "Sweet Potato Brz", quantity: 7, avgPrice: 13.00, total: 91.00 },
-    { id: 11, slNo: 11, sageCode: "", productDescription: "Yam Poona", quantity: 3, avgPrice: 30.00, total: 90.00 },
-    { id: 12, slNo: 12, sageCode: "", productDescription: "Yellow Plantain", quantity: 70, avgPrice: 21.79, total: 1525.30 }
-  ]);
+  const [searchClicked, setSearchClicked] = useState(false);
 
-  const totalQuantity = salesData.reduce((sum, item) => sum + item.quantity, 0);
-  const totalAmount = salesData.reduce((sum, item) => sum + item.total, 0);
-  const averagePrice = totalAmount / totalQuantity;
+  // Fetch sales data from backend (Tanstack Query v5 object form)
+  const {
+    data: salesDataRaw,
+    isLoading
+  } = useQuery<SalesItem[]>({
+    queryKey: ["product-sales-report", fromDate, toDate, searchTerm, searchClicked],
+    queryFn: () => {
+      const params = [
+        `fromDate=${fromDate ? format(fromDate, "yyyy-MM-dd") : ""}`,
+        `toDate=${toDate ? format(toDate, "yyyy-MM-dd") : ""}`,
+        `search=${encodeURIComponent(searchTerm)}`
+      ].join("&");
+      return apiRequest("GET", `/api/reports/product-sales?${params}`);
+    },
+    enabled: searchClicked
+  });
+  const salesData: SalesItem[] = Array.isArray(salesDataRaw) ? salesDataRaw : [];
+
+  const totalQuantity = salesData.reduce((sum: number, item: SalesItem) => sum + item.quantity, 0);
+  const totalAmount = salesData.reduce((sum: number, item: SalesItem) => sum + item.total, 0);
+  const averagePrice = totalQuantity > 0 ? totalAmount / totalQuantity : 0;
 
   return (
     <PageLayout title="Sales Report" breadcrumb="Daily Report > Product Sales Report">
@@ -91,7 +96,6 @@ export default function ProductSalesReport() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Label>To Date:</Label>
                 <Popover>
@@ -117,7 +121,6 @@ export default function ProductSalesReport() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Select value={showAll} onValueChange={setShowAll}>
                   <SelectTrigger>
@@ -129,13 +132,14 @@ export default function ProductSalesReport() {
                   </SelectContent>
                 </Select>
               </div>
-              
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  onClick={() => setSearchClicked((prev) => !prev)}
+                >
                   Search
                 </Button>
               </div>
-              
               <div className="flex gap-2">
                 <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
                   <Printer size={16} />
@@ -151,7 +155,6 @@ export default function ProductSalesReport() {
             </div>
           </CardContent>
         </Card>
-
         {/* Sales Table */}
         <Card>
           <CardHeader>
@@ -186,43 +189,45 @@ export default function ProductSalesReport() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sl.No</TableHead>
-                  <TableHead>Sage code</TableHead>
-                  <TableHead>Product Description</TableHead>
-                  <TableHead className="text-center">Quantity</TableHead>
-                  <TableHead className="text-center">AVG Price</TableHead>
-                  <TableHead className="text-center">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {salesData.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.slNo}</TableCell>
-                    <TableCell>{item.sageCode}</TableCell>
-                    <TableCell>{item.productDescription}</TableCell>
-                    <TableCell className="text-center">{item.quantity}</TableCell>
-                    <TableCell className="text-center">{item.avgPrice.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{item.total.toFixed(2)}</TableCell>
+            {isLoading ? (
+              <div className="text-center py-8">Loading...</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sl.No</TableHead>
+                    <TableHead>Sage code</TableHead>
+                    <TableHead>Product Description</TableHead>
+                    <TableHead className="text-center">Quantity</TableHead>
+                    <TableHead className="text-center">AVG Price</TableHead>
+                    <TableHead className="text-center">Total</TableHead>
                   </TableRow>
-                ))}
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="font-bold">12 Items</TableCell>
-                  <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
-                  <TableCell className="text-center font-bold">{averagePrice.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£ {totalAmount.toFixed(2)}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-            
+                </TableHeader>
+                <TableBody>
+                  {salesData.map((item: SalesItem) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.slNo}</TableCell>
+                      <TableCell>{item.sageCode}</TableCell>
+                      <TableCell>{item.productDescription}</TableCell>
+                      <TableCell className="text-center">{item.quantity}</TableCell>
+                      <TableCell className="text-center">{item.avgPrice.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{item.total.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                  {/* Total Row */}
+                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold">{salesData.length} Items</TableCell>
+                    <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
+                    <TableCell className="text-center font-bold">{averagePrice.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£ {totalAmount.toFixed(2)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            )}
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 1 to 12 of 12 entries</div>
+              <div>Showing 1 to {salesData.length} of {salesData.length} entries</div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm">Previous</Button>

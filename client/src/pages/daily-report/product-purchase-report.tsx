@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, ShoppingBag, FileText, Download, Copy, Printer, Search } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface PurchaseItem {
   id: number;
@@ -22,23 +25,57 @@ interface PurchaseItem {
 }
 
 export default function ProductPurchaseReport() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const { toast } = useToast();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [showAll, setShowAll] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
   
-  // Sample data matching the design
-  const [purchaseData] = useState<PurchaseItem[]>([
-    { id: 1, slNo: 1, productDescription: "Avocado", quantity: 27, avgPrice: 26.05, total: 703.35 },
-    { id: 2, slNo: 2, productDescription: "Cassava", quantity: 6, avgPrice: 32.05, total: 192.30 },
-    { id: 3, slNo: 3, productDescription: "chow chow", quantity: 24, avgPrice: 11.05, total: 265.20 },
-    { id: 4, slNo: 4, productDescription: "JellyNut", quantity: 18, avgPrice: 22.05, total: 396.90 },
-    { id: 5, slNo: 5, productDescription: "Mango Dr", quantity: 300, avgPrice: 6.00, total: 1800.00 },
-    { id: 6, slNo: 6, productDescription: "Yellow Plantain", quantity: 48, avgPrice: 26.05, total: 1250.40 }
-  ]);
+  const [filters, setFilters] = useState({
+    fromDate: format(new Date(), "yyyy-MM-dd"),
+    toDate: format(new Date(), "yyyy-MM-dd"),
+    showAll: "All",
+    search: "",
+  });
+
+  // Fetch purchase data
+  const {
+    data: purchaseData = [],
+    isLoading,
+    isError,
+    error,
+    refetch
+  } = useQuery<PurchaseItem[]>({
+    queryKey: ["/api/reports/product-purchase", filters],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filters.fromDate) params.append("fromDate", filters.fromDate);
+      if (filters.toDate) params.append("toDate", filters.toDate);
+      if (filters.showAll) params.append("showAll", filters.showAll);
+      if (filters.search) params.append("search", filters.search);
+      return apiRequest("GET", `/api/reports/product-purchase?${params.toString()}`);
+    },
+  });
+
+  const handleSearch = () => {
+    setFilters({
+      fromDate: format(fromDate, "yyyy-MM-dd"),
+      toDate: format(toDate, "yyyy-MM-dd"),
+      showAll: showAll,
+      search: searchTerm,
+    });
+  };
 
   const totalQuantity = purchaseData.reduce((sum, item) => sum + item.quantity, 0);
   const totalAmount = purchaseData.reduce((sum, item) => sum + item.total, 0);
+
+  if (isError) {
+    toast({
+      title: "Error",
+      description: (error as any)?.message || "Failed to fetch purchase data.",
+      variant: "destructive",
+    });
+  }
 
   return (
     <PageLayout title="Purchase Report" breadcrumb="Daily Report > Product Purchase Report">
@@ -123,8 +160,12 @@ export default function ProductPurchaseReport() {
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
-                  Search
+                <Button 
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  onClick={handleSearch}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Searching..." : "Search"}
                 </Button>
               </div>
               
@@ -186,29 +227,43 @@ export default function ProductPurchaseReport() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {purchaseData.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.slNo}</TableCell>
-                    <TableCell>{item.productDescription}</TableCell>
-                    <TableCell className="text-center">{item.quantity}</TableCell>
-                    <TableCell className="text-center">{item.avgPrice.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{item.total.toFixed(2)}</TableCell>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8">
+                      Loading purchase data...
+                    </TableCell>
                   </TableRow>
-                ))}
+                ) : purchaseData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center py-8">
+                      No purchase data found for the selected date range.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  purchaseData.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.slNo}</TableCell>
+                      <TableCell>{item.productDescription}</TableCell>
+                      <TableCell className="text-center">{item.quantity}</TableCell>
+                      <TableCell className="text-center">£{item.avgPrice.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{item.total.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
                 
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                   <TableCell></TableCell>
-                  <TableCell className="font-bold">6 Items</TableCell>
+                  <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
                   <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
                   <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold">{totalAmount.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£{totalAmount.toFixed(2)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
             
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 1 to 6 of 6 entries</div>
+              <div>Showing 1 to {purchaseData.length} of {purchaseData.length} entries</div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm">Previous</Button>
