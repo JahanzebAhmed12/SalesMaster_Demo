@@ -11,7 +11,7 @@ export const queryClient = new QueryClient({
   },
 });
 
-export const apiRequest = async (method: string, endpoint: string, data?: any) => {
+export const apiRequest = async <T = any>(method: string, endpoint: string, data?: any): Promise<T> => {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = localStorage.getItem('jwt_token');
   

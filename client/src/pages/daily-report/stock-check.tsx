@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, ClipboardCheck, FileText, Download, Copy, Printer, Search, Check } from "lucide-react";
+import { CalendarIcon, ClipboardCheck, FileText, Download, Copy, Printer, Search, Check, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface StockItem {
   id: number;
@@ -26,59 +29,43 @@ interface StockItem {
   clStock: number;
   result: string;
   status: 'correct' | 'short' | 'excess';
+  productType: 'regular' | 'non';
 }
 
 export default function StockCheck() {
-  const [osDate, setOsDate] = useState<Date>(new Date(2025, 5, 9));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [osDate, setOsDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [stockFilter, setStockFilter] = useState("Show All");
   const [searchTerm, setSearchTerm] = useState("");
-  
-  // Sample data matching the design
-  const [stockData] = useState<StockItem[]>([
-    {
-      id: 1, slNo: 1, productDescription: "Aloe Vera (Sp)", os: 16, ns: 0, sales: 1, crtn: 0, dmps: 0, srtn: 0, stock: 15, clStock: 15, result: "✓", status: 'correct'
+  const { toast } = useToast();
+
+  // Query for stock check data
+  const { data: stockData = [], isLoading, error, refetch } = useQuery<StockItem[]>({
+    queryKey: ["stock-check", format(osDate, "yyyy-MM-dd"), format(toDate, "yyyy-MM-dd"), searchTerm],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        fromDate: format(osDate, "yyyy-MM-dd"),
+        toDate: format(toDate, "yyyy-MM-dd"),
+        search: searchTerm
+      });
+      
+      return apiRequest("GET", `/api/reports/stock-check?${params}`);
     },
-    {
-      id: 2, slNo: 2, productDescription: "Avocado", os: 0, ns: 27, sales: 12, crtn: 0, dmps: 0, srtn: 0, stock: 15, clStock: 15, result: "✓", status: 'correct'
-    },
-    {
-      id: 3, slNo: 3, productDescription: "Cassava", os: 0, ns: 6, sales: 6, crtn: 0, dmps: 0, srtn: 0, stock: 0, clStock: 0, result: "✓", status: 'correct'
-    },
-    {
-      id: 4, slNo: 4, productDescription: "chow chow", os: 7, ns: 24, sales: 2, crtn: 0, dmps: 0, srtn: 0, stock: 29, clStock: 29, result: "✓", status: 'correct'
-    },
-    {
-      id: 5, slNo: 5, productDescription: "Cush Yam", os: 0, ns: 0, sales: 0, crtn: 0, dmps: 0, srtn: 0, stock: 0, clStock: 11, result: "extra 11", status: 'excess'
-    },
-    {
-      id: 6, slNo: 6, productDescription: "DASHEEN", os: 18, ns: 0, sales: 1, crtn: 0, dmps: 0, srtn: 0, stock: 17, clStock: 17, result: "✓", status: 'correct'
-    },
-    {
-      id: 7, slNo: 7, productDescription: "Green banana", os: 57, ns: 0, sales: 5, crtn: 0, dmps: 0, srtn: 0, stock: 52, clStock: 52, result: "✓", status: 'correct'
-    },
-    {
-      id: 8, slNo: 8, productDescription: "Green Plantain", os: 7, ns: 0, sales: 9, crtn: 0, dmps: 0, srtn: 0, stock: 2, clStock: 0, result: "extra 2", status: 'excess'
-    },
-    {
-      id: 9, slNo: 9, productDescription: "JellyNut", os: 7, ns: 18, sales: 3, crtn: 0, dmps: 0, srtn: 0, stock: 15, clStock: 15, result: "✓", status: 'correct'
-    },
-    {
-      id: 10, slNo: 10, productDescription: "Mango Dr", os: 135, ns: 300, sales: 258, crtn: 0, dmps: 0, srtn: 0, stock: 177, clStock: 0, result: "short 7", status: 'short'
-    },
-    {
-      id: 11, slNo: 11, productDescription: "Sweet Potato Brz", os: 10, ns: 0, sales: 7, crtn: 0, dmps: 0, srtn: 0, stock: 3, clStock: 3, result: "✓", status: 'correct'
-    },
-    {
-      id: 12, slNo: 12, productDescription: "Tamarind Sweet", os: 26, ns: 0, sales: 0, crtn: 0, dmps: 0, srtn: 0, stock: 26, clStock: 26, result: "✓", status: 'correct'
-    },
-    {
-      id: 13, slNo: 13, productDescription: "Yam Poona", os: 0, ns: 0, sales: 3, crtn: 0, dmps: 0, srtn: 0, stock: 3, clStock: 3, result: "extra 6", status: 'excess'
-    },
-    {
-      id: 14, slNo: 14, productDescription: "Yellow Plantain", os: 29, ns: 48, sales: 70, crtn: 0, dmps: 0, srtn: 0, stock: 7, clStock: 4, result: "short 3", status: 'short'
-    }
-  ]);
+    enabled: false, // Don't auto-fetch, wait for user to click search
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: 3
+  });
+
+  const handleSearch = () => {
+    refetch();
+  };
+
+  const handleExport = (format: string) => {
+    toast({
+      title: "Export",
+      description: `Exporting to ${format} format...`,
+    });
+  };
 
   const filteredData = stockData.filter(item => {
     if (stockFilter === "Short") return item.status === 'short';
@@ -87,11 +74,11 @@ export default function StockCheck() {
   });
 
   const totals = {
-    os: stockData.reduce((sum, item) => sum + item.os, 0),
-    ns: stockData.reduce((sum, item) => sum + item.ns, 0),
-    sales: stockData.reduce((sum, item) => sum + item.sales, 0),
-    stock: stockData.reduce((sum, item) => sum + item.stock, 0),
-    clStock: stockData.reduce((sum, item) => sum + item.clStock, 0)
+    os: filteredData.reduce((sum, item) => sum + item.os, 0),
+    ns: filteredData.reduce((sum, item) => sum + item.ns, 0),
+    sales: filteredData.reduce((sum, item) => sum + item.sales, 0),
+    stock: filteredData.reduce((sum, item) => sum + item.stock, 0),
+    clStock: filteredData.reduce((sum, item) => sum + item.clStock, 0)
   };
 
   return (
@@ -178,17 +165,34 @@ export default function StockCheck() {
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
-                  Search
+                <Button 
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  onClick={handleSearch}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    "Search"
+                  )}
                 </Button>
               </div>
               
               <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+                <Button 
+                  className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                  onClick={() => handleExport('print')}
+                >
                   <Printer size={16} />
                   Print
                 </Button>
-                <Button className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white">
+                <Button 
+                  className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white"
+                  onClick={() => handleExport('template')}
+                >
                   Template
                 </Button>
               </div>
@@ -196,24 +200,65 @@ export default function StockCheck() {
           </CardContent>
         </Card>
 
+        {/* Error Display */}
+        {error && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-4">
+              <div className="text-red-600">
+                <h3 className="font-medium">Error Loading Stock Check Data</h3>
+                <p className="text-sm mt-1">
+                  {error instanceof Error ? error.message : "Failed to load stock check data"}
+                </p>
+                <Button 
+                  onClick={() => refetch()}
+                  className="mt-2"
+                  size="sm"
+                >
+                  Retry
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Stock Table */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex items-center gap-1"
+                  onClick={() => handleExport('pdf')}
+                >
                   <FileText size={14} />
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex items-center gap-1"
+                  onClick={() => handleExport('excel')}
+                >
                   <Download size={14} />
                   Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex items-center gap-1"
+                  onClick={() => handleExport('copy')}
+                >
                   <Copy size={14} />
                   Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex items-center gap-1"
+                  onClick={() => handleExport('print')}
+                >
                   <Printer size={14} />
                   Print
                 </Button>
@@ -225,68 +270,90 @@ export default function StockCheck() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 w-48"
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                 />
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sl.No</TableHead>
-                  <TableHead>Product Description</TableHead>
-                  <TableHead className="text-center">O.S</TableHead>
-                  <TableHead className="text-center">N.S</TableHead>
-                  <TableHead className="text-center">Sales</TableHead>
-                  <TableHead className="text-center">C.RTN</TableHead>
-                  <TableHead className="text-center">Dmps</TableHead>
-                  <TableHead className="text-center">S.RTN</TableHead>
-                  <TableHead className="text-center">Stock</TableHead>
-                  <TableHead className="text-center">Cl.Stock</TableHead>
-                  <TableHead className="text-center">Result</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredData.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.slNo}</TableCell>
-                    <TableCell>{item.productDescription}</TableCell>
-                    <TableCell className="text-center">{item.os}</TableCell>
-                    <TableCell className="text-center">{item.ns}</TableCell>
-                    <TableCell className="text-center">{item.sales}</TableCell>
-                    <TableCell className="text-center">{item.crtn}</TableCell>
-                    <TableCell className="text-center">{item.dmps}</TableCell>
-                    <TableCell className="text-center">{item.srtn}</TableCell>
-                    <TableCell className="text-center">{item.stock}</TableCell>
-                    <TableCell className="text-center">{item.clStock}</TableCell>
-                    <TableCell className="text-center">
-                      {item.result === "✓" ? (
-                        <Check size={16} className="mx-auto text-green-600" />
-                      ) : (
-                        <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
-                          {item.result}
-                        </span>
-                      )}
-                    </TableCell>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <span className="ml-2">Loading stock check data...</span>
+              </div>
+            ) : filteredData.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                {stockData.length === 0 ? 
+                  "No stock check data available. Please select dates and click Search." : 
+                  "No products match your current filter."
+                }
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sl.No</TableHead>
+                    <TableHead>Product Description</TableHead>
+                    <TableHead className="text-center">O.S</TableHead>
+                    <TableHead className="text-center">N.S</TableHead>
+                    <TableHead className="text-center">Sales</TableHead>
+                    <TableHead className="text-center">C.RTN</TableHead>
+                    <TableHead className="text-center">Dmps</TableHead>
+                    <TableHead className="text-center">S.RTN</TableHead>
+                    <TableHead className="text-center">Stock</TableHead>
+                    <TableHead className="text-center">Cl.Stock</TableHead>
+                    <TableHead className="text-center">Result</TableHead>
                   </TableRow>
-                ))}
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                  <TableCell></TableCell>
-                  <TableCell className="font-bold"></TableCell>
-                  <TableCell className="text-center font-bold">{totals.os}</TableCell>
-                  <TableCell className="text-center font-bold">{totals.ns}</TableCell>
-                  <TableCell className="text-center font-bold">{totals.sales}</TableCell>
-                  <TableCell className="text-center font-bold">0</TableCell>
-                  <TableCell className="text-center font-bold">0</TableCell>
-                  <TableCell className="text-center font-bold">0</TableCell>
-                  <TableCell className="text-center font-bold">{totals.stock}</TableCell>
-                  <TableCell className="text-center font-bold">{totals.clStock}</TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredData.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.slNo}</TableCell>
+                      <TableCell>
+                        <div>
+                          {item.productDescription}
+                          <div className="text-xs text-gray-500">
+                            {item.productType === 'regular' ? 'Regular Product' : 'Non-Product'}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center">{item.os}</TableCell>
+                      <TableCell className="text-center">{item.ns}</TableCell>
+                      <TableCell className="text-center">{item.sales}</TableCell>
+                      <TableCell className="text-center">{item.crtn}</TableCell>
+                      <TableCell className="text-center">{item.dmps}</TableCell>
+                      <TableCell className="text-center">{item.srtn}</TableCell>
+                      <TableCell className="text-center">{item.stock}</TableCell>
+                      <TableCell className="text-center">{item.clStock}</TableCell>
+                      <TableCell className="text-center">
+                        {item.result === "✓" ? (
+                          <Check size={16} className="mx-auto text-green-600" />
+                        ) : (
+                          <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
+                            {item.result}
+                          </span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  
+                  {/* Total Row */}
+                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold">TOTAL</TableCell>
+                    <TableCell className="text-center font-bold">{totals.os}</TableCell>
+                    <TableCell className="text-center font-bold">{totals.ns}</TableCell>
+                    <TableCell className="text-center font-bold">{totals.sales}</TableCell>
+                    <TableCell className="text-center font-bold">0</TableCell>
+                    <TableCell className="text-center font-bold">0</TableCell>
+                    <TableCell className="text-center font-bold">0</TableCell>
+                    <TableCell className="text-center font-bold">{totals.stock}</TableCell>
+                    <TableCell className="text-center font-bold">{totals.clStock}</TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

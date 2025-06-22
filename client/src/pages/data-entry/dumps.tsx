@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,313 +7,505 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Trash2, FileText, Download, Copy, Printer, Search, Save, Info } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon, Trash2, FileText, Download, Copy, Printer, Search, Save, Info, Loader2, Package, BarChart3, PoundSterling, TrendingUp } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { DumpEntry, InsertDumpEntry, Supplier } from "@shared/schema";
 
-interface DumpItem {
+interface Product {
   id: number;
-  supplier: string;
-  returnsStock: string;
-  remarks: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
+  description: string;
+  productType: 'regular' | 'non';
 }
 
 export default function Dumps() {
-  const [selectedSupplier, setSelectedSupplier] = useState("");
-  const [fromDate, setFromDate] = useState("20250610");
-  const [toDate, setToDate] = useState("20250610");
-  const [productFilter, setProductFilter] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [dumpItems, setDumpItems] = useState<DumpItem[]>([]);
+  const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
+  const [toDate, setToDate] = useState<Date | undefined>(new Date());
+  const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
+  const [productFilter, setProductFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [isAddingDump, setIsAddingDump] = useState<boolean>(false);
   const [newDump, setNewDump] = useState({
-    supplier: "",
-    returnsStock: "",
+    supplierId: "none",
+    productType: "regular" as 'regular' | 'non',
+    productId: "",
+    description: "",
     remarks: "",
     quantity: 0,
     unitPrice: 0
   });
 
-  const handleAddDump = () => {
-    if (newDump.supplier && newDump.returnsStock) {
-      const newItem: DumpItem = {
-        id: Date.now(),
-        supplier: newDump.supplier,
-        returnsStock: newDump.returnsStock,
-        remarks: newDump.remarks,
-        quantity: newDump.quantity,
-        unitPrice: newDump.unitPrice,
-        total: newDump.quantity * newDump.unitPrice
-      };
-      setDumpItems([...dumpItems, newItem]);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Fetch data
+  const { data: dumpEntries = [], isLoading, refetch } = useQuery({
+    queryKey: ['dump-entries', fromDate, toDate, selectedSupplier, searchTerm],
+    queryFn: () => apiRequest('GET', `/api/dump-entries?fromDate=${format(fromDate || new Date(), "yyyy-MM-dd")}&toDate=${format(toDate || new Date(), "yyyy-MM-dd")}&supplierId=${selectedSupplier !== "all" ? selectedSupplier : ""}&search=${searchTerm}`)
+  });
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => apiRequest('GET', '/api/suppliers')
+  });
+
+  const { data: products = { regularProducts: [], nonProducts: [] } } = useQuery({
+    queryKey: ['products'],
+    queryFn: () => apiRequest('GET', '/api/products')
+  });
+
+  // Mutations
+  const createDumpMutation = useMutation({
+    mutationFn: (data: InsertDumpEntry) => apiRequest('POST', '/api/dump-entries', data),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Dump entry created successfully",
+      });
+      refetch();
+      setIsAddingDump(false);
       setNewDump({
-        supplier: "",
-        returnsStock: "",
+        supplierId: "none",
+        productType: "regular",
+        productId: "",
+        description: "",
         remarks: "",
         quantity: 0,
         unitPrice: 0
       });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create dump entry",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const deleteDumpMutation = useMutation({
+    mutationFn: (id: number) => apiRequest('DELETE', `/api/dump-entries/${id}`),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Dump entry deleted successfully",
+      });
+      refetch();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete dump entry",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Filter products based on product type
+  const filteredProducts = useMemo(() => {
+    if (newDump.productType === 'regular') {
+      return products?.regularProducts || [];
+    } else {
+      return products?.nonProducts || [];
+    }
+  }, [newDump.productType, products]);
+
+  const handleAddDump = () => {
+    if (!newDump.productId || !newDump.description || newDump.quantity <= 0) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const dumpData: InsertDumpEntry = {
+      refNumber: "", // Will be generated by backend
+      date: format(fromDate || new Date(), "yyyy-MM-dd"),
+      supplierId: newDump.supplierId && newDump.supplierId !== "none" ? parseInt(newDump.supplierId) : null,
+      productId: parseInt(newDump.productId),
+      productType: newDump.productType,
+      description: newDump.description,
+      remarks: newDump.remarks,
+      quantity: newDump.quantity,
+      unitPrice: newDump.unitPrice,
+      totalValue: newDump.quantity * newDump.unitPrice
+    };
+
+    createDumpMutation.mutate(dumpData);
+  };
+
+  const handleDeleteDump = (id: number) => {
+    if (confirm("Are you sure you want to delete this dump entry?")) {
+      deleteDumpMutation.mutate(id);
     }
   };
 
-  const totalItems = dumpItems.length;
-  const totalQuantity = dumpItems.reduce((sum, item) => sum + item.quantity, 0);
+  const totalItems = dumpEntries.length;
+  const totalQuantity = dumpEntries.reduce((sum: number, item: DumpEntry) => sum + item.quantity, 0);
+  const totalValue = dumpEntries.reduce((sum: number, item: DumpEntry) => sum + item.totalValue, 0);
+
+  const allProducts = [
+    ...(products?.regularProducts || []).map((p: any) => ({ ...p, productType: 'regular' as const })),
+    ...(products?.nonProducts || []).map((p: any) => ({ ...p, productType: 'non' as const }))
+  ];
 
   return (
     <PageLayout title="Dumps" breadcrumb="Dumps">
       <div className="space-y-6">
-        {/* Header Section */}
-        <Card>
-          <CardHeader className="pb-4">
-            <div className="flex justify-between items-center">
-              <CardTitle className="flex items-center gap-2">
-                <Trash2 size={20} />
-                Dumps
-              </CardTitle>
-              <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Items</CardTitle>
+              <Package className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalItems}</div>
+              <p className="text-xs text-muted-foreground">
+                Dump entries in selected period
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Quantity</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalQuantity}</div>
+              <p className="text-xs text-muted-foreground">
+                Total quantity dumped
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Value</CardTitle>
+              <PoundSterling className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">£{totalValue.toFixed(2)}</div>
+              <p className="text-xs text-muted-foreground">
+                Total value of dumped items
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Average Value</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                £{totalItems > 0 ? (totalValue / totalItems).toFixed(2) : "0.00"}
               </div>
-            </div>
+              <p className="text-xs text-muted-foreground">
+                Average value per item
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Filters</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-              <div>
-                <Label htmlFor="supplier">Supplier:</Label>
-                <div className="flex gap-2">
-                  <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="supplier1">ABC Suppliers Ltd</SelectItem>
-                      <SelectItem value="supplier2">Global Trade Co</SelectItem>
-                      <SelectItem value="supplier3">Premium Goods Inc</SelectItem>
-                      <SelectItem value="supplier4">Swift Logistics</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button size="sm" className="bg-blue-500 hover:bg-blue-600">
-                    Submit
-                  </Button>
-                </div>
-              </div>
-              
-              <div>
-                <Label>Date Range:</Label>
-                <div className="flex gap-2 items-center">
-                  <div>
-                    <Label htmlFor="fromDate" className="text-xs">From Date:</Label>
-                    <Input
-                      id="fromDate"
-                      value={fromDate}
-                      onChange={(e) => setFromDate(e.target.value)}
-                      className="w-28"
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Date Range */}
+              <div className="space-y-2">
+                <Label>From Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !fromDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {fromDate ? format(fromDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={fromDate}
+                      onSelect={setFromDate}
+                      initialFocus
                     />
-                  </div>
-                  <div>
-                    <Label htmlFor="toDate" className="text-xs">To Date:</Label>
-                    <Input
-                      id="toDate"
-                      value={toDate}
-                      onChange={(e) => setToDate(e.target.value)}
-                      className="w-28"
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>To Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !toDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {toDate ? format(toDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={toDate}
+                      onSelect={setToDate}
+                      initialFocus
                     />
-                  </div>
-                  <Button size="sm" className="bg-blue-500 hover:bg-blue-600 mt-4">
-                    Search
-                  </Button>
-                </div>
+                  </PopoverContent>
+                </Popover>
               </div>
-              
-              <div>
-                <RadioGroup value={productFilter} onValueChange={setProductFilter} className="flex gap-4">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="available" id="available" />
-                    <Label htmlFor="available">Available Products</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="all" id="all" />
-                    <Label htmlFor="all">All Products</Label>
-                  </div>
-                </RadioGroup>
+
+              {/* Supplier Filter */}
+              <div className="space-y-2">
+                <Label>Supplier</Label>
+                <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All Suppliers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Suppliers</SelectItem>
+                    {suppliers.map((supplier: Supplier) => (
+                      <SelectItem key={supplier.id} value={supplier.id.toString()}>
+                        {supplier.supplier_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Printer size={16} />
-                  Print
-                </Button>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Info size={16} />
-                  Options
-                </Button>
+
+              {/* Product Type Filter */}
+              <div className="space-y-2">
+                <Label>Product Type</Label>
+                <Select value={productFilter} onValueChange={setProductFilter}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Products</SelectItem>
+                    <SelectItem value="regular">Regular Products</SelectItem>
+                    <SelectItem value="non">Non-Products</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="mt-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search by description or remarks..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 w-full"
+                />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Dumps Table */}
+        {/* Dump Entries Table */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
-              <CardTitle>Supplier:</CardTitle>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <FileText size={14} />
-                  PDF
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Download size={14} />
-                  Excel
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Copy size={14} />
-                  Copy
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Printer size={14} />
-                  Print
-                </Button>
-                <div className="relative ml-4">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                  <Input
-                    placeholder="Search:"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 w-48"
-                  />
-                </div>
-              </div>
+              <CardTitle>Dump Entries</CardTitle>
+              <Button onClick={() => setIsAddingDump(!isAddingDump)}>
+                <Save className="h-4 w-4 mr-2" />
+                {isAddingDump ? "Cancel" : "Add Dump"}
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Returns Stock</TableHead>
-                  <TableHead>Remarks</TableHead>
-                  <TableHead className="text-center">Quantity</TableHead>
-                  <TableHead className="text-center">Unit Price</TableHead>
-                  <TableHead className="text-center">Total</TableHead>
-                  <TableHead className="text-center">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dumpItems.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                      No data available in table
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  dumpItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.supplier}</TableCell>
-                      <TableCell>{item.returnsStock}</TableCell>
-                      <TableCell>{item.remarks}</TableCell>
-                      <TableCell className="text-center">{item.quantity}</TableCell>
-                      <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{item.total.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">
-                        <Button size="sm" variant="outline">
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-                
-                {/* Add New Dump Row */}
-                <TableRow className="border-t-2 border-gray-200">
-                  <TableCell>
-                    <Select 
-                      value={newDump.supplier} 
-                      onValueChange={(value) => setNewDump({...newDump, supplier: value})}
-                    >
-                      <SelectTrigger className="w-40">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ABC Suppliers Ltd">ABC Suppliers Ltd</SelectItem>
-                        <SelectItem value="Global Trade Co">Global Trade Co</SelectItem>
-                        <SelectItem value="Premium Goods Inc">Premium Goods Inc</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      placeholder="Dump item"
-                      value={newDump.returnsStock}
-                      onChange={(e) => setNewDump({...newDump, returnsStock: e.target.value})}
-                      className="w-32"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      placeholder="Remarks"
-                      value={newDump.remarks}
-                      onChange={(e) => setNewDump({...newDump, remarks: e.target.value})}
-                      className="w-32"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      value={newDump.quantity}
-                      onChange={(e) => setNewDump({...newDump, quantity: parseFloat(e.target.value) || 0})}
-                      className="w-20 text-center"
-                      min="0"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={newDump.unitPrice}
-                      onChange={(e) => setNewDump({...newDump, unitPrice: parseFloat(e.target.value) || 0})}
-                      className="w-24 text-center"
-                      min="0"
-                    />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    £{(newDump.quantity * newDump.unitPrice).toFixed(2)}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Button 
-                      size="sm" 
-                      className="bg-green-500 hover:bg-green-600 text-white"
-                      onClick={handleAddDump}
-                    >
-                      <Save size={14} className="mr-1" />
-                      Save
-                    </Button>
-                  </TableCell>
-                </TableRow>
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300">
-                  <TableCell className="font-bold">{totalItems} Items</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="text-center font-bold">0.00</TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-            
-            <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 0 to 0 of 0 entries</div>
-              <div className="flex items-center gap-4">
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">Previous</Button>
-                  <Button variant="outline" size="sm" className="bg-blue-500 text-white">1</Button>
-                  <Button variant="outline" size="sm">Next</Button>
-                </div>
+            {isLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin" />
               </div>
-            </div>
+            ) : (
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-white z-10">
+                    <TableRow>
+                      <TableHead className="min-w-[80px]">Ref No</TableHead>
+                      <TableHead className="min-w-[100px]">Date</TableHead>
+                      <TableHead className="min-w-[120px]">Supplier</TableHead>
+                      <TableHead className="min-w-[80px]">Product</TableHead>
+                      <TableHead className="min-w-[150px]">Description</TableHead>
+                      <TableHead className="min-w-[120px]">Remarks</TableHead>
+                      <TableHead className="text-center min-w-[80px]">Quantity</TableHead>
+                      <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
+                      <TableHead className="text-center min-w-[100px]">Total Value</TableHead>
+                      <TableHead className="text-center min-w-[80px]">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dumpEntries.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                          No dump entries found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      dumpEntries.map((entry: DumpEntry) => (
+                        <TableRow key={entry.id}>
+                          <TableCell className="font-mono text-sm">{entry.refNumber}</TableCell>
+                          <TableCell className="text-sm">{entry.date}</TableCell>
+                          <TableCell className="text-sm">{entry.supplierName || "N/A"}</TableCell>
+                          <TableCell className="text-sm">{entry.productType}</TableCell>
+                          <TableCell className="text-sm max-w-[150px] truncate" title={entry.description}>
+                            {entry.description}
+                          </TableCell>
+                          <TableCell className="text-sm max-w-[120px] truncate" title={entry.remarks || ""}>
+                            {entry.remarks || "N/A"}
+                          </TableCell>
+                          <TableCell className="text-center text-sm">{entry.quantity}</TableCell>
+                          <TableCell className="text-center text-sm">£{entry.unitPrice.toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-sm">£{entry.totalValue.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleDeleteDump(entry.id)}
+                              disabled={deleteDumpMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                    
+                    {/* Add New Dump Row */}
+                    {isAddingDump && (
+                      <TableRow className="bg-muted/50">
+                        <TableCell className="text-sm">Auto</TableCell>
+                        <TableCell className="text-sm">{format(fromDate || new Date(), "yyyy-MM-dd")}</TableCell>
+                        <TableCell>
+                          <Select 
+                            value={newDump.supplierId} 
+                            onValueChange={(value) => setNewDump({...newDump, supplierId: value})}
+                          >
+                            <SelectTrigger className="w-full min-w-[120px] h-8">
+                              <SelectValue placeholder="Select" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No Supplier</SelectItem>
+                              {suppliers.map((supplier: Supplier) => (
+                                <SelectItem key={supplier.id} value={supplier.id.toString()}>
+                                  {supplier.supplier_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Select 
+                            value={newDump.productType} 
+                            onValueChange={(value: 'regular' | 'non') => setNewDump({...newDump, productType: value, productId: ""})}
+                          >
+                            <SelectTrigger className="w-full min-w-[80px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="regular">Regular</SelectItem>
+                              <SelectItem value="non">Non</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Select 
+                            value={newDump.productId} 
+                            onValueChange={(value) => setNewDump({...newDump, productId: value})}
+                          >
+                            <SelectTrigger className="w-full min-w-[150px] h-8">
+                              <SelectValue placeholder="Select Product" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {filteredProducts.map((product: any) => (
+                                <SelectItem key={product.id} value={product.id.toString()}>
+                                  {product.description}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            placeholder="Description"
+                            value={newDump.description}
+                            onChange={(e) => setNewDump({...newDump, description: e.target.value})}
+                            className="w-full min-w-[150px] h-8"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            placeholder="Remarks"
+                            value={newDump.remarks}
+                            onChange={(e) => setNewDump({...newDump, remarks: e.target.value})}
+                            className="w-full min-w-[120px] h-8"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={newDump.quantity}
+                            onChange={(e) => setNewDump({...newDump, quantity: parseInt(e.target.value) || 0})}
+                            className="w-full min-w-[80px] text-center h-8"
+                            min="0"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={newDump.unitPrice}
+                            onChange={(e) => setNewDump({...newDump, unitPrice: parseFloat(e.target.value) || 0})}
+                            className="w-full min-w-[100px] text-center h-8"
+                            min="0"
+                            step="0.01"
+                          />
+                        </TableCell>
+                        <TableCell className="text-center text-sm">
+                          £{(newDump.quantity * newDump.unitPrice).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button 
+                            size="sm" 
+                            onClick={handleAddDump}
+                            disabled={createDumpMutation.isPending}
+                            className="h-8"
+                          >
+                            {createDumpMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Save className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

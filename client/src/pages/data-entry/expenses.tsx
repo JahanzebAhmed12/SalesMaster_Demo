@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,65 +12,120 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Receipt, FileText, Download, Copy, Printer, Search, Info } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { ExpenseEntry, Expense, Supplier } from "@shared/schema";
 
-interface ExpenseEntry {
-  id: number;
-  ref: string;
+interface NewExpense {
   date: Date;
-  supplier: string;
-  expenseCategory: string;
+  supplierId: number | null;
+  expenseId: number | null;
   description: string;
-  invoiceNo: string;
+  invoiceNumber: string;
   remarks: string;
   paymentMode: string;
   amount: number;
+  vatAmount: number;
 }
 
 export default function Expenses() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const { toast } = useToast();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  const [expenses, setExpenses] = useState<ExpenseEntry[]>([]);
-  const [newExpense, setNewExpense] = useState({
-    date: new Date(2025, 5, 10),
-    supplier: "",
-    expenseCategory: "",
+  const [newExpense, setNewExpense] = useState<NewExpense>({
+    date: new Date(),
+    supplierId: null,
+    expenseId: null,
     description: "",
-    invoiceNo: "",
+    invoiceNumber: "",
     remarks: "",
     paymentMode: "CASH",
-    amount: 0
+    amount: 0,
+    vatAmount: 0
+  });
+
+  // Fetch expense entries
+  const { data: expenseEntries = [], isLoading, refetch } = useQuery<ExpenseEntry[]>({
+    queryKey: ["expense-entries", fromDate, toDate, searchTerm],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (fromDate) params.append('fromDate', format(fromDate, 'yyyy-MM-dd'));
+      if (toDate) params.append('toDate', format(toDate, 'yyyy-MM-dd'));
+      if (searchTerm) params.append('search', searchTerm);
+      
+      return apiRequest("GET", `/api/expense-entries?${params.toString()}`);
+    }
+  });
+
+  // Fetch suppliers for dropdown
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
+    queryKey: ["suppliers"],
+    queryFn: async () => apiRequest("GET", "/api/suppliers")
+  });
+
+  // Fetch expense categories for dropdown
+  const { data: expenseCategories = [] } = useQuery<Expense[]>({
+    queryKey: ["expenses"],
+    queryFn: async () => apiRequest("GET", "/api/expenses")
+  });
+
+  // Create expense entry mutation
+  const createExpenseMutation = useMutation({
+    mutationFn: async (data: Omit<NewExpense, 'date'> & { date: string }) => {
+      return apiRequest("POST", "/api/expense-entries", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-entries"] });
+      toast({
+        title: "Success",
+        description: "Expense entry created successfully",
+      });
+      // Reset form
+      setNewExpense({
+        date: new Date(),
+        supplierId: null,
+        expenseId: null,
+        description: "",
+        invoiceNumber: "",
+        remarks: "",
+        paymentMode: "CASH",
+        amount: 0,
+        vatAmount: 0
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create expense entry",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleAddExpense = () => {
-    if (newExpense.supplier && newExpense.expenseCategory && newExpense.amount > 0) {
-      const expense: ExpenseEntry = {
-        id: Date.now(),
-        ref: `E${expenses.length + 1}`,
-        date: newExpense.date,
-        supplier: newExpense.supplier,
-        expenseCategory: newExpense.expenseCategory,
-        description: newExpense.description,
-        invoiceNo: newExpense.invoiceNo,
-        remarks: newExpense.remarks,
-        paymentMode: newExpense.paymentMode,
-        amount: newExpense.amount
-      };
-      setExpenses([...expenses, expense]);
-      setNewExpense({
-        date: new Date(2025, 5, 10),
-        supplier: "",
-        expenseCategory: "",
-        description: "",
-        invoiceNo: "",
-        remarks: "",
-        paymentMode: "CASH",
-        amount: 0
+    if (!newExpense.supplierId || !newExpense.expenseId || !newExpense.description || newExpense.amount <= 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields and ensure amount is greater than 0",
+        variant: "destructive",
       });
+      return;
     }
+
+    const expenseData = {
+      ...newExpense,
+      date: format(newExpense.date, 'yyyy-MM-dd')
+    };
+
+    createExpenseMutation.mutate(expenseData);
   };
 
-  const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const handleSearch = () => {
+    refetch();
+  };
+
+  const totalAmount = expenseEntries.reduce((sum, expense) => sum + expense.totalAmount, 0);
 
   return (
     <PageLayout title="Expenses" breadcrumb="Expenses">
@@ -141,7 +197,7 @@ export default function Expenses() {
                 </Popover>
               </div>
               
-              <Button className="bg-blue-500 hover:bg-blue-600">
+              <Button className="bg-blue-500 hover:bg-blue-600" onClick={handleSearch}>
                 Search
               </Button>
               
@@ -208,22 +264,28 @@ export default function Expenses() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {expenses.length === 0 ? (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                ) : expenseEntries.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                       No data available in table
                     </TableCell>
                   </TableRow>
                 ) : (
-                  expenses.map((expense) => (
+                  expenseEntries.map((expense) => (
                     <TableRow key={expense.id}>
-                      <TableCell>{expense.ref}</TableCell>
-                      <TableCell>{format(expense.date, "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{expense.supplier}</TableCell>
-                      <TableCell>{expense.expenseCategory}</TableCell>
+                      <TableCell>{expense.refNumber}</TableCell>
+                      <TableCell>{format(new Date(expense.date), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>{expense.supplierName || '-'}</TableCell>
+                      <TableCell>{expense.expenseName || '-'}</TableCell>
                       <TableCell>{expense.description}</TableCell>
-                      <TableCell>{expense.invoiceNo}</TableCell>
-                      <TableCell>{expense.remarks}</TableCell>
+                      <TableCell>{expense.invoiceNumber || '-'}</TableCell>
+                      <TableCell>{expense.remarks || '-'}</TableCell>
                       <TableCell>{expense.paymentMode}</TableCell>
                       <TableCell className="text-right">£{expense.amount.toFixed(2)}</TableCell>
                     </TableRow>
@@ -232,7 +294,7 @@ export default function Expenses() {
                 
                 {/* Add New Expense Row */}
                 <TableRow className="border-t-2 border-gray-200">
-                  <TableCell>E{expenses.length + 1}</TableCell>
+                  <TableCell>E{expenseEntries.length + 1}</TableCell>
                   <TableCell>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -258,35 +320,35 @@ export default function Expenses() {
                   </TableCell>
                   <TableCell>
                     <Select 
-                      value={newExpense.supplier} 
-                      onValueChange={(value) => setNewExpense({...newExpense, supplier: value})}
+                      value={newExpense.supplierId?.toString() || ""} 
+                      onValueChange={(value) => setNewExpense({...newExpense, supplierId: value ? parseInt(value) : null})}
                     >
                       <SelectTrigger className="w-32">
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Office Supplies Ltd">Office Supplies Ltd</SelectItem>
-                        <SelectItem value="Utility Company">Utility Company</SelectItem>
-                        <SelectItem value="Transport Services">Transport Services</SelectItem>
-                        <SelectItem value="Maintenance Co">Maintenance Co</SelectItem>
+                        {suppliers.map((supplier) => (
+                          <SelectItem key={supplier.id} value={supplier.id.toString()}>
+                            {supplier.supplier_name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </TableCell>
                   <TableCell>
                     <Select 
-                      value={newExpense.expenseCategory} 
-                      onValueChange={(value) => setNewExpense({...newExpense, expenseCategory: value})}
+                      value={newExpense.expenseId?.toString() || ""} 
+                      onValueChange={(value) => setNewExpense({...newExpense, expenseId: value ? parseInt(value) : null})}
                     >
                       <SelectTrigger className="w-32">
                         <SelectValue placeholder="Category" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Office Expenses">Office Expenses</SelectItem>
-                        <SelectItem value="Transport">Transport</SelectItem>
-                        <SelectItem value="Utilities">Utilities</SelectItem>
-                        <SelectItem value="Maintenance">Maintenance</SelectItem>
-                        <SelectItem value="Marketing">Marketing</SelectItem>
-                        <SelectItem value="Insurance">Insurance</SelectItem>
+                        {expenseCategories.map((category) => (
+                          <SelectItem key={category.id} value={category.id.toString()}>
+                            {category.expenseName}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </TableCell>
@@ -301,8 +363,8 @@ export default function Expenses() {
                   <TableCell>
                     <Input
                       placeholder="Invoice #"
-                      value={newExpense.invoiceNo}
-                      onChange={(e) => setNewExpense({...newExpense, invoiceNo: e.target.value})}
+                      value={newExpense.invoiceNumber}
+                      onChange={(e) => setNewExpense({...newExpense, invoiceNumber: e.target.value})}
                       className="w-24"
                     />
                   </TableCell>
@@ -344,8 +406,9 @@ export default function Expenses() {
                         size="sm" 
                         className="bg-green-500 hover:bg-green-600 text-white px-2"
                         onClick={handleAddExpense}
+                        disabled={createExpenseMutation.isPending}
                       >
-                        Save
+                        {createExpenseMutation.isPending ? "Saving..." : "Save"}
                       </Button>
                     </div>
                   </TableCell>
@@ -367,7 +430,7 @@ export default function Expenses() {
             </Table>
             
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 0 to 0 of 0 entries</div>
+              <div>Showing {expenseEntries.length} entries</div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm">Previous</Button>

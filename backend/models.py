@@ -161,6 +161,9 @@ class RegularProduct(db.Model):
     reorder_quantity = db.Column(db.Integer, default=0)
     last_stock_take = db.Column(db.Integer, default=0)
     status = db.Column(db.String(20), default='active')
+    # Stock tracking fields
+    initial_stock = db.Column(db.Integer, default=0)
+    current_stock = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -190,6 +193,8 @@ class RegularProduct(db.Model):
             'reorderQuantity': self.reorder_quantity,
             'lastStockTake': self.last_stock_take,
             'status': self.status,
+            'initialStock': self.initial_stock,
+            'currentStock': self.current_stock,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -220,6 +225,9 @@ class NonProduct(db.Model):
     reorder_quantity = db.Column(db.Integer, default=0)
     last_stock_take = db.Column(db.Integer, default=0)
     status = db.Column(db.String(20), default='active')
+    # Stock tracking fields
+    initial_stock = db.Column(db.Integer, default=0)
+    current_stock = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -248,6 +256,8 @@ class NonProduct(db.Model):
             'reorderQuantity': self.reorder_quantity,
             'lastStockTake': self.last_stock_take,
             'status': self.status,
+            'initialStock': self.initial_stock,
+            'currentStock': self.current_stock,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -643,4 +653,256 @@ class SupplierPayment(db.Model):
             'remarks': self.remarks,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class StockMovement(db.Model):
+    """Tracks all stock movements (sales, purchases, adjustments)"""
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, nullable=False)  # ID of the product (regular or non)
+    product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
+    movement_type = db.Column(db.String(20), nullable=False)  # 'sale', 'purchase', 'adjustment', 'return'
+    quantity = db.Column(db.Integer, nullable=False)  # Positive for additions, negative for reductions
+    reference_id = db.Column(db.Integer)  # ID of the related sale, purchase, or adjustment
+    reference_type = db.Column(db.String(20))  # 'sale', 'purchase', 'adjustment'
+    previous_stock = db.Column(db.Integer, nullable=False)
+    new_stock = db.Column(db.Integer, nullable=False)
+    remarks = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'productId': self.product_id,
+            'productType': self.product_type,
+            'movementType': self.movement_type,
+            'quantity': self.quantity,
+            'referenceId': self.reference_id,
+            'referenceType': self.reference_type,
+            'previousStock': self.previous_stock,
+            'newStock': self.new_stock,
+            'remarks': self.remarks,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'createdBy': self.created_by
+        }
+
+class StockAdjustment(db.Model):
+    """Manual stock adjustments"""
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, nullable=False)
+    product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
+    adjustment_type = db.Column(db.String(20), nullable=False)  # 'increase', 'decrease', 'set'
+    quantity = db.Column(db.Integer, nullable=False)
+    previous_stock = db.Column(db.Integer, nullable=False)
+    new_stock = db.Column(db.Integer, nullable=False)
+    reason = db.Column(db.String(200), nullable=False)
+    remarks = db.Column(db.Text)
+    adjustment_date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'productId': self.product_id,
+            'productType': self.product_type,
+            'adjustmentType': self.adjustment_type,
+            'quantity': self.quantity,
+            'previousStock': self.previous_stock,
+            'newStock': self.new_stock,
+            'reason': self.reason,
+            'remarks': self.remarks,
+            'adjustmentDate': self.adjustment_date.isoformat() if self.adjustment_date else None,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'createdBy': self.created_by
+        }
+
+class ExpenseEntry(db.Model):
+    """Tracks actual expense transactions"""
+    id = db.Column(db.Integer, primary_key=True)
+    ref_number = db.Column(db.String(50), unique=True, nullable=False)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'))
+    expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id'), nullable=False)
+    description = db.Column(db.String(200), nullable=False)
+    invoice_number = db.Column(db.String(50))
+    remarks = db.Column(db.Text)
+    payment_mode = db.Column(db.String(20), nullable=False, default='CASH')  # CASH, CARD, BANK, CHEQUE
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    vat_amount = db.Column(db.Numeric(10, 2), default=0)
+    total_amount = db.Column(db.Numeric(10, 2), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    # Relationships
+    supplier = db.relationship('Supplier', backref='expense_entries')
+    expense_category = db.relationship('Expense', backref='expense_entries')
+    user = db.relationship('User', backref='expense_entries_created', foreign_keys=[created_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'refNumber': self.ref_number,
+            'date': self.date.isoformat() if self.date else None,
+            'supplierId': self.supplier_id,
+            'supplierName': self.supplier.supplier_name if self.supplier else None,
+            'expenseId': self.expense_id,
+            'expenseName': self.expense_category.expense_name if self.expense_category else None,
+            'description': self.description,
+            'invoiceNumber': self.invoice_number,
+            'remarks': self.remarks,
+            'paymentMode': self.payment_mode,
+            'amount': float(self.amount) if self.amount else 0,
+            'vatAmount': float(self.vat_amount) if self.vat_amount else 0,
+            'totalAmount': float(self.total_amount) if self.total_amount else 0,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'createdBy': self.created_by
+        }
+
+class DumpEntry(db.Model):
+    """Tracks dump/wastage transactions"""
+    id = db.Column(db.Integer, primary_key=True)
+    ref_number = db.Column(db.String(50), unique=True, nullable=False)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'))
+    product_id = db.Column(db.Integer, nullable=False)  # ID of the product being dumped
+    product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
+    description = db.Column(db.String(200), nullable=False)
+    remarks = db.Column(db.Text)
+    quantity = db.Column(db.Integer, nullable=False)
+    unit_price = db.Column(db.Numeric(10, 2), default=0)
+    total_value = db.Column(db.Numeric(10, 2), default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    # Relationships
+    supplier = db.relationship('Supplier', backref='dump_entries')
+    user = db.relationship('User', backref='dump_entries_created', foreign_keys=[created_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'refNumber': self.ref_number,
+            'date': self.date.isoformat() if self.date else None,
+            'supplierId': self.supplier_id,
+            'supplierName': self.supplier.supplier_name if self.supplier else None,
+            'productId': self.product_id,
+            'productType': self.product_type,
+            'description': self.description,
+            'remarks': self.remarks,
+            'quantity': self.quantity,
+            'unitPrice': float(self.unit_price) if self.unit_price else 0,
+            'totalValue': float(self.total_value) if self.total_value else 0,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'createdBy': self.created_by
+        }
+
+class CustomerReturn(db.Model):
+    """Tracks customer returns"""
+    id = db.Column(db.Integer, primary_key=True)
+    ref_number = db.Column(db.String(50), unique=True, nullable=False)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'))  # Optional, link to original sale
+    product_id = db.Column(db.Integer, nullable=False)  # ID of the product being returned
+    product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
+    description = db.Column(db.String(200), nullable=False)
+    invoice_number = db.Column(db.String(50))  # Original invoice number
+    remarks = db.Column(db.Text)
+    quantity = db.Column(db.Integer, nullable=False)
+    unit_price = db.Column(db.Numeric(10, 2), default=0)
+    total_value = db.Column(db.Numeric(10, 2), default=0)
+    return_reason = db.Column(db.String(100))  # e.g., 'damaged', 'wrong item', 'customer request'
+    credit_note_issued = db.Column(db.Boolean, default=False)
+    credit_note_amount = db.Column(db.Numeric(10, 2), default=0)
+    status = db.Column(db.String(20), default='pending')  # 'pending', 'approved', 'rejected', 'completed'
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    # Relationships
+    customer = db.relationship('Customer', backref='returns')
+    sale = db.relationship('Sale', backref='returns')
+    user = db.relationship('User', backref='customer_returns_created', foreign_keys=[created_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'refNumber': self.ref_number,
+            'date': self.date.isoformat() if self.date else None,
+            'customerId': self.customer_id,
+            'customerName': self.customer.customer_name if self.customer else None,
+            'saleId': self.sale_id,
+            'productId': self.product_id,
+            'productType': self.product_type,
+            'description': self.description,
+            'invoiceNumber': self.invoice_number,
+            'remarks': self.remarks,
+            'quantity': self.quantity,
+            'unitPrice': float(self.unit_price) if self.unit_price else 0,
+            'totalValue': float(self.total_value) if self.total_value else 0,
+            'returnReason': self.return_reason,
+            'creditNoteIssued': self.credit_note_issued,
+            'creditNoteAmount': float(self.credit_note_amount) if self.credit_note_amount else 0,
+            'status': self.status,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'createdBy': self.created_by
+        }
+
+class SupplierReturn(db.Model):
+    """Tracks supplier returns"""
+    id = db.Column(db.Integer, primary_key=True)
+    ref_number = db.Column(db.String(50), unique=True, nullable=False)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
+    purchase_invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id'))  # Optional, link to original purchase
+    product_id = db.Column(db.Integer, nullable=False)  # ID of the product being returned
+    product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
+    description = db.Column(db.String(200), nullable=False)
+    invoice_number = db.Column(db.String(50))  # Original invoice number
+    remarks = db.Column(db.Text)
+    quantity = db.Column(db.Integer, nullable=False)
+    unit_price = db.Column(db.Numeric(10, 2), default=0)
+    total_value = db.Column(db.Numeric(10, 2), default=0)
+    return_reason = db.Column(db.String(100))  # e.g., 'damaged', 'wrong item', 'quality issue'
+    credit_note_issued = db.Column(db.Boolean, default=False)
+    credit_note_amount = db.Column(db.Numeric(10, 2), default=0)
+    status = db.Column(db.String(20), default='pending')  # 'pending', 'approved', 'rejected', 'completed'
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    # Relationships
+    supplier = db.relationship('Supplier', backref='returns')
+    purchase_invoice = db.relationship('PurchaseInvoice', backref='returns')
+    user = db.relationship('User', backref='supplier_returns_created', foreign_keys=[created_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'refNumber': self.ref_number,
+            'date': self.date.isoformat() if self.date else None,
+            'supplierId': self.supplier_id,
+            'supplierName': self.supplier.supplier_name if self.supplier else None,
+            'purchaseInvoiceId': self.purchase_invoice_id,
+            'productId': self.product_id,
+            'productType': self.product_type,
+            'description': self.description,
+            'invoiceNumber': self.invoice_number,
+            'remarks': self.remarks,
+            'quantity': self.quantity,
+            'unitPrice': float(self.unit_price) if self.unit_price else 0,
+            'totalValue': float(self.total_value) if self.total_value else 0,
+            'returnReason': self.return_reason,
+            'creditNoteIssued': self.credit_note_issued,
+            'creditNoteAmount': float(self.credit_note_amount) if self.credit_note_amount else 0,
+            'status': self.status,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'createdBy': self.created_by
         } 

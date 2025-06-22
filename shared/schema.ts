@@ -282,7 +282,8 @@ const regularProductFields = {
   unitWeight: z.number(),
   stockTakeDate: z.string().nullable(),
   reorderQuantity: z.number(),
-  lastStockTake: z.number()
+  lastStockTake: z.number(),
+  initialStock: z.number()
 };
 
 // Regular Product Schema
@@ -312,9 +313,10 @@ export const nonProductSchema = z.object({
   stockLevelFlag: z.boolean(),
   commodityCode: z.string().nullable(),
   unitWeight: z.number(),
-  stockTakeDate: z.date().nullable(),
+  stockTakeDate: z.string().nullable(),
   reorderQuantity: z.number(),
   lastStockTake: z.number(),
+  initialStock: z.number(),
   status: z.string(),
   createdAt: z.string(),
   updatedAt: z.string()
@@ -341,6 +343,7 @@ export const insertNonProductSchema = nonProductSchema.omit({
   unitWeight: z.number().default(0),
   reorderQuantity: z.number().default(0),
   lastStockTake: z.number().default(0),
+  initialStock: z.number().default(0),
   status: z.string().default("active")
 });
 
@@ -471,3 +474,184 @@ export const insertSupplierPaymentSchema = supplierPaymentSchema.omit({
 
 export type SupplierPayment = z.infer<typeof supplierPaymentSchema>;
 export type InsertSupplierPayment = z.infer<typeof insertSupplierPaymentSchema>;
+
+// Stock Movement Schema
+export const stockMovementSchema = z.object({
+  id: z.number(),
+  productId: z.number(),
+  productType: z.string(),
+  movementType: z.string(),
+  quantity: z.number(),
+  referenceId: z.number().nullable(),
+  referenceType: z.string().nullable(),
+  previousStock: z.number(),
+  newStock: z.number(),
+  remarks: z.string().nullable(),
+  createdAt: z.string(),
+  createdBy: z.number().nullable()
+});
+
+export const insertStockMovementSchema = stockMovementSchema.omit({
+  id: true,
+  createdAt: true
+});
+
+// Stock Adjustment Schema
+export const stockAdjustmentSchema = z.object({
+  id: z.number(),
+  productId: z.number(),
+  productType: z.string(),
+  adjustmentType: z.string(),
+  quantity: z.number(),
+  previousStock: z.number(),
+  newStock: z.number(),
+  reason: z.string(),
+  remarks: z.string().nullable(),
+  adjustmentDate: z.string(),
+  createdAt: z.string(),
+  createdBy: z.number().nullable()
+});
+
+export const insertStockAdjustmentSchema = stockAdjustmentSchema.omit({
+  id: true,
+  createdAt: true
+});
+
+export type StockMovement = z.infer<typeof stockMovementSchema>;
+export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
+export type StockAdjustment = z.infer<typeof stockAdjustmentSchema>;
+export type InsertStockAdjustment = z.infer<typeof insertStockAdjustmentSchema>;
+
+// Expense Entry Schema
+export const expenseEntrySchema = z.object({
+  id: z.number(),
+  refNumber: z.string(),
+  date: z.string(),
+  supplierId: z.number().nullable(),
+  supplierName: z.string().nullable(),
+  expenseId: z.number(),
+  expenseName: z.string().nullable(),
+  description: z.string(),
+  invoiceNumber: z.string().nullable(),
+  remarks: z.string().nullable(),
+  paymentMode: z.string(),
+  amount: z.number(),
+  vatAmount: z.number(),
+  totalAmount: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  createdBy: z.number().nullable()
+});
+
+export const insertExpenseEntrySchema = expenseEntrySchema.omit({
+  id: true,
+  supplierName: true,
+  expenseName: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type ExpenseEntry = z.infer<typeof expenseEntrySchema>;
+export type InsertExpenseEntry = z.infer<typeof insertExpenseEntrySchema>;
+
+// Dump Entry Schema
+export const dumpEntrySchema = z.object({
+  id: z.number(),
+  refNumber: z.string(),
+  date: z.string(),
+  supplierId: z.number().nullable(),
+  supplierName: z.string().nullable(),
+  productId: z.number(),
+  productType: z.string(),
+  description: z.string(),
+  remarks: z.string().nullable(),
+  quantity: z.number(),
+  unitPrice: z.number(),
+  totalValue: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  createdBy: z.number().nullable()
+});
+
+export const insertDumpEntrySchema = dumpEntrySchema.omit({
+  id: true,
+  supplierName: true,
+  createdAt: true,
+  updatedAt: true,
+  createdBy: true
+});
+
+export type DumpEntry = z.infer<typeof dumpEntrySchema>;
+export type InsertDumpEntry = z.infer<typeof insertDumpEntrySchema>;
+
+// Customer Return Schema
+export const customerReturnSchema = z.object({
+  id: z.number(),
+  refNumber: z.string(),
+  date: z.string(),
+  customerId: z.number(),
+  customerName: z.string().nullable(),
+  saleId: z.number().nullable(),
+  productId: z.number(),
+  productType: z.string(),
+  description: z.string(),
+  invoiceNumber: z.string().nullable(),
+  remarks: z.string().nullable(),
+  quantity: z.number(),
+  unitPrice: z.number(),
+  totalValue: z.number(),
+  returnReason: z.string().nullable(),
+  creditNoteIssued: z.boolean(),
+  creditNoteAmount: z.number(),
+  status: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  createdBy: z.number().nullable()
+});
+
+export const insertCustomerReturnSchema = customerReturnSchema.omit({
+  id: true,
+  customerName: true,
+  createdAt: true,
+  updatedAt: true,
+  createdBy: true
+});
+
+// Supplier Return Schema
+export const supplierReturnSchema = z.object({
+  id: z.number(),
+  refNumber: z.string(),
+  date: z.string(),
+  supplierId: z.number(),
+  supplierName: z.string().nullable(),
+  purchaseInvoiceId: z.number().nullable(),
+  productId: z.number(),
+  productType: z.string(),
+  description: z.string(),
+  invoiceNumber: z.string().nullable(),
+  remarks: z.string().nullable(),
+  quantity: z.number(),
+  unitPrice: z.number(),
+  totalValue: z.number(),
+  returnReason: z.string().nullable(),
+  creditNoteIssued: z.boolean(),
+  creditNoteAmount: z.number(),
+  status: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  createdBy: z.number().nullable()
+});
+
+export const insertSupplierReturnSchema = supplierReturnSchema.omit({
+  id: true,
+  supplierName: true,
+  createdAt: true,
+  updatedAt: true,
+  createdBy: true
+});
+
+export type CustomerReturn = z.infer<typeof customerReturnSchema>;
+export type InsertCustomerReturn = z.infer<typeof insertCustomerReturnSchema>;
+
+export type SupplierReturn = z.infer<typeof supplierReturnSchema>;
+export type InsertSupplierReturn = z.infer<typeof insertSupplierReturnSchema>;

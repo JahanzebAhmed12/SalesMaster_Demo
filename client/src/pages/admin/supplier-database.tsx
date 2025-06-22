@@ -37,7 +37,7 @@ export default function Suppliers() {
       await apiRequest("DELETE", `/api/suppliers/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       toast({
         title: "Success",
         description: "Supplier deleted successfully",

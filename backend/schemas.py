@@ -95,6 +95,7 @@ class RegularProductSchema(BaseModel):
     reorder_quantity: int = 0
     last_stock_take: int = 0
     status: str = 'active'
+    initial_stock: int = 0  # New field for initial stock
 
     class Config:
         from_attributes = True
@@ -118,7 +119,8 @@ class RegularProductSchema(BaseModel):
             .replace('unitWeight', 'unit_weight') \
             .replace('stockTakeDate', 'stock_take_date') \
             .replace('reorderQuantity', 'reorder_quantity') \
-            .replace('lastStockTake', 'last_stock_take')
+            .replace('lastStockTake', 'last_stock_take') \
+            .replace('initialStock', 'initial_stock')
 
 class NonProductSchema(BaseModel):
     product_code: str
@@ -143,6 +145,7 @@ class NonProductSchema(BaseModel):
     reorder_quantity: int = 0
     last_stock_take: int = 0
     status: str = 'active'
+    initial_stock: int = 0  # New field for initial stock
 
     class Config:
         from_attributes = True
@@ -165,7 +168,8 @@ class NonProductSchema(BaseModel):
             .replace('unitWeight', 'unit_weight') \
             .replace('stockTakeDate', 'stock_take_date') \
             .replace('reorderQuantity', 'reorder_quantity') \
-            .replace('lastStockTake', 'last_stock_take')
+            .replace('lastStockTake', 'last_stock_take') \
+            .replace('initialStock', 'initial_stock')
 
 class CustomerSchema(BaseModel):
     customer_code: str
@@ -285,6 +289,109 @@ class SupplierPaymentSchema(BaseModel):
     payment_mode: str = Field(alias='paymentMode')
     payment_date: date = Field(alias='paymentDate')
     remarks: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class StockMovementSchema(BaseModel):
+    product_id: int = Field(alias='productId')
+    product_type: str = Field(alias='productType')
+    movement_type: str = Field(alias='movementType')
+    quantity: int
+    reference_id: Optional[int] = Field(default=None, alias='referenceId')
+    reference_type: Optional[str] = Field(default=None, alias='referenceType')
+    remarks: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class StockAdjustmentSchema(BaseModel):
+    product_id: int = Field(alias='productId')
+    product_type: str = Field(alias='productType')
+    adjustment_type: str = Field(alias='adjustmentType')
+    quantity: int
+    reason: str
+    remarks: Optional[str] = None
+    adjustment_date: date = Field(alias='adjustmentDate')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class ExpenseEntrySchema(BaseModel):
+    refNumber: str = Field(alias='refNumber')
+    date: date
+    supplierId: Optional[int] = Field(default=None, alias='supplierId')
+    expenseId: int = Field(alias='expenseId')
+    description: str
+    invoiceNumber: Optional[str] = Field(default=None, alias='invoiceNumber')
+    remarks: Optional[str] = None
+    paymentMode: str = Field(default='CASH', alias='paymentMode')
+    amount: float
+    vatAmount: float = Field(default=0, alias='vatAmount')
+    totalAmount: float = Field(alias='totalAmount')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class DumpEntrySchema(BaseModel):
+    refNumber: str = Field(alias='refNumber')
+    date: date
+    supplierId: Optional[int] = Field(default=None, alias='supplierId')
+    productId: int = Field(alias='productId')
+    productType: str = Field(alias='productType')
+    description: str
+    remarks: Optional[str] = None
+    quantity: int
+    unitPrice: float = Field(default=0, alias='unitPrice')
+    totalValue: float = Field(alias='totalValue')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class CustomerReturnSchema(BaseModel):
+    refNumber: str = Field(alias='refNumber')
+    date: date
+    customerId: int = Field(alias='customerId')
+    saleId: Optional[int] = Field(default=None, alias='saleId')
+    productId: int = Field(alias='productId')
+    productType: str = Field(alias='productType')
+    description: str
+    invoiceNumber: Optional[str] = Field(default=None, alias='invoiceNumber')
+    remarks: Optional[str] = None
+    quantity: int
+    unitPrice: float = Field(default=0, alias='unitPrice')
+    totalValue: float = Field(alias='totalValue')
+    returnReason: Optional[str] = Field(default=None, alias='returnReason')
+    creditNoteIssued: bool = Field(default=False, alias='creditNoteIssued')
+    creditNoteAmount: float = Field(default=0, alias='creditNoteAmount')
+    status: str = Field(default='pending', alias='status')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class SupplierReturnSchema(BaseModel):
+    refNumber: str = Field(alias='refNumber')
+    date: date
+    supplierId: int = Field(alias='supplierId')
+    purchaseInvoiceId: Optional[int] = Field(default=None, alias='purchaseInvoiceId')
+    productId: int = Field(alias='productId')
+    productType: str = Field(alias='productType')
+    description: str
+    invoiceNumber: Optional[str] = Field(default=None, alias='invoiceNumber')
+    remarks: Optional[str] = None
+    quantity: int
+    unitPrice: float = Field(default=0, alias='unitPrice')
+    totalValue: float = Field(alias='totalValue')
+    returnReason: Optional[str] = Field(default=None, alias='returnReason')
+    creditNoteIssued: bool = Field(default=False, alias='creditNoteIssued')
+    creditNoteAmount: float = Field(default=0, alias='creditNoteAmount')
+    status: str = Field(default='pending', alias='status')
 
     class Config:
         from_attributes = True

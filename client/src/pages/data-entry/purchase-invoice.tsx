@@ -143,10 +143,18 @@ export default function PurchaseInvoice() {
       return;
     }
 
+    // Format purchase date as YYYY-MM-DD for the invoice
+    let invoiceDate = undefined;
+    if (purchase && purchase.date) {
+      const d = new Date(purchase.date);
+      invoiceDate = d.toISOString().slice(0, 10); // YYYY-MM-DD
+    }
+
     createInvoiceMutation.mutate({
       purchaseId: purchaseId,
       remarks,
-      items
+      items,
+      date: invoiceDate
     });
   };
 

@@ -3,10 +3,10 @@ from flask_cors import CORS
 from datetime import datetime, timedelta
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
-    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema
+    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema
 )
 from users import verify_password, create_admin_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -54,6 +54,66 @@ jwt = JWTManager(app)
 @jwt.user_identity_loader
 def user_identity_lookup(user_id):
     return str(user_id)
+
+# Stock management helper functions
+def update_product_stock(product_id, product_type, quantity_change, movement_type, reference_id=None, reference_type=None, remarks=None, user_id=None):
+    """Update product stock and create movement record"""
+    try:
+        # Get the product
+        if product_type == 'regular':
+            product = RegularProduct.query.get(product_id)
+        else:
+            product = NonProduct.query.get(product_id)
+        
+        if not product:
+            raise ValueError(f"Product not found: {product_id}")
+        
+        previous_stock = product.current_stock
+        new_stock = previous_stock + quantity_change
+        
+        # Ensure stock doesn't go negative (except for adjustments)
+        if new_stock < 0 and movement_type != 'adjustment':
+            raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
+        
+        # Update product stock
+        product.current_stock = new_stock
+        
+        # Create stock movement record
+        movement = StockMovement(
+            product_id=product_id,
+            product_type=product_type,
+            movement_type=movement_type,
+            quantity=quantity_change,
+            reference_id=reference_id,
+            reference_type=reference_type,
+            previous_stock=previous_stock,
+            new_stock=new_stock,
+            remarks=remarks,
+            created_by=user_id
+        )
+        
+        db.session.add(movement)
+        db.session.commit()
+        
+        return True, new_stock
+    except Exception as e:
+        db.session.rollback()
+        return False, str(e)
+
+def get_product_stock(product_id, product_type):
+    """Get current stock for a product"""
+    try:
+        if product_type == 'regular':
+            product = RegularProduct.query.get(product_id)
+        else:
+            product = NonProduct.query.get(product_id)
+        
+        if not product:
+            return None
+        
+        return product.current_stock
+    except Exception as e:
+        return None
 
 # Auth routes
 @app.route('/api/auth/login', methods=['POST'])
@@ -139,6 +199,8 @@ def create_sale():
         )
         db.session.add(new_sale)
         db.session.commit()
+        
+        # Process sale items and update stock
         for item_data in sale_data.items:
             new_item = SaleItem(
                 sale_id=new_sale.id,
@@ -149,6 +211,38 @@ def create_sale():
                 total_price=item_data.total_price
             )
             db.session.add(new_item)
+            
+            # Update stock if sale is finalized
+            if sale_data.status == 'finalized':
+                if item_data.product_id:
+                    # Regular product
+                    success, result = update_product_stock(
+                        product_id=item_data.product_id,
+                        product_type='regular',
+                        quantity_change=-item_data.quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=new_sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice: {sale_data.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                elif item_data.non_product_id:
+                    # Non-product
+                    success, result = update_product_stock(
+                        product_id=item_data.non_product_id,
+                        product_type='non',
+                        quantity_change=-item_data.quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=new_sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice: {sale_data.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
         db.session.commit()
         return jsonify(new_sale.to_dict()), 201
     except Exception as e:
@@ -173,6 +267,11 @@ def update_sale(id):
     try:
         sale_data = SaleSchema(**data)
         sale = Sale.query.get_or_404(id)
+        user_id = get_jwt_identity()
+        
+        # Store old status to check if it's changing to finalized
+        old_status = sale.status
+        new_status = sale_data.status
         
         # Update sale fields
         for key, value in sale_data.dict(exclude={'items'}).items():
@@ -189,6 +288,71 @@ def update_sale(id):
                 total_price=item_data.total_price
             )
             sale.items.append(sale_item)
+        
+        # Handle stock updates when status changes to finalized
+        if old_status != 'finalized' and new_status == 'finalized':
+            # Stock should be reduced when status changes to finalized
+            for item_data in sale_data.items:
+                if item_data.product_id:
+                    # Regular product
+                    success, result = update_product_stock(
+                        product_id=item_data.product_id,
+                        product_type='regular',
+                        quantity_change=-item_data.quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice finalized: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                elif item_data.non_product_id:
+                    # Non-product
+                    success, result = update_product_stock(
+                        product_id=item_data.non_product_id,
+                        product_type='non',
+                        quantity_change=-item_data.quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice finalized: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+        elif old_status == 'finalized' and new_status != 'finalized':
+            # If status is changing from finalized to something else, we should restore stock
+            # This handles cases where a finalized sale is cancelled or changed back to draft
+            for item_data in sale_data.items:
+                if item_data.product_id:
+                    # Regular product - restore stock
+                    success, result = update_product_stock(
+                        product_id=item_data.product_id,
+                        product_type='regular',
+                        quantity_change=item_data.quantity,  # Positive to restore
+                        movement_type='sale_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice status changed from finalized: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+                elif item_data.non_product_id:
+                    # Non-product - restore stock
+                    success, result = update_product_stock(
+                        product_id=item_data.non_product_id,
+                        product_type='non',
+                        quantity_change=item_data.quantity,  # Positive to restore
+                        movement_type='sale_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice status changed from finalized: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
         
         db.session.commit()
         return jsonify(sale.to_dict())
@@ -305,7 +469,8 @@ def create_regular_product():
             'stock_take_date': data.get('stockTakeDate'),
             'reorder_quantity': data.get('reorderQuantity'),
             'last_stock_take': data.get('lastStockTake'),
-            'status': data.get('status', 'active')
+            'status': data.get('status', 'active'),
+            'initial_stock': data.get('initialStock', 0)  # New field
         }
         
         # Validate the data using the schema
@@ -314,8 +479,29 @@ def create_regular_product():
         
         # Create the product
         product = RegularProduct(**validated_data.dict())
+        
+        # Set current_stock to initial_stock
+        product.current_stock = validated_data.initial_stock
+        
         db.session.add(product)
         db.session.commit()
+        
+        # Create initial stock movement record if initial stock > 0
+        if validated_data.initial_stock > 0:
+            movement = StockMovement(
+                product_id=product.id,
+                product_type='regular',
+                movement_type='adjustment',
+                quantity=validated_data.initial_stock,
+                reference_id=None,
+                reference_type='initial_stock',
+                previous_stock=0,
+                new_stock=validated_data.initial_stock,
+                remarks=f"Initial stock set to {validated_data.initial_stock}",
+                created_by=None  # System created
+            )
+            db.session.add(movement)
+            db.session.commit()
         
         print("Product created successfully:", product.to_dict())  # Debug log
         return jsonify(product.to_dict())
@@ -431,7 +617,8 @@ def create_non_product():
             'stock_take_date': data.get('stockTakeDate'),
             'reorder_quantity': data.get('reorderQuantity'),
             'last_stock_take': data.get('lastStockTake'),
-            'status': data.get('status', 'active')
+            'status': data.get('status', 'active'),
+            'initial_stock': data.get('initialStock', 0)  # New field
         }
         
         # Validate the data using the schema
@@ -440,8 +627,29 @@ def create_non_product():
         
         # Create the non-product
         non_product = NonProduct(**validated_data.dict())
+        
+        # Set current_stock to initial_stock
+        non_product.current_stock = validated_data.initial_stock
+        
         db.session.add(non_product)
         db.session.commit()
+        
+        # Create initial stock movement record if initial stock > 0
+        if validated_data.initial_stock > 0:
+            movement = StockMovement(
+                product_id=non_product.id,
+                product_type='non',
+                movement_type='adjustment',
+                quantity=validated_data.initial_stock,
+                reference_id=None,
+                reference_type='initial_stock',
+                previous_stock=0,
+                new_stock=validated_data.initial_stock,
+                remarks=f"Initial stock set to {validated_data.initial_stock}",
+                created_by=None  # System created
+            )
+            db.session.add(movement)
+            db.session.commit()
         
         print("Non-product created successfully:", non_product.to_dict())  # Debug log
         return jsonify(non_product.to_dict())
@@ -1309,6 +1517,7 @@ def create_payment():
             if new_paid >= float(sale.total_amount):
                 sale.payment_status = "paid"
                 sale.paid_amount = sale.total_amount
+                sale.status = "finalized"  # Mark as finalized when fully paid
             else:
                 sale.payment_status = "partial"
                 sale.paid_amount = new_paid
@@ -1351,10 +1560,10 @@ def get_customer_outstanding_invoices(customer_id):
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
 
-        # Fetch sales where total_amount > paid_amount and status is finalized
+        # Fetch sales where total_amount > paid_amount and status is pending, paid, or finalized
         outstanding_sales = Sale.query.filter(
             Sale.customer_id == customer_id,
-            Sale.status == 'finalized',
+            or_(Sale.status == 'pending', Sale.status == 'paid', Sale.status == 'finalized'),
             Sale.total_amount > (Sale.paid_amount or 0)
         ).all()
 
@@ -1500,8 +1709,8 @@ def customer_statement():
     # Fetch sales and payments for this customer in the date range
     sales = Sale.query.filter(
         Sale.customer_id == customer_id,
-        Sale.date >= from_dt,
-        Sale.date <= to_dt,
+        func.date(Sale.date) >= from_dt.date(),
+        func.date(Sale.date) <= to_dt.date(),
         Sale.status == 'finalized'
     ).all()
     payments = Payment.query.filter(
@@ -1593,8 +1802,8 @@ def customer_history():
     # Fetch sales for this customer in the date range
     sales_query = Sale.query.filter(
         Sale.customer_id == customer_id,
-        Sale.date >= from_dt,
-        Sale.date <= to_dt,
+        func.date(Sale.date) >= from_dt.date(),
+        func.date(Sale.date) <= to_dt.date(),
         Sale.status == 'finalized'
     )
     if filter_type == "Credit":
@@ -1630,7 +1839,6 @@ def customer_history():
     return jsonify(history)
 
 @app.route('/api/reports/product-sales', methods=['GET'])
-@jwt_required()
 def product_sales_report():
     from_date = request.args.get('fromDate')
     to_date = request.args.get('toDate')
@@ -1652,18 +1860,18 @@ def product_sales_report():
         .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
         .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
     )
-    
+
     # Filter by date range
     if from_date:
         try:
             from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-            query = query.filter(Sale.date >= from_dt)
+            query = query.filter(func.date(Sale.date) >= from_dt.date())
         except Exception:
             pass
     if to_date:
         try:
             to_dt = datetime.strptime(to_date, "%Y-%m-%d")
-            query = query.filter(Sale.date <= to_dt)
+            query = query.filter(func.date(Sale.date) <= to_dt.date())
         except Exception:
             pass
     # Only finalized sales
@@ -1707,12 +1915,25 @@ def product_sales_report():
 @app.route('/api/purchase-invoices', methods=['POST'])
 def create_purchase_invoice():
     data = request.get_json()
+    # Accept 'date' in format YYYY-MM-DD, fallback to utcnow if not provided
+    from datetime import datetime
+    invoice_date = None
+    if data.get('date'):
+        try:
+            invoice_date = datetime.strptime(data['date'], "%Y-%m-%d")
+        except Exception:
+            invoice_date = datetime.utcnow()
+    else:
+        invoice_date = datetime.utcnow()
     invoice = PurchaseInvoice(
         purchase_id=data['purchaseId'],
-        remarks=data.get('remarks')
+        remarks=data.get('remarks'),
+        date=invoice_date
     )
     db.session.add(invoice)
     db.session.commit()
+    
+    # Process invoice items and update stock
     for item in data['items']:
         invoice_item = PurchaseInvoiceItem(
             invoice_id=invoice.id,
@@ -1723,6 +1944,25 @@ def create_purchase_invoice():
             total_price=item['totalPrice']
         )
         db.session.add(invoice_item)
+        
+        # Update stock for the product
+        # Note: We need to determine if it's a regular or non-product
+        # For now, we'll assume regular products and handle both cases
+        product_type = 'regular'  # Default assumption
+        success, result = update_product_stock(
+            product_id=item['productId'],
+            product_type=product_type,
+            quantity_change=item['quantity'],  # Positive for purchases
+            movement_type='purchase',
+            reference_id=invoice.id,
+            reference_type='purchase',
+            remarks=f"Purchase invoice for purchase {data['purchaseId']}",
+            user_id=None  # TODO: Get user_id from JWT if needed
+        )
+        if not success:
+            db.session.rollback()
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+    
     db.session.commit()
     return jsonify(invoice.to_dict()), 201
 
@@ -2083,6 +2323,2030 @@ def product_purchase_report():
         })
     
     return jsonify(purchase_data)
+
+@app.route('/api/reports/sales-analysis', methods=['GET'])
+@jwt_required()
+def sales_analysis_report():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    search = request.args.get('search', '')
+    
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+
+    # Prepare date range
+    num_days = (to_dt - from_dt).days + 1
+    date_list = [(from_dt + timedelta(days=i)).date() for i in range(num_days)]
+
+    # Fetch all sales in range
+    sales = Sale.query.filter(
+        func.date(Sale.date) >= from_dt.date(),
+        func.date(Sale.date) <= to_dt.date(),
+        Sale.status == 'finalized'
+    ).all()
+    print(f"[DEBUG] Found {len(sales)} finalized sales between {from_date} and {to_date}")
+    for sale in sales:
+        print(f"[DEBUG] Sale: id={sale.id}, date={sale.date}, status={sale.status}, customer_type={sale.customer_type}, total_amount={sale.total_amount}, paid_amount={sale.paid_amount}")
+
+    # Fetch all purchase invoices and items in range
+    from models import PurchaseInvoice, PurchaseInvoiceItem
+    invoices = PurchaseInvoice.query.filter(
+        func.date(PurchaseInvoice.date) >= from_dt.date(),
+        func.date(PurchaseInvoice.date) <= to_dt.date()
+    ).all()
+    invoice_items = PurchaseInvoiceItem.query.join(PurchaseInvoice).filter(
+        func.date(PurchaseInvoice.date) >= from_dt.date(),
+        func.date(PurchaseInvoice.date) <= to_dt.date()
+    ).all()
+
+    # Group sales by date
+    sales_by_date = {d: [] for d in date_list}
+    for sale in sales:
+        d = sale.date.date()
+        if d in sales_by_date:
+            sales_by_date[d].append(sale)
+
+    # Group purchase invoice items by invoice date
+    purchases_by_date = {d: [] for d in date_list}
+    for item in invoice_items:
+        invoice = item.invoice
+        if invoice and invoice.date:
+            d = invoice.date.date()
+            if d in purchases_by_date:
+                purchases_by_date[d].append(item)
+
+    rows = []
+    total_purchase = total_credit = total_cash = total_sales = 0
+    for idx, d in enumerate(date_list, 1):
+        day_purchases = sum(float(item.total_price) for item in purchases_by_date[d])
+        day_credit_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'credit')
+        day_cash_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'cash')
+        day_total_sales = day_credit_sales + day_cash_sales
+        print(f"[DEBUG] {d}: purchase={day_purchases}, creditSales={day_credit_sales}, cashSales={day_cash_sales}, totalSales={day_total_sales}")
+        rows.append({
+            'slNo': idx,
+            'date': d.strftime('%d-%m-%Y'),
+            'purchase': day_purchases,
+            'creditSales': day_credit_sales,
+            'cashSales': day_cash_sales,
+            'totalSales': day_total_sales
+        })
+        total_purchase += day_purchases
+        total_credit += day_credit_sales
+        total_cash += day_cash_sales
+        total_sales += day_total_sales
+
+    summary = {
+        'totalPurchase': total_purchase,
+        'totalCredit': total_credit,
+        'totalCash': total_cash,
+        'totalSales': total_sales
+    }
+    print(f"[DEBUG] Summary: {summary}")
+    return jsonify({'sales': rows, 'summary': summary})
+
+# Stock Management Routes
+@app.route('/api/stock/current', methods=['GET'])
+@jwt_required()
+def get_current_stock():
+    """Get current stock for all products"""
+    try:
+        regular_products = RegularProduct.query.all()
+        non_products = NonProduct.query.all()
+        
+        stock_data = []
+        
+        # Add regular products
+        for product in regular_products:
+            stock_data.append({
+                'id': product.id,
+                'productCode': product.product_code,
+                'description': product.description,
+                'productType': 'regular',
+                'currentStock': product.current_stock,
+                'reorderLevel': product.reorder_level,
+                'unitOfSale': product.unit_of_sale,
+                'location': product.location
+            })
+        
+        # Add non-products
+        for product in non_products:
+            stock_data.append({
+                'id': product.id,
+                'productCode': product.product_code,
+                'description': product.description,
+                'productType': 'non',
+                'currentStock': product.current_stock,
+                'reorderLevel': product.reorder_level,
+                'unitOfSale': product.unit_of_sale,
+                'location': product.location
+            })
+        
+        return jsonify(stock_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/stock/product/<int:product_id>', methods=['GET'])
+@jwt_required()
+def get_product_stock_details(product_id):
+    """Get stock details for a specific product"""
+    try:
+        product_type = request.args.get('type', 'regular')  # 'regular' or 'non'
+        
+        if product_type == 'regular':
+            product = RegularProduct.query.get(product_id)
+        else:
+            product = NonProduct.query.get(product_id)
+        
+        if not product:
+            return jsonify({"error": "Product not found"}), 404
+        
+        # Get recent stock movements
+        movements = StockMovement.query.filter_by(
+            product_id=product_id,
+            product_type=product_type
+        ).order_by(StockMovement.created_at.desc()).limit(10).all()
+        
+        return jsonify({
+            'product': {
+                'id': product.id,
+                'productCode': product.product_code,
+                'description': product.description,
+                'productType': product_type,
+                'currentStock': product.current_stock,
+                'reorderLevel': product.reorder_level,
+                'unitOfSale': product.unit_of_sale,
+                'location': product.location
+            },
+            'recentMovements': [movement.to_dict() for movement in movements]
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/stock/adjust', methods=['POST'])
+@jwt_required()
+def adjust_stock():
+    """Manually adjust stock for a product"""
+    try:
+        data = request.get_json()
+        adjustment_data = StockAdjustmentSchema(**data)
+        user_id = get_jwt_identity()
+        
+        # Get current stock
+        current_stock = get_product_stock(adjustment_data.product_id, adjustment_data.product_type)
+        if current_stock is None:
+            return jsonify({"error": "Product not found"}), 404
+        
+        # Calculate new stock based on adjustment type
+        if adjustment_data.adjustment_type == 'increase':
+            quantity_change = adjustment_data.quantity
+            new_stock = current_stock + adjustment_data.quantity
+        elif adjustment_data.adjustment_type == 'decrease':
+            quantity_change = -adjustment_data.quantity
+            new_stock = current_stock - adjustment_data.quantity
+        elif adjustment_data.adjustment_type == 'set':
+            quantity_change = adjustment_data.quantity - current_stock
+            new_stock = adjustment_data.quantity
+        else:
+            return jsonify({"error": "Invalid adjustment type"}), 400
+        
+        # Ensure stock doesn't go negative
+        if new_stock < 0:
+            return jsonify({"error": "Stock cannot be negative"}), 400
+        
+        # Update stock
+        success, result = update_product_stock(
+            product_id=adjustment_data.product_id,
+            product_type=adjustment_data.product_type,
+            quantity_change=quantity_change,
+            movement_type='adjustment',
+            reference_id=None,
+            reference_type='adjustment',
+            remarks=f"Manual adjustment: {adjustment_data.reason}",
+            user_id=user_id
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        # Create adjustment record
+        adjustment = StockAdjustment(
+            product_id=adjustment_data.product_id,
+            product_type=adjustment_data.product_type,
+            adjustment_type=adjustment_data.adjustment_type,
+            quantity=adjustment_data.quantity,
+            previous_stock=current_stock,
+            new_stock=new_stock,
+            reason=adjustment_data.reason,
+            remarks=adjustment_data.remarks,
+            adjustment_date=adjustment_data.adjustment_date,
+            created_by=user_id
+        )
+        
+        db.session.add(adjustment)
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Stock adjusted successfully",
+            "previousStock": current_stock,
+            "newStock": new_stock,
+            "adjustment": adjustment.to_dict()
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/stock/movements', methods=['GET'])
+@jwt_required()
+def get_stock_movements():
+    """Get stock movements with optional filtering"""
+    try:
+        product_id = request.args.get('productId', type=int)
+        product_type = request.args.get('productType')
+        movement_type = request.args.get('movementType')
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        
+        query = StockMovement.query
+        
+        if product_id:
+            query = query.filter(StockMovement.product_id == product_id)
+        if product_type:
+            query = query.filter(StockMovement.product_type == product_type)
+        if movement_type:
+            query = query.filter(StockMovement.movement_type == movement_type)
+        if from_date:
+            query = query.filter(StockMovement.created_at >= from_date)
+        if to_date:
+            query = query.filter(StockMovement.created_at <= to_date)
+        
+        movements = query.order_by(StockMovement.created_at.desc()).all()
+        
+        return jsonify([movement.to_dict() for movement in movements]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/stock/adjustments', methods=['GET'])
+@jwt_required()
+def get_stock_adjustments():
+    """Get stock adjustments with optional filtering"""
+    try:
+        product_id = request.args.get('productId', type=int)
+        product_type = request.args.get('productType')
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        
+        query = StockAdjustment.query
+        
+        if product_id:
+            query = query.filter(StockAdjustment.product_id == product_id)
+        if product_type:
+            query = query.filter(StockAdjustment.product_type == product_type)
+        if from_date:
+            query = query.filter(StockAdjustment.adjustment_date >= from_date)
+        if to_date:
+            query = query.filter(StockAdjustment.adjustment_date <= to_date)
+        
+        adjustments = query.order_by(StockAdjustment.created_at.desc()).all()
+        
+        return jsonify([adjustment.to_dict() for adjustment in adjustments]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/stock/low-stock', methods=['GET'])
+@jwt_required()
+def get_low_stock_products():
+    """Get products with stock below reorder level"""
+    try:
+        regular_products = RegularProduct.query.filter(
+            RegularProduct.current_stock <= RegularProduct.reorder_level,
+            RegularProduct.status == 'active'
+        ).all()
+        
+        non_products = NonProduct.query.filter(
+            NonProduct.current_stock <= NonProduct.reorder_level,
+            NonProduct.status == 'active'
+        ).all()
+        
+        low_stock_products = []
+        
+        for product in regular_products:
+            low_stock_products.append({
+                'id': product.id,
+                'productCode': product.product_code,
+                'description': product.description,
+                'productType': 'regular',
+                'currentStock': product.current_stock,
+                'reorderLevel': product.reorder_level,
+                'reorderQuantity': product.reorder_quantity,
+                'unitOfSale': product.unit_of_sale
+            })
+        
+        for product in non_products:
+            low_stock_products.append({
+                'id': product.id,
+                'productCode': product.product_code,
+                'description': product.description,
+                'productType': 'non',
+                'currentStock': product.current_stock,
+                'reorderLevel': product.reorder_level,
+                'reorderQuantity': product.reorder_quantity,
+                'unitOfSale': product.unit_of_sale
+            })
+        
+        return jsonify(low_stock_products), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/stock-check', methods=['GET'])
+@jwt_required()
+def stock_check_report():
+    """Generate stock check report between two dates"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        search = request.args.get('search', '')
+        
+        print(f"[DEBUG] Stock check request - fromDate: {from_date}, toDate: {to_date}, search: {search}")
+        
+        if not from_date or not to_date:
+            return jsonify({'error': 'fromDate and toDate are required'}), 400
+        
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+        
+        print(f"[DEBUG] Parsed dates - from_dt: {from_dt}, to_dt: {to_dt}")
+        
+        # Get all products (regular and non)
+        regular_products = RegularProduct.query.filter(RegularProduct.status == 'active').all()
+        non_products = NonProduct.query.filter(NonProduct.status == 'active').all()
+        
+        print(f"[DEBUG] Found {len(regular_products)} regular products and {len(non_products)} non-products")
+        
+        stock_check_data = []
+        
+        # Process regular products
+        for product in regular_products:
+            try:
+                if search and search.lower() not in product.description.lower():
+                    continue
+                    
+                print(f"[DEBUG] Processing regular product: {product.description} (ID: {product.id})")
+                
+                # Get opening stock (stock at the beginning of from_date)
+                opening_stock = get_opening_stock(product.id, 'regular', from_dt)
+                print(f"[DEBUG] Opening stock: {opening_stock}")
+                
+                # Get new stock (purchases) between dates
+                new_stock = get_new_stock(product.id, 'regular', from_dt, to_dt)
+                print(f"[DEBUG] New stock: {new_stock}")
+                
+                # Get sales between dates
+                sales = get_sales_quantity(product.id, 'regular', from_dt, to_dt)
+                print(f"[DEBUG] Sales: {sales}")
+                
+                # Get returns between dates (customer returns)
+                customer_returns = get_customer_returns_quantity(product.id, 'regular', from_dt, to_dt)
+                print(f"[DEBUG] Customer returns: {customer_returns}")
+                
+                # Get dumps/wastage between dates
+                dumps = get_dumps_quantity(product.id, 'regular', from_dt, to_dt)
+                print(f"[DEBUG] Dumps: {dumps}")
+                
+                # Get supplier returns between dates
+                supplier_returns = get_supplier_returns_quantity(product.id, 'regular', from_dt, to_dt)
+                print(f"[DEBUG] Supplier returns: {supplier_returns}")
+                
+                # Calculate expected stock
+                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
+                print(f"[DEBUG] Expected stock: {expected_stock}")
+                
+                # Get actual closing stock
+                actual_closing_stock = product.current_stock
+                print(f"[DEBUG] Actual closing stock: {actual_closing_stock}")
+                
+                # Calculate difference
+                difference = actual_closing_stock - expected_stock
+                print(f"[DEBUG] Difference: {difference}")
+                
+                # Determine status
+                if difference == 0:
+                    result = "✓"
+                    status = "correct"
+                elif difference < 0:
+                    result = f"short {abs(difference)}"
+                    status = "short"
+                else:
+                    result = f"extra {difference}"
+                    status = "excess"
+                
+                stock_check_data.append({
+                    'id': product.id,
+                    'productDescription': product.description,
+                    'os': opening_stock,
+                    'ns': new_stock,
+                    'sales': sales,
+                    'crtn': customer_returns,
+                    'dmps': dumps,
+                    'srtn': supplier_returns,
+                    'stock': expected_stock,
+                    'clStock': actual_closing_stock,
+                    'result': result,
+                    'status': status,
+                    'productType': 'regular'
+                })
+            except Exception as e:
+                print(f"[ERROR] Error processing regular product {product.id}: {str(e)}")
+                import traceback
+                print(f"[ERROR] Traceback: {traceback.format_exc()}")
+                continue
+        
+        # Process non-products
+        for product in non_products:
+            try:
+                if search and search.lower() not in product.description.lower():
+                    continue
+                    
+                print(f"[DEBUG] Processing non-product: {product.description} (ID: {product.id})")
+                
+                # Get opening stock
+                opening_stock = get_opening_stock(product.id, 'non', from_dt)
+                
+                # Get new stock
+                new_stock = get_new_stock(product.id, 'non', from_dt, to_dt)
+                
+                # Get sales
+                sales = get_sales_quantity(product.id, 'non', from_dt, to_dt)
+                
+                # Get returns
+                customer_returns = get_customer_returns_quantity(product.id, 'non', from_dt, to_dt)
+                
+                # Get dumps
+                dumps = get_dumps_quantity(product.id, 'non', from_dt, to_dt)
+                
+                # Get supplier returns
+                supplier_returns = get_supplier_returns_quantity(product.id, 'non', from_dt, to_dt)
+                
+                # Calculate expected stock
+                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
+                
+                # Get actual closing stock
+                actual_closing_stock = product.current_stock
+                
+                # Calculate difference
+                difference = actual_closing_stock - expected_stock
+                
+                # Determine status
+                if difference == 0:
+                    result = "✓"
+                    status = "correct"
+                elif difference < 0:
+                    result = f"short {abs(difference)}"
+                    status = "short"
+                else:
+                    result = f"extra {difference}"
+                    status = "excess"
+                
+                stock_check_data.append({
+                    'id': product.id,
+                    'productDescription': product.description,
+                    'os': opening_stock,
+                    'ns': new_stock,
+                    'sales': sales,
+                    'crtn': customer_returns,
+                    'dmps': dumps,
+                    'srtn': supplier_returns,
+                    'stock': expected_stock,
+                    'clStock': actual_closing_stock,
+                    'result': result,
+                    'status': status,
+                    'productType': 'non'
+                })
+            except Exception as e:
+                print(f"[ERROR] Error processing non-product {product.id}: {str(e)}")
+                import traceback
+                print(f"[ERROR] Traceback: {traceback.format_exc()}")
+                continue
+        
+        # Sort by product description
+        stock_check_data.sort(key=lambda x: x['productDescription'])
+        
+        # Add serial numbers
+        for i, item in enumerate(stock_check_data, 1):
+            item['slNo'] = i
+        
+        print(f"[DEBUG] Returning {len(stock_check_data)} stock check items")
+        return jsonify(stock_check_data), 200
+        
+    except Exception as e:
+        print(f"[ERROR] Exception in stock_check_report: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+def get_opening_stock(product_id, product_type, from_date):
+    """Get stock level at the beginning of from_date"""
+    try:
+        print(f"[DEBUG] Getting opening stock for product {product_id} ({product_type}) before {from_date}")
+        
+        # Get the last stock movement before from_date
+        last_movement = StockMovement.query.filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type,
+            StockMovement.created_at < from_date
+        ).order_by(StockMovement.created_at.desc()).first()
+        
+        if last_movement:
+            print(f"[DEBUG] Found last movement: {last_movement.new_stock}")
+            return last_movement.new_stock
+        else:
+            print(f"[DEBUG] No movements found, checking initial stock")
+            # If no movements, check if there's initial stock
+            if product_type == 'regular':
+                product = RegularProduct.query.get(product_id)
+            else:
+                product = NonProduct.query.get(product_id)
+            
+            if product and product.initial_stock:
+                print(f"[DEBUG] Found initial stock: {product.initial_stock}")
+                return product.initial_stock
+            print(f"[DEBUG] No initial stock found, returning 0")
+            return 0
+    except Exception as e:
+        print(f"[ERROR] Error getting opening stock: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        return 0
+
+def get_new_stock(product_id, product_type, from_date, to_date):
+    """Get new stock (purchases) between dates"""
+    try:
+        print(f"[DEBUG] Getting new stock for product {product_id} ({product_type}) between {from_date} and {to_date}")
+        
+        movements = StockMovement.query.filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type,
+            StockMovement.movement_type == 'purchase',
+            StockMovement.created_at >= from_date,
+            StockMovement.created_at <= to_date
+        ).all()
+        
+        total = sum(movement.quantity for movement in movements if movement.quantity > 0)
+        print(f"[DEBUG] Found {len(movements)} purchase movements, total: {total}")
+        return total
+    except Exception as e:
+        print(f"[ERROR] Error getting new stock: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        return 0
+
+def get_sales_quantity(product_id, product_type, from_date, to_date):
+    """Get sales quantity between dates"""
+    try:
+        print(f"[DEBUG] Getting sales quantity for product {product_id} ({product_type}) between {from_date} and {to_date}")
+        
+        movements = StockMovement.query.filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type,
+            StockMovement.movement_type == 'sale',
+            StockMovement.created_at >= from_date,
+            StockMovement.created_at <= to_date
+        ).all()
+        
+        total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
+        print(f"[DEBUG] Found {len(movements)} sale movements, total: {total}")
+        return total
+    except Exception as e:
+        print(f"[ERROR] Error getting sales quantity: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        return 0
+
+def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
+    """Get customer returns between dates"""
+    try:
+        print(f"[DEBUG] Getting customer returns for product {product_id} ({product_type}) between {from_date} and {to_date}")
+        
+        movements = StockMovement.query.filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type,
+            StockMovement.movement_type == 'customer_return',
+            StockMovement.created_at >= from_date,
+            StockMovement.created_at <= to_date
+        ).all()
+        
+        total = sum(movement.quantity for movement in movements if movement.quantity > 0)
+        print(f"[DEBUG] Found {len(movements)} customer return movements, total: {total}")
+        return total
+    except Exception as e:
+        print(f"[ERROR] Error getting customer returns: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        return 0
+
+def get_dumps_quantity(product_id, product_type, from_date, to_date):
+    """Get dumps/wastage between dates"""
+    try:
+        print(f"[DEBUG] Getting dumps quantity for product {product_id} ({product_type}) between {from_date} and {to_date}")
+        
+        movements = StockMovement.query.filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type,
+            StockMovement.movement_type == 'dump',
+            StockMovement.created_at >= from_date,
+            StockMovement.created_at <= to_date
+        ).all()
+        
+        total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
+        print(f"[DEBUG] Found {len(movements)} dump movements, total: {total}")
+        return total
+    except Exception as e:
+        print(f"[ERROR] Error getting dumps quantity: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        return 0
+
+def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
+    """Get supplier returns between dates"""
+    try:
+        print(f"[DEBUG] Getting supplier returns for product {product_id} ({product_type}) between {from_date} and {to_date}")
+        
+        movements = StockMovement.query.filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type,
+            StockMovement.movement_type == 'supplier_return',
+            StockMovement.created_at >= from_date,
+            StockMovement.created_at <= to_date
+        ).all()
+        
+        total = sum(movement.quantity for movement in movements if movement.quantity > 0)
+        print(f"[DEBUG] Found {len(movements)} supplier return movements, total: {total}")
+        return total
+    except Exception as e:
+        print(f"[ERROR] Error getting supplier returns: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        return 0
+
+@app.route('/api/stock/customer-return', methods=['POST'])
+@jwt_required()
+def add_customer_return():
+    """Add customer return movement"""
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        success, result = update_product_stock(
+            product_id=data['productId'],
+            product_type=data['productType'],
+            quantity_change=data['quantity'],  # Positive for returns
+            movement_type='customer_return',
+            reference_id=data.get('saleId'),
+            reference_type='sale',
+            remarks=f"Customer return: {data.get('remarks', '')}",
+            user_id=user_id
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        return jsonify({"message": "Customer return recorded successfully", "newStock": result}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/stock/dump', methods=['POST'])
+@jwt_required()
+def add_dump():
+    """Add dump/wastage movement"""
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        success, result = update_product_stock(
+            product_id=data['productId'],
+            product_type=data['productType'],
+            quantity_change=-data['quantity'],  # Negative for dumps
+            movement_type='dump',
+            reference_id=None,
+            reference_type='dump',
+            remarks=f"Dump/wastage: {data.get('remarks', '')}",
+            user_id=user_id
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        return jsonify({"message": "Dump recorded successfully", "newStock": result}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/stock/supplier-return', methods=['POST'])
+@jwt_required()
+def add_supplier_return():
+    """Add supplier return movement"""
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        success, result = update_product_stock(
+            product_id=data['productId'],
+            product_type=data['productType'],
+            quantity_change=data['quantity'],  # Positive for returns
+            movement_type='supplier_return',
+            reference_id=data.get('purchaseId'),
+            reference_type='purchase',
+            remarks=f"Supplier return: {data.get('remarks', '')}",
+            user_id=user_id
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        return jsonify({"message": "Supplier return recorded successfully", "newStock": result}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Expense Entry routes
+@app.route('/api/expense-entries', methods=['GET'])
+@jwt_required()
+def get_expense_entries():
+    """Get expense entries with optional filtering"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        search = request.args.get('search', '')
+        
+        query = ExpenseEntry.query
+        
+        # Filter by date range
+        if from_date:
+            query = query.filter(ExpenseEntry.date >= from_date)
+        if to_date:
+            query = query.filter(ExpenseEntry.date <= to_date)
+        
+        # Search by description, supplier name, or expense category
+        if search:
+            query = query.join(Supplier).join(Expense).filter(
+                or_(
+                    ExpenseEntry.description.ilike(f'%{search}%'),
+                    Supplier.supplier_name.ilike(f'%{search}%'),
+                    Expense.expense_name.ilike(f'%{search}%')
+                )
+            )
+        
+        expense_entries = query.order_by(ExpenseEntry.date.desc()).all()
+        return jsonify([entry.to_dict() for entry in expense_entries]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/expense-entries', methods=['POST'])
+@jwt_required()
+def create_expense_entry():
+    """Create a new expense entry"""
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        # Generate reference number
+        last_entry = ExpenseEntry.query.order_by(ExpenseEntry.id.desc()).first()
+        ref_number = f"E{1 if not last_entry else last_entry.id + 1:04d}"
+        
+        # Calculate total amount
+        amount = float(data.get('amount', 0))
+        vat_amount = float(data.get('vatAmount', 0))
+        total_amount = amount + vat_amount
+        
+        expense_entry_data = ExpenseEntrySchema(**{
+            **data,
+            'refNumber': ref_number,
+            'totalAmount': total_amount
+        })
+        
+        expense_entry = ExpenseEntry(
+            ref_number=ref_number,
+            date=expense_entry_data.date,
+            supplier_id=expense_entry_data.supplierId,
+            expense_id=expense_entry_data.expenseId,
+            description=expense_entry_data.description,
+            invoice_number=expense_entry_data.invoiceNumber,
+            remarks=expense_entry_data.remarks,
+            payment_mode=expense_entry_data.paymentMode,
+            amount=amount,
+            vat_amount=vat_amount,
+            total_amount=total_amount,
+            created_by=user_id
+        )
+        
+        db.session.add(expense_entry)
+        db.session.commit()
+        
+        return jsonify(expense_entry.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/expense-entries/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_expense_entry(id):
+    """Update an expense entry"""
+    try:
+        data = request.get_json()
+        expense_entry = ExpenseEntry.query.get_or_404(id)
+        
+        # Calculate total amount
+        amount = float(data.get('amount', 0))
+        vat_amount = float(data.get('vatAmount', 0))
+        total_amount = amount + vat_amount
+        
+        # Update fields
+        expense_entry.date = datetime.strptime(data['date'], "%Y-%m-%d").date()
+        expense_entry.supplier_id = data.get('supplierId')
+        expense_entry.expense_id = data['expenseId']
+        expense_entry.description = data['description']
+        expense_entry.invoice_number = data.get('invoiceNumber')
+        expense_entry.remarks = data.get('remarks')
+        expense_entry.payment_mode = data['paymentMode']
+        expense_entry.amount = amount
+        expense_entry.vat_amount = vat_amount
+        expense_entry.total_amount = total_amount
+        
+        db.session.commit()
+        return jsonify(expense_entry.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/expense-entries/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_expense_entry(id):
+    """Delete an expense entry"""
+    try:
+        expense_entry = ExpenseEntry.query.get_or_404(id)
+        db.session.delete(expense_entry)
+        db.session.commit()
+        return jsonify({"message": "Expense entry deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+# Dump Entry routes
+@app.route('/api/dump-entries', methods=['GET'])
+@jwt_required()
+def get_dump_entries():
+    """Get dump entries with optional filtering"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        supplier_id = request.args.get('supplierId', type=int)
+        search = request.args.get('search', '')
+        
+        query = DumpEntry.query
+        
+        # Filter by date range
+        if from_date:
+            query = query.filter(DumpEntry.date >= from_date)
+        if to_date:
+            query = query.filter(DumpEntry.date <= to_date)
+        
+        # Filter by supplier
+        if supplier_id:
+            query = query.filter(DumpEntry.supplier_id == supplier_id)
+        
+        # Search by description or remarks
+        if search:
+            query = query.filter(
+                or_(
+                    DumpEntry.description.ilike(f'%{search}%'),
+                    DumpEntry.remarks.ilike(f'%{search}%')
+                )
+            )
+        
+        dump_entries = query.order_by(DumpEntry.date.desc()).all()
+        return jsonify([entry.to_dict() for entry in dump_entries]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/dump-entries', methods=['POST'])
+@jwt_required()
+def create_dump_entry():
+    """Create a new dump entry"""
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        # Generate reference number
+        last_entry = DumpEntry.query.order_by(DumpEntry.id.desc()).first()
+        ref_number = f"D{1 if not last_entry else last_entry.id + 1:04d}"
+        
+        # Calculate total value
+        quantity = int(data.get('quantity', 0))
+        unit_price = float(data.get('unitPrice', 0))
+        total_value = quantity * unit_price
+        
+        dump_entry_data = DumpEntrySchema(**{
+            **data,
+            'refNumber': ref_number,
+            'totalValue': total_value
+        })
+        
+        dump_entry = DumpEntry(
+            ref_number=ref_number,
+            date=dump_entry_data.date,
+            supplier_id=dump_entry_data.supplierId,
+            product_id=dump_entry_data.productId,
+            product_type=dump_entry_data.productType,
+            description=dump_entry_data.description,
+            remarks=dump_entry_data.remarks,
+            quantity=quantity,
+            unit_price=unit_price,
+            total_value=total_value,
+            created_by=user_id
+        )
+        
+        db.session.add(dump_entry)
+        db.session.commit()
+        
+        # Update stock movement
+        success, result = update_product_stock(
+            product_id=dump_entry_data.productId,
+            product_type=dump_entry_data.productType,
+            quantity_change=-quantity,  # Negative for dumps
+            movement_type='dump',
+            reference_id=dump_entry.id,
+            reference_type='dump',
+            remarks=f"Dump entry: {dump_entry_data.description}",
+            user_id=user_id
+        )
+        
+        if not success:
+            db.session.rollback()
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        return jsonify(dump_entry.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/dump-entries/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_dump_entry(id):
+    """Update a dump entry"""
+    try:
+        data = request.get_json()
+        dump_entry = DumpEntry.query.get_or_404(id)
+        
+        # Calculate total value
+        quantity = int(data.get('quantity', 0))
+        unit_price = float(data.get('unitPrice', 0))
+        total_value = quantity * unit_price
+        
+        # Update fields
+        dump_entry.date = datetime.strptime(data['date'], "%Y-%m-%d").date()
+        dump_entry.supplier_id = data.get('supplierId')
+        dump_entry.product_id = data['productId']
+        dump_entry.product_type = data['productType']
+        dump_entry.description = data['description']
+        dump_entry.remarks = data.get('remarks')
+        dump_entry.quantity = quantity
+        dump_entry.unit_price = unit_price
+        dump_entry.total_value = total_value
+        
+        db.session.commit()
+        return jsonify(dump_entry.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/dump-entries/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_dump_entry(id):
+    """Delete a dump entry"""
+    try:
+        dump_entry = DumpEntry.query.get_or_404(id)
+        
+        # Restore stock before deleting
+        success, result = update_product_stock(
+            product_id=dump_entry.product_id,
+            product_type=dump_entry.product_type,
+            quantity_change=dump_entry.quantity,  # Positive to restore
+            movement_type='dump_cancellation',
+            reference_id=dump_entry.id,
+            reference_type='dump',
+            remarks=f"Dump entry cancelled: {dump_entry.description}",
+            user_id=get_jwt_identity()
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+        
+        db.session.delete(dump_entry)
+        db.session.commit()
+        return jsonify({"message": "Dump entry deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+# Customer Return routes
+@app.route('/api/customer-returns', methods=['GET'])
+@jwt_required()
+def get_customer_returns():
+    """Get customer returns with optional filtering"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        customer_id = request.args.get('customerId', type=int)
+        search = request.args.get('search', '')
+        status = request.args.get('status')
+        
+        query = CustomerReturn.query
+        
+        # Filter by date range
+        if from_date:
+            query = query.filter(CustomerReturn.date >= from_date)
+        if to_date:
+            query = query.filter(CustomerReturn.date <= to_date)
+        
+        # Filter by customer
+        if customer_id:
+            query = query.filter(CustomerReturn.customer_id == customer_id)
+        
+        # Filter by status
+        if status and status != 'all':
+            query = query.filter(CustomerReturn.status == status)
+        
+        # Search by description, invoice number, or customer name
+        if search:
+            query = query.join(Customer).filter(
+                or_(
+                    CustomerReturn.description.ilike(f'%{search}%'),
+                    CustomerReturn.invoice_number.ilike(f'%{search}%'),
+                    Customer.customer_name.ilike(f'%{search}%')
+                )
+            )
+        
+        customer_returns = query.order_by(CustomerReturn.date.desc()).all()
+        return jsonify([return_item.to_dict() for return_item in customer_returns]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customer-returns', methods=['POST'])
+@jwt_required()
+def create_customer_return():
+    """Create a new customer return"""
+    try:
+        data = request.get_json()
+        print(f"[DEBUG] Received data: {data}")  # Debug log
+        user_id = get_jwt_identity()
+        print(f"[DEBUG] User ID: {user_id}")  # Debug log
+        
+        # Generate reference number
+        last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
+        ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
+        print(f"[DEBUG] Generated ref number: {ref_number}")  # Debug log
+        
+        # Calculate total value
+        quantity = int(data.get('quantity', 0))
+        unit_price = float(data.get('unitPrice', 0))
+        total_value = quantity * unit_price
+        print(f"[DEBUG] Calculated total value: {total_value}")  # Debug log
+        
+        # Parse date string to date object
+        date_str = data.get('date')
+        if date_str:
+            try:
+                parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                print(f"[DEBUG] Parsed date: {parsed_date}")  # Debug log
+            except ValueError:
+                return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+        else:
+            parsed_date = datetime.now().date()
+            print(f"[DEBUG] Using current date: {parsed_date}")  # Debug log
+        
+        # Validate customer exists
+        customer = Customer.query.get(data.get('customerId'))
+        if not customer:
+            return jsonify({"error": "Customer not found"}), 404
+        print(f"[DEBUG] Customer found: {customer.customer_name}")  # Debug log
+        
+        # Validate product exists
+        product_type = data.get('productType')
+        if product_type == 'regular':
+            product = RegularProduct.query.get(data.get('productId'))
+        else:
+            product = NonProduct.query.get(data.get('productId'))
+        
+        if not product:
+            return jsonify({"error": "Product not found"}), 404
+        print(f"[DEBUG] Product found: {product.description}")  # Debug log
+        
+        # Validate sale exists if provided
+        sale = None
+        if data.get('saleId'):
+            sale = Sale.query.get(data.get('saleId'))
+            if not sale:
+                return jsonify({"error": "Sale not found"}), 404
+            print(f"[DEBUG] Sale found: {sale.invoice_number}")  # Debug log
+        
+        # Prepare data for schema validation
+        schema_data = {
+            'refNumber': ref_number,
+            'date': parsed_date,
+            'customerId': data.get('customerId'),
+            'saleId': data.get('saleId'),
+            'productId': data.get('productId'),
+            'productType': data.get('productType'),
+            'description': data.get('description'),
+            'invoiceNumber': data.get('invoiceNumber'),
+            'remarks': data.get('remarks'),
+            'quantity': quantity,
+            'unitPrice': unit_price,
+            'totalValue': total_value,
+            'returnReason': data.get('returnReason'),
+            'creditNoteIssued': data.get('creditNoteIssued', False),
+            'creditNoteAmount': float(data.get('creditNoteAmount', 0)),
+            'status': data.get('status', 'pending')
+        }
+        print(f"[DEBUG] Schema data prepared: {schema_data}")  # Debug log
+        
+        customer_return_data = CustomerReturnSchema(**schema_data)
+        print(f"[DEBUG] Schema validation passed")  # Debug log
+        
+        customer_return = CustomerReturn(
+            ref_number=ref_number,
+            date=parsed_date,
+            customer_id=customer_return_data.customerId,
+            sale_id=customer_return_data.saleId,
+            product_id=customer_return_data.productId,
+            product_type=customer_return_data.productType,
+            description=customer_return_data.description,
+            invoice_number=customer_return_data.invoiceNumber,
+            remarks=customer_return_data.remarks,
+            quantity=quantity,
+            unit_price=unit_price,
+            total_value=total_value,
+            return_reason=customer_return_data.returnReason,
+            credit_note_issued=customer_return_data.creditNoteIssued,
+            credit_note_amount=customer_return_data.creditNoteAmount,
+            status=customer_return_data.status,
+            created_by=user_id
+        )
+        print(f"[DEBUG] CustomerReturn object created")  # Debug log
+        
+        db.session.add(customer_return)
+        db.session.commit()
+        print(f"[DEBUG] CustomerReturn saved to database")  # Debug log
+        
+        # Note: Stock is NOT updated here - it will be updated when the return is approved
+        
+        # If credit note is issued, update customer balance
+        if customer_return_data.creditNoteIssued and customer_return_data.creditNoteAmount > 0:
+            # Create a payment record to reduce customer balance
+            credit_payment = Payment(
+                customer_id=customer_return_data.customerId,
+                sale_id=customer_return_data.saleId,
+                amount=-customer_return_data.creditNoteAmount,  # Negative amount for credit
+                payment_mode='credit_note',
+                payment_date=parsed_date,
+                remarks=f"Credit note for return: {ref_number}"
+            )
+            db.session.add(credit_payment)
+            print(f"[DEBUG] Credit payment created")  # Debug log
+            
+            # Update customer's outstanding balance
+            if sale:
+                current_paid = float(sale.paid_amount or 0)
+                new_paid = current_paid - customer_return_data.creditNoteAmount
+                sale.paid_amount = max(0, new_paid)  # Ensure it doesn't go negative
+                if new_paid <= 0:
+                    sale.payment_status = 'pending'
+                else:
+                    sale.payment_status = 'partial'
+                db.session.add(sale)
+                print(f"[DEBUG] Sale payment status updated")  # Debug log
+        
+        db.session.commit()
+        print(f"[DEBUG] Final commit successful")  # Debug log
+        return jsonify(customer_return.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Exception occurred: {str(e)}")  # Debug log
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")  # Debug log
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customer-returns/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_customer_return(id):
+    """Update a customer return"""
+    try:
+        data = request.get_json()
+        customer_return = CustomerReturn.query.get_or_404(id)
+        user_id = get_jwt_identity()
+        
+        # Store old values for stock adjustment
+        old_quantity = customer_return.quantity
+        old_credit_amount = customer_return.credit_note_amount
+        
+        # Calculate total value
+        quantity = int(data.get('quantity', 0))
+        unit_price = float(data.get('unitPrice', 0))
+        total_value = quantity * unit_price
+        
+        # Update fields
+        customer_return.date = datetime.strptime(data['date'], "%Y-%m-%d").date()
+        customer_return.customer_id = data['customerId']
+        customer_return.sale_id = data.get('saleId')
+        customer_return.product_id = data['productId']
+        customer_return.product_type = data['productType']
+        customer_return.description = data['description']
+        customer_return.invoice_number = data.get('invoiceNumber')
+        customer_return.remarks = data.get('remarks')
+        customer_return.quantity = quantity
+        customer_return.unit_price = unit_price
+        customer_return.total_value = total_value
+        customer_return.return_reason = data.get('returnReason')
+        customer_return.credit_note_issued = data.get('creditNoteIssued', False)
+        customer_return.credit_note_amount = float(data.get('creditNoteAmount', 0))
+        customer_return.status = data.get('status', 'pending')
+        
+        # Adjust stock if quantity changed
+        if quantity != old_quantity:
+            quantity_change = quantity - old_quantity
+            success, result = update_product_stock(
+                product_id=customer_return.product_id,
+                product_type=customer_return.product_type,
+                quantity_change=quantity_change,
+                movement_type='customer_return_adjustment',
+                reference_id=customer_return.id,
+                reference_type='customer_return',
+                remarks=f"Return quantity adjusted: {old_quantity} -> {quantity}",
+                user_id=user_id
+            )
+            
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        # Handle credit note changes
+        new_credit_amount = float(data.get('creditNoteAmount', 0))
+        if new_credit_amount != old_credit_amount:
+            # Remove old credit note payment if exists
+            old_credit_payment = Payment.query.filter_by(
+                customer_id=customer_return.customer_id,
+                payment_mode='credit_note',
+                remarks__like=f"%{customer_return.ref_number}%"
+            ).first()
+            
+            if old_credit_payment:
+                db.session.delete(old_credit_payment)
+            
+            # Create new credit note payment if needed
+            if data.get('creditNoteIssued') and new_credit_amount > 0:
+                credit_payment = Payment(
+                    customer_id=customer_return.customer_id,
+                    sale_id=customer_return.sale_id,
+                    amount=-new_credit_amount,  # Negative amount for credit
+                    payment_mode='credit_note',
+                    payment_date=customer_return.date,
+                    remarks=f"Credit note for return: {customer_return.ref_number}"
+                )
+                db.session.add(credit_payment)
+                
+                # Update sale payment status
+                if customer_return.sale:
+                    current_paid = float(customer_return.sale.paid_amount or 0)
+                    new_paid = current_paid - new_credit_amount
+                    customer_return.sale.paid_amount = max(0, new_paid)
+                    if new_paid <= 0:
+                        customer_return.sale.payment_status = 'pending'
+                    else:
+                        customer_return.sale.payment_status = 'partial'
+                    db.session.add(customer_return.sale)
+        
+        db.session.commit()
+        return jsonify(customer_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customer-returns/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_customer_return(id):
+    """Delete a customer return"""
+    try:
+        customer_return = CustomerReturn.query.get_or_404(id)
+        
+        # Restore stock before deleting
+        success, result = update_product_stock(
+            product_id=customer_return.product_id,
+            product_type=customer_return.product_type,
+            quantity_change=-customer_return.quantity,  # Negative to reverse
+            movement_type='customer_return_cancellation',
+            reference_id=customer_return.id,
+            reference_type='customer_return',
+            remarks=f"Customer return cancelled: {customer_return.description}",
+            user_id=get_jwt_identity()
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+        
+        # Remove credit note payment if exists
+        credit_payment = Payment.query.filter(
+            Payment.customer_id == customer_return.customer_id,
+            Payment.payment_mode == 'credit_note',
+            Payment.remarks.like(f"%{customer_return.ref_number}%")
+        ).first()
+        
+        if credit_payment:
+            db.session.delete(credit_payment)
+            
+            # Restore sale payment status if linked
+            if customer_return.sale:
+                current_paid = float(customer_return.sale.paid_amount or 0)
+                restored_paid = current_paid + customer_return.credit_note_amount
+                customer_return.sale.paid_amount = restored_paid
+                if restored_paid >= float(customer_return.sale.total_amount):
+                    customer_return.sale.payment_status = 'paid'
+                else:
+                    customer_return.sale.payment_status = 'partial'
+                db.session.add(customer_return.sale)
+        
+        db.session.delete(customer_return)
+        db.session.commit()
+        return jsonify({"message": "Customer return deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Exception in delete_customer_return: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customer-returns/<int:id>/approve', methods=['POST'])
+@jwt_required()
+def approve_customer_return(id):
+    """Approve a customer return"""
+    try:
+        customer_return = CustomerReturn.query.get_or_404(id)
+        user_id = get_jwt_identity()
+        
+        if customer_return.status != 'pending':
+            return jsonify({"error": "Only pending returns can be approved"}), 400
+        
+        # Update stock movement (increase stock) when approved
+        success, result = update_product_stock(
+            product_id=customer_return.product_id,
+            product_type=customer_return.product_type,
+            quantity_change=customer_return.quantity,  # Positive for returns
+            movement_type='customer_return',
+            reference_id=customer_return.id,
+            reference_type='customer_return',
+            remarks=f"Customer return approved: {customer_return.description}",
+            user_id=user_id
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        customer_return.status = 'approved'
+        db.session.commit()
+        
+        return jsonify(customer_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Exception in approve_customer_return: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customer-returns/<int:id>/reject', methods=['POST'])
+@jwt_required()
+def reject_customer_return(id):
+    """Reject a customer return"""
+    try:
+        data = request.get_json()
+        customer_return = CustomerReturn.query.get_or_404(id)
+        
+        if customer_return.status != 'pending':
+            return jsonify({"error": "Only pending returns can be rejected"}), 400
+        
+        customer_return.status = 'rejected'
+        customer_return.remarks = data.get('rejectionReason', 'Return rejected')
+        
+        # Reverse stock movement
+        success, result = update_product_stock(
+            product_id=customer_return.product_id,
+            product_type=customer_return.product_type,
+            quantity_change=-customer_return.quantity,  # Negative to reverse
+            movement_type='customer_return_rejection',
+            reference_id=customer_return.id,
+            reference_type='customer_return',
+            remarks=f"Return rejected: {data.get('rejectionReason', '')}",
+            user_id=get_jwt_identity()
+        )
+        
+        if not success:
+            db.session.rollback()
+            return jsonify({"error": f"Stock reversal failed: {result}"}), 400
+        
+        # Remove credit note if issued
+        if customer_return.credit_note_issued:
+            credit_payment = Payment.query.filter_by(
+                customer_id=customer_return.customer_id,
+                payment_mode='credit_note',
+                remarks__like=f"%{customer_return.ref_number}%"
+            ).first()
+            
+            if credit_payment:
+                db.session.delete(credit_payment)
+        
+        db.session.commit()
+        return jsonify(customer_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customer-returns/<int:id>/complete', methods=['POST'])
+@jwt_required()
+def complete_customer_return(id):
+    """Mark a customer return as completed"""
+    try:
+        customer_return = CustomerReturn.query.get_or_404(id)
+        
+        if customer_return.status != 'approved':
+            return jsonify({"error": "Only approved returns can be completed"}), 400
+        
+        customer_return.status = 'completed'
+        db.session.commit()
+        
+        return jsonify(customer_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/customer-returns/reports/summary', methods=['GET'])
+@jwt_required()
+def get_customer_returns_summary():
+    """Get summary statistics for customer returns"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        customer_id = request.args.get('customerId', type=int)
+        
+        query = CustomerReturn.query
+        
+        if from_date:
+            query = query.filter(CustomerReturn.date >= from_date)
+        if to_date:
+            query = query.filter(CustomerReturn.date <= to_date)
+        if customer_id:
+            query = query.filter(CustomerReturn.customer_id == customer_id)
+        
+        returns = query.all()
+        
+        total_returns = len(returns)
+        total_quantity = sum(r.quantity for r in returns)
+        total_value = sum(float(r.total_value) for r in returns)
+        total_credit_notes = sum(float(r.credit_note_amount) for r in returns if r.credit_note_issued)
+        
+        status_counts = {}
+        for return_item in returns:
+            status = return_item.status
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        return jsonify({
+            'totalReturns': total_returns,
+            'totalQuantity': total_quantity,
+            'totalValue': total_value,
+            'totalCreditNotes': total_credit_notes,
+            'statusCounts': status_counts
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Supplier Return routes
+@app.route('/api/supplier-returns', methods=['GET'])
+@jwt_required()
+def get_supplier_returns():
+    """Get supplier returns with optional filtering"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        supplier_id = request.args.get('supplierId', type=int)
+        search = request.args.get('search', '')
+        status = request.args.get('status')
+        
+        query = SupplierReturn.query
+        
+        # Filter by date range
+        if from_date:
+            query = query.filter(SupplierReturn.date >= from_date)
+        if to_date:
+            query = query.filter(SupplierReturn.date <= to_date)
+        
+        # Filter by supplier
+        if supplier_id:
+            query = query.filter(SupplierReturn.supplier_id == supplier_id)
+        
+        # Filter by status
+        if status and status != 'all':
+            query = query.filter(SupplierReturn.status == status)
+        
+        # Search by description, invoice number, or supplier name
+        if search:
+            query = query.join(Supplier).filter(
+                or_(
+                    SupplierReturn.description.ilike(f'%{search}%'),
+                    SupplierReturn.invoice_number.ilike(f'%{search}%'),
+                    Supplier.supplier_name.ilike(f'%{search}%')
+                )
+            )
+        
+        supplier_returns = query.order_by(SupplierReturn.date.desc()).all()
+        return jsonify([return_item.to_dict() for return_item in supplier_returns]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-returns', methods=['POST'])
+@jwt_required()
+def create_supplier_return():
+    """Create a new supplier return"""
+    try:
+        data = request.get_json()
+        print(f"[DEBUG] Received data: {data}")  # Debug log
+        user_id = get_jwt_identity()
+        print(f"[DEBUG] User ID: {user_id}")  # Debug log
+        
+        # Generate reference number
+        last_return = SupplierReturn.query.order_by(SupplierReturn.id.desc()).first()
+        ref_number = f"SR{1 if not last_return else last_return.id + 1:04d}"
+        print(f"[DEBUG] Generated ref number: {ref_number}")  # Debug log
+        
+        # Calculate total value
+        quantity = int(data.get('quantity', 0))
+        unit_price = float(data.get('unitPrice', 0))
+        total_value = quantity * unit_price
+        print(f"[DEBUG] Calculated total value: {total_value}")  # Debug log
+        
+        # Validate supplier exists
+        supplier = Supplier.query.get(data.get('supplierId'))
+        print(f"[DEBUG] Supplier: {supplier}")  # Debug log
+        if not supplier:
+            print("[ERROR] Supplier not found")
+            return jsonify({"error": "Supplier not found"}), 404
+        
+        # Validate product exists
+        product_type = data.get('productType')
+        if product_type == 'regular':
+            product = RegularProduct.query.get(data.get('productId'))
+        else:
+            product = NonProduct.query.get(data.get('productId'))
+        print(f"[DEBUG] Product: {product}")  # Debug log
+        if not product:
+            print("[ERROR] Product not found")
+            return jsonify({"error": "Product not found"}), 404
+        
+        # Validate purchase invoice exists if provided
+        purchase_invoice = None
+        if data.get('purchaseInvoiceId'):
+            purchase_invoice = PurchaseInvoice.query.get(data.get('purchaseInvoiceId'))
+            print(f"[DEBUG] Purchase Invoice: {purchase_invoice}")  # Debug log
+            if not purchase_invoice:
+                print("[ERROR] Purchase invoice not found")
+                return jsonify({"error": "Purchase invoice not found"}), 404
+        
+        supplier_return_data = SupplierReturnSchema(**{
+            **data,
+            'refNumber': ref_number,
+            'totalValue': total_value
+        })
+        
+        supplier_return = SupplierReturn(
+            ref_number=ref_number,
+            date=supplier_return_data.date,
+            supplier_id=supplier_return_data.supplierId,
+            purchase_invoice_id=supplier_return_data.purchaseInvoiceId,
+            product_id=supplier_return_data.productId,
+            product_type=supplier_return_data.productType,
+            description=supplier_return_data.description,
+            invoice_number=supplier_return_data.invoiceNumber,
+            remarks=supplier_return_data.remarks,
+            quantity=quantity,
+            unit_price=unit_price,
+            total_value=total_value,
+            return_reason=supplier_return_data.returnReason,
+            credit_note_issued=supplier_return_data.creditNoteIssued,
+            credit_note_amount=supplier_return_data.creditNoteAmount,
+            status=supplier_return_data.status,
+            created_by=user_id
+        )
+        
+        db.session.add(supplier_return)
+        db.session.commit()
+        
+        # Note: Stock is NOT updated here - it will be updated when the return is approved
+        
+        # If credit note is issued, update supplier balance
+        if supplier_return_data.creditNoteIssued and supplier_return_data.creditNoteAmount > 0:
+            # Create a supplier payment record to reduce supplier balance
+            credit_payment = SupplierPayment(
+                supplier_id=supplier_return_data.supplierId,
+                purchase_invoice_id=supplier_return_data.purchaseInvoiceId,
+                amount=-supplier_return_data.creditNoteAmount,  # Negative amount for credit
+                payment_mode='credit_note',
+                payment_date=supplier_return_data.date,
+                remarks=f"Credit note for return: {ref_number}"
+            )
+            db.session.add(credit_payment)
+            
+            # Update purchase invoice's paid amount if linked
+            if purchase_invoice:
+                current_paid = float(purchase_invoice.paid_amount or 0)
+                new_paid = current_paid - supplier_return_data.creditNoteAmount
+                purchase_invoice.paid_amount = max(0, new_paid)  # Ensure it doesn't go negative
+                if new_paid <= 0:
+                    purchase_invoice.payment_status = 'pending'
+                else:
+                    purchase_invoice.payment_status = 'partial'
+                db.session.add(purchase_invoice)
+        
+        db.session.commit()
+        return jsonify(supplier_return.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Exception occurred: {str(e)}")  # Debug log
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")  # Debug log
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-returns/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_supplier_return(id):
+    """Update a supplier return"""
+    try:
+        data = request.get_json()
+        supplier_return = SupplierReturn.query.get_or_404(id)
+        user_id = get_jwt_identity()
+        
+        # Store old values for stock adjustment
+        old_quantity = supplier_return.quantity
+        old_credit_amount = supplier_return.credit_note_amount
+        
+        # Calculate total value
+        quantity = int(data.get('quantity', 0))
+        unit_price = float(data.get('unitPrice', 0))
+        total_value = quantity * unit_price
+        
+        # Update fields
+        supplier_return.date = datetime.strptime(data['date'], "%Y-%m-%d").date()
+        supplier_return.supplier_id = data['supplierId']
+        supplier_return.purchase_invoice_id = data.get('purchaseInvoiceId')
+        supplier_return.product_id = data['productId']
+        supplier_return.product_type = data['productType']
+        supplier_return.description = data['description']
+        supplier_return.invoice_number = data.get('invoiceNumber')
+        supplier_return.remarks = data.get('remarks')
+        supplier_return.quantity = quantity
+        supplier_return.unit_price = unit_price
+        supplier_return.total_value = total_value
+        supplier_return.return_reason = data.get('returnReason')
+        supplier_return.credit_note_issued = data.get('creditNoteIssued', False)
+        supplier_return.credit_note_amount = float(data.get('creditNoteAmount', 0))
+        supplier_return.status = data.get('status', 'pending')
+        
+        # Adjust stock if quantity changed
+        if quantity != old_quantity:
+            quantity_change = old_quantity - quantity  # Reverse the change
+            success, result = update_product_stock(
+                product_id=supplier_return.product_id,
+                product_type=supplier_return.product_type,
+                quantity_change=quantity_change,
+                movement_type='supplier_return_adjustment',
+                reference_id=supplier_return.id,
+                reference_type='supplier_return',
+                remarks=f"Return quantity adjusted: {old_quantity} -> {quantity}",
+                user_id=user_id
+            )
+            
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        # Handle credit note changes
+        new_credit_amount = float(data.get('creditNoteAmount', 0))
+        if new_credit_amount != old_credit_amount:
+            # Remove old credit note payment if exists
+            old_credit_payment = SupplierPayment.query.filter_by(
+                supplier_id=supplier_return.supplier_id,
+                payment_mode='credit_note',
+                remarks__like=f"%{supplier_return.ref_number}%"
+            ).first()
+            
+            if old_credit_payment:
+                db.session.delete(old_credit_payment)
+            
+            # Create new credit note payment if needed
+            if data.get('creditNoteIssued') and new_credit_amount > 0:
+                credit_payment = SupplierPayment(
+                    supplier_id=supplier_return.supplier_id,
+                    purchase_invoice_id=supplier_return.purchase_invoice_id,
+                    amount=-new_credit_amount,  # Negative amount for credit
+                    payment_mode='credit_note',
+                    payment_date=supplier_return.date,
+                    remarks=f"Credit note for return: {supplier_return.ref_number}"
+                )
+                db.session.add(credit_payment)
+                
+                # Update purchase invoice payment status
+                if supplier_return.purchase_invoice:
+                    current_paid = float(supplier_return.purchase_invoice.paid_amount or 0)
+                    new_paid = current_paid - new_credit_amount
+                    supplier_return.purchase_invoice.paid_amount = max(0, new_paid)
+                    if new_paid <= 0:
+                        supplier_return.purchase_invoice.payment_status = 'pending'
+                    else:
+                        supplier_return.purchase_invoice.payment_status = 'partial'
+                    db.session.add(supplier_return.purchase_invoice)
+        
+        db.session.commit()
+        return jsonify(supplier_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-returns/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_supplier_return(id):
+    """Delete a supplier return"""
+    try:
+        supplier_return = SupplierReturn.query.get_or_404(id)
+        
+        # Restore stock before deleting
+        success, result = update_product_stock(
+            product_id=supplier_return.product_id,
+            product_type=supplier_return.product_type,
+            quantity_change=supplier_return.quantity,  # Positive to restore
+            movement_type='supplier_return_cancellation',
+            reference_id=supplier_return.id,
+            reference_type='supplier_return',
+            remarks=f"Supplier return cancelled: {supplier_return.description}",
+            user_id=get_jwt_identity()
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+        
+        # Remove credit note payment if exists
+        credit_payment = SupplierPayment.query.filter(
+            SupplierPayment.supplier_id == supplier_return.supplier_id,
+            SupplierPayment.payment_mode == 'credit_note',
+            SupplierPayment.remarks.like(f"%{supplier_return.ref_number}%")
+        ).first()
+        
+        if credit_payment:
+            db.session.delete(credit_payment)
+            
+            # Restore purchase invoice payment status if linked
+            if supplier_return.purchase_invoice:
+                current_paid = float(supplier_return.purchase_invoice.paid_amount or 0)
+                restored_paid = current_paid + supplier_return.credit_note_amount
+                supplier_return.purchase_invoice.paid_amount = restored_paid
+                
+                # Calculate total invoice amount
+                total_invoice_amount = sum(item.total_price for item in supplier_return.purchase_invoice.items)
+                if restored_paid >= total_invoice_amount:
+                    supplier_return.purchase_invoice.payment_status = 'paid'
+                else:
+                    supplier_return.purchase_invoice.payment_status = 'partial'
+                db.session.add(supplier_return.purchase_invoice)
+        
+        db.session.delete(supplier_return)
+        db.session.commit()
+        return jsonify({"message": "Supplier return deleted successfully"}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Exception in delete_supplier_return: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-returns/<int:id>/approve', methods=['POST'])
+@jwt_required()
+def approve_supplier_return(id):
+    """Approve a supplier return"""
+    try:
+        supplier_return = SupplierReturn.query.get_or_404(id)
+        user_id = get_jwt_identity()
+        
+        if supplier_return.status != 'pending':
+            return jsonify({"error": "Only pending returns can be approved"}), 400
+        
+        # Update stock movement (decrease stock) when approved
+        success, result = update_product_stock(
+            product_id=supplier_return.product_id,
+            product_type=supplier_return.product_type,
+            quantity_change=-supplier_return.quantity,  # Negative for returns to supplier
+            movement_type='supplier_return',
+            reference_id=supplier_return.id,
+            reference_type='supplier_return',
+            remarks=f"Supplier return approved: {supplier_return.description}",
+            user_id=user_id
+        )
+        
+        if not success:
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        
+        supplier_return.status = 'approved'
+        db.session.commit()
+        
+        return jsonify(supplier_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Exception in approve_supplier_return: {str(e)}")
+        import traceback
+        print(f"[ERROR] Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-returns/<int:id>/reject', methods=['POST'])
+@jwt_required()
+def reject_supplier_return(id):
+    """Reject a supplier return"""
+    try:
+        data = request.get_json()
+        supplier_return = SupplierReturn.query.get_or_404(id)
+        
+        if supplier_return.status != 'pending':
+            return jsonify({"error": "Only pending returns can be rejected"}), 400
+        
+        supplier_return.status = 'rejected'
+        supplier_return.remarks = data.get('rejectionReason', 'Return rejected')
+        
+        # Reverse stock movement
+        success, result = update_product_stock(
+            product_id=supplier_return.product_id,
+            product_type=supplier_return.product_type,
+            quantity_change=-supplier_return.quantity,  # Positive to reverse
+            movement_type='supplier_return_rejection',
+            reference_id=supplier_return.id,
+            reference_type='supplier_return',
+            remarks=f"Return rejected: {data.get('rejectionReason', '')}",
+            user_id=get_jwt_identity()
+        )
+        
+        if not success:
+            db.session.rollback()
+            return jsonify({"error": f"Stock reversal failed: {result}"}), 400
+        
+        # Remove credit note if issued
+        if supplier_return.credit_note_issued:
+            credit_payment = SupplierPayment.query.filter_by(
+                supplier_id=supplier_return.supplier_id,
+                payment_mode='credit_note',
+                remarks__like=f"%{supplier_return.ref_number}%"
+            ).first()
+            
+            if credit_payment:
+                db.session.delete(credit_payment)
+        
+        db.session.commit()
+        return jsonify(supplier_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-returns/<int:id>/complete', methods=['POST'])
+@jwt_required()
+def complete_supplier_return(id):
+    """Mark a supplier return as completed"""
+    try:
+        supplier_return = SupplierReturn.query.get_or_404(id)
+        
+        if supplier_return.status != 'approved':
+            return jsonify({"error": "Only approved returns can be completed"}), 400
+        
+        supplier_return.status = 'completed'
+        db.session.commit()
+        
+        return jsonify(supplier_return.to_dict()), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-returns/reports/summary', methods=['GET'])
+@jwt_required()
+def get_supplier_returns_summary():
+    """Get summary statistics for supplier returns"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        supplier_id = request.args.get('supplierId', type=int)
+        
+        query = SupplierReturn.query
+        
+        if from_date:
+            query = query.filter(SupplierReturn.date >= from_date)
+        if to_date:
+            query = query.filter(SupplierReturn.date <= to_date)
+        if supplier_id:
+            query = query.filter(SupplierReturn.supplier_id == supplier_id)
+        
+        returns = query.all()
+        
+        total_returns = len(returns)
+        total_quantity = sum(r.quantity for r in returns)
+        total_value = sum(float(r.total_value) for r in returns)
+        total_credit_notes = sum(float(r.credit_note_amount) for r in returns if r.credit_note_issued)
+        
+        status_counts = {}
+        for return_item in returns:
+            status = return_item.status
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        return jsonify({
+            'totalReturns': total_returns,
+            'totalQuantity': total_quantity,
+            'totalValue': total_value,
+            'totalCreditNotes': total_credit_notes,
+            'statusCounts': status_counts
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/test/customer-returns', methods=['GET'])
+def test_customer_returns():
+    """Test endpoint to check if CustomerReturn model is working"""
+    try:
+        # Test if we can query CustomerReturn
+        count = CustomerReturn.query.count()
+        
+        # Test if we can create a CustomerReturn object (without saving)
+        test_return = CustomerReturn(
+            ref_number="TEST001",
+            date=datetime.now().date(),
+            customer_id=1,
+            product_id=1,
+            product_type="regular",
+            description="Test return",
+            quantity=1,
+            unit_price=10.0,
+            total_value=10.0,
+            status="pending"
+        )
+        
+        return jsonify({
+            "status": "success",
+            "message": "CustomerReturn model is working",
+            "count": count,
+            "test_object_created": True
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "error_type": type(e).__name__
+        }), 500
+
+@app.route('/api/customers/<int:customer_id>/invoices', methods=['GET'])
+@jwt_required()
+def get_customer_invoices(customer_id):
+    """Get customer invoices for a specific date range"""
+    try:
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        
+        if not from_date or not to_date:
+            return jsonify({"error": "fromDate and toDate are required"}), 400
+        
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d").date()
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
+        
+        # Get sales for this customer in the date range
+        sales = Sale.query.filter(
+            Sale.customer_id == customer_id,
+            Sale.date >= from_dt,
+            Sale.date <= to_dt,
+            Sale.status == 'finalized'
+        ).order_by(Sale.date.desc()).all()
+        
+        invoices = []
+        for sale in sales:
+            invoices.append({
+                'id': sale.id,
+                'invoiceNumber': sale.invoice_number,
+                'date': sale.date.isoformat() if sale.date else None,
+                'totalAmount': float(sale.total_amount) if sale.total_amount else 0,
+                'paidAmount': float(sale.paid_amount) if sale.paid_amount else 0,
+                'outstandingAmount': float(sale.total_amount) - float(sale.paid_amount or 0),
+                'customerType': sale.customer_type,
+                'status': sale.status
+            })
+        
+        return jsonify(invoices), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

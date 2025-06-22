@@ -48,6 +48,7 @@ const AddNonProducts = () => {
       stockTakeDate: null,
       reorderQuantity: 0,
       lastStockTake: 0,
+      initialStock: 0,
       status: "active",
     },
     mode: "onChange",
@@ -498,6 +499,17 @@ const AddNonProducts = () => {
                       id="lastStockTake" 
                       type="number" 
                       {...form.register("lastStockTake", { valueAsNumber: true })}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="initialStock" className="block text-sm font-medium mb-2">Initial Stock</label>
+                    <Input 
+                      id="initialStock" 
+                      type="number" 
+                      min="0"
+                      placeholder="0"
+                      {...form.register("initialStock", { valueAsNumber: true })}
                     />
                   </div>
                 </div>

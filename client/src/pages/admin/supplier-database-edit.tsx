@@ -130,7 +130,7 @@ export default function SupplierForm() {
       return apiRequest(method, url, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
       toast({
         title: "Success",
         description: `Supplier ${isEditing ? "updated" : "created"} successfully`,

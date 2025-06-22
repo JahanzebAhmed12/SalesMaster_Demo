@@ -8,6 +8,7 @@ import { FileText, Download, Copy, Printer } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 interface SalesData {
+  slNo: number;
   date: string;
   purchase: number;
   creditSales: number;
@@ -16,54 +17,50 @@ interface SalesData {
 }
 
 interface SalesSummary {
-  sales: any[];
-  summary: {
-    totalPurchase: number;
-    totalCredit: number;
-    totalCash: number;
-    totalSales: number;
-  };
+  totalPurchase: number;
+  totalCredit: number;
+  totalCash: number;
+  totalSales: number;
+}
+
+interface SalesAnalysisResponse {
+  sales: SalesData[];
+  summary: SalesSummary;
 }
 
 export default function SalesAnalysis() {
-  const [fromDate, setFromDate] = useState("2025-06-10");
-  const [toDate, setToDate] = useState("2025-06-10");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  const { data: salesData, isLoading } = useQuery({
-    queryKey: ["/api/sales", fromDate, toDate],
-    queryFn: () => apiRequest<SalesSummary>(`/api/sales?fromDate=${fromDate}&toDate=${toDate}`),
-    enabled: !!fromDate && !!toDate
+  const { data, isLoading, isError } = useQuery<SalesAnalysisResponse>({
+    queryKey: ["/api/reports/sales-analysis", fromDate, toDate, searchTerm],
+    queryFn: () =>
+      apiRequest("GET", `/api/reports/sales-analysis?fromDate=${fromDate}&toDate=${toDate}&search=${encodeURIComponent(searchTerm)}`),
+    enabled: !!fromDate && !!toDate,
   });
 
   const handleSearch = () => {
-    // Query will automatically refetch due to dependency on fromDate and toDate
+    // Query will automatically refetch due to dependency on fromDate, toDate, searchTerm
   };
 
   const handleExport = (format: string) => {
     console.log(`Exporting to ${format}`);
   };
 
-  // Sample data structure matching the attached image
-  const salesRows: SalesData[] = [
-    {
-      date: "10-06-2025",
-      purchase: 4608,
-      creditSales: 0,
-      cashSales: 4240,
-      totalSales: 4240
-    }
-  ];
-
-  const totals = {
-    purchase: salesRows.reduce((sum, row) => sum + row.purchase, 0),
-    creditSales: salesRows.reduce((sum, row) => sum + row.creditSales, 0),
-    cashSales: salesRows.reduce((sum, row) => sum + row.cashSales, 0),
-    totalSales: salesRows.reduce((sum, row) => sum + row.totalSales, 0)
+  const salesRows = data?.sales || [];
+  const totals = data?.summary || {
+    totalPurchase: 0,
+    totalCredit: 0,
+    totalCash: 0,
+    totalSales: 0,
   };
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-96">Loading sales analysis...</div>;
+  }
+  if (isError) {
+    return <div className="flex items-center justify-center h-96 text-red-500">Failed to load sales analysis.</div>;
   }
 
   return (
@@ -165,12 +162,12 @@ export default function SalesAnalysis() {
                   </tr>
                 </thead>
                 <tbody>
-                  {salesRows.map((row, index) => (
+                  {salesRows.map((row: SalesData, index: number) => (
                     <tr key={index} className="border-b hover:bg-gray-50">
-                      <td className="p-3 border-r">{index + 1}</td>
+                      <td className="p-3 border-r">{row.slNo}</td>
                       <td className="p-3 border-r">{row.date}</td>
                       <td className="p-3 border-r text-right">{row.purchase.toLocaleString()}</td>
-                      <td className="p-3 border-r text-right">{row.creditSales}</td>
+                      <td className="p-3 border-r text-right">{row.creditSales.toLocaleString()}</td>
                       <td className="p-3 border-r text-right">{row.cashSales.toLocaleString()}</td>
                       <td className="p-3 text-right">{row.totalSales.toLocaleString()}</td>
                     </tr>
@@ -178,9 +175,9 @@ export default function SalesAnalysis() {
                   <tr className="border-b bg-gray-100 font-semibold">
                     <td className="p-3 border-r"></td>
                     <td className="p-3 border-r">Total:</td>
-                    <td className="p-3 border-r text-right">{totals.purchase.toLocaleString()}</td>
-                    <td className="p-3 border-r text-right">{totals.creditSales}</td>
-                    <td className="p-3 border-r text-right">{totals.cashSales.toLocaleString()}</td>
+                    <td className="p-3 border-r text-right">{totals.totalPurchase.toLocaleString()}</td>
+                    <td className="p-3 border-r text-right">{totals.totalCredit.toLocaleString()}</td>
+                    <td className="p-3 border-r text-right">{totals.totalCash.toLocaleString()}</td>
                     <td className="p-3 text-right">{totals.totalSales.toLocaleString()}</td>
                   </tr>
                 </tbody>

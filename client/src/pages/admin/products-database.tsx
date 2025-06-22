@@ -44,6 +44,7 @@ const productSchema = z.object({
   stockTakeDate: z.string().optional().nullable(),
   reorderQuantity: z.coerce.number().optional(),
   lastStockTake: z.coerce.number().optional(),
+  initialStock: z.coerce.number().min(0, "Initial stock must be a positive number").optional(),
   status: z.string().optional(),
 });
 
@@ -90,6 +91,7 @@ export default function Products() {
       taxRate: 0,
       status: "active",
       stockLevelFlag: false,
+      initialStock: 0,
     },
   });
 
@@ -105,6 +107,7 @@ export default function Products() {
         taxRate: 0,
         status: "active",
         stockLevelFlag: false,
+        initialStock: 0,
       });
     }
   }, [editingProduct, form]);
@@ -139,7 +142,7 @@ export default function Products() {
     }
   });
 
-  const filteredProducts = products.filter((product) =>
+  const filteredProducts = (products || []).filter((product) =>
     product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.productCode.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -187,6 +190,7 @@ export default function Products() {
                 taxRate: 0,
                 status: "active",
                 stockLevelFlag: false,
+                initialStock: 0,
               });
             }}
             className="flex items-center gap-2"
@@ -206,6 +210,7 @@ export default function Products() {
                 taxRate: 0,
                 status: "active",
                 stockLevelFlag: false,
+                initialStock: 0,
               });
             }}
             className="flex items-center gap-2"
@@ -501,6 +506,16 @@ export default function Products() {
                       type="number"
                       {...form.register("lastStockTake")}
                       min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="initialStock">Initial Stock</Label>
+                    <Input
+                      id="initialStock"
+                      type="number"
+                      {...form.register("initialStock")}
+                      min="0"
+                      placeholder="0"
                     />
                   </div>
                 </div>
