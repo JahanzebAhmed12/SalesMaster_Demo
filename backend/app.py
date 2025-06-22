@@ -13,7 +13,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
 from calendar import monthrange
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, extract
+import calendar
 
 # Load environment variables
 load_dotenv()
@@ -1326,58 +1327,29 @@ def get_payroll_report():
     
     result = []
     for user in users:
-        # Get attendance records for the user in the specified month
-        attendance_records = Attendance.query.filter(
+        # Get present days for the user in the specified month
+        present_days = Attendance.query.filter(
             Attendance.user_id == user.id,
             Attendance.date >= start_date.date(),
-            Attendance.date <= end_date.date()
+            Attendance.date <= end_date.date(),
+            Attendance.status == 'present'
         ).all()
-        
-        # Calculate attendance statistics
-        present_days = sum(1 for record in attendance_records if record.status == 'present')
-        absent_days = sum(1 for record in attendance_records if record.status == 'absent')
-        leave_days = sum(1 for record in attendance_records if record.status == 'leave')
-        holiday_days = sum(1 for record in attendance_records if record.status == 'holiday')
-        
-        # Calculate working days (all days)
-        working_days = (end_date - start_date).days + 1
-        
-        # Calculate attendance percentage
-        attendance_percentage = (present_days / working_days) * 100 if working_days > 0 else 0
-        
-        # Calculate payroll
+        present_dates = [a.date.isoformat() for a in present_days]
+        present_count = len(present_dates)
         daily_wage = float(user.daily_wage) if user.daily_wage else 0
-        gross_pay = present_days * daily_wage
-        
-        # Calculate tax (20%) and National Insurance (12%)
-        tax = gross_pay * 0.20
-        national_insurance = gross_pay * 0.12
-        net_pay = gross_pay - tax - national_insurance
-        
+        pay = present_count * daily_wage
         result.append({
-            'employee': {
+            'user': {
                 'id': user.id,
-                'name': user.username,
-                'employeeId': user.id,
-                'department': user.user_type
+                'username': user.username,
+                'userType': user.user_type,
+                'status': user.status,
+                'dailyWage': daily_wage
             },
-            'attendance': {
-                'presentDays': present_days,
-                'absentDays': absent_days,
-                'leaveDays': leave_days,
-                'holidayDays': holiday_days,
-                'attendancePercentage': round(attendance_percentage, 2)
-            },
-            'payroll': {
-                'workingDays': working_days,
-                'dailyWage': daily_wage,
-                'grossPay': round(gross_pay, 2),
-                'tax': round(tax, 2),
-                'nationalInsurance': round(national_insurance, 2),
-                'netPay': round(net_pay, 2)
-            }
+            'presentDays': present_count,
+            'presentDates': present_dates,
+            'pay': pay
         })
-    
     return jsonify(result)
 
 @app.route('/api/reports/weekly-stats', methods=['GET'])
@@ -1645,10 +1617,16 @@ def daily_book_sales():
     salesman = request.args.get('salesman', 'all')
     search = request.args.get('search', '')
     query = Sale.query.join(User, Sale.created_by == User.id)
-    if from_date:
-        query = query.filter(func.date(Sale.date) >= from_date)
-    if to_date:
-        query = query.filter(func.date(Sale.date) <= to_date)
+    if from_date and to_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Sale.date >= from_dt, Sale.date < to_dt)
+    elif from_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        query = query.filter(Sale.date >= from_dt)
+    elif to_date:
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Sale.date < to_dt)
     if payment_type and payment_type != 'All':
         pass  # We'll filter by payment mode after fetching sales
     if salesman and salesman != 'all':
@@ -1702,21 +1680,21 @@ def customer_statement():
     if not customer_id or not from_date or not to_date:
         return jsonify({'error': 'Missing required parameters'}), 400
 
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
     # Fetch sales and payments for this customer in the date range
     sales = Sale.query.filter(
         Sale.customer_id == customer_id,
-        func.date(Sale.date) >= from_dt.date(),
-        func.date(Sale.date) <= to_dt.date(),
+        Sale.date >= from_dt,
+        Sale.date < to_dt,
         Sale.status == 'finalized'
     ).all()
     payments = Payment.query.filter(
         Payment.customer_id == customer_id,
         Payment.payment_date >= from_dt.date(),
-        Payment.payment_date <= to_dt.date()
+        Payment.payment_date < to_dt.date()
     ).all()
 
     # Build statement entries
@@ -1795,15 +1773,15 @@ def customer_history():
     if not customer_id or not from_date or not to_date:
         return jsonify({'error': 'Missing required parameters'}), 400
 
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
     # Fetch sales for this customer in the date range
     sales_query = Sale.query.filter(
         Sale.customer_id == customer_id,
-        func.date(Sale.date) >= from_dt.date(),
-        func.date(Sale.date) <= to_dt.date(),
+        Sale.date >= from_dt,
+        Sale.date < to_dt,
         Sale.status == 'finalized'
     )
     if filter_type == "Credit":
@@ -1863,17 +1841,11 @@ def product_sales_report():
 
     # Filter by date range
     if from_date:
-        try:
-            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-            query = query.filter(func.date(Sale.date) >= from_dt.date())
-        except Exception:
-            pass
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        query = query.filter(Sale.date >= from_dt)
     if to_date:
-        try:
-            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
-            query = query.filter(func.date(Sale.date) <= to_dt.date())
-        except Exception:
-            pass
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Sale.date < to_dt)
     # Only finalized sales
     query = query.filter(Sale.status == 'finalized')
     # Search by product description or sage code
@@ -2335,16 +2307,11 @@ def sales_analysis_report():
         return jsonify({'error': 'fromDate and toDate are required'}), 400
 
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
-
-    # Prepare date range
-    num_days = (to_dt - from_dt).days + 1
-    date_list = [(from_dt + timedelta(days=i)).date() for i in range(num_days)]
-
-    # Fetch all sales in range
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+# Fetch all sales in range
     sales = Sale.query.filter(
-        func.date(Sale.date) >= from_dt.date(),
-        func.date(Sale.date) <= to_dt.date(),
+        Sale.date >= from_dt,
+        Sale.date < to_dt,
         Sale.status == 'finalized'
     ).all()
     print(f"[DEBUG] Found {len(sales)} finalized sales between {from_date} and {to_date}")
@@ -2355,11 +2322,11 @@ def sales_analysis_report():
     from models import PurchaseInvoice, PurchaseInvoiceItem
     invoices = PurchaseInvoice.query.filter(
         func.date(PurchaseInvoice.date) >= from_dt.date(),
-        func.date(PurchaseInvoice.date) <= to_dt.date()
+        func.date(PurchaseInvoice.date) < to_dt.date()
     ).all()
     invoice_items = PurchaseInvoiceItem.query.join(PurchaseInvoice).filter(
         func.date(PurchaseInvoice.date) >= from_dt.date(),
-        func.date(PurchaseInvoice.date) <= to_dt.date()
+        func.date(PurchaseInvoice.date) < to_dt.date()
     ).all()
 
     # Group sales by date
@@ -4320,14 +4287,14 @@ def get_customer_invoices(customer_id):
         if not from_date or not to_date:
             return jsonify({"error": "fromDate and toDate are required"}), 400
         
-        from_dt = datetime.strptime(from_date, "%Y-%m-%d").date()
-        to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
         
         # Get sales for this customer in the date range
         sales = Sale.query.filter(
             Sale.customer_id == customer_id,
             Sale.date >= from_dt,
-            Sale.date <= to_dt,
+            Sale.date < to_dt,
             Sale.status == 'finalized'
         ).order_by(Sale.date.desc()).all()
         
@@ -4347,6 +4314,859 @@ def get_customer_invoices(customer_id):
         return jsonify(invoices), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/supplier-statement', methods=['GET'])
+@jwt_required()
+def supplier_statement():
+    supplier_id = request.args.get('supplierId', type=int)
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    statement_type = request.args.get('type', 'Full Statement')
+
+    if not supplier_id or not from_date or not to_date:
+        return jsonify({'error': 'Missing required parameters'}), 400
+
+    from datetime import datetime
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+
+    def to_datetime(dt):
+        if isinstance(dt, datetime):
+            return dt
+        return datetime.combine(dt, datetime.min.time())
+
+    # Fetch purchases for this supplier in the date range
+    purchases = Purchase.query.filter(
+        Purchase.supplier_id == supplier_id,
+        func.date(Purchase.date) >= from_dt.date(),
+        func.date(Purchase.date) < to_dt.date(),
+        Purchase.status.in_(['pending', 'approved', 'finalized', 'paid'])
+    ).all()
+
+    # Fetch payments for this supplier in the date range
+    payments = SupplierPayment.query.filter(
+        SupplierPayment.supplier_id == supplier_id,
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date < to_dt.date()
+    ).all()
+
+    # Fetch supplier returns for this supplier in the date range
+    returns = SupplierReturn.query.filter(
+        SupplierReturn.supplier_id == supplier_id,
+        SupplierReturn.date >= from_dt.date(),
+        SupplierReturn.date < to_dt.date()
+    ).all()
+
+    # Build statement entries
+    statement = []
+    running_balance = 0
+    sl_no = 1
+    entries = []
+
+    # Purchases (debit)
+    for purchase in purchases:
+        entries.append({
+            'date': to_datetime(purchase.date),
+            'type': 'purchase',
+            'invoiceNo': getattr(purchase, 'id', None),
+            'description': 'Purchase Invoice',
+            'purchaseInv': float(purchase.amount),
+            'paid': 0,
+            'creditAdj': 0,
+            'discountAdj': 0,
+            'balance': float(purchase.amount),
+            'purchase_id': purchase.id
+        })
+    # Payments (credit)
+    for payment in payments:
+        entries.append({
+            'date': to_datetime(payment.payment_date),
+            'type': 'payment',
+            'invoiceNo': payment.purchase_invoice_id,
+            'description': 'Payment Made',
+            'purchaseInv': 0,
+            'paid': float(payment.amount),
+            'creditAdj': 0,
+            'discountAdj': 0,
+            'balance': -float(payment.amount),
+            'payment_id': payment.id
+        })
+    # Returns (credit/adjustment)
+    for ret in returns:
+        # Only include approved/completed returns for balance
+        if ret.status in ['approved', 'completed']:
+            credit_note = float(ret.credit_note_amount) if ret.credit_note_issued else 0
+            entries.append({
+                'date': to_datetime(ret.date),
+                'type': 'return',
+                'invoiceNo': ret.invoice_number,
+                'description': 'Supplier Return',
+                'purchaseInv': 0,
+                'paid': 0,
+                'creditAdj': credit_note,
+                'discountAdj': 0,
+                'balance': -credit_note,
+                'return_id': ret.id
+            })
+    # Sort by date
+    entries.sort(key=lambda x: x['date'])
+
+    # Calculate running balance
+    for entry in entries:
+        running_balance += entry['balance']
+        statement.append({
+            'id': sl_no,
+            'slNo': sl_no,
+            'date': entry['date'].strftime("%Y-%m-%d"),
+            'invoiceNo': entry['invoiceNo'],
+            'description': entry['description'],
+            'purchaseInv': entry['purchaseInv'],
+            'paid': entry['paid'],
+            'creditAdj': entry['creditAdj'],
+            'discountAdj': entry['discountAdj'],
+            'balance': entry['balance'],
+            'runningBalance': running_balance
+        })
+        sl_no += 1
+
+    # Filter by statement type if needed
+    if statement_type == "Outstanding Only":
+        statement = [s for s in statement if s['runningBalance'] > 0]
+    elif statement_type == "Paid Only":
+        statement = [s for s in statement if s['paid'] > 0]
+
+    return jsonify(statement)
+
+@app.route('/api/reports/all-supplier-history', methods=['GET'])
+@jwt_required()
+def all_supplier_history():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    # Optionally, add filters for active/outstanding only, etc.
+
+    from datetime import datetime
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
+
+    suppliers = Supplier.query.all()
+    result = []
+    sl_no = 1
+    for supplier in suppliers:
+        # Purchases
+        purchases_query = Purchase.query.filter(Purchase.supplier_id == supplier.id)
+        if from_dt:
+            purchases_query = purchases_query.filter(Purchase.date >= from_dt)
+        if to_dt:
+            purchases_query = purchases_query.filter(Purchase.date <= to_dt)
+        total_purchase = sum(float(p.amount) for p in purchases_query)
+
+        # Payments
+        payments_query = SupplierPayment.query.filter(SupplierPayment.supplier_id == supplier.id)
+        if from_dt:
+            payments_query = payments_query.filter(SupplierPayment.payment_date >= from_dt.date())
+        if to_dt:
+            payments_query = payments_query.filter(SupplierPayment.payment_date <= to_dt.date())
+        total_paid = sum(float(p.amount) for p in payments_query)
+
+        # Credit/Adjustment (Supplier Returns with credit note issued)
+        returns_query = SupplierReturn.query.filter(
+            SupplierReturn.supplier_id == supplier.id,
+            SupplierReturn.credit_note_issued == True
+        )
+        if from_dt:
+            returns_query = returns_query.filter(SupplierReturn.date >= from_dt.date())
+        if to_dt:
+            returns_query = returns_query.filter(SupplierReturn.date <= to_dt.date())
+        total_credit_adj = sum(float(r.credit_note_amount) for r in returns_query)
+
+        # Discount/Adjustment (not tracked, set to 0)
+        total_discount_adj = 0
+
+        # Balance/Outstanding
+        balance_outstanding = total_purchase - total_paid - total_credit_adj - total_discount_adj
+
+        result.append({
+            'id': supplier.id,
+            'slNo': sl_no,
+            'supplierName': supplier.supplier_name,
+            'purchaseInvoice': total_purchase,
+            'amountPaid': total_paid,
+            'creditAdj': total_credit_adj,
+            'discountAdj': total_discount_adj,
+            'balanceOutstanding': balance_outstanding,
+            'creditLimit': float(supplier.credit_limit) if supplier.credit_limit is not None else 0,
+            'currency': supplier.supplier_currency or 'GBP',
+        })
+        sl_no += 1
+    return jsonify(result)
+
+@app.route('/api/reports/purchase-history', methods=['GET'])
+@jwt_required()
+def purchase_history_report():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    supplier_id = request.args.get('supplierId', type=int)
+    payment_status = request.args.get('paymentStatus')
+    search = request.args.get('search', '')
+
+    from datetime import datetime
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
+
+    # Build base query for PurchaseInvoiceItems joined with PurchaseInvoice, Purchase, Supplier
+    from models import PurchaseInvoice, PurchaseInvoiceItem, Supplier, Purchase
+    query = (
+        db.session.query(
+            PurchaseInvoiceItem.id,
+            PurchaseInvoice.date,
+            PurchaseInvoice.purchase_id,
+            Purchase.supplier_name,
+            PurchaseInvoiceItem.product_name,
+            PurchaseInvoiceItem.quantity,
+            PurchaseInvoiceItem.unit_price,
+            PurchaseInvoiceItem.total_price,
+            PurchaseInvoiceItem.invoice_id,
+            PurchaseInvoiceItem.id.label('item_id'),
+            PurchaseInvoiceItem.product_id,
+            PurchaseInvoiceItem.total_price.label('item_total'),
+            PurchaseInvoice.id.label('invoice_id'),
+            PurchaseInvoice.remarks.label('delivery_no'),
+            Purchase.status.label('purchase_status'),
+            PurchaseInvoice.id.label('invoice_no'),
+            PurchaseInvoice.payment_status.label('invoice_payment_status')
+        )
+        .join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)
+        .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+    )
+
+    # Filter by date range
+    if from_dt:
+        query = query.filter(PurchaseInvoice.date >= from_dt)
+    if to_dt:
+        query = query.filter(PurchaseInvoice.date <= to_dt)
+    # Filter by supplier
+    if supplier_id:
+        query = query.filter(Purchase.supplier_id == supplier_id)
+    # Filter by payment status
+    if payment_status and payment_status != 'All Payments':
+        query = query.filter(PurchaseInvoice.payment_status.ilike(payment_status.lower()))
+    # Search by supplier name, product name, invoice no
+    if search:
+        query = query.filter(
+            or_(
+                Purchase.supplier_name.ilike(f'%{search}%'),
+                PurchaseInvoiceItem.product_name.ilike(f'%{search}%'),
+                PurchaseInvoice.id.ilike(f'%{search}%')
+            )
+        )
+    # Order by date desc
+    query = query.order_by(PurchaseInvoice.date.desc())
+    results = query.all()
+
+    # Format for frontend
+    purchase_data = []
+    for idx, row in enumerate(results, 1):
+        purchase_data.append({
+            'id': row.item_id,
+            'slNo': idx,
+            'date': row.date.strftime('%Y-%m-%d') if row.date else '',
+            'supplierName': row.supplier_name,
+            'invoiceNo': str(row.invoice_no),
+            'deliveryNo': row.delivery_no or '',
+            'productName': row.product_name,
+            'quantity': int(row.quantity) if row.quantity else 0,
+            'unitPrice': float(row.unit_price) if row.unit_price else 0,
+            'totalAmount': float(row.item_total) if row.item_total else 0,
+            'paymentStatus': row.invoice_payment_status.capitalize() if row.invoice_payment_status else '',
+        })
+    return jsonify(purchase_data)
+
+@app.route('/api/reports/product-history', methods=['GET'])
+@jwt_required()
+def product_history_report():
+    from datetime import datetime
+    from models import (
+        PurchaseInvoice, PurchaseInvoiceItem, Purchase, Supplier,
+        Sale, SaleItem, Customer,
+        SupplierReturn, CustomerReturn, DumpEntry, RegularProduct, NonProduct
+    )
+    product_id = request.args.get('productId', type=int)
+    product_like = request.args.get('productLike', '')
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    customer_id = request.args.get('customerId', type=int)
+    supplier_id = request.args.get('supplierId', type=int)
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
+
+    # Purchases
+    purchases_query = (
+        db.session.query(
+            PurchaseInvoice.date,
+            PurchaseInvoice.purchase_id,
+            Purchase.supplier_name,
+            PurchaseInvoiceItem.product_name,
+            PurchaseInvoiceItem.quantity,
+            PurchaseInvoiceItem.unit_price,
+            PurchaseInvoiceItem.total_price
+        )
+        .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+        .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+    )
+    if from_dt:
+        purchases_query = purchases_query.filter(PurchaseInvoice.date >= from_dt)
+    if to_dt:
+        purchases_query = purchases_query.filter(PurchaseInvoice.date <= to_dt)
+    if supplier_id:
+        purchases_query = purchases_query.filter(Purchase.supplier_id == supplier_id)
+    if product_id:
+        purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_id == product_id)
+    if product_like:
+        purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_name.ilike(f'%{product_like}%'))
+    purchases = purchases_query.all()
+    purchases_data = [
+        {
+            'date': row.date.strftime('%Y-%m-%d') if row.date else '',
+            'supplierName': row.supplier_name,
+            'product': row.product_name,
+            'quantity': int(row.quantity) if row.quantity else 0,
+            'unitPrice': float(row.unit_price) if row.unit_price else 0,
+            'total': float(row.total_price) if row.total_price else 0,
+            'purchaseId': row.purchase_id
+        }
+        for row in purchases
+    ]
+
+    # Supplier Returns
+    supplier_returns_query = SupplierReturn.query
+    if from_dt:
+        supplier_returns_query = supplier_returns_query.filter(SupplierReturn.date >= from_dt.date())
+    if to_dt:
+        supplier_returns_query = supplier_returns_query.filter(SupplierReturn.date <= to_dt.date())
+    if supplier_id:
+        supplier_returns_query = supplier_returns_query.filter(SupplierReturn.supplier_id == supplier_id)
+    if product_id:
+        supplier_returns_query = supplier_returns_query.filter(SupplierReturn.product_id == product_id)
+    if product_like:
+        supplier_returns_query = supplier_returns_query.filter(SupplierReturn.description.ilike(f'%{product_like}%'))
+    supplier_returns = supplier_returns_query.all()
+    supplier_returns_data = [
+        {
+            'date': r.date.strftime('%Y-%m-%d') if r.date else '',
+            'invoice': r.invoice_number,
+            'supplierName': r.supplier.supplier_name if r.supplier else '',
+            'product': r.description,
+            'quantity': r.quantity,
+            'unitPrice': float(r.unit_price),
+            'total': float(r.total_value)
+        }
+        for r in supplier_returns
+    ]
+
+    # Sales (join product tables for description)
+    sales_query = (
+        db.session.query(
+            Sale.date,
+            Sale.invoice_number,
+            Customer.customer_name,
+            SaleItem.product_id,
+            SaleItem.non_product_id,
+            SaleItem.quantity,
+            SaleItem.unit_price,
+            SaleItem.total_price,
+            RegularProduct.description.label('regular_product_desc'),
+            NonProduct.description.label('non_product_desc')
+        )
+        .join(SaleItem, Sale.id == SaleItem.sale_id)
+        .join(Customer, Sale.customer_id == Customer.id)
+        .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
+        .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
+    )
+    if from_dt:
+        sales_query = sales_query.filter(Sale.date >= from_dt)
+    if to_dt:
+        sales_query = sales_query.filter(Sale.date < to_dt)
+    if customer_id:
+        sales_query = sales_query.filter(Sale.customer_id == customer_id)
+    sales_query = sales_query.filter(Sale.status == 'finalized')
+    sales = sales_query.all()
+    sales_data = [
+        {
+            'date': row.date.strftime('%Y-%m-%d') if row.date else '',
+            'invoiceNo': row.invoice_number,
+            'customerName': row.customer_name,
+            'product': row.regular_product_desc or row.non_product_desc or '',
+            'quantity': int(row.quantity) if row.quantity else 0,
+            'unitPrice': float(row.unit_price) if row.unit_price else 0,
+            'total': float(row.total_price) if row.total_price else 0
+        }
+        for row in sales
+    ]
+
+    # Customer Returns
+    customer_returns_query = CustomerReturn.query
+    if from_dt:
+        customer_returns_query = customer_returns_query.filter(CustomerReturn.date >= from_dt.date())
+    if to_dt:
+        customer_returns_query = customer_returns_query.filter(CustomerReturn.date <= to_dt.date())
+    if customer_id:
+        customer_returns_query = customer_returns_query.filter(CustomerReturn.customer_id == customer_id)
+    if product_id:
+        customer_returns_query = customer_returns_query.filter(CustomerReturn.product_id == product_id)
+    if product_like:
+        customer_returns_query = customer_returns_query.filter(CustomerReturn.description.ilike(f'%{product_like}%'))
+    customer_returns = customer_returns_query.all()
+    customer_returns_data = [
+        {
+            'date': r.date.strftime('%Y-%m-%d') if r.date else '',
+            'invoice': r.invoice_number,
+            'customerName': r.customer.customer_name if r.customer else '',
+            'product': r.description,
+            'quantity': r.quantity,
+            'unitPrice': float(r.unit_price),
+            'total': float(r.total_value)
+        }
+        for r in customer_returns
+    ]
+
+    # Dumps (lookup product name)
+    dumps_query = DumpEntry.query
+    if from_dt:
+        dumps_query = dumps_query.filter(DumpEntry.date >= from_dt.date())
+    if to_dt:
+        dumps_query = dumps_query.filter(DumpEntry.date <= to_dt.date())
+    if product_id:
+        dumps_query = dumps_query.filter(DumpEntry.product_id == product_id)
+    if product_like:
+        dumps_query = dumps_query.filter(DumpEntry.description.ilike(f'%{product_like}%'))
+    dumps = dumps_query.all()
+    dumps_data = []
+    for d in dumps:
+        product_name = ''
+        if d.product_type == 'regular':
+            product = RegularProduct.query.get(d.product_id)
+            product_name = product.description if product else ''
+        else:
+            product = NonProduct.query.get(d.product_id)
+            product_name = product.description if product else ''
+        dumps_data.append({
+            'date': d.date.strftime('%Y-%m-%d') if d.date else '',
+            'product': product_name,
+            'totalQty': d.quantity
+        })
+
+    return jsonify({
+        'purchases': purchases_data,
+        'supplierReturns': supplier_returns_data,
+        'sales': sales_data,
+        'customerReturns': customer_returns_data,
+        'dumps': dumps_data
+    })
+
+@app.route('/api/reports/prod-customer-history', methods=['GET'])
+@jwt_required()
+def prod_customer_history():
+    from datetime import datetime
+    from sqlalchemy import func, or_
+    from models import Sale, SaleItem, Customer, RegularProduct, NonProduct
+
+    customer_id = request.args.get('customerId', type=int)
+    product_id = request.args.get('productId', type=int)
+    product_like = request.args.get('productLike', '')
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+
+    query = (
+        db.session.query(
+            func.coalesce(RegularProduct.description, NonProduct.description, 'Unknown').label('product'),
+            func.sum(SaleItem.quantity).label('quantity'),
+            (func.sum(SaleItem.total_price) / func.nullif(func.sum(SaleItem.quantity), 0)).label('avg_price'),
+            func.sum(SaleItem.total_price).label('total')
+        )
+        .join(Sale, SaleItem.sale_id == Sale.id)
+        .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
+        .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
+    )
+    if from_date and to_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Sale.date >= from_dt, Sale.date < to_dt)
+    elif from_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        query = query.filter(Sale.date >= from_dt)
+    elif to_date:
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Sale.date < to_dt)
+    query = query.filter(Sale.status == 'finalized')
+    query = query.group_by(RegularProduct.description, NonProduct.description)
+    query = query.order_by(func.sum(SaleItem.total_price).desc())
+
+    results = query.all()
+    data = []
+    for idx, row in enumerate(results, 1):
+        data.append({
+            "slNo": idx,
+            "product": row.product,
+            "quantity": int(row.quantity) if row.quantity else 0,
+            "avgPrice": float(row.avg_price) if row.avg_price else 0,
+            "total": float(row.total) if row.total else 0
+        })
+    return jsonify(data)
+
+@app.route('/api/reports/date-wise-sales', methods=['GET'])
+@jwt_required()
+def date_wise_sales():
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, extract
+    from models import Sale, SaleItem, Customer, RegularProduct, NonProduct
+
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    sales_type = request.args.get('salesType', 'All')
+    group_by = request.args.get('groupBy', 'Daily')
+    search = request.args.get('search', '')
+
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+
+    # Base query
+    query = Sale.query.filter(
+        Sale.date >= from_dt,
+        Sale.date < to_dt,
+        Sale.status == 'finalized'
+    )
+    if sales_type == 'Credit Sales':
+        query = query.filter(Sale.customer_type.ilike('credit'))
+    elif sales_type == 'Cash Sales':
+        query = query.filter(Sale.customer_type.ilike('cash'))
+    if search:
+        query = query.join(Customer).filter(
+            (Sale.invoice_number.ilike(f'%{search}%')) |
+            (Customer.customer_name.ilike(f'%{search}%'))
+        )
+
+    sales = query.all()
+
+    # Grouping logic
+    def group_key(sale):
+        if group_by == 'Monthly':
+            return sale.date.strftime('%Y-%m')
+        elif group_by == 'Weekly':
+            return f"{sale.date.isocalendar()[0]}-W{sale.date.isocalendar()[1]:02d}"
+        else:
+            return sale.date.strftime('%Y-%m-%d')
+
+    grouped = {}
+    for sale in sales:
+        key = group_key(sale)
+        if key not in grouped:
+            grouped[key] = []
+        grouped[key].append(sale)
+
+    result = []
+    sl_no = 1
+    for group, group_sales in sorted(grouped.items()):
+        total_sales = sum(float(s.total_amount) for s in group_sales)
+        credit_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'credit')
+        cash_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'cash')
+        total_invoices = len(group_sales)
+        average_sale = total_sales / total_invoices if total_invoices else 0
+        # Top product
+        product_counter = {}
+        for sale in group_sales:
+            for item in sale.items:
+                desc = ''
+                if item.product_id:
+                    prod = RegularProduct.query.get(item.product_id)
+                    desc = prod.description if prod else ''
+                elif item.non_product_id:
+                    prod = NonProduct.query.get(item.non_product_id)
+                    desc = prod.description if prod else ''
+                if desc:
+                    product_counter[desc] = product_counter.get(desc, 0) + item.quantity
+        top_product = max(product_counter.items(), key=lambda x: x[1])[0] if product_counter else ''
+        # Top customer
+        customer_counter = {}
+        for sale in group_sales:
+            cname = sale.customer.customer_name if sale.customer else ''
+            customer_counter[cname] = customer_counter.get(cname, 0) + float(sale.total_amount)
+        top_customer = max(customer_counter.items(), key=lambda x: x[1])[0] if customer_counter else ''
+        result.append({
+            'id': sl_no,
+            'date': group,
+            'totalSales': total_sales,
+            'creditSales': credit_sales,
+            'cashSales': cash_sales,
+            'totalInvoices': total_invoices,
+            'averageSale': average_sale,
+            'topProduct': top_product,
+            'topCustomer': top_customer
+        })
+        sl_no += 1
+    return jsonify(result)
+
+@app.route('/api/reports/customer-returns', methods=['GET'])
+@jwt_required()
+def customer_returns_report():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    customer_id = request.args.get('customerId', type=int)
+    status = request.args.get('status')
+    search = request.args.get('search', '')
+
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+
+    query = CustomerReturn.query.join(Customer, CustomerReturn.customer_id == Customer.id)
+    query = query.filter(CustomerReturn.date >= from_dt, CustomerReturn.date < to_dt)
+    if customer_id:
+        query = query.filter(CustomerReturn.customer_id == customer_id)
+    if status and status != 'All Returns':
+        query = query.filter(CustomerReturn.status.ilike(status.lower()))
+    if search:
+        query = query.filter(
+            or_(
+                Customer.customer_name.ilike(f'%{search}%'),
+                CustomerReturn.invoice_number.ilike(f'%{search}%'),
+                CustomerReturn.description.ilike(f'%{search}%')
+            )
+        )
+    query = query.order_by(CustomerReturn.date.desc())
+    returns = query.all()
+    result = []
+    for idx, r in enumerate(returns, 1):
+        # Get product name
+        product_name = ''
+        if r.product_type == 'regular':
+            prod = RegularProduct.query.get(r.product_id)
+            product_name = prod.description if prod else ''
+        else:
+            prod = NonProduct.query.get(r.product_id)
+            product_name = prod.description if prod else ''
+        # Get customer name
+        customer_name = r.customer.customer_name if r.customer else ''
+        result.append({
+            'id': r.id,
+            'slNo': idx,
+            'returnDate': r.date.strftime('%Y-%m-%d') if r.date else '',
+            'customerName': customer_name,
+            'invoiceNo': r.invoice_number or '',
+            'productName': product_name,
+            'quantity': r.quantity,
+            'returnReason': r.return_reason or '',
+            'returnAmount': float(r.total_value) if r.total_value else 0,
+            'refundStatus': r.status.capitalize() if r.status else ''
+        })
+    return jsonify(result)
+
+@app.route('/api/reports/supplier-returns', methods=['GET'])
+@jwt_required()
+def supplier_returns_report():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    supplier_id = request.args.get('supplierId', type=int)
+    search = request.args.get('search', '')
+
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+
+    query = SupplierReturn.query.join(Supplier, SupplierReturn.supplier_id == Supplier.id)
+    query = query.filter(SupplierReturn.date >= from_dt, SupplierReturn.date < to_dt)
+    if supplier_id:
+        query = query.filter(SupplierReturn.supplier_id == supplier_id)
+    if search:
+        query = query.filter(
+            or_(
+                Supplier.supplier_name.ilike(f'%{search}%'),
+                SupplierReturn.invoice_number.ilike(f'%{search}%'),
+                SupplierReturn.description.ilike(f'%{search}%')
+            )
+        )
+    query = query.order_by(SupplierReturn.date.desc())
+    returns = query.all()
+    result = []
+    for r in returns:
+        # Get product name
+        product_name = ''
+        if r.product_type == 'regular':
+            prod = RegularProduct.query.get(r.product_id)
+            product_name = prod.description if prod else ''
+        else:
+            prod = NonProduct.query.get(r.product_id)
+            product_name = prod.description if prod else ''
+        # Get supplier name
+        supplier_name = r.supplier.supplier_name if r.supplier else ''
+        # Get invoice info
+        invoice = r.invoice_number or ''
+        remarks = r.remarks or ''
+        result.append({
+            'date': r.date.strftime('%Y-%m-%d') if r.date else '',
+            'supplier': supplier_name,
+            'invoice': invoice,
+            'productName': product_name,
+            'remarks': remarks,
+            'quantity': r.quantity,
+            'unitPrice': float(r.unit_price) if r.unit_price else 0,
+            'total': float(r.total_value) if r.total_value else 0,
+            'action': ''
+        })
+    return jsonify(result)
+
+@app.route('/api/reports/daily-book-history', methods=['GET'])
+@jwt_required()
+def daily_book_history():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    user = request.args.get('user')  # changed from salesman
+    sale_type = request.args.get('type', 'All')
+    search = request.args.get('search', '')
+
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+
+    query = Sale.query.join(User, Sale.created_by == User.id).join(Customer, Sale.customer_id == Customer.id)
+    query = query.filter(Sale.date >= from_dt, Sale.date < to_dt, Sale.status == 'finalized')
+    if user and user != 'All':
+        query = query.filter(User.username == user)
+    if sale_type == 'Cash':
+        query = query.filter(Sale.customer_type.ilike('cash'))
+    elif sale_type == 'Credit':
+        query = query.filter(Sale.customer_type.ilike('credit'))
+    if search:
+        query = query.filter(
+            or_(
+                Sale.invoice_number.ilike(f'%{search}%'),
+                Customer.customer_name.ilike(f'%{search}%'),
+                User.username.ilike(f'%{search}%')
+            )
+        )
+    query = query.order_by(Sale.date.desc())
+    sales = query.all()
+    result = []
+    for idx, sale in enumerate(sales, 1):
+        # Sum payments by mode for this sale
+        cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
+        credit_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'credit')
+        result.append({
+            'slNo': idx,
+            'date': sale.date.strftime('%Y-%m-%d'),
+            'user': sale.user.username if sale.user else '',  # changed from salesman
+            'invoiceNo': sale.invoice_number,
+            'customerName': sale.customer.customer_name if sale.customer else '',
+            'credit': float(sale.total_amount) if sale.customer_type.lower() == 'credit' else 0,
+            'crPaid': credit_paid,
+            'cash': float(sale.total_amount) if sale.customer_type.lower() == 'cash' else 0
+        })
+    return jsonify(result)
+
+@app.route('/api/reports/full-analysis', methods=['GET'])
+@jwt_required()
+def full_analysis():
+    from datetime import datetime
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    search = request.args.get('search', '')
+
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+
+    # Helper to get month name
+    def month_name(dt):
+        return calendar.month_name[dt.month]
+
+    # Get all months in range
+    months = []
+    cur = from_dt.replace(day=1)
+    while cur < to_dt:
+        months.append((cur.year, cur.month))
+        if cur.month == 12:
+            cur = cur.replace(year=cur.year+1, month=1)
+        else:
+            cur = cur.replace(month=cur.month+1)
+
+    # Prepare results
+    results = []
+    for year, month in months:
+        m_start = datetime(year, month, 1)
+        if month == 12:
+            m_end = datetime(year+1, 1, 1)
+        else:
+            m_end = datetime(year, month+1, 1)
+        # Sales
+        sales = db.session.query(func.sum(Sale.total_amount)).filter(
+            Sale.date >= m_start, Sale.date < m_end, Sale.status == 'finalized'
+        )
+        if search:
+            sales = sales.join(Customer).filter(Customer.customer_name.ilike(f'%{search}%'))
+        sales = sales.scalar() or 0
+        # Customer Returns
+        returns = db.session.query(func.sum(CustomerReturn.total_value)).filter(
+            CustomerReturn.date >= m_start, CustomerReturn.date < m_end
+        )
+        if search:
+            returns = returns.join(Customer).filter(Customer.customer_name.ilike(f'%{search}%'))
+        returns = returns.scalar() or 0
+        net_sales = sales - returns
+        # Purchases
+        purchase = db.session.query(func.sum(Purchase.amount)).filter(
+            Purchase.date >= m_start, Purchase.date < m_end
+        )
+        if search:
+            purchase = purchase.join(Supplier).filter(Supplier.supplier_name.ilike(f'%{search}%'))
+        purchase = purchase.scalar() or 0
+        # Supplier Returns
+        returns_sup = db.session.query(func.sum(SupplierReturn.total_value)).filter(
+            SupplierReturn.date >= m_start, SupplierReturn.date < m_end
+        )
+        if search:
+            returns_sup = returns_sup.join(Supplier).filter(Supplier.supplier_name.ilike(f'%{search}%'))
+        returns_sup = returns_sup.scalar() or 0
+        # Dumps
+        dumps = db.session.query(func.sum(DumpEntry.total_value)).filter(
+            DumpEntry.date >= m_start, DumpEntry.date < m_end
+        )
+        if search:
+            dumps = dumps.join(Supplier).filter(Supplier.supplier_name.ilike(f'%{search}%'))
+        dumps = dumps.scalar() or 0
+        net_purchase = purchase - returns_sup - dumps
+        # Expenses
+        expenses = db.session.query(func.sum(ExpenseEntry.total_amount)).filter(
+            ExpenseEntry.date >= m_start, ExpenseEntry.date < m_end
+        )
+        if search:
+            expenses = expenses.join(Supplier).filter(Supplier.supplier_name.ilike(f'%{search}%'))
+        expenses = expenses.scalar() or 0
+        diff = net_sales - net_purchase - expenses
+        results.append({
+            'month': month_name(m_start),
+            'year': year,
+            'sales': round(sales, 2),
+            'returns': round(returns, 2),
+            'netSales': round(net_sales, 2),
+            'purchase': round(purchase, 2),
+            'returnsSup': round(returns_sup, 2),
+            'dumps': round(dumps, 2),
+            'netPurchase': round(net_purchase, 2),
+            'expenses': round(expenses, 2),
+            'diff': round(diff, 2)
+        })
+    return jsonify(results)
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

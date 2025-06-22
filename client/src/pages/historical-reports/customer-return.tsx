@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, RotateCcw, FileText, Download, Copy, Printer, Search } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface CustomerReturnData {
   id: number;
@@ -25,29 +27,45 @@ interface CustomerReturnData {
   refundStatus: string;
 }
 
+function toLocalDateString(date: Date) {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export default function CustomerReturn() {
   const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
   const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
   const [customerFilter, setCustomerFilter] = useState("All Customer");
   const [returnTypeFilter, setReturnTypeFilter] = useState("All Returns");
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchClicked, setSearchClicked] = useState(false);
 
-  const [returnData] = useState<CustomerReturnData[]>([
-    {
-      id: 1, slNo: 1, returnDate: "2025-06-09", customerName: "TROPIFRUIT STAND 100",
-      invoiceNo: "INV-001", productName: "Fresh Bananas", quantity: 5, returnReason: "Damaged",
-      returnAmount: 25.50, refundStatus: "Processed"
+  const { data: returnData = [], isLoading } = useQuery<CustomerReturnData[]>({
+    queryKey: [
+      "customer-returns",
+      fromDate && toLocalDateString(fromDate),
+      toDate && toLocalDateString(toDate),
+      customerFilter,
+      returnTypeFilter,
+      searchTerm,
+      searchClicked
+    ],
+    queryFn: async () => {
+      if (!searchClicked) return [];
+      const params = new URLSearchParams();
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toLocalDateString(toDate));
+      if (customerFilter && customerFilter !== "All Customer") params.append("customerId", customerFilter);
+      if (returnTypeFilter && returnTypeFilter !== "All Returns") params.append("status", returnTypeFilter);
+      if (searchTerm) params.append("search", searchTerm);
+      return apiRequest("GET", `/api/reports/customer-returns?${params.toString()}`);
     },
-    {
-      id: 2, slNo: 2, returnDate: "2025-06-08", customerName: "F&R ENTERPRISE LTD",
-      invoiceNo: "INV-002", productName: "Organic Apples", quantity: 3, returnReason: "Quality Issue",
-      returnAmount: 18.75, refundStatus: "Pending"
-    }
-  ]);
+    enabled: !!searchClicked,
+  });
 
   const totals = {
-    totalQuantity: returnData.reduce((sum, item) => sum + item.quantity, 0),
-    totalAmount: returnData.reduce((sum, item) => sum + item.returnAmount, 0)
+    totalQuantity: returnData.reduce((sum, item) => sum + (item.quantity || 0), 0),
+    totalAmount: returnData.reduce((sum, item) => sum + (item.returnAmount || 0), 0)
   };
 
   return (
@@ -148,7 +166,7 @@ export default function CustomerReturn() {
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setSearchClicked(v => !v)}>
                   Search
                 </Button>
               </div>
@@ -221,7 +239,11 @@ export default function CustomerReturn() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {returnData.map((returnItem) => (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-4">Loading...</TableCell>
+                  </TableRow>
+                ) : returnData.map((returnItem) => (
                   <TableRow key={returnItem.id} className="hover:bg-gray-50">
                     <TableCell>{returnItem.slNo}</TableCell>
                     <TableCell>{format(new Date(returnItem.returnDate), "dd/MM/yyyy")}</TableCell>

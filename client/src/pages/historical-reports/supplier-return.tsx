@@ -8,6 +8,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, FileText, Copy, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { Supplier } from "@shared/schema";
 
 interface SupplierReturnData {
   date: string;
@@ -21,15 +24,50 @@ interface SupplierReturnData {
   action: string;
 }
 
+function toLocalDateString(date: Date) {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export default function SupplierReturn() {
-  const [selectedSupplier, setSelectedSupplier] = useState<string>("A S FRESH PRODUCE LTD");
+  const [selectedSupplier, setSelectedSupplier] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [searchClicked, setSearchClicked] = useState(false);
 
-  const supplierReturnData: SupplierReturnData[] = [
-    // No data available in table
-  ];
+  // Fetch suppliers for dropdown
+  const { data: suppliers = [], isLoading: loadingSuppliers, error: suppliersError } = useQuery<Supplier[]>({
+    queryKey: ["suppliers"],
+    queryFn: () => apiRequest("GET", "/api/suppliers"),
+  });
+
+  const { data: supplierReturnData = [], isLoading } = useQuery<SupplierReturnData[]>({
+    queryKey: [
+      "supplier-returns",
+      fromDate && toLocalDateString(fromDate),
+      toDate && toLocalDateString(toDate),
+      selectedSupplier,
+      searchTerm,
+      searchClicked
+    ],
+    queryFn: async () => {
+      if (!searchClicked) return [];
+      const params = new URLSearchParams();
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toLocalDateString(toDate));
+      if (selectedSupplier && selectedSupplier !== "loading" && selectedSupplier !== "error") params.append("supplierId", selectedSupplier);
+      if (searchTerm) params.append("search", searchTerm);
+      return apiRequest("GET", `/api/reports/supplier-returns?${params.toString()}`);
+    },
+    enabled: !!searchClicked,
+  });
+
+  const totals = {
+    quantity: supplierReturnData.reduce((sum, item) => sum + (item.quantity || 0), 0),
+    unitPrice: supplierReturnData.reduce((sum, item) => sum + (item.unitPrice || 0), 0),
+    total: supplierReturnData.reduce((sum, item) => sum + (item.total || 0), 0)
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -53,11 +91,20 @@ export default function SupplierReturn() {
               <div>
                 <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select supplier" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="A S FRESH PRODUCE LTD">A S FRESH PRODUCE LTD</SelectItem>
-                    <SelectItem value="other-supplier">Other Supplier</SelectItem>
+                    {loadingSuppliers ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : suppliersError ? (
+                      <SelectItem value="error" disabled>Error loading suppliers</SelectItem>
+                    ) : (
+                      suppliers.map((supplier: any) => (
+                        <SelectItem key={supplier.id} value={supplier.id.toString()}>
+                          {supplier.supplier_name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -115,7 +162,7 @@ export default function SupplierReturn() {
               </div>
 
               <div className="flex gap-2">
-                <Button className="bg-blue-600 hover:bg-blue-700">
+                <Button className="bg-blue-600 hover:bg-blue-700" onClick={() => setSearchClicked(v => !v)}>
                   Search
                 </Button>
                 <Button className="bg-blue-600 hover:bg-blue-700 flex items-center gap-1">
@@ -186,16 +233,32 @@ export default function SupplierReturn() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
-                      No data available in table
-                    </TableCell>
-                  </TableRow>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8">Loading...</TableCell>
+                    </TableRow>
+                  ) : supplierReturnData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8">No data available in table</TableCell>
+                    </TableRow>
+                  ) : supplierReturnData.map((row, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="text-center">{format(new Date(row.date), "dd/MM/yyyy")}</TableCell>
+                      <TableCell className="text-center">{row.supplier}</TableCell>
+                      <TableCell className="text-center">{row.invoice}</TableCell>
+                      <TableCell className="text-center">{row.productName}</TableCell>
+                      <TableCell className="text-center">{row.remarks}</TableCell>
+                      <TableCell className="text-center">{row.quantity}</TableCell>
+                      <TableCell className="text-center">£{row.unitPrice.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{row.total.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{row.action}</TableCell>
+                    </TableRow>
+                  ))}
                   <TableRow className="bg-blue-100 font-semibold">
                     <TableCell className="text-center" colSpan={5}>TOTAL</TableCell>
-                    <TableCell className="text-center">0</TableCell>
-                    <TableCell className="text-center">£0.00</TableCell>
-                    <TableCell className="text-center">£0.00</TableCell>
+                    <TableCell className="text-center">{totals.quantity}</TableCell>
+                    <TableCell className="text-center">£{totals.unitPrice.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£{totals.total.toFixed(2)}</TableCell>
                     <TableCell className="text-center">Action</TableCell>
                   </TableRow>
                 </TableBody>

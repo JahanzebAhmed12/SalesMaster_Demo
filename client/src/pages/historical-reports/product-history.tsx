@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { RegularProduct, NonProduct, Customer, Supplier } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,60 +13,95 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-interface SupplierData {
-  slNo: number;
-  date: string;
-  supplierName: string;
-  product: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-  action: string;
-}
+type ProductsAPI = { regularProducts: RegularProduct[]; nonProducts: NonProduct[] };
+type ProductHistoryAPI = {
+  purchases: any[];
+  supplierReturns: any[];
+  sales: any[];
+  customerReturns: any[];
+  dumps: any[];
+};
 
-interface SalesData {
-  slNo: number;
-  date: string;
-  invoiceNo: string;
-  customerName: string;
-  product: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-interface CustomerReturnData {
-  slNo: number;
-  date: string;
-  invoice: string;
-  customerName: string;
-  product: string;
-  quantity: number;
-  unitPrice: number;
-  total: number;
-}
-
-interface DumpData {
-  slNo: number;
-  date: string;
-  product: string;
-  totalQty: number;
+function toLocalDateString(date: Date) {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export default function ProductHistory() {
-  const [productLike, setProductLike] = useState<string>("");
-  const [product, setProduct] = useState<string>("All Products");
-  const [customer, setCustomer] = useState<string>("All Customers");
-  const [supplier, setSupplier] = useState<string>("All Suppliers");
+  const [productLike, setProductLike] = useState("");
+  const [productId, setProductId] = useState<string | undefined>(undefined);
+  const [customerId, setCustomerId] = useState<string | undefined>(undefined);
+  const [supplierId, setSupplierId] = useState<string | undefined>(undefined);
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
-  const [priceFrom, setPriceFrom] = useState<string>("");
-  const [priceTo, setPriceTo] = useState<string>("");
+  const [searchClicked, setSearchClicked] = useState(false);
 
-  const supplierData: SupplierData[] = [];
-  const salesData: SalesData[] = [];
-  const customerReturnData: CustomerReturnData[] = [];
-  const dumpData: DumpData[] = [];
+  // Fetch all products
+  const { data: productsData = { regularProducts: [], nonProducts: [] }, isLoading: loadingProducts, error: productsError } = useQuery<ProductsAPI>({
+    queryKey: ["products"],
+    queryFn: () => apiRequest("GET", "/api/products"),
+  });
+  // Fetch all customers
+  const { data: customersData = [], isLoading: loadingCustomers, error: customersError } = useQuery<Customer[]>({
+    queryKey: ["customers"],
+    queryFn: () => apiRequest("GET", "/api/customers"),
+  });
+  // Fetch all suppliers
+  const { data: suppliersData = [], isLoading: loadingSuppliers, error: suppliersError } = useQuery<Supplier[]>({
+    queryKey: ["suppliers"],
+    queryFn: () => apiRequest("GET", "/api/suppliers"),
+  });
+
+  // Prepare product options
+  const allProducts: (RegularProduct | NonProduct)[] = [
+    ...(productsData.regularProducts || []),
+    ...(productsData.nonProducts || [])
+  ];
+
+  // Prepare customer options
+  const allCustomers: Customer[] = customersData;
+  // Prepare supplier options
+  const allSuppliers: Supplier[] = suppliersData;
+
+  // Fetch product history only when Search is clicked
+  const {
+    data: historyData = { purchases: [], supplierReturns: [], sales: [], customerReturns: [], dumps: [] },
+    isLoading: loadingHistory,
+    error: historyError
+  } = useQuery<ProductHistoryAPI>({
+    queryKey: [
+      "product-history",
+      productId,
+      productLike,
+      fromDate?.toISOString().slice(0, 10),
+      toDate?.toISOString().slice(0, 10),
+      customerId,
+      supplierId,
+      searchClicked
+    ],
+    queryFn: async () => {
+      if (!searchClicked) return { purchases: [], supplierReturns: [], sales: [], customerReturns: [], dumps: [] };
+      const params = new URLSearchParams();
+      if (productId && productId !== "All") params.append("productId", productId);
+      if (productLike) params.append("productLike", productLike);
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toLocalDateString(toDate));
+      if (customerId && customerId !== "All") params.append("customerId", customerId);
+      if (supplierId && supplierId !== "All") params.append("supplierId", supplierId);
+      return apiRequest("GET", `/api/reports/product-history?${params.toString()}`);
+    },
+    enabled: !!searchClicked,
+  });
+
+  // Table data
+  const purchases = historyData.purchases;
+  const supplierReturns = historyData.supplierReturns;
+  const sales = historyData.sales;
+  const customerReturns = historyData.customerReturns;
+  const dumps = historyData.dumps;
+
+  // Loading states
+  const loading = loadingProducts || loadingCustomers || loadingSuppliers || loadingHistory;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -78,7 +116,6 @@ export default function ProductHistory() {
           </div>
         </div>
       </div>
-
       <div className="max-w-7xl mx-auto p-4 space-y-6">
         {/* Filter Section */}
         <Card>
@@ -92,50 +129,55 @@ export default function ProductHistory() {
                   placeholder=""
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium mb-2">Product:</label>
-                <Select value={product} onValueChange={setProduct}>
+                <Select value={productId || "All"} onValueChange={setProductId}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="All Products" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="All Products">All Products</SelectItem>
-                    <SelectItem value="product1">Product 1</SelectItem>
-                    <SelectItem value="product2">Product 2</SelectItem>
+                    <SelectItem value="All">All Products</SelectItem>
+                    {allProducts.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>
+                        {p.description}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-
               <div>
                 <label className="block text-sm font-medium mb-2">Customer:</label>
-                <Select value={customer} onValueChange={setCustomer}>
+                <Select value={customerId || "All"} onValueChange={setCustomerId}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="All Customers" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="All Customers">All Customers</SelectItem>
-                    <SelectItem value="customer1">Customer 1</SelectItem>
-                    <SelectItem value="customer2">Customer 2</SelectItem>
+                    <SelectItem value="All">All Customers</SelectItem>
+                    {allCustomers.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.customer_name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-
               <div>
                 <label className="block text-sm font-medium mb-2">Supplier:</label>
-                <Select value={supplier} onValueChange={setSupplier}>
+                <Select value={supplierId || "All"} onValueChange={setSupplierId}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="All Suppliers" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="All Suppliers">All Suppliers</SelectItem>
-                    <SelectItem value="supplier1">Supplier 1</SelectItem>
-                    <SelectItem value="supplier2">Supplier 2</SelectItem>
+                    <SelectItem value="All">All Suppliers</SelectItem>
+                    {allSuppliers.map((s) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.supplier_name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
               <div>
                 <label className="block text-sm font-medium mb-2">From:</label>
@@ -149,7 +191,7 @@ export default function ProductHistory() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "20250511"}
+                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "Select"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -162,7 +204,6 @@ export default function ProductHistory() {
                   </PopoverContent>
                 </Popover>
               </div>
-
               <div>
                 <label className="block text-sm font-medium mb-2">To:</label>
                 <Popover>
@@ -175,7 +216,7 @@ export default function ProductHistory() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyy-MM-dd") : "20250610"}
+                      {toDate ? format(toDate, "yyyy-MM-dd") : "Select"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
@@ -188,31 +229,25 @@ export default function ProductHistory() {
                   </PopoverContent>
                 </Popover>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Price From:</label>
-                <Input
-                  value={priceFrom}
-                  onChange={(e) => setPriceFrom(e.target.value)}
-                  placeholder=""
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Price To:</label>
-                <Input
-                  value={priceTo}
-                  onChange={(e) => setPriceTo(e.target.value)}
-                  placeholder=""
-                />
-              </div>
-
-              <div>
-                <Button className="bg-blue-600 hover:bg-blue-700 w-full">
-                  Search
+              <div className="col-span-1 lg:col-span-3 flex items-end">
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 w-full"
+                  disabled={loading}
+                  onClick={() => setSearchClicked((v) => !v)}
+                >
+                  {loading ? "Loading..." : "Search"}
                 </Button>
               </div>
             </div>
+            {/* Error handling */}
+            {(productsError || customersError || suppliersError || historyError) && (
+              <div className="text-red-600 mt-2">
+                {productsError && <div>Failed to load products.</div>}
+                {customersError && <div>Failed to load customers.</div>}
+                {suppliersError && <div>Failed to load suppliers.</div>}
+                {historyError && <div>Failed to load product history.</div>}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -231,15 +266,30 @@ export default function ProductHistory() {
                     <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
                     <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
                     <TableHead className="text-center min-w-[100px]">Total</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-4">
-                      No Records found
-                    </TableCell>
-                  </TableRow>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : purchases.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    purchases.map((row: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{row.date}</TableCell>
+                        <TableCell className="text-center">{row.supplierName}</TableCell>
+                        <TableCell className="text-center">{row.product}</TableCell>
+                        <TableCell className="text-center">{row.quantity}</TableCell>
+                        <TableCell className="text-center">{row.unitPrice}</TableCell>
+                        <TableCell className="text-center">{row.total}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -261,15 +311,32 @@ export default function ProductHistory() {
                     <TableHead className="text-center min-w-[120px]">Product</TableHead>
                     <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
                     <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
-                    <TableHead className="text-center min-w-[100px]">total</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-4">
-                      No Records found
-                    </TableCell>
-                  </TableRow>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : supplierReturns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    supplierReturns.map((row: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{row.date}</TableCell>
+                        <TableCell className="text-center">{row.invoice}</TableCell>
+                        <TableCell className="text-center">{row.supplierName}</TableCell>
+                        <TableCell className="text-center">{row.product}</TableCell>
+                        <TableCell className="text-center">{row.quantity}</TableCell>
+                        <TableCell className="text-center">{row.unitPrice}</TableCell>
+                        <TableCell className="text-center">{row.total}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -295,11 +362,28 @@ export default function ProductHistory() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-4">
-                      No Records found
-                    </TableCell>
-                  </TableRow>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : sales.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    sales.map((row: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{row.date}</TableCell>
+                        <TableCell className="text-center">{row.invoiceNo}</TableCell>
+                        <TableCell className="text-center">{row.customerName}</TableCell>
+                        <TableCell className="text-center">{row.product}</TableCell>
+                        <TableCell className="text-center">{row.quantity}</TableCell>
+                        <TableCell className="text-center">{row.unitPrice}</TableCell>
+                        <TableCell className="text-center">{row.total}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -321,15 +405,32 @@ export default function ProductHistory() {
                     <TableHead className="text-center min-w-[120px]">Product</TableHead>
                     <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
                     <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
-                    <TableHead className="text-center min-w-[100px]">total</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-4">
-                      No Records found
-                    </TableCell>
-                  </TableRow>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : customerReturns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    customerReturns.map((row: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{row.date}</TableCell>
+                        <TableCell className="text-center">{row.invoice}</TableCell>
+                        <TableCell className="text-center">{row.customerName}</TableCell>
+                        <TableCell className="text-center">{row.product}</TableCell>
+                        <TableCell className="text-center">{row.quantity}</TableCell>
+                        <TableCell className="text-center">{row.unitPrice}</TableCell>
+                        <TableCell className="text-center">{row.total}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
@@ -351,11 +452,24 @@ export default function ProductHistory() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-4">
-                      No Records found
-                    </TableCell>
-                  </TableRow>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : dumps.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    dumps.map((row: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{row.date}</TableCell>
+                        <TableCell className="text-center">{row.product}</TableCell>
+                        <TableCell className="text-center">{row.totalQty}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>

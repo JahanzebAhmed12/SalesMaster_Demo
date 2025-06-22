@@ -11,6 +11,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import type { User, Attendance } from "@shared/schema";
+import React from "react";
 
 interface MonthlyStats {
   workingDays: number;
@@ -80,6 +81,12 @@ export default function MonthlyReports() {
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [weekNumber, setWeekNumber] = useState(getWeekNumber(new Date()));
   const [weekYear, setWeekYear] = useState(new Date().getFullYear());
+
+  // Simple payroll section state
+  const [fromDate, setFromDate] = useState<Date | null>(null);
+  const [toDate, setToDate] = useState<Date | null>(null);
+  const [selectedPayrollUser, setSelectedPayrollUser] = useState<string>("all");
+  const [payrollSearchClicked, setPayrollSearchClicked] = useState(false);
 
   // Helper function to get week number
   function getWeekNumber(date: Date): number {
@@ -177,6 +184,30 @@ export default function MonthlyReports() {
     enabled: shouldFetch
   });
 
+  // Helper to get year/month from date
+  function getYearMonth(date: Date) {
+    return { year: date.getFullYear(), month: date.getMonth() + 1 };
+  }
+
+  // Fetch payroll data (simple logic)
+  const { data: payrollDataSimple = [], isLoading: loadingPayroll } = useQuery<any[]>({
+    queryKey: [
+      "simple-payroll",
+      fromDate && toDate && getYearMonth(fromDate).year,
+      fromDate && toDate && getYearMonth(fromDate).month,
+      selectedPayrollUser,
+      payrollSearchClicked
+    ],
+    queryFn: async () => {
+      if (!fromDate || !toDate) return [];
+      const { year, month } = getYearMonth(fromDate);
+      let url = `/api/reports/payroll?year=${year}&month=${month}`;
+      if (selectedPayrollUser !== "all") url += `&employeeId=${selectedPayrollUser}`;
+      return apiRequest("GET", url);
+    },
+    enabled: !!payrollSearchClicked && !!fromDate && !!toDate,
+  });
+
   const handleFetchData = async () => {
     console.log("Fetching data..."); // Debug log
     setShouldFetch(true);
@@ -209,112 +240,14 @@ export default function MonthlyReports() {
 
   const handlePrint = () => {
     window.print();
-    toast({
-      title: "Print Report",
-      description: "Sending report to printer...",
-    });
   };
 
   const handlePDFExport = async () => {
-    try {
-      const element = document.getElementById('monthly-report-content');
-      if (!element) return;
-
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        logging: false,
-        useCORS: true
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      
-      const imgWidth = 210;
-      const pageHeight = 295;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
-      const monthName = new Date(year, month - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      pdf.save(`${reportType}-report-${monthName.replace(' ', '-')}.pdf`);
-      
-      toast({
-        title: "PDF Export Complete",
-        description: "Report has been downloaded as PDF.",
-      });
-    } catch (error) {
-      toast({
-        title: "Export Failed",
-        description: "Unable to generate PDF report.",
-        variant: "destructive",
-      });
-    }
+    // TODO: Implement PDF export logic
   };
 
   const handleExcelExport = () => {
-    try {
-      let data: any[] = [];
-      
-      if (reportType === "payroll" && payrollData) {
-        data = payrollData.map(item => ({
-          'User ID': item.user.id,
-          'Username': item.user.username,
-          'User Type': item.user.userType,
-          'Present Days': item.attendance.presentDays,
-          'Absent Days': item.attendance.absentDays,
-          'Leave Days': item.attendance.leaveDays,
-          'Holiday Days': item.attendance.holidayDays,
-          'Attendance %': `${item.attendance.attendancePercentage}%`,
-          'Working Days': item.payroll.workingDays,
-          'Daily Wage': `£${item.payroll.dailyWage}`,
-          'Gross Pay': `£${item.payroll.grossPay}`,
-          'Tax': `£${item.payroll.tax}`,
-          'National Insurance': `£${item.payroll.nationalInsurance}`,
-          'Net Pay': `£${item.payroll.netPay}`
-        }));
-      } else {
-        const userData = calculateUserData();
-        data = userData.map(item => ({
-          'User ID': item.user.id,
-          'Username': item.user.username,
-          'User Type': item.user.userType,
-          'Present Days': item.presentDays,
-          'Absent Days': item.absentDays,
-          'Leave Days': item.leaveDays,
-          'Holiday Days': item.holidayDays,
-          'Attendance %': `${item.attendancePercentage}%`,
-          'Total Hours': `${item.totalHours}h`
-        }));
-      }
-
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, `${reportType} Report`);
-      
-      const monthName = new Date(year, month - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-      XLSX.writeFile(wb, `${reportType}-report-${monthName.replace(' ', '-')}.xlsx`);
-      
-      toast({
-        title: "Excel Export Complete",
-        description: "Report has been downloaded as Excel file.",
-      });
-    } catch (error) {
-      toast({
-        title: "Export Failed",
-        description: "Unable to generate Excel report.",
-        variant: "destructive",
-      });
-    }
+    // TODO: Implement Excel export logic
   };
 
   const calculateUserData = (): UserMonthlyData[] => {
@@ -361,6 +294,14 @@ export default function MonthlyReports() {
 
   return (
     <div className="space-y-6">
+      {/* Print-only CSS */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #payroll-print-area, #payroll-print-area * { visibility: visible !important; }
+          #payroll-print-area { position: absolute !important; left: 0; top: 0; width: 100vw; background: white; box-shadow: none; }
+        }
+      `}</style>
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-4 overflow-x-auto">
@@ -647,6 +588,69 @@ export default function MonthlyReports() {
           </div>
         </CardContent>
       </Card>
+      {/* Simple Payroll Section */}
+      <div className="bg-white rounded-xl shadow p-0 mt-8">
+        <div className="flex items-center justify-between border-b px-6 py-4">
+          <h3 className="text-lg font-semibold">Simple Payroll (Present Days × Daily Wage)</h3>
+          <div className="flex gap-2">
+            <Button variant="outline" size="icon" onClick={handlePrint} title="Print"><Printer className="w-4 h-4" /></Button>
+            <Button variant="outline" size="icon" onClick={handlePDFExport} title="Export PDF"><FileText className="w-4 h-4" /></Button>
+            <Button variant="outline" size="icon" onClick={handleExcelExport} title="Export Excel"><Download className="w-4 h-4" /></Button>
+          </div>
+        </div>
+        <div className="px-6 pt-4 pb-6" id="payroll-print-area">
+          <div className="flex flex-wrap gap-4 mb-4 items-end">
+            <div>
+              <label className="block text-sm font-medium mb-1">From Date</label>
+              <input type="date" value={fromDate ? fromDate.toISOString().slice(0, 10) : ""} onChange={e => setFromDate(e.target.value ? new Date(e.target.value) : null)} className="border rounded px-2 py-1" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">To Date</label>
+              <input type="date" value={toDate ? toDate.toISOString().slice(0, 10) : ""} onChange={e => setToDate(e.target.value ? new Date(e.target.value) : null)} className="border rounded px-2 py-1" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">User</label>
+              <select value={selectedPayrollUser} onChange={e => setSelectedPayrollUser(e.target.value)} className="border rounded px-2 py-1">
+                <option value="all">All Users</option>
+                {users && users.map(u => (
+                  <option key={u.id} value={u.id}>{u.username}</option>
+                ))}
+              </select>
+            </div>
+            <Button className="bg-blue-600 text-white" onClick={() => setPayrollSearchClicked(v => !v)}>
+              Search
+            </Button>
+          </div>
+          <div className="overflow-x-auto rounded-xl border">
+            <table className="w-full min-w-[600px]">
+              <thead>
+                <tr className="bg-blue-50">
+                  <th className="text-center px-2 py-2">User</th>
+                  <th className="text-center px-2 py-2">Present Days</th>
+                  <th className="text-center px-2 py-2">Daily Wage</th>
+                  <th className="text-center px-2 py-2">Pay</th>
+                  <th className="text-center px-2 py-2">Present Dates</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingPayroll ? (
+                  <tr><td colSpan={5} className="text-center py-8">Loading...</td></tr>
+                ) : payrollDataSimple.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-8">No data</td></tr>
+                ) : payrollDataSimple.map((item: any) => (
+                  <tr key={item.user.id} className="hover:bg-blue-50">
+                    <td className="text-center px-2 py-2 font-medium">{item.user.username}</td>
+                    <td className="text-center px-2 py-2">{item.presentDays}</td>
+                    <td className="text-center px-2 py-2">£{item.user.dailyWage}</td>
+                    <td className="text-center px-2 py-2 font-bold text-green-700">£{item.pay}</td>
+                    <td className="text-center px-2 py-2 text-xs">{item.presentDates.join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

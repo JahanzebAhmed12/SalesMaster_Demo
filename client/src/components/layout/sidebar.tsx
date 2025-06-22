@@ -84,7 +84,7 @@ const menuSections: MenuSection[] = [
       { title: "Prod/Customer History", path: "/historical-reports/prod-customer-history" },
       { title: "Date Wise Sales", path: "/historical-reports/date-wise-sales" },
       { title: "Customer Return", path: "/historical-reports/customer-return" },
-      { title: "Supplier Returns", path: "/historical-reports/supplier-returns" },
+      { title: "Supplier Returns", path: "/historical-reports/supplier-return" },
       { title: "Daily Book History", path: "/historical-reports/daily-book-history" },
       { title: "Full Analysis", path: "/historical-reports/full-analysis" },
       { title: "EEC Report", path: "/historical-reports/eec-report" },

@@ -7,6 +7,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, FileText, Copy, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface AnalysisData {
   month: string;
@@ -22,26 +24,51 @@ interface AnalysisData {
   diff: number;
 }
 
+function toLocalDateString(date: Date) {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export default function FullAnalysis() {
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [searchClicked, setSearchClicked] = useState(false);
 
-  const analysisData: AnalysisData[] = [
-    {
-      month: "June",
-      year: 2025,
-      sales: 19733,
-      returns: 0,
-      netSales: 19733,
-      purchase: 21438,
-      returnsSup: 0,
-      dumps: 0,
-      netPurchase: 21438,
-      expenses: 0,
-      diff: -1705
-    }
-  ];
+  const { data: analysisData = [], isLoading } = useQuery<AnalysisData[]>({
+    queryKey: [
+      "full-analysis",
+      fromDate && toLocalDateString(fromDate),
+      toDate && toLocalDateString(toDate),
+      searchTerm,
+      searchClicked
+    ],
+    queryFn: async () => {
+      if (!searchClicked) return [];
+      const params = new URLSearchParams();
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toLocalDateString(toDate));
+      if (searchTerm) params.append("search", searchTerm);
+      return apiRequest("GET", `/api/reports/full-analysis?${params.toString()}`);
+    },
+    enabled: !!searchClicked,
+  });
+
+  const totals = analysisData.reduce(
+    (acc, item) => {
+      acc.sales += item.sales || 0;
+      acc.returns += item.returns || 0;
+      acc.netSales += item.netSales || 0;
+      acc.purchase += item.purchase || 0;
+      acc.returnsSup += item.returnsSup || 0;
+      acc.dumps += item.dumps || 0;
+      acc.netPurchase += item.netPurchase || 0;
+      acc.expenses += item.expenses || 0;
+      acc.diff += item.diff || 0;
+      return acc;
+    },
+    { sales: 0, returns: 0, netSales: 0, purchase: 0, returnsSup: 0, dumps: 0, netPurchase: 0, expenses: 0, diff: 0 }
+  );
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -115,7 +142,7 @@ export default function FullAnalysis() {
               </div>
 
               <div>
-                <Button className="bg-blue-600 hover:bg-blue-700 w-full">
+                <Button className="bg-blue-600 hover:bg-blue-700 w-full" onClick={() => setSearchClicked(v => !v)}>
                   Search
                 </Button>
               </div>
@@ -177,7 +204,15 @@ export default function FullAnalysis() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {analysisData.map((item, index) => (
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={11} className="text-center py-8">Loading...</TableCell>
+                    </TableRow>
+                  ) : analysisData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={11} className="text-center py-8">No data available</TableCell>
+                    </TableRow>
+                  ) : analysisData.map((item, index) => (
                     <TableRow key={index}>
                       <TableCell className="text-center">{item.month}</TableCell>
                       <TableCell className="text-center">{item.year}</TableCell>
@@ -194,15 +229,15 @@ export default function FullAnalysis() {
                   ))}
                   <TableRow className="bg-green-100 font-semibold">
                     <TableCell className="text-center" colSpan={2}>TOTAL</TableCell>
-                    <TableCell className="text-center">£ 19,733</TableCell>
-                    <TableCell className="text-center">£ 0</TableCell>
-                    <TableCell className="text-center">£ 19,733</TableCell>
-                    <TableCell className="text-center">£ 21,438</TableCell>
-                    <TableCell className="text-center">£ 0</TableCell>
-                    <TableCell className="text-center">£ 0</TableCell>
-                    <TableCell className="text-center">£ 21,438</TableCell>
-                    <TableCell className="text-center">£ 0</TableCell>
-                    <TableCell className="text-center text-red-600">£ -1,705</TableCell>
+                    <TableCell className="text-center">£ {totals.sales.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {totals.returns.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {totals.netSales.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {totals.purchase.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {totals.returnsSup.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {totals.dumps.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {totals.netPurchase.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {totals.expenses.toLocaleString()}</TableCell>
+                    <TableCell className="text-center text-red-600">£ {totals.diff.toLocaleString()}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -211,7 +246,7 @@ export default function FullAnalysis() {
             {/* Pagination */}
             <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
               <div className="text-sm text-gray-600">
-                Showing 1 to 1 of 1 entries
+                Showing {analysisData.length > 0 ? 1 : 0} to {analysisData.length} of {analysisData.length} entries
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm">Previous</span>

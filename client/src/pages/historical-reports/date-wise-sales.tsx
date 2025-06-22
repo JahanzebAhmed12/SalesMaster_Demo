@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Calendar as CalendarIconTwo, FileText, Download, Copy, Printer, Search, TrendingUp } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface DateWiseSalesData {
   id: number;
@@ -24,34 +26,48 @@ interface DateWiseSalesData {
   topCustomer: string;
 }
 
+function toLocalDateString(date: Date) {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export default function DateWiseSales() {
   const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 8));
   const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
   const [salesType, setSalesType] = useState("All Sales");
   const [groupBy, setGroupBy] = useState("Daily");
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchClicked, setSearchClicked] = useState(false);
 
-  const [salesData] = useState<DateWiseSalesData[]>([
-    {
-      id: 1, date: "2025-06-08", totalSales: 2450.75, creditSales: 1800.50, cashSales: 650.25,
-      totalInvoices: 12, averageSale: 204.23, topProduct: "Fresh Bananas", topCustomer: "TROPIFRUIT STAND 100"
+  const { data: salesData = [], isLoading } = useQuery<DateWiseSalesData[]>({
+    queryKey: [
+      "date-wise-sales",
+      fromDate && toLocalDateString(fromDate),
+      toDate && toLocalDateString(toDate),
+      salesType,
+      groupBy,
+      searchTerm,
+      searchClicked
+    ],
+    queryFn: async () => {
+      if (!searchClicked) return [];
+      const params = new URLSearchParams();
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toLocalDateString(toDate));
+      if (salesType) params.append("salesType", salesType);
+      if (groupBy) params.append("groupBy", groupBy);
+      if (searchTerm) params.append("search", searchTerm);
+      return apiRequest("GET", `/api/reports/date-wise-sales?${params.toString()}`);
     },
-    {
-      id: 2, date: "2025-06-09", totalSales: 3275.80, creditSales: 2100.00, cashSales: 1175.80,
-      totalInvoices: 18, averageSale: 181.99, topProduct: "Organic Apples", topCustomer: "F&R ENTERPRISE LTD"
-    },
-    {
-      id: 3, date: "2025-06-10", totalSales: 1890.45, creditSales: 1350.20, cashSales: 540.25,
-      totalInvoices: 9, averageSale: 210.05, topProduct: "Mixed Fruits", topCustomer: "AMER SUPER"
-    }
-  ]);
+    enabled: !!searchClicked,
+  });
 
   const totals = {
-    totalSales: salesData.reduce((sum, item) => sum + item.totalSales, 0),
-    creditSales: salesData.reduce((sum, item) => sum + item.creditSales, 0),
-    cashSales: salesData.reduce((sum, item) => sum + item.cashSales, 0),
-    totalInvoices: salesData.reduce((sum, item) => sum + item.totalInvoices, 0),
-    averageSale: salesData.reduce((sum, item) => sum + item.averageSale, 0) / salesData.length
+    totalSales: salesData.reduce((sum, item) => sum + (item.totalSales || 0), 0),
+    creditSales: salesData.reduce((sum, item) => sum + (item.creditSales || 0), 0),
+    cashSales: salesData.reduce((sum, item) => sum + (item.cashSales || 0), 0),
+    totalInvoices: salesData.reduce((sum, item) => sum + (item.totalInvoices || 0), 0),
+    averageSale: salesData.length ? salesData.reduce((sum, item) => sum + (item.averageSale || 0), 0) / salesData.length : 0
   };
 
   return (
@@ -151,7 +167,7 @@ export default function DateWiseSales() {
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setSearchClicked(v => !v)}>
                   Generate Report
                 </Button>
               </div>
@@ -223,7 +239,11 @@ export default function DateWiseSales() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {salesData.map((sale) => (
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center py-4">Loading...</TableCell>
+                  </TableRow>
+                ) : salesData.map((sale) => (
                   <TableRow key={sale.id} className="hover:bg-gray-50">
                     <TableCell className="font-medium">{format(new Date(sale.date), "dd/MM/yyyy")}</TableCell>
                     <TableCell className="text-center font-bold text-green-600">£{sale.totalSales.toFixed(2)}</TableCell>
@@ -273,7 +293,17 @@ export default function DateWiseSales() {
               <div className="bg-orange-50 p-4 rounded-lg border">
                 <div className="text-sm text-gray-600">Best Day</div>
                 <div className="text-lg font-bold text-orange-600">
-                  {format(new Date(salesData.reduce((max, sale) => sale.totalSales > max.totalSales ? sale : max).date), "dd/MM")}
+                  {salesData.length > 0
+                    ? format(
+                        new Date(
+                          salesData.reduce(
+                            (max, sale) => sale.totalSales > max.totalSales ? sale : max,
+                            salesData[0]
+                          ).date
+                        ),
+                        "dd/MM"
+                      )
+                    : "-"}
                 </div>
               </div>
             </div>

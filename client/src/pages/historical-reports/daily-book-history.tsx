@@ -8,11 +8,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, FileText, Copy, Printer, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { User } from "@shared/schema";
 
 interface DailyBookData {
   slNo: number;
   date: string;
-  salesman: string;
+  user: string;
   invoiceNo: string;
   customerName: string;
   credit: number;
@@ -20,24 +23,53 @@ interface DailyBookData {
   cash: number;
 }
 
+function toLocalDateString(date: Date) {
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export default function DailyBookHistory() {
   const [fromDate, setFromDate] = useState<Date>();
   const [toDate, setToDate] = useState<Date>();
-  const [selectedAdmin, setSelectedAdmin] = useState<string>("admin");
+  const [user, setUser] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [reportType, setReportType] = useState<string>("All");
+  const [searchClicked, setSearchClicked] = useState(false);
 
-  const dailyBookData: DailyBookData[] = [
-    {
-      slNo: 1,
-      date: "2025-06-10",
-      salesman: "admin",
-      invoiceNo: "340702",
-      customerName: "T ALL",
-      credit: 0.00,
-      crPaid: 0.00,
-      cash: 55.00
-    }
-  ];
+  // Fetch users for dropdown
+  const { data: users = [], isLoading: loadingUsers, error: usersError } = useQuery<User[]>({
+    queryKey: ["users"],
+    queryFn: () => apiRequest("GET", "/api/users"),
+  });
+
+  const { data: dailyBookData = [], isLoading } = useQuery<DailyBookData[]>({
+    queryKey: [
+      "daily-book-history",
+      fromDate && toLocalDateString(fromDate),
+      toDate && toLocalDateString(toDate),
+      user,
+      reportType,
+      searchTerm,
+      searchClicked
+    ],
+    queryFn: async () => {
+      if (!searchClicked) return [];
+      const params = new URLSearchParams();
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toLocalDateString(toDate));
+      if (user && user !== "all") params.append("user", user);
+      if (reportType) params.append("type", reportType);
+      if (searchTerm) params.append("search", searchTerm);
+      return apiRequest("GET", `/api/reports/daily-book-history?${params.toString()}`);
+    },
+    enabled: !!searchClicked,
+  });
+
+  const totals = {
+    credit: dailyBookData.reduce((sum, item) => sum + (item.credit || 0), 0),
+    crPaid: dailyBookData.reduce((sum, item) => sum + (item.crPaid || 0), 0),
+    cash: dailyBookData.reduce((sum, item) => sum + (item.cash || 0), 0)
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -124,20 +156,23 @@ export default function DailyBookHistory() {
               </div>
 
               <div>
-                <Select value={selectedAdmin} onValueChange={setSelectedAdmin}>
+                <Select value={user} onValueChange={setUser}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select user" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">admin</SelectItem>
-                    <SelectItem value="user1">User 1</SelectItem>
-                    <SelectItem value="user2">User 2</SelectItem>
+                    <SelectItem value="all">All</SelectItem>
+                    {loadingUsers ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : users.map(u => (
+                      <SelectItem key={u.username} value={u.username}>{u.username}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Button className="bg-blue-600 hover:bg-blue-700 w-full">
+                <Button className="bg-blue-600 hover:bg-blue-700 w-full" onClick={() => setSearchClicked(v => !v)}>
                   Search
                 </Button>
               </div>
@@ -214,7 +249,7 @@ export default function DailyBookHistory() {
                   <TableRow className="bg-blue-50">
                     <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
                     <TableHead className="text-center min-w-[100px]">Date</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Salesman</TableHead>
+                    <TableHead className="text-center min-w-[120px]">User</TableHead>
                     <TableHead className="text-center min-w-[120px]">Invoice No</TableHead>
                     <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
                     <TableHead className="text-center min-w-[100px]">Credit</TableHead>
@@ -223,11 +258,19 @@ export default function DailyBookHistory() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dailyBookData.map((item) => (
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">Loading...</TableCell>
+                    </TableRow>
+                  ) : dailyBookData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8">No data available</TableCell>
+                    </TableRow>
+                  ) : dailyBookData.map((item) => (
                     <TableRow key={item.slNo}>
                       <TableCell className="text-center">{item.slNo}</TableCell>
                       <TableCell className="text-center">{format(new Date(item.date), "dd-MM-yyyy")}</TableCell>
-                      <TableCell className="text-center">{item.salesman}</TableCell>
+                      <TableCell className="text-center">{item.user}</TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center gap-2 justify-center">
                           <span className="flex gap-1">
@@ -245,10 +288,10 @@ export default function DailyBookHistory() {
                     </TableRow>
                   ))}
                   <TableRow className="bg-blue-100 font-semibold">
-                    <TableCell className="text-center" colSpan={5}>1 Items</TableCell>
-                    <TableCell className="text-center">£ 0.00</TableCell>
-                    <TableCell className="text-center">£ 0.00</TableCell>
-                    <TableCell className="text-center">£ 55.00</TableCell>
+                    <TableCell className="text-center" colSpan={5}>{dailyBookData.length} Items</TableCell>
+                    <TableCell className="text-center">£ {totals.credit.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {totals.crPaid.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {totals.cash.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -257,7 +300,7 @@ export default function DailyBookHistory() {
             {/* Summary and Pagination */}
             <div className="mt-4 space-y-4">
               <div className="text-sm text-gray-600">
-                Showing 1 to 1 of 1 entries
+                Showing {dailyBookData.length > 0 ? 1 : 0} to {dailyBookData.length} of {dailyBookData.length} entries
               </div>
               
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -267,7 +310,7 @@ export default function DailyBookHistory() {
                   <span className="text-sm">Next</span>
                 </div>
                 <div className="text-right font-semibold">
-                  TOTAL CASH : £ 55.00
+                  TOTAL CASH : £ {totals.cash.toFixed(2)}
                 </div>
               </div>
             </div>

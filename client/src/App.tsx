@@ -50,7 +50,6 @@ import ProductHistory from "@/pages/historical-reports/product-history";
 import ProdCustomerHistory from "@/pages/historical-reports/prod-customer-history";
 import DateWiseSales from "@/pages/historical-reports/date-wise-sales";
 import CustomerReturn from "@/pages/historical-reports/customer-return";
-import SupplierReturns from "@/pages/historical-reports/supplier-returns";
 import SupplierReturn from "@/pages/historical-reports/supplier-return";
 import DailyBookHistory from "@/pages/historical-reports/daily-book-history";
 import FullAnalysis from "@/pages/historical-reports/full-analysis";
@@ -212,8 +211,8 @@ function Router() {
       <Route path="/historical-reports/customer-return">
         <AuthenticatedRoute component={CustomerReturn} title="Customer Return" breadcrumb="Historical Reports > Customer Return" />
       </Route>
-      <Route path="/historical-reports/supplier-returns">
-        <AuthenticatedRoute component={SupplierReturns} title="Supplier Returns" breadcrumb="Historical Reports > Supplier Returns" />
+      <Route path="/historical-reports/supplier-return">
+        <AuthenticatedRoute component={SupplierReturn} title="Supplier Returns" breadcrumb="Historical Reports > Supplier Returns" />
       </Route>
       <Route path="/historical-reports/daily-book-history">
         <AuthenticatedRoute component={DailyBookHistory} title="Daily Book History" breadcrumb="Historical Reports > Daily Book History" />

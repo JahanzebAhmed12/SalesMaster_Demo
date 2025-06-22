@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { Supplier } from "@shared/schema";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,12 +15,43 @@ import { CalendarIcon, Building2, FileText, Download, Copy, Printer, Search, Mai
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
+interface StatementData {
+  id: number;
+  slNo: number;
+  date: string;
+  invoiceNo: string | number | null;
+  description: string;
+  purchaseInv: number;
+  paid: number;
+  creditAdj: number;
+  discountAdj: number;
+  balance: number;
+  runningBalance: number;
+}
+
 export default function SupplierHistory() {
-  const [selectedSupplier, setSelectedSupplier] = useState("Fresh Fruits Ltd");
-  const [fromDate, setFromDate] = useState<Date>(new Date(2024, 7, 5));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
-  const [filterType, setFilterType] = useState("All");
+  const [selectedSupplier, setSelectedSupplier] = useState<string>("");
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
+  const [statementType, setStatementType] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
+  const [statementData, setStatementData] = useState<StatementData[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch suppliers for dropdown
+  const { data: suppliers = [], isLoading: isLoadingSuppliers, error: suppliersError } = useQuery<Supplier[]>({
+    queryKey: ["/api/suppliers"],
+    queryFn: () => apiRequest("GET", "/api/suppliers"),
+  });
+
+  // Calculate totals
+  const totals = {
+    purchaseInv: statementData.reduce((sum, item) => sum + item.purchaseInv, 0),
+    paid: statementData.reduce((sum, item) => sum + item.paid, 0),
+    creditAdj: statementData.reduce((sum, item) => sum + item.creditAdj, 0),
+    discountAdj: statementData.reduce((sum, item) => sum + item.discountAdj, 0),
+    balance: statementData.reduce((sum, item) => sum + item.balance, 0),
+  };
 
   return (
     <PageLayout title="Supplier History" breadcrumb="Historical Reports > Supplier History">
@@ -40,16 +74,23 @@ export default function SupplierHistory() {
               <div>
                 <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Select supplier" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Fresh Fruits Ltd">Fresh Fruits Ltd</SelectItem>
-                    <SelectItem value="Organic Suppliers Co">Organic Suppliers Co</SelectItem>
-                    <SelectItem value="Tropical Imports">Tropical Imports</SelectItem>
+                    {isLoadingSuppliers ? (
+                      <SelectItem value="loading" disabled>Loading...</SelectItem>
+                    ) : suppliersError ? (
+                      <SelectItem value="error" disabled>Error loading suppliers</SelectItem>
+                    ) : (
+                      suppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id.toString()}>
+                          {supplier.supplier_name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
-              
               <div>
                 <Label>From:</Label>
                 <Popover>
@@ -75,7 +116,6 @@ export default function SupplierHistory() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Label>To:</Label>
                 <Popover>
@@ -101,26 +141,39 @@ export default function SupplierHistory() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
-                <Select value={filterType} onValueChange={setFilterType}>
+                <Select value={statementType} onValueChange={setStatementType}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All</SelectItem>
-                    <SelectItem value="Paid">Paid</SelectItem>
-                    <SelectItem value="Outstanding">Outstanding</SelectItem>
+                    <SelectItem value="Paid Only">Paid</SelectItem>
+                    <SelectItem value="Outstanding Only">Outstanding</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
-                  Search
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  disabled={!selectedSupplier || loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const res = await apiRequest(
+                        "GET",
+                        `/api/reports/supplier-statement?supplierId=${selectedSupplier}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=${encodeURIComponent(statementType)}`
+                      );
+                      setStatementData(res);
+                    } catch (err) {
+                      // handle error, e.g. show toast
+                    }
+                    setLoading(false);
+                  }}
+                >
+                  {loading ? "Loading..." : "Generate"}
                 </Button>
               </div>
-              
               <div className="flex gap-2">
                 <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
                   <Mail size={16} />
@@ -151,7 +204,9 @@ export default function SupplierHistory() {
           <CardHeader>
             <CardTitle className="text-center text-lg">SUPPLIER STATEMENT</CardTitle>
             <div className="text-left">
-              <div className="font-medium">{selectedSupplier},</div>
+              <div className="font-medium">
+                {suppliers.find(s => s.id.toString() === selectedSupplier)?.supplier_name || ""},
+              </div>
               <div className="text-sm text-gray-600 mt-1">📧</div>
             </div>
           </CardHeader>
@@ -211,37 +266,56 @@ export default function SupplierHistory() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell colSpan={10} className="text-center text-gray-500 py-8">
-                    No data available in table
-                  </TableCell>
-                </TableRow>
-                
+                {statementData.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center text-gray-500 py-8">
+                      No data available in table
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  statementData
+                    .filter(row => {
+                      if (!searchTerm) return true;
+                      const term = searchTerm.toLowerCase();
+                      return (
+                        (row.invoiceNo?.toString() || "").toLowerCase().includes(term) ||
+                        (row.description || "").toLowerCase().includes(term)
+                      );
+                    })
+                    .map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell>{row.slNo}</TableCell>
+                        <TableCell>{row.date}</TableCell>
+                        <TableCell>{row.invoiceNo}</TableCell>
+                        <TableCell className="text-center">{row.description}</TableCell>
+                        <TableCell className="text-center">£ {row.purchaseInv.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£ {row.paid.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£ {row.creditAdj.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£ {row.discountAdj.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£ {row.balance.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£ {row.runningBalance.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))
+                )}
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300 bg-indigo-50">
                   <TableCell></TableCell>
                   <TableCell className="font-bold">Total</TableCell>
                   <TableCell></TableCell>
-                  <TableCell className="flex justify-center gap-1">
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-indigo-500 text-white">
-                      📧
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-indigo-500 text-white">
-                      📄
-                    </Button>
-                  </TableCell>
-                  <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                  <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                  <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                  <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                  <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                  <TableCell className="text-center font-bold">£ 0.00</TableCell>
+                  <TableCell></TableCell>
+                  <TableCell className="text-center font-bold">£ {totals.purchaseInv.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£ {totals.paid.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£ {totals.creditAdj.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£ {totals.discountAdj.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£ {totals.balance.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold"></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
-            
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 0 to 0 of 0 entries</div>
+              <div>
+                Showing {statementData.length > 0 ? 1 : 0} to {statementData.length} of {statementData.length} entries
+              </div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm">Previous</Button>

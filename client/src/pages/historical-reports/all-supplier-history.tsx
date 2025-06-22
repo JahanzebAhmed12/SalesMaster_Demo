@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,35 +27,36 @@ interface SupplierData {
 }
 
 export default function AllSupplierHistory() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [supplierFilter, setSupplierFilter] = useState("All Suppliers");
   const [searchTerm, setSearchTerm] = useState("");
+  const [supplierData, setSupplierData] = useState<SupplierData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [supplierData] = useState<SupplierData[]>([
-    {
-      id: 1, slNo: 1, supplierName: "Fresh Fruits Ltd", purchaseInvoice: 2500.00, 
-      amountPaid: 2000.00, creditAdj: 0.00, discountAdj: 50.00, balanceOutstanding: 450.00,
-      creditLimit: 5000, currency: "GBP"
-    },
-    {
-      id: 2, slNo: 2, supplierName: "Organic Suppliers Co", purchaseInvoice: 1875.50, 
-      amountPaid: 1875.50, creditAdj: 0.00, discountAdj: 0.00, balanceOutstanding: 0.00,
-      creditLimit: 3000, currency: "GBP"
-    },
-    {
-      id: 3, slNo: 3, supplierName: "Tropical Imports", purchaseInvoice: 3250.75, 
-      amountPaid: 2800.00, creditAdj: 100.00, discountAdj: 25.00, balanceOutstanding: 325.75,
-      creditLimit: 8000, currency: "GBP"
-    }
-  ]);
-
+  // Calculate totals
   const totals = {
     purchaseInvoice: supplierData.reduce((sum, item) => sum + item.purchaseInvoice, 0),
     amountPaid: supplierData.reduce((sum, item) => sum + item.amountPaid, 0),
     creditAdj: supplierData.reduce((sum, item) => sum + item.creditAdj, 0),
     discountAdj: supplierData.reduce((sum, item) => sum + item.discountAdj, 0),
     balanceOutstanding: supplierData.reduce((sum, item) => sum + item.balanceOutstanding, 0)
+  };
+
+  const handleSearch = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiRequest<SupplierData[]>(
+        "GET",
+        `/api/reports/all-supplier-history?fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}`
+      );
+      setSupplierData(res);
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch data");
+    }
+    setLoading(false);
   };
 
   return (
@@ -100,7 +102,6 @@ export default function AllSupplierHistory() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Label>To:</Label>
                 <Popover>
@@ -126,7 +127,6 @@ export default function AllSupplierHistory() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Select value={supplierFilter} onValueChange={setSupplierFilter}>
                   <SelectTrigger>
@@ -139,13 +139,11 @@ export default function AllSupplierHistory() {
                   </SelectContent>
                 </Select>
               </div>
-              
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
-                  Search
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={handleSearch} disabled={loading}>
+                  {loading ? "Loading..." : "Search"}
                 </Button>
               </div>
-              
               <div className="flex gap-2">
                 <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
                   <PrintIcon size={16} />
@@ -155,7 +153,6 @@ export default function AllSupplierHistory() {
                   Weekly statement
                 </Button>
               </div>
-              
               <div className="flex gap-2">
                 <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
                   <ReportIcon size={16} />
@@ -209,6 +206,10 @@ export default function AllSupplierHistory() {
               </div>
             </div>
 
+            {error && (
+              <div className="text-red-600 text-center py-2">{error}</div>
+            )}
+
             <Table>
               <TableHeader>
                 <TableRow className="bg-emerald-100">
@@ -224,20 +225,36 @@ export default function AllSupplierHistory() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {supplierData.map((supplier) => (
-                  <TableRow key={supplier.id} className="hover:bg-gray-50">
-                    <TableCell>{supplier.slNo}</TableCell>
-                    <TableCell>{supplier.supplierName}</TableCell>
-                    <TableCell className="text-center">{supplier.purchaseInvoice.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{supplier.amountPaid.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{supplier.creditAdj.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{supplier.discountAdj.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-medium text-red-600">{supplier.balanceOutstanding.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{supplier.creditLimit}</TableCell>
-                    <TableCell className="text-center">{supplier.currency}</TableCell>
+                {supplierData.length === 0 && !loading ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="text-center text-gray-500 py-8">
+                      No data available
+                    </TableCell>
                   </TableRow>
-                ))}
-                
+                ) : (
+                  supplierData
+                    .filter(supplier => {
+                      if (!searchTerm) return true;
+                      const term = searchTerm.toLowerCase();
+                      return (
+                        (supplier.supplierName || "").toLowerCase().includes(term) ||
+                        (supplier.currency || "").toLowerCase().includes(term)
+                      );
+                    })
+                    .map((supplier) => (
+                      <TableRow key={supplier.id} className="hover:bg-gray-50">
+                        <TableCell>{supplier.slNo}</TableCell>
+                        <TableCell>{supplier.supplierName}</TableCell>
+                        <TableCell className="text-center">{supplier.purchaseInvoice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{supplier.amountPaid.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{supplier.creditAdj.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{supplier.discountAdj.toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-medium text-red-600">{supplier.balanceOutstanding.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{supplier.creditLimit}</TableCell>
+                        <TableCell className="text-center">{supplier.currency}</TableCell>
+                      </TableRow>
+                    ))
+                )}
                 {/* GBP Row */}
                 <TableRow className="bg-gray-100 border-t">
                   <TableCell></TableCell>
@@ -250,7 +267,6 @@ export default function AllSupplierHistory() {
                   <TableCell className="text-center font-bold">GBP</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
-                
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300 bg-lime-50">
                   <TableCell></TableCell>
@@ -265,9 +281,8 @@ export default function AllSupplierHistory() {
                 </TableRow>
               </TableBody>
             </Table>
-            
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 1 to {supplierData.length} of {supplierData.length} entries</div>
+              <div>Showing {supplierData.length > 0 ? 1 : 0} to {supplierData.length} of {supplierData.length} entries</div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm">Previous</Button>
