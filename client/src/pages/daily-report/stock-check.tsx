@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,9 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface StockItem {
   id: number;
@@ -38,6 +41,7 @@ export default function StockCheck() {
   const [stockFilter, setStockFilter] = useState("Show All");
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
+  const tableRef = useRef<HTMLDivElement>(null);
 
   // Query for stock check data
   const { data: stockData = [], isLoading, error, refetch } = useQuery<StockItem[]>({
@@ -79,6 +83,90 @@ export default function StockCheck() {
     sales: filteredData.reduce((sum, item) => sum + item.sales, 0),
     stock: filteredData.reduce((sum, item) => sum + item.stock, 0),
     clStock: filteredData.reduce((sum, item) => sum + item.clStock, 0)
+  };
+
+  // Export handlers
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(printContents);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(filteredData.map((item: StockItem) => ({
+      'Sl.No': item.slNo,
+      'Product Description': item.productDescription,
+      'O.S': item.os,
+      'N.S': item.ns,
+      'Sales': item.sales,
+      'C.RTN': item.crtn,
+      'Dmps': item.dmps,
+      'S.RTN': item.srtn,
+      'Stock': item.stock,
+      'Cl.Stock': item.clStock,
+      'Result': item.result
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Stock Check');
+    XLSX.writeFile(wb, 'stock-check.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text('Stock Check', 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result'
+      ]],
+      body: filteredData.map((item: StockItem) => [
+        item.slNo,
+        item.productDescription,
+        item.os,
+        item.ns,
+        item.sales,
+        item.crtn,
+        item.dmps,
+        item.srtn,
+        item.stock,
+        item.clStock,
+        item.result
+      ]),
+      startY: 22,
+    });
+    doc.save('stock-check.pdf');
+  };
+
+  const handleCopy = () => {
+    const header = ['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result'];
+    const rows = filteredData.map((item: StockItem) => [
+      item.slNo,
+      item.productDescription,
+      item.os,
+      item.ns,
+      item.sales,
+      item.crtn,
+      item.dmps,
+      item.srtn,
+      item.stock,
+      item.clStock,
+      item.result
+    ]);
+    const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
+    navigator.clipboard.writeText(tsv);
+    alert('Table copied to clipboard!');
   };
 
   return (
@@ -226,41 +314,17 @@ export default function StockCheck() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex items-center gap-1"
-                  onClick={() => handleExport('pdf')}
-                >
-                  <FileText size={14} />
-                  PDF
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                  <FileText size={14} /> PDF
                 </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex items-center gap-1"
-                  onClick={() => handleExport('excel')}
-                >
-                  <Download size={14} />
-                  Excel
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                  <Download size={14} /> Excel
                 </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex items-center gap-1"
-                  onClick={() => handleExport('copy')}
-                >
-                  <Copy size={14} />
-                  Copy
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                  <Copy size={14} /> Copy
                 </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex items-center gap-1"
-                  onClick={() => handleExport('print')}
-                >
-                  <Printer size={14} />
-                  Print
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  <Printer size={14} /> Print
                 </Button>
               </div>
               <div className="relative">
@@ -276,84 +340,90 @@ export default function StockCheck() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-                <span className="ml-2">Loading stock check data...</span>
+            <div className="overflow-x-auto" ref={tableRef}>
+              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
+                Date Range: {format(osDate, 'yyyy-MM-dd')} to {format(toDate, 'yyyy-MM-dd')}<br />
+                Showing: {filteredData.length} items | Totals - O.S: {totals.os}, N.S: {totals.ns}, Sales: {totals.sales}, Stock: {totals.stock}, Cl.Stock: {totals.clStock}
               </div>
-            ) : filteredData.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                {stockData.length === 0 ? 
-                  "No stock check data available. Please select dates and click Search." : 
-                  "No products match your current filter."
-                }
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Sl.No</TableHead>
-                    <TableHead>Product Description</TableHead>
-                    <TableHead className="text-center">O.S</TableHead>
-                    <TableHead className="text-center">N.S</TableHead>
-                    <TableHead className="text-center">Sales</TableHead>
-                    <TableHead className="text-center">C.RTN</TableHead>
-                    <TableHead className="text-center">Dmps</TableHead>
-                    <TableHead className="text-center">S.RTN</TableHead>
-                    <TableHead className="text-center">Stock</TableHead>
-                    <TableHead className="text-center">Cl.Stock</TableHead>
-                    <TableHead className="text-center">Result</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredData.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.slNo}</TableCell>
-                      <TableCell>
-                        <div>
-                          {item.productDescription}
-                          <div className="text-xs text-gray-500">
-                            {item.productType === 'regular' ? 'Regular Product' : 'Non-Product'}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center">{item.os}</TableCell>
-                      <TableCell className="text-center">{item.ns}</TableCell>
-                      <TableCell className="text-center">{item.sales}</TableCell>
-                      <TableCell className="text-center">{item.crtn}</TableCell>
-                      <TableCell className="text-center">{item.dmps}</TableCell>
-                      <TableCell className="text-center">{item.srtn}</TableCell>
-                      <TableCell className="text-center">{item.stock}</TableCell>
-                      <TableCell className="text-center">{item.clStock}</TableCell>
-                      <TableCell className="text-center">
-                        {item.result === "✓" ? (
-                          <Check size={16} className="mx-auto text-green-600" />
-                        ) : (
-                          <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
-                            {item.result}
-                          </span>
-                        )}
-                      </TableCell>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                  <span className="ml-2">Loading stock check data...</span>
+                </div>
+              ) : filteredData.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  {stockData.length === 0 ? 
+                    "No stock check data available. Please select dates and click Search." : 
+                    "No products match your current filter."
+                  }
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sl.No</TableHead>
+                      <TableHead>Product Description</TableHead>
+                      <TableHead className="text-center">O.S</TableHead>
+                      <TableHead className="text-center">N.S</TableHead>
+                      <TableHead className="text-center">Sales</TableHead>
+                      <TableHead className="text-center">C.RTN</TableHead>
+                      <TableHead className="text-center">Dmps</TableHead>
+                      <TableHead className="text-center">S.RTN</TableHead>
+                      <TableHead className="text-center">Stock</TableHead>
+                      <TableHead className="text-center">Cl.Stock</TableHead>
+                      <TableHead className="text-center">Result</TableHead>
                     </TableRow>
-                  ))}
-                  
-                  {/* Total Row */}
-                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                    <TableCell></TableCell>
-                    <TableCell className="font-bold">TOTAL</TableCell>
-                    <TableCell className="text-center font-bold">{totals.os}</TableCell>
-                    <TableCell className="text-center font-bold">{totals.ns}</TableCell>
-                    <TableCell className="text-center font-bold">{totals.sales}</TableCell>
-                    <TableCell className="text-center font-bold">0</TableCell>
-                    <TableCell className="text-center font-bold">0</TableCell>
-                    <TableCell className="text-center font-bold">0</TableCell>
-                    <TableCell className="text-center font-bold">{totals.stock}</TableCell>
-                    <TableCell className="text-center font-bold">{totals.clStock}</TableCell>
-                    <TableCell></TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            )}
+                  </TableHeader>
+                  <TableBody>
+                    {filteredData.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.slNo}</TableCell>
+                        <TableCell>
+                          <div>
+                            {item.productDescription}
+                            <div className="text-xs text-gray-500">
+                              {item.productType === 'regular' ? 'Regular Product' : 'Non-Product'}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">{item.os}</TableCell>
+                        <TableCell className="text-center">{item.ns}</TableCell>
+                        <TableCell className="text-center">{item.sales}</TableCell>
+                        <TableCell className="text-center">{item.crtn}</TableCell>
+                        <TableCell className="text-center">{item.dmps}</TableCell>
+                        <TableCell className="text-center">{item.srtn}</TableCell>
+                        <TableCell className="text-center">{item.stock}</TableCell>
+                        <TableCell className="text-center">{item.clStock}</TableCell>
+                        <TableCell className="text-center">
+                          {item.result === "✓" ? (
+                            <Check size={16} className="mx-auto text-green-600" />
+                          ) : (
+                            <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
+                              {item.result}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    
+                    {/* Total Row */}
+                    <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                      <TableCell></TableCell>
+                      <TableCell className="font-bold">TOTAL</TableCell>
+                      <TableCell className="text-center font-bold">{totals.os}</TableCell>
+                      <TableCell className="text-center font-bold">{totals.ns}</TableCell>
+                      <TableCell className="text-center font-bold">{totals.sales}</TableCell>
+                      <TableCell className="text-center font-bold">0</TableCell>
+                      <TableCell className="text-center font-bold">0</TableCell>
+                      <TableCell className="text-center font-bold">0</TableCell>
+                      <TableCell className="text-center font-bold">{totals.stock}</TableCell>
+                      <TableCell className="text-center font-bold">{totals.clStock}</TableCell>
+                      <TableCell></TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

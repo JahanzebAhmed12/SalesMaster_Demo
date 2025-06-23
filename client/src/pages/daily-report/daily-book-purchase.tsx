@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,9 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface PurchaseEntry {
   id: number;
@@ -63,6 +66,74 @@ export default function DailyBookPurchase() {
   };
 
   const totalInvoiceAmount = purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0);
+
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  // Export handlers
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(printContents);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(purchaseData.map((item: PurchaseEntry) => ({
+      'Date': item.date,
+      'Supplier': item.supplier,
+      'Inv.No': item.invNo,
+      'Del.No': item.delNo,
+      'Invoice Amt': item.invoiceAmt
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Book Purchase');
+    XLSX.writeFile(wb, 'daily-book-purchase.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text('Daily Book Purchase', 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Date', 'Supplier', 'Inv.No', 'Del.No', 'Invoice Amt'
+      ]],
+      body: purchaseData.map((item: PurchaseEntry) => [
+        item.date,
+        item.supplier,
+        item.invNo,
+        item.delNo,
+        item.invoiceAmt
+      ]),
+      startY: 22,
+    });
+    doc.save('daily-book-purchase.pdf');
+  };
+
+  const handleCopy = () => {
+    const header = ['Date', 'Supplier', 'Inv.No', 'Del.No', 'Invoice Amt'];
+    const rows = purchaseData.map((item: PurchaseEntry) => [
+      item.date,
+      item.supplier,
+      item.invNo,
+      item.delNo,
+      item.invoiceAmt
+    ]);
+    const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
+    navigator.clipboard.writeText(tsv);
+    alert('Table copied to clipboard!');
+  };
 
   if (isError) {
     toast({
@@ -184,21 +255,17 @@ export default function DailyBookPurchase() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <FileText size={14} />
-                  PDF
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                  <FileText size={14} /> PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Download size={14} />
-                  Excel
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                  <Download size={14} /> Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Copy size={14} />
-                  Copy
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                  <Copy size={14} /> Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Printer size={14} />
-                  Print
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  <Printer size={14} /> Print
                 </Button>
               </div>
               <div className="relative">
@@ -213,51 +280,57 @@ export default function DailyBookPurchase() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead className="text-center">Inv.No</TableHead>
-                  <TableHead className="text-center">Del.No</TableHead>
-                  <TableHead className="text-center">Invoice Amt</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
+            <div className="overflow-x-auto" ref={tableRef}>
+              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
+                Date Range: {filters.fromDate || '-'} to {filters.toDate || '-'}<br />
+                Total Invoice Amount: £{totalInvoiceAmount.toFixed(2)}
+              </div>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      Loading purchase data...
-                    </TableCell>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead className="text-center">Inv.No</TableHead>
+                    <TableHead className="text-center">Del.No</TableHead>
+                    <TableHead className="text-center">Invoice Amt</TableHead>
                   </TableRow>
-                ) : purchaseData.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      No purchase data found for the selected date range.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  purchaseData.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.date}</TableCell>
-                      <TableCell>{item.supplier}</TableCell>
-                      <TableCell className="text-center">{item.invNo}</TableCell>
-                      <TableCell className="text-center">{item.delNo}</TableCell>
-                      <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8">
+                        Loading purchase data...
+                      </TableCell>
                     </TableRow>
-                  ))
-                )}
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                  <TableCell></TableCell>
-                  <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
-                  <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold">£{totalInvoiceAmount.toFixed(2)}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+                  ) : purchaseData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8">
+                        No purchase data found for the selected date range.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    purchaseData.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.date}</TableCell>
+                        <TableCell>{item.supplier}</TableCell>
+                        <TableCell className="text-center">{item.invNo}</TableCell>
+                        <TableCell className="text-center">{item.delNo}</TableCell>
+                        <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  
+                  {/* Total Row */}
+                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
+                    <TableCell className="text-center font-bold"></TableCell>
+                    <TableCell className="text-center font-bold"></TableCell>
+                    <TableCell className="text-center font-bold">£{totalInvoiceAmount.toFixed(2)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

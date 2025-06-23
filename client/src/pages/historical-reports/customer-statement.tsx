@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer } from "@shared/schema";
@@ -14,6 +14,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, FileText, Download, Copy, Printer, Search, Mail, Receipt } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface StatementData {
   id: number;
@@ -38,6 +41,7 @@ export default function CustomerStatement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statementData, setStatementData] = useState<StatementData[]>([]);
   const [loading, setLoading] = useState(false);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   // Fetch customers for dropdown
   const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
@@ -59,6 +63,86 @@ export default function CustomerStatement() {
     setFromDate(new Date());
     setToDate(new Date());
   }, []);
+
+  // Export handlers
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(printContents);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(statementData.map((row: StatementData) => ({
+      'Sl.No': row.slNo,
+      'Date': row.date,
+      'Invoice #': row.invoiceNo,
+      'Description': row.description,
+      'Credit Inv.': row.creditInv,
+      'Cash Inv.': row.cashInv,
+      'Paid': row.paid,
+      'Credit/Adj': row.creditAdj,
+      'Discount/Adj': row.discountAdj,
+      'Balance': row.balance,
+      'Running Balance': row.runningBalance
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Customer Statement');
+    XLSX.writeFile(wb, 'customer-statement.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text('Customer Statement', 10, 10);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Date', 'Invoice #', 'Description', 'Credit Inv.', 'Cash Inv.', 'Paid', 'Credit/Adj', 'Discount/Adj', 'Balance', 'Running Balance'
+      ]],
+      body: statementData.map((row: StatementData) => [
+        row.slNo,
+        row.date,
+        row.invoiceNo,
+        row.description,
+        row.creditInv,
+        row.cashInv,
+        row.paid,
+        row.creditAdj,
+        row.discountAdj,
+        row.balance,
+        row.runningBalance
+      ]),
+      startY: 20
+    });
+    doc.save('customer-statement.pdf');
+  };
+
+  const handleCopy = async () => {
+    let text = 'Sl.No\tDate\tInvoice #\tDescription\tCredit Inv.\tCash Inv.\tPaid\tCredit/Adj\tDiscount/Adj\tBalance\tRunning Balance\n';
+    text += statementData.map((row: StatementData) => [
+      row.slNo,
+      row.date,
+      row.invoiceNo,
+      row.description,
+      row.creditInv,
+      row.cashInv,
+      row.paid,
+      row.creditAdj,
+      row.discountAdj,
+      row.balance,
+      row.runningBalance
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
+    // Optionally show a toast
+  };
 
   return (
     <PageLayout title="Customer Statement" breadcrumb="Historical Reports > Customer Statement">
@@ -221,21 +305,25 @@ export default function CustomerStatement() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline">Show all rows</Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                   <FileText size={14} />
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                   <Download size={14} />
                   Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} />
                   Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} />
                   Print
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                  <Mail size={14} />
+                  Email
                 </Button>
               </div>
               <div className="relative">
@@ -249,66 +337,68 @@ export default function CustomerStatement() {
               </div>
             </div>
 
-            <div className="mb-4 p-3 bg-gray-50 rounded">
-              <div className="flex justify-between">
-                <span className="font-medium">BROUGHT FORWARD:</span>
-                <span className="font-bold">£ 0.00</span>
+            <div ref={tableRef}>
+              <div className="mb-4 p-3 bg-gray-50 rounded">
+                <div className="flex justify-between">
+                  <span className="font-medium">BROUGHT FORWARD:</span>
+                  <span className="font-bold">£ 0.00</span>
+                </div>
               </div>
-            </div>
 
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-green-100">
-                  <TableHead>Sl.No</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="text-center">Credit Inv.</TableHead>
-                  <TableHead className="text-center">Cash Inv.</TableHead>
-                  <TableHead className="text-center">Paid</TableHead>
-                  <TableHead className="text-center">Credit/Adj</TableHead>
-                  <TableHead className="text-center">Discount/Adj</TableHead>
-                  <TableHead className="text-center">Balance</TableHead>
-                  <TableHead className="text-center">Running Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {statementData.map((statement) => (
-                  <TableRow key={statement.id} className="hover:bg-gray-50">
-                    <TableCell>{statement.slNo}</TableCell>
-                    <TableCell>{format(new Date(statement.date), "dd/MM/yyyy")}</TableCell>
-                    <TableCell>{statement.invoiceNo}</TableCell>
-                    <TableCell>{statement.description}</TableCell>
-                    <TableCell className="text-center">£{statement.creditInv.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£{statement.cashInv.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£{statement.paid.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£{statement.creditAdj.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£{statement.discountAdj.toFixed(2)}</TableCell>
-                    <TableCell className={`text-center font-medium ${statement.balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      £{statement.balance.toFixed(2)}
-                    </TableCell>
-                    <TableCell className={`text-center font-bold ${statement.runningBalance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      £{statement.runningBalance.toFixed(2)}
-                    </TableCell>
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-green-100">
+                    <TableHead>Sl.No</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Invoice #</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="text-center">Credit Inv.</TableHead>
+                    <TableHead className="text-center">Cash Inv.</TableHead>
+                    <TableHead className="text-center">Paid</TableHead>
+                    <TableHead className="text-center">Credit/Adj</TableHead>
+                    <TableHead className="text-center">Discount/Adj</TableHead>
+                    <TableHead className="text-center">Balance</TableHead>
+                    <TableHead className="text-center">Running Balance</TableHead>
                   </TableRow>
-                ))}
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300 bg-indigo-50">
-                  <TableCell></TableCell>
-                  <TableCell className="font-bold">TOTAL</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="text-center font-bold">£{totals.creditInv.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.cashInv.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.paid.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.creditAdj.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.discountAdj.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold text-red-600">£{statementData[statementData.length - 1]?.runningBalance.toFixed(2) || '0.00'}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {statementData.map((statement) => (
+                    <TableRow key={statement.id} className="hover:bg-gray-50">
+                      <TableCell>{statement.slNo}</TableCell>
+                      <TableCell>{format(new Date(statement.date), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>{statement.invoiceNo}</TableCell>
+                      <TableCell>{statement.description}</TableCell>
+                      <TableCell className="text-center">£{statement.creditInv.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{statement.cashInv.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{statement.paid.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{statement.creditAdj.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{statement.discountAdj.toFixed(2)}</TableCell>
+                      <TableCell className={`text-center font-medium ${statement.balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        £{statement.balance.toFixed(2)}
+                      </TableCell>
+                      <TableCell className={`text-center font-bold ${statement.runningBalance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        £{statement.runningBalance.toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  
+                  {/* Total Row */}
+                  <TableRow className="border-t-2 border-gray-300 bg-indigo-50">
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold">TOTAL</TableCell>
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                    <TableCell className="text-center font-bold">£{totals.creditInv.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.cashInv.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.paid.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.creditAdj.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.discountAdj.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold text-red-600">£{statementData[statementData.length - 1]?.runningBalance.toFixed(2) || '0.00'}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
             
             <div className="mt-6 p-4 bg-gray-50 rounded">
               <div className="grid grid-cols-2 gap-4">

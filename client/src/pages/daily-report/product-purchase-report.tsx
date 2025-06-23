@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,10 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import React from 'react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface PurchaseItem {
   id: number;
@@ -68,6 +72,74 @@ export default function ProductPurchaseReport() {
 
   const totalQuantity = purchaseData.reduce((sum, item) => sum + item.quantity, 0);
   const totalAmount = purchaseData.reduce((sum, item) => sum + item.total, 0);
+
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  // Export handlers
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(printContents);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(purchaseData.map((item: PurchaseItem) => ({
+      'Sl.No': item.slNo,
+      'Product Description': item.productDescription,
+      'Quantity': item.quantity,
+      'AVG Price': item.avgPrice,
+      'Total': item.total
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Product Purchase Report');
+    XLSX.writeFile(wb, 'product-purchase-report.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text('Product Purchase Report', 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'
+      ]],
+      body: purchaseData.map((item: PurchaseItem) => [
+        item.slNo,
+        item.productDescription,
+        item.quantity,
+        item.avgPrice,
+        item.total
+      ]),
+      startY: 22,
+    });
+    doc.save('product-purchase-report.pdf');
+  };
+
+  const handleCopy = () => {
+    const header = ['Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'];
+    const rows = purchaseData.map((item: PurchaseItem) => [
+      item.slNo,
+      item.productDescription,
+      item.quantity,
+      item.avgPrice,
+      item.total
+    ]);
+    const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
+    navigator.clipboard.writeText(tsv);
+    alert('Table copied to clipboard!');
+  };
 
   if (isError) {
     toast({
@@ -187,21 +259,17 @@ export default function ProductPurchaseReport() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <FileText size={14} />
-                  PDF
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                  <FileText size={14} /> PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Download size={14} />
-                  Excel
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                  <Download size={14} /> Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Copy size={14} />
-                  Copy
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                  <Copy size={14} /> Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Printer size={14} />
-                  Print
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  <Printer size={14} /> Print
                 </Button>
               </div>
               <div className="relative">
@@ -216,51 +284,57 @@ export default function ProductPurchaseReport() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sl.No</TableHead>
-                  <TableHead>Product Description</TableHead>
-                  <TableHead className="text-center">Quantity</TableHead>
-                  <TableHead className="text-center">AVG Price</TableHead>
-                  <TableHead className="text-center">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
+            <div className="overflow-x-auto" ref={tableRef}>
+              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
+                Date Range: {filters.fromDate || '-'} to {filters.toDate || '-'}<br />
+                Total Quantity: {totalQuantity} | Total Amount: £{totalAmount.toFixed(2)}
+              </div>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      Loading purchase data...
-                    </TableCell>
+                    <TableHead>Sl.No</TableHead>
+                    <TableHead>Product Description</TableHead>
+                    <TableHead className="text-center">Quantity</TableHead>
+                    <TableHead className="text-center">AVG Price</TableHead>
+                    <TableHead className="text-center">Total</TableHead>
                   </TableRow>
-                ) : purchaseData.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8">
-                      No purchase data found for the selected date range.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  purchaseData.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.slNo}</TableCell>
-                      <TableCell>{item.productDescription}</TableCell>
-                      <TableCell className="text-center">{item.quantity}</TableCell>
-                      <TableCell className="text-center">£{item.avgPrice.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{item.total.toFixed(2)}</TableCell>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8">
+                        Loading purchase data...
+                      </TableCell>
                     </TableRow>
-                  ))
-                )}
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                  <TableCell></TableCell>
-                  <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
-                  <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
-                  <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold">£{totalAmount.toFixed(2)}</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+                  ) : purchaseData.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8">
+                        No purchase data found for the selected date range.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    purchaseData.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell>{item.slNo}</TableCell>
+                        <TableCell>{item.productDescription}</TableCell>
+                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-center">£{item.avgPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{item.total.toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  
+                  {/* Total Row */}
+                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
+                    <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
+                    <TableCell className="text-center font-bold"></TableCell>
+                    <TableCell className="text-center font-bold">£{totalAmount.toFixed(2)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
             
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
               <div>Showing 1 to {purchaseData.length} of {purchaseData.length} entries</div>

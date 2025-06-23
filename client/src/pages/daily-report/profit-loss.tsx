@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,10 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import React from 'react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface ProfitLossItem {
   id: number;
@@ -33,6 +37,7 @@ export default function ProfitLoss() {
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const [trigger, setTrigger] = useState(0); // for manual search
+  const tableRef = useRef<HTMLDivElement>(null);
 
   // Fetch profit/loss data from backend
   const { data: profitData = [], isLoading, isError } = useQuery({
@@ -49,12 +54,103 @@ export default function ProfitLoss() {
   });
 
   const totals = {
-    totalQuantity: profitData.reduce((sum: any, item: any) => sum + (item.totalQuantity || 0), 0),
-    totPurchase: profitData.reduce((sum: any, item: any) => sum + (item.totPurchase || 0), 0),
-    totSales: profitData.reduce((sum: any, item: any) => sum + (item.totSales || 0), 0),
-    totProfit: profitData.reduce((sum: any, item: any) => sum + (item.totProfit || 0), 0)
+    totalQuantity: profitData.reduce((sum: number, item: any) => sum + (Number(item.totalQuantity) || 0), 0),
+    totPurchase: profitData.reduce((sum: number, item: any) => sum + (Number(item.totPurchase) || 0), 0),
+    totSales: profitData.reduce((sum: number, item: any) => sum + (Number(item.totSales) || 0), 0),
+    totProfit: profitData.reduce((sum: number, item: any) => sum + (Number(item.totProfit) || 0), 0)
   };
   const overallProfitPercent = totals.totPurchase ? (totals.totProfit / totals.totPurchase) * 100 : 0;
+
+  // Calculate total profit/loss
+  const totalProfit = profitData.reduce((sum: number, item: ProfitLossItem) => sum + (Number(item.totProfit) || 0), 0) || 0;
+
+  // Export handlers
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(printContents);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    if (!profitData) return;
+    const ws = XLSX.utils.json_to_sheet(profitData.map((item: ProfitLossItem) => ({
+      'Sl No': item.slNo,
+      'Product Description': item.productDescription,
+      'Total Qty': item.totalQuantity,
+      'Avg Purchase': item.avgPurchase,
+      'Avg Sales': item.avgSales,
+      'Avg Profit': item.avgProfit,
+      'Total Purchase': item.totPurchase,
+      'Total Sales': item.totSales,
+      'Total Profit': item.totProfit,
+      'Profit %': item.percentProfit
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Profit Loss');
+    XLSX.writeFile(wb, 'profit-loss-report.xlsx');
+  };
+
+  const handlePDF = () => {
+    if (!profitData) return;
+    const doc = new jsPDF();
+    doc.text('Profit/Loss Report', 14, 14);
+    autoTable(doc, {
+      head: [[
+        'Sl No',
+        'Product Description',
+        'Total Qty',
+        'Avg Purchase',
+        'Avg Sales',
+        'Avg Profit',
+        'Total Purchase',
+        'Total Sales',
+        'Total Profit',
+        'Profit %'
+      ]],
+      body: profitData.map((item: ProfitLossItem) => [
+        item.slNo,
+        item.productDescription,
+        item.totalQuantity,
+        item.avgPurchase,
+        item.avgSales,
+        item.avgProfit,
+        item.totPurchase,
+        item.totSales,
+        item.totProfit,
+        item.percentProfit
+      ]),
+      startY: 24
+    });
+    doc.save('profit-loss-report.pdf');
+  };
+
+  const handleCopy = () => {
+    if (!profitData) return;
+    let text = 'Sl No\tProduct Description\tTotal Qty\tAvg Purchase\tAvg Sales\tAvg Profit\tTotal Purchase\tTotal Sales\tTotal Profit\tProfit %\n';
+    text += profitData.map((item: ProfitLossItem) => [
+      item.slNo,
+      item.productDescription,
+      item.totalQuantity,
+      item.avgPurchase,
+      item.avgSales,
+      item.avgProfit,
+      item.totPurchase,
+      item.totSales,
+      item.totProfit,
+      item.percentProfit
+    ].join('\t')).join('\n');
+    navigator.clipboard.writeText(text);
+  };
 
   return (
     <PageLayout title="Profit/Loss Report" breadcrumb="Daily Report > Profit/Loss Report">
@@ -134,102 +230,86 @@ export default function ProfitLoss() {
         </Card>
         {/* Profit/Loss Table */}
         <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <FileText size={14} />
-                  PDF
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Download size={14} />
-                  Excel
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Copy size={14} />
-                  Copy
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Printer size={14} />
-                  Print
-                </Button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                <Input
-                  placeholder="Search:"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-48"
-                />
-              </div>
+          <CardHeader className="flex flex-row items-center justify-between gap-2">
+            <div className="font-semibold text-lg">Profit/Loss Report</div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={handlePrint}>Print</Button>
+              <Button size="sm" variant="outline" onClick={handleExcel}>Excel</Button>
+              <Button size="sm" variant="outline" onClick={handlePDF}>PDF</Button>
+              <Button size="sm" variant="outline" onClick={handleCopy}>Copy</Button>
             </div>
           </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8">Loading...</div>
-            ) : isError ? (
-              <div className="text-center text-red-500 py-8">Failed to load data.</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Sl.No</TableHead>
-                    <TableHead>Product Description</TableHead>
-                    <TableHead className="text-center">Total Quantity</TableHead>
-                    <TableHead className="text-center">AVG Purchase</TableHead>
-                    <TableHead className="text-center">AVG Sales</TableHead>
-                    <TableHead className="text-center">AVG Profit</TableHead>
-                    <TableHead className="text-center">TOT Purchase</TableHead>
-                    <TableHead className="text-center">TOT Sales</TableHead>
-                    <TableHead className="text-center">TOT Profit</TableHead>
-                    <TableHead className="text-center">PERCENT Profit %</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {profitData.map((item: any) => (
-                    <TableRow key={item.id} className={item.isLoss ? "bg-orange-50" : ""}>
-                      <TableCell>{item.slNo}</TableCell>
-                      <TableCell>{item.productDescription}</TableCell>
-                      <TableCell className="text-center">{item.totalQuantity}</TableCell>
-                      <TableCell className="text-center">{Number(item.avgPurchase).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">{Number(item.avgSales).toFixed(2)}</TableCell>
-                      <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                        {Number(item.avgProfit).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-center">{Number(item.totPurchase).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">{Number(item.totSales).toFixed(2)}</TableCell>
-                      <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                        {Number(item.totProfit).toFixed(2)}
-                      </TableCell>
-                      <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                        {Number(item.percentProfit).toFixed(2)} %
-                      </TableCell>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto" ref={tableRef}>
+              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
+                Date Range: {format(fromDate, "yyyy-MM-dd")} to {format(toDate, "yyyy-MM-dd")}<br />
+                Total Profit: £{Number(totalProfit).toFixed(2)}
+              </div>
+              {isLoading ? (
+                <div className="text-center py-8">Loading...</div>
+              ) : isError ? (
+                <div className="text-center text-red-500 py-8">Failed to load data.</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Sl.No</TableHead>
+                      <TableHead>Product Description</TableHead>
+                      <TableHead className="text-center">Total Quantity</TableHead>
+                      <TableHead className="text-center">AVG Purchase</TableHead>
+                      <TableHead className="text-center">AVG Sales</TableHead>
+                      <TableHead className="text-center">AVG Profit</TableHead>
+                      <TableHead className="text-center">TOT Purchase</TableHead>
+                      <TableHead className="text-center">TOT Sales</TableHead>
+                      <TableHead className="text-center">TOT Profit</TableHead>
+                      <TableHead className="text-center">PERCENT Profit %</TableHead>
                     </TableRow>
-                  ))}
-                  {/* Total Row */}
-                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                    <TableCell></TableCell>
-                    <TableCell className="font-bold"></TableCell>
-                    <TableCell className="text-center font-bold">{totals.totalQuantity.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold"></TableCell>
-                    <TableCell className="text-center font-bold"></TableCell>
-                    <TableCell className="text-center font-bold"></TableCell>
-                    <TableCell className="text-center font-bold">£ {Number(totals.totPurchase).toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£ {Number(totals.totSales).toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£ {Number(totals.totProfit).toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">{Number(overallProfitPercent).toFixed(2)} %</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            )}
-            <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing {profitData.length} entries</div>
-              <div className="flex items-center gap-4">
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">Previous</Button>
-                  <Button variant="outline" size="sm" className="bg-blue-500 text-white">1</Button>
-                  <Button variant="outline" size="sm">Next</Button>
+                  </TableHeader>
+                  <TableBody>
+                    {profitData.map((item: any) => (
+                      <TableRow key={item.id} className={item.isLoss ? "bg-orange-50" : ""}>
+                        <TableCell>{item.slNo}</TableCell>
+                        <TableCell>{item.productDescription}</TableCell>
+                        <TableCell className="text-center">{item.totalQuantity}</TableCell>
+                        <TableCell className="text-center">{Number(item.avgPurchase).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{Number(item.avgSales).toFixed(2)}</TableCell>
+                        <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
+                          {Number(item.avgProfit).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-center">{Number(item.totPurchase).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{Number(item.totSales).toFixed(2)}</TableCell>
+                        <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
+                          {Number(item.totProfit).toFixed(2)}
+                        </TableCell>
+                        <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
+                          {Number(item.percentProfit).toFixed(2)} %
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {/* Total Row */}
+                    <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                      <TableCell></TableCell>
+                      <TableCell className="font-bold"></TableCell>
+                      <TableCell className="text-center font-bold">{totals.totalQuantity.toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold"></TableCell>
+                      <TableCell className="text-center font-bold"></TableCell>
+                      <TableCell className="text-center font-bold"></TableCell>
+                      <TableCell className="text-center font-bold">£ {Number(totals.totPurchase).toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold">£ {Number(totals.totSales).toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold">£ {Number(totals.totProfit).toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold">{Number(overallProfitPercent).toFixed(2)} %</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              )}
+              <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
+                <div>Showing {profitData.length} entries</div>
+                <div className="flex items-center gap-4">
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm">Previous</Button>
+                    <Button variant="outline" size="sm" className="bg-blue-500 text-white">1</Button>
+                    <Button variant="outline" size="sm">Next</Button>
+                  </div>
                 </div>
               </div>
             </div>

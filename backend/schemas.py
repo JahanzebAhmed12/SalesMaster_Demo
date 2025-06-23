@@ -18,7 +18,7 @@ class SaleItemSchema(BaseModel):
             .replace('totalPrice', 'total_price')
 
 class SaleSchema(BaseModel):
-    invoice_number: str
+    invoice_number: Optional[str] = None
     customer_id: int
     customer_type: str = 'credit'
     payment_status: str = 'pending'

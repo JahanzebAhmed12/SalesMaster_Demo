@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileText, Download, Copy, Printer } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import React from 'react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface SalesData {
   slNo: number;
@@ -32,6 +36,12 @@ export default function SalesAnalysis() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
 
   const { data, isLoading, isError } = useQuery<SalesAnalysisResponse>({
     queryKey: ["/api/reports/sales-analysis", fromDate, toDate, searchTerm],
@@ -46,6 +56,83 @@ export default function SalesAnalysis() {
 
   const handleExport = (format: string) => {
     console.log(`Exporting to ${format}`);
+  };
+
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(printContents);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    if (!data?.sales) return;
+    const ws = XLSX.utils.json_to_sheet(data.sales.map((row: SalesData) => ({
+      'Sl.No': row.slNo,
+      'Date': row.date,
+      'Purchase': row.purchase,
+      'Credit Sales': row.creditSales,
+      'Cash Sales': row.cashSales,
+      'Total Sales': row.totalSales
+    })));
+    // Add totals row
+    XLSX.utils.sheet_add_aoa(ws, [[null, 'Total:', data.summary.totalPurchase, data.summary.totalCredit, data.summary.totalCash, data.summary.totalSales]], { origin: -1 });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sales Analysis');
+    XLSX.writeFile(wb, 'sales-analysis.xlsx');
+  };
+
+  const handlePDF = () => {
+    if (!data?.sales) return;
+    const doc = new jsPDF();
+    doc.text('Sales Analysis', 14, 14);
+    autoTable(doc, {
+      head: [[
+        'Sl.No',
+        'Date',
+        'Purchase',
+        'Credit Sales',
+        'Cash Sales',
+        'Total Sales'
+      ]],
+      body: [
+        ...data.sales.map((row: SalesData) => [
+          row.slNo,
+          row.date,
+          row.purchase,
+          row.creditSales,
+          row.cashSales,
+          row.totalSales
+        ]),
+        [null, 'Total:', data.summary.totalPurchase, data.summary.totalCredit, data.summary.totalCash, data.summary.totalSales]
+      ],
+      startY: 24
+    });
+    doc.save('sales-analysis.pdf');
+  };
+
+  const handleCopy = () => {
+    if (!data?.sales) return;
+    let text = 'Sl.No\tDate\tPurchase\tCredit Sales\tCash Sales\tTotal Sales\n';
+    text += data.sales.map((row: SalesData) => [
+      row.slNo,
+      row.date,
+      row.purchase,
+      row.creditSales,
+      row.cashSales,
+      row.totalSales
+    ].join('\t')).join('\n');
+    text += `\n\tTotal:\t${data.summary.totalPurchase}\t${data.summary.totalCredit}\t${data.summary.totalCash}\t${data.summary.totalSales}`;
+    navigator.clipboard.writeText(text);
   };
 
   const salesRows = data?.sales || [];
@@ -68,7 +155,7 @@ export default function SalesAnalysis() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Sales Analysis</h1>
         <div className="text-sm text-gray-500">
-          TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+          {companyDetails?.companyName || 'Company Name'}, {companyDetails?.address1 || ''}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ''}
         </div>
       </div>
 
@@ -100,42 +187,10 @@ export default function SalesAnalysis() {
         </div>
 
         <div className="flex gap-2 mb-4">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => handleExport("pdf")}
-            className="flex items-center gap-2"
-          >
-            <FileText className="h-4 w-4" />
-            PDF
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => handleExport("excel")}
-            className="flex items-center gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Excel
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => handleExport("copy")}
-            className="flex items-center gap-2"
-          >
-            <Copy className="h-4 w-4" />
-            Copy
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => window.print()}
-            className="flex items-center gap-2"
-          >
-            <Printer className="h-4 w-4" />
-            Print
-          </Button>
+          <Button variant="outline" size="sm" onClick={handlePDF} className="flex items-center gap-2"><FileText className="h-4 w-4" />PDF</Button>
+          <Button variant="outline" size="sm" onClick={handleExcel} className="flex items-center gap-2"><Download className="h-4 w-4" />Excel</Button>
+          <Button variant="outline" size="sm" onClick={handleCopy} className="flex items-center gap-2"><Copy className="h-4 w-4" />Copy</Button>
+          <Button variant="outline" size="sm" onClick={handlePrint} className="flex items-center gap-2"><Printer className="h-4 w-4" />Print</Button>
           
           <div className="ml-auto">
             <Input
@@ -149,7 +204,7 @@ export default function SalesAnalysis() {
 
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" ref={tableRef}>
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b bg-gray-50">

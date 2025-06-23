@@ -18,7 +18,6 @@ import { useLocation } from "wouter";
 import type { Customer } from "@shared/schema";
 
 const salesSchema = z.object({
-  invoiceNumber: z.string().min(1, "Invoice number is required"),
   customerId: z.string().min(1, "Customer is required"),
   vehicleDetails: z.string().optional(),
   gateNumber: z.string().optional(),
@@ -34,7 +33,6 @@ export default function SalesEntry() {
   const form = useForm<SalesFormData>({
     resolver: zodResolver(salesSchema),
     defaultValues: {
-      invoiceNumber: "",
       customerId: "",
       vehicleDetails: "",
       gateNumber: "",
@@ -48,11 +46,9 @@ export default function SalesEntry() {
 
   const onSubmit = (data: SalesFormData) => {
     const queryParams = new URLSearchParams();
-    queryParams.append("invoiceNumber", data.invoiceNumber);
     queryParams.append("customerId", data.customerId);
     if (data.vehicleDetails) queryParams.append("vehicleDetails", data.vehicleDetails);
     if (data.gateNumber) queryParams.append("gateNumber", data.gateNumber);
-
     setLocation(`/data-entry/sales-invoice?${queryParams.toString()}`);
   };
 
@@ -70,19 +66,7 @@ export default function SalesEntry() {
           <CardContent>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="invoiceNumber">Invoice Number</Label>
-                  <Input
-                    id="invoiceNumber"
-                    {...form.register("invoiceNumber")}
-                    placeholder="Enter invoice number"
-                  />
-                  {form.formState.errors.invoiceNumber && (
-                    <p className="text-sm text-red-500 mt-1">
-                      {form.formState.errors.invoiceNumber.message}
-                    </p>
-                  )}
-                </div>
+                <div></div>
                 <div>
                   <Label htmlFor="customerId">Customer</Label>
                   <Select

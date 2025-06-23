@@ -191,76 +191,79 @@ def get_sales():
 def create_sale():
     try:
         data = request.get_json()
+        # Remove invoice_number from data before schema validation
+        data.pop('invoice_number', None)
         sale_data = SaleSchema(**data)
         customer = Customer.query.get(sale_data.customer_id)
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
         user_id = get_jwt_identity()
         business_date = get_business_date()
-        new_sale = Sale(
-            invoice_number=sale_data.invoice_number,
-            customer_id=sale_data.customer_id,
-            customer_type=sale_data.customer_type,
-            payment_status=sale_data.payment_status,
-            subtotal=sale_data.subtotal,
-            porterage=sale_data.porterage,
-            vat_rate=sale_data.vat_rate,
-            vat_amount=sale_data.vat_amount,
-            total_amount=sale_data.total_amount,
-            vehicle_details=sale_data.vehicle_details,
-            gate_number=sale_data.gate_number,
-            notes=sale_data.notes,
-            status=sale_data.status,
-            created_by=user_id,
-            date=business_date
-        )
-        db.session.add(new_sale)
-        db.session.commit()
-        
-        # Process sale items and update stock
-        for item_data in sale_data.items:
-            new_item = SaleItem(
-                sale_id=new_sale.id,
-                product_id=item_data.product_id,
-                non_product_id=item_data.non_product_id,
-                quantity=item_data.quantity,
-                unit_price=item_data.unit_price,
-                total_price=item_data.total_price
+        # Generate next invoice number (as integer, gap is OK)
+        with db.session.begin_nested():
+            max_invoice = db.session.query(db.func.max(db.cast(Sale.invoice_number, db.Integer))).scalar() or 0
+            next_invoice = str(int(max_invoice) + 1)
+            new_sale = Sale(
+                invoice_number=next_invoice,
+                customer_id=sale_data.customer_id,
+                customer_type=sale_data.customer_type,
+                payment_status=sale_data.payment_status,
+                subtotal=sale_data.subtotal,
+                porterage=sale_data.porterage,
+                vat_rate=sale_data.vat_rate,
+                vat_amount=sale_data.vat_amount,
+                total_amount=sale_data.total_amount,
+                vehicle_details=sale_data.vehicle_details,
+                gate_number=sale_data.gate_number,
+                notes=sale_data.notes,
+                status=sale_data.status,
+                created_by=user_id,
+                date=business_date
             )
-            db.session.add(new_item)
-            
-            # Update stock if sale is finalized
-            if sale_data.status == 'finalized':
-                if item_data.product_id:
-                    # Regular product
-                    success, result = update_product_stock(
-                        product_id=item_data.product_id,
-                        product_type='regular',
-                        quantity_change=-item_data.quantity,  # Negative for sales
-                        movement_type='sale',
-                        reference_id=new_sale.id,
-                        reference_type='sale',
-                        remarks=f"Sale invoice: {sale_data.invoice_number}",
-                        user_id=user_id
-                    )
-                    if not success:
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
-                elif item_data.non_product_id:
-                    # Non-product
-                    success, result = update_product_stock(
-                        product_id=item_data.non_product_id,
-                        product_type='non',
-                        quantity_change=-item_data.quantity,  # Negative for sales
-                        movement_type='sale',
-                        reference_id=new_sale.id,
-                        reference_type='sale',
-                        remarks=f"Sale invoice: {sale_data.invoice_number}",
-                        user_id=user_id
-                    )
-                    if not success:
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
-        
-        db.session.commit()
+            db.session.add(new_sale)
+            db.session.flush()  # Get new_sale.id
+            # Process sale items and update stock
+            for item_data in sale_data.items:
+                new_item = SaleItem(
+                    sale_id=new_sale.id,
+                    product_id=item_data.product_id,
+                    non_product_id=item_data.non_product_id,
+                    quantity=item_data.quantity,
+                    unit_price=item_data.unit_price,
+                    total_price=item_data.total_price
+                )
+                db.session.add(new_item)
+                # Update stock if sale is finalized
+                if sale_data.status == 'finalized':
+                    if item_data.product_id:
+                        success, result = update_product_stock(
+                            product_id=item_data.product_id,
+                            product_type='regular',
+                            quantity_change=-item_data.quantity,
+                            movement_type='sale',
+                            reference_id=new_sale.id,
+                            reference_type='sale',
+                            remarks=f"Sale invoice: {next_invoice}",
+                            user_id=user_id
+                        )
+                        if not success:
+                            db.session.rollback()
+                            return jsonify({"error": f"Stock update failed: {result}"}), 400
+                    elif item_data.non_product_id:
+                        success, result = update_product_stock(
+                            product_id=item_data.non_product_id,
+                            product_type='non',
+                            quantity_change=-item_data.quantity,
+                            movement_type='sale',
+                            reference_id=new_sale.id,
+                            reference_type='sale',
+                            remarks=f"Sale invoice: {next_invoice}",
+                            user_id=user_id
+                        )
+                        if not success:
+                            db.session.rollback()
+                            return jsonify({"error": f"Stock update failed: {result}"}), 400
+            db.session.commit()
         return jsonify(new_sale.to_dict()), 201
     except Exception as e:
         db.session.rollback()
@@ -433,7 +436,7 @@ def get_purchase(id):
         return jsonify(purchase.to_dict())
     except Exception as e:
         return jsonify({'message': str(e)}), 404
-
+        
 # Product routes
 @app.route('/api/products', methods=['GET'])
 def get_products():
@@ -5388,6 +5391,78 @@ def daily_accounts_report():
         # ... other payables ...
     ]
     # ... existing code to build and return the full daily accounts report ...
+
+    # --- Receivables and Payables (On Account Payments) already built above ---
+
+    # --- Banking Entries ---
+    from models import BankingEntry, CashCarryForward, DumpEntry, CustomerReturn, SupplierReturn
+    banking_entries = BankingEntry.query.filter(
+        BankingEntry.date >= from_dt.date(),
+        BankingEntry.date <= to_dt.date()
+    ).all()
+    banking = [b.to_dict() for b in banking_entries]
+
+    # --- Cash Carry Forward ---
+    cf = CashCarryForward.query.filter(
+        CashCarryForward.date >= from_dt.date(),
+        CashCarryForward.date <= to_dt.date()
+    ).all()
+    cf_total = sum(float(x.pounds or 0) + float(x.coins or 0) for x in cf)
+
+    # --- Expenses ---
+    expense_entries = ExpenseEntry.query.filter(
+        ExpenseEntry.date >= from_dt.date(),
+        ExpenseEntry.date <= to_dt.date()
+    ).all()
+    expenses = [e.to_dict() for e in expense_entries]
+    expenses_total = sum(float(e.total_amount or 0) for e in expense_entries)
+
+    # --- Dumps ---
+    dump_entries = DumpEntry.query.filter(
+        DumpEntry.date >= from_dt.date(),
+        DumpEntry.date <= to_dt.date()
+    ).all()
+    dumps = [d.to_dict() for d in dump_entries]
+    dumps_total = sum(float(d.total_value or 0) for d in dump_entries)
+
+    # --- Customer Returns ---
+    customer_returns = CustomerReturn.query.filter(
+        CustomerReturn.date >= from_dt.date(),
+        CustomerReturn.date <= to_dt.date()
+    ).all()
+    customer_returns_list = [cr.to_dict() for cr in customer_returns]
+    customer_returns_total = sum(float(cr.total_value or 0) for cr in customer_returns)
+
+    # --- Supplier Returns ---
+    supplier_returns = SupplierReturn.query.filter(
+        SupplierReturn.date >= from_dt.date(),
+        SupplierReturn.date <= to_dt.date()
+    ).all()
+    supplier_returns_list = [sr.to_dict() for sr in supplier_returns]
+    supplier_returns_total = sum(float(sr.total_value or 0) for sr in supplier_returns)
+
+    # --- Totals and Balances (example, adjust as needed) ---
+    actual_balance = cf_total + sum(r['amount'] for r in receivables) - sum(p['amount'] for p in payables)
+    shortfall = actual_balance - expenses_total
+
+    return jsonify({
+        "receivablesCash": receivables,
+        "receivablesOthers": [],
+        "payablesCash": payables,
+        "payablesOthers": [],
+        "banking": banking,
+        "cfTotal": cf_total,
+        "actualBalance": actual_balance,
+        "shortfall": shortfall,
+        "expenses": expenses,
+        "expensesTotal": expenses_total,
+        "dumps": dumps,
+        "dumpsTotal": dumps_total,
+        "customerReturns": customer_returns_list,
+        "customerReturnsTotal": customer_returns_total,
+        "supplierReturns": supplier_returns_list,
+        "supplierReturnsTotal": supplier_returns_total
+    }), 200
 
 @app.route('/api/cash-cf', methods=['POST'])
 @jwt_required()

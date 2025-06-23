@@ -41,19 +41,11 @@ const SalesInvoice = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Extract invoiceNumber and other initial data from URL
+  // Extract only customerId, vehicleDetails, gateNumber from URL
   const queryParams = new URLSearchParams(window.location.search);
-  const invoiceNumberFromUrl = queryParams.get('invoiceNumber');
   const customerIdFromUrl = queryParams.get('customerId');
   const vehicleDetailsFromUrl = queryParams.get('vehicleDetails');
   const gateNumberFromUrl = queryParams.get('gateNumber');
-
-  console.log('URL Parameters:', {
-    invoiceNumberFromUrl,
-    customerIdFromUrl,
-    vehicleDetailsFromUrl,
-    gateNumberFromUrl
-  });
 
   // State for current sale and items
   const [currentSale, setCurrentSale] = useState<Sale | null>(null);
@@ -63,27 +55,22 @@ const SalesInvoice = () => {
   const [itemQuantity, setItemQuantity] = useState<number>(1);
   const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
   const [isCreatingSale, setIsCreatingSale] = useState(false);
+  const [customerId, setCustomerId] = useState<string>("");
+  const [vehicleDetails, setVehicleDetails] = useState<string>("");
+  const [gateNumber, setGateNumber] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
+  const [status, setStatus] = useState<string>("draft");
 
-  // Add this useEffect after state declarations and before main useEffect
+  // Extract from URL for initial values
   useEffect(() => {
-    setCurrentSale(null);
-    setSaleItems([]);
-  }, [invoiceNumberFromUrl]);
+    setCustomerId(queryParams.get('customerId') || "");
+    setVehicleDetails(queryParams.get('vehicleDetails') || "");
+    setGateNumber(queryParams.get('gateNumber') || "");
+  }, []);
 
-  // Fetch sale details by invoice number
-  const { data: fetchedSale, isLoading: isLoadingSale, isError: isErrorSale } = useQuery<Sale>({
-    queryKey: ["/api/sales", invoiceNumberFromUrl],
-    queryFn: () => apiRequest("GET", `/api/sales/${invoiceNumberFromUrl}`),
-    enabled: !!invoiceNumberFromUrl,
-    retry: (failureCount, error: any) => {
-        // Only retry if it's not a 404 (Sale not found)
-        return error.response && error.response.status !== 404 && failureCount < 3;
-    }
-  });
-
-  // Mutation to create a new sale if it doesn't exist
+  // Mutation to create a new sale
   const createSaleMutation = useMutation({
-    mutationFn: (data: BackendSalePayload) => {
+    mutationFn: (data: Partial<BackendSalePayload>) => {
       return apiRequest("POST", "/api/sales", data);
     },
     onSuccess: (response) => {
@@ -106,67 +93,6 @@ const SalesInvoice = () => {
       });
     },
   });
-
-  // Use useEffect to handle fetchedSale data or create new sale if needed
-  useEffect(() => {
-    console.log('useEffect triggered with:', {
-      fetchedSale,
-      invoiceNumberFromUrl,
-      isLoadingSale,
-      currentSale,
-      customerIdFromUrl,
-      isCreatingSale
-    });
-
-    if (fetchedSale) {
-      console.log('Setting fetched sale:', fetchedSale);
-      setCurrentSale(fetchedSale);
-      setSaleItems(fetchedSale.items || []);
-    } else if (
-      !isCreatingSale && 
-      invoiceNumberFromUrl && 
-      !isLoadingSale && 
-      !fetchedSale && 
-      !currentSale && 
-      customerIdFromUrl
-    ) {
-      console.log('Creating new sale with payload');
-      setIsCreatingSale(true);
-      
-      // If no sale found by invoiceNumber, but we have data from URL, create a new sale
-      const initialSalePayload: BackendSalePayload = {
-        invoice_number: invoiceNumberFromUrl,
-        customer_id: parseInt(customerIdFromUrl),
-        customer_type: "credit",
-        payment_status: "pending",
-        subtotal: 0,
-        total_amount: 0,
-        porterage: 0,
-        vat_rate: 0,
-        vat_amount: 0,
-        vehicle_details: vehicleDetailsFromUrl || null,
-        gate_number: gateNumberFromUrl || null,
-        notes: null,
-        status: "draft",
-        items: []
-      };
-      createSaleMutation.mutate(initialSalePayload);
-    } else if (isErrorSale && !isLoadingSale) {
-      setCurrentSale(null);
-      setSaleItems([]);
-    }
-  }, [
-    fetchedSale, 
-    invoiceNumberFromUrl, 
-    isLoadingSale, 
-    currentSale, 
-    customerIdFromUrl, 
-    vehicleDetailsFromUrl, 
-    gateNumberFromUrl, 
-    createSaleMutation,
-    isCreatingSale,
-    isErrorSale
-  ]);
 
   // Fetch customers (needed for customer name display if not directly in sale)
   const { data: customers } = useQuery<Customer[]>({
@@ -349,33 +275,32 @@ const SalesInvoice = () => {
     setItemUnitPrice(0);
   };
 
+  // Save handler: create sale only when Save is clicked
   const handleSaveInvoice = () => {
-    if (!currentSale) return;
-
-    const updatedSalePayload: BackendSalePayload = {
-      invoice_number: currentSale.invoiceNumber,
-      customer_id: currentSale.customerId,
-      customer_type: currentSale.customerType,
-      payment_status: currentSale.paymentStatus,
-      subtotal: saleItems.reduce((sum, item) => sum + item.totalPrice, 0),
-      porterage: currentSale.porterage,
-      vat_rate: currentSale.vatRate,
-      vat_amount: currentSale.vatAmount,
-      total_amount: saleItems.reduce((sum, item) => sum + item.totalPrice, 0),
-      vehicle_details: currentSale.vehicleDetails,
-      gate_number: currentSale.gateNumber,
-      notes: currentSale.notes,
-      status: "finalized", // Change status to finalized on save
+    setIsCreatingSale(true);
+    const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const payload: Partial<BackendSalePayload> = {
+      customer_id: parseInt(customerId),
+      customer_type: "credit",
+      payment_status: "pending",
+      subtotal,
+      total_amount: subtotal,
+      porterage: 0,
+      vat_rate: 0,
+      vat_amount: 0,
+      vehicle_details: vehicleDetails || null,
+      gate_number: gateNumber || null,
+      notes: notes || null,
+      status,
       items: saleItems.map(item => ({
         product_id: item.productId,
         non_product_id: item.nonProductId,
         quantity: item.quantity,
         unit_price: item.unitPrice,
         total_price: item.totalPrice,
-      })), // Ensure correct schema for backend
+      })),
     };
-
-    updateSaleMutation.mutate(updatedSalePayload);
+    createSaleMutation.mutate(payload);
   };
 
   const calculateTotalSummary = () => {
@@ -389,12 +314,8 @@ const SalesInvoice = () => {
 
   const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
 
-  if (isLoadingSale) {
-    return <div className="text-center py-8">Loading invoice...</div>;
-  }
-
-  if (!invoiceNumberFromUrl || (!currentSale && !isLoadingSale)) {
-    return <div className="text-center py-8">No invoice found. Please go back to sales entry.</div>;
+  if (isCreatingSale) {
+    return <div className="text-center py-8">Creating new sale...</div>;
   }
 
   return (
