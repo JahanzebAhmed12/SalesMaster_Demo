@@ -113,7 +113,7 @@
 //     </PageLayout>
 //   );
 // }
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -136,20 +136,21 @@ export default function AdminSetup() {
 
   const { data: settings, isLoading } = useQuery<SystemSettings>({
     queryKey: ['/api/settings'],
-    onSuccess: (data) => {
-      if (data) {
-        setClosingTime(data.closingTime);
-        setTimezone(data.timezone);
-        setAutoDateSwitch(data.autoDateSwitch);
-        setWeekendHandling(data.weekendHandling);
-      }
-    }
+    queryFn: () => apiRequest<SystemSettings>('GET', '/api/settings'),
   });
+
+  useEffect(() => {
+    if (settings) {
+      setClosingTime(settings.closingTime);
+      setTimezone(settings.timezone);
+      setAutoDateSwitch(settings.autoDateSwitch);
+      setWeekendHandling(settings.weekendHandling);
+    }
+  }, [settings]);
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: Partial<SystemSettings>) => {
       const response = await apiRequest('PUT', '/api/settings', data);
-      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });

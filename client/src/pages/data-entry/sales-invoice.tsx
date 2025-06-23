@@ -408,6 +408,25 @@ const SalesInvoice = () => {
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-4">
                   <span>Date: {new Date(currentSale?.date || '').toLocaleDateString('en-GB')}</span>
+                  {/* Print Invoice Button */}
+                  {currentSale?.invoiceNumber && (
+                    <>
+                      <a
+                        href={`/print/invoice/${currentSale.invoiceNumber}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button size="sm" variant="outline" className="ml-2">Print Invoice</Button>
+                      </a>
+                      <a
+                        href={`/print/dot-matrix-invoice/${currentSale.invoiceNumber}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button size="sm" variant="outline" className="ml-2">Dot Matrix Print</Button>
+                      </a>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-4">
                   <span>Invoice: {currentSale?.invoiceNumber}</span>

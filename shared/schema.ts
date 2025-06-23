@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+// System Settings Schema
+export const systemSettingsSchema = z.object({
+  closingTime: z.string(), // "HH:mm"
+  timezone: z.string(),
+  autoDateSwitch: z.boolean(),
+  weekendHandling: z.string(),
+  updatedAt: z.string().optional(),
+});
+export type SystemSettings = z.infer<typeof systemSettingsSchema>;
+
 // User Schema
 export const userSchema = z.object({
   id: z.number(),
@@ -441,7 +451,8 @@ export const paymentSchema = z.object({
   paymentDate: z.string(),
   remarks: z.string().nullable(),
   createdAt: z.string(),
-  updatedAt: z.string()
+  updatedAt: z.string(),
+  currency: z.string().optional(),
 });
 
 export const insertPaymentSchema = paymentSchema.omit({
@@ -655,3 +666,36 @@ export type InsertCustomerReturn = z.infer<typeof insertCustomerReturnSchema>;
 
 export type SupplierReturn = z.infer<typeof supplierReturnSchema>;
 export type InsertSupplierReturn = z.infer<typeof insertSupplierReturnSchema>;
+
+export const cashCarryForwardSchema = z.object({
+  id: z.number().optional(),
+  date: z.string(), // ISO date string
+  pounds: z.number(),
+  coins: z.number(),
+  createdAt: z.string().optional(),
+});
+
+export const insertCashCarryForwardSchema = cashCarryForwardSchema.omit({
+  id: true,
+  createdAt: true,
+});
+
+export type CashCarryForward = z.infer<typeof cashCarryForwardSchema>;
+export type InsertCashCarryForward = z.infer<typeof insertCashCarryForwardSchema>;
+
+export const bankingEntrySchema = z.object({
+  id: z.number(),
+  date: z.string(), // ISO date string
+  remarks: z.string(),
+  paymentType: z.string(),
+  amount: z.number(),
+  createdAt: z.string().optional(),
+});
+
+export const insertBankingEntrySchema = bankingEntrySchema.omit({
+  id: true,
+  createdAt: true,
+});
+
+export type BankingEntry = z.infer<typeof bankingEntrySchema>;
+export type InsertBankingEntry = z.infer<typeof insertBankingEntrySchema>;

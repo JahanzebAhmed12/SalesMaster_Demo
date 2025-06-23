@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -48,12 +48,24 @@ const currencies = [
   "CAD", "GBP", "EGP", "EUR", "FRF", "INR", "PKR", "TRY", "UGX", "USD"
 ];
 
+// Helper to get next supplier code
+function getNextSupplierCode(suppliers: any[]) {
+  const codes = suppliers
+    .map((s) => s.supplier_code)
+    .filter((code) => /^S\d+$/i.test(code));
+  const nums = codes.map((code) => parseInt(code.replace(/^S/i, ""), 10)).filter((n) => !isNaN(n));
+  const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `S${nextNum}`;
+}
+
 export default function SupplierForm() {
   const [, params] = useRoute("/admin/supplier-database-edit/:id");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const isEditing = !!params?.id;
   const isViewMode = window.location.href.includes("view=true");
+  const queryClient = useQueryClient();
+  const suppliers = queryClient.getQueryData<any[]>(["suppliers", ""]) || [];
 
   const { data: supplier, isLoading } = useQuery<Supplier>({
     queryKey: ["suppliers", params?.id],
@@ -122,6 +134,14 @@ export default function SupplierForm() {
       });
     }
   }, [supplier, form]);
+
+  useEffect(() => {
+    if (!isEditing && suppliers.length > 0) {
+      const nextCode = getNextSupplierCode(suppliers);
+      form.setValue("supplier_code", nextCode);
+      form.setValue("sage_code", nextCode);
+    }
+  }, [isEditing, suppliers, form]);
 
   const mutation = useMutation({
     mutationFn: async (data: FormValues) => {
@@ -205,7 +225,7 @@ export default function SupplierForm() {
                   <FormItem>
                     <FormLabel>Supplier Code *</FormLabel>
                     <FormControl>
-                      <Input {...field} />
+                      <Input {...field} readOnly />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -218,7 +238,7 @@ export default function SupplierForm() {
                   <FormItem>
                     <FormLabel>Sage Code</FormLabel>
                     <FormControl>
-                      <Input {...field} value={field.value || ''} />
+                    <Input {...field} value={field.value || ""} readOnly />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

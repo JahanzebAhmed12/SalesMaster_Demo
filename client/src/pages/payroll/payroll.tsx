@@ -3,6 +3,9 @@ import { apiRequest } from "@/lib/queryClient";
 import type { UserWithAttendance } from "@shared/schema";
 import AttendanceTable from "@/components/layout/attendance-table";
 
+// NOTE: This page will always show up-to-date user/attendance data
+// because user add/edit now invalidates ["/api/users/attendance"] via useInvalidateMutation.
+
 export default function Payroll() {
   const { data: users, isLoading } = useQuery<UserWithAttendance[]>({
     queryKey: ["/api/users/attendance"],

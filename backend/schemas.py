@@ -396,3 +396,13 @@ class SupplierReturnSchema(BaseModel):
     class Config:
         from_attributes = True
         populate_by_name = True
+
+class CashCarryForwardSchema(BaseModel):
+    id: int | None = None
+    date: date
+    pounds: float
+    coins: float
+    created_at: datetime | None = None
+
+    class Config:
+        orm_mode = True

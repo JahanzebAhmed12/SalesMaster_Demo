@@ -1,9 +1,9 @@
 from flask import Flask, request, jsonify, session
 from flask_cors import CORS
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
     SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema
@@ -13,7 +13,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
 from calendar import monthrange
-from sqlalchemy import func, or_, extract
+from sqlalchemy import func, or_, extract, literal
 import calendar
 
 # Load environment variables
@@ -116,6 +116,20 @@ def get_product_stock(product_id, product_type):
     except Exception as e:
         return None
 
+def get_closing_time():
+    settings = SystemSettings.query.first()
+    if settings and settings.closing_time:
+        return settings.closing_time
+    return time(23, 59)  # Default closing time
+
+def get_business_date(now=None):
+    now = now or datetime.now()
+    closing_time = get_closing_time()
+    closing_datetime = now.replace(hour=closing_time.hour, minute=closing_time.minute, second=0, microsecond=0)
+    if now.time() > closing_time:
+        return (now + timedelta(days=1)).date()
+    return now.date()
+
 # Auth routes
 @app.route('/api/auth/login', methods=['POST'])
 def login():
@@ -182,6 +196,7 @@ def create_sale():
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
         user_id = get_jwt_identity()
+        business_date = get_business_date()
         new_sale = Sale(
             invoice_number=sale_data.invoice_number,
             customer_id=sale_data.customer_id,
@@ -196,7 +211,8 @@ def create_sale():
             gate_number=sale_data.gate_number,
             notes=sale_data.notes,
             status=sale_data.status,
-            created_by=user_id
+            created_by=user_id,
+            date=business_date
         )
         db.session.add(new_sale)
         db.session.commit()
@@ -277,6 +293,9 @@ def update_sale(id):
         # Update sale fields
         for key, value in sale_data.dict(exclude={'items'}).items():
             setattr(sale, key, value)
+        
+        # Always update the date to the correct business date
+        sale.date = get_business_date()
         
         # Update sale items
         sale.items = []  # Clear existing items
@@ -387,17 +406,17 @@ def create_purchase():
     data = request.get_json()
     try:
         purchase_data = PurchaseSchema(**data)
-        
         # Get supplier name from supplier_id
         supplier = Supplier.query.get(purchase_data.supplier_id)
         if not supplier:
             return jsonify({'message': 'Supplier not found'}), 404
-        
+        # Use business date
+        business_date = get_business_date()
         purchase = Purchase(
             supplier_id=purchase_data.supplier_id,
             supplier_name=supplier.supplier_name,
             amount=purchase_data.amount,
-            date=datetime.strptime(purchase_data.invoice_date, "%Y-%m-%d") if purchase_data.invoice_date else datetime.utcnow(),
+            date=business_date,
             status='pending'
         )
         db.session.add(purchase)
@@ -837,26 +856,47 @@ def delete_supplier(id):
 @app.route('/api/dashboard/stats', methods=['GET'])
 def get_dashboard_stats():
     try:
-        sales = Sale.query.all()
-        purchases = Purchase.query.all()
-        regular_products = RegularProduct.query.all()
-        non_products = NonProduct.query.all()
-        
         today = datetime.now().date()
-        today_sales = sum(sale.amount for sale in sales if sale.date.date() == today)
-        total_purchases = sum(purchase.amount for purchase in purchases)
-        total_sales = sum(sale.amount for sale in sales)
+        # Efficient queries
+        today_sales = db.session.query(func.sum(Sale.total_amount)).filter(
+            func.date(Sale.date) == today
+        ).scalar() or 0
+
+        today_purchases = db.session.query(func.sum(Purchase.amount)).filter(
+            func.date(Purchase.date) == today
+        ).scalar() or 0
+
+        total_purchases = db.session.query(func.sum(Purchase.amount)).scalar() or 0
+        total_sales = db.session.query(func.sum(Sale.total_amount)).scalar() or 0
         profit_margin = ((total_sales - total_purchases) / total_sales * 100) if total_sales > 0 else 0
-        
+
+        regular_count = db.session.query(func.count(RegularProduct.id)).scalar() or 0
+        non_count = db.session.query(func.count(NonProduct.id)).scalar() or 0
+        stock_items = regular_count + non_count
+
+        # Recent transactions: last 5 sales, newest first
+        sales = Sale.query.order_by(Sale.date.desc()).limit(5).all()
+        recent_transactions = []
+        for sale in sales:
+            customer_name = sale.customer.customer_name if sale.customer else ""
+            recent_transactions.append({
+                "id": sale.id,
+                "customerName": customer_name,
+                "amount": float(sale.total_amount),
+                "date": sale.date.isoformat() if sale.date else None,
+                "status": sale.status
+            })
+
         return jsonify({
-            'todaySales': today_sales,
-            'totalPurchases': total_purchases,
-            'profitMargin': profit_margin,
-            'stockItems': len(regular_products) + len(non_products),
-            'recentTransactions': [sale.to_dict() for sale in sales[-5:]]
+            "todaySales": today_sales,
+            "todayPurchases": today_purchases,
+            "totalPurchases": total_purchases,
+            "profitMargin": profit_margin,
+            "stockItems": stock_items,
+            "recentTransactions": recent_transactions
         })
     except Exception as e:
-        return jsonify({'message': 'Failed to fetch dashboard stats'}), 500
+        return jsonify({'message': 'Failed to fetch dashboard stats', 'error': str(e)}), 500
 
 # Chart data
 @app.route('/api/dashboard/charts', methods=['GET'])
@@ -870,12 +910,12 @@ def get_chart_data():
         last_7_days.reverse()
         
         sales_by_day = [
-            sum(sale.amount for sale in sales if sale.date.date() == day)
+            sum(getattr(sale, 'total_amount', 0) for sale in sales if sale.date and sale.date.date() == day)
             for day in last_7_days
         ]
         
         purchases_by_day = [
-            sum(purchase.amount for purchase in purchases if purchase.date.date() == day)
+            sum(getattr(purchase, 'amount', 0) for purchase in purchases if purchase.date and purchase.date.date() == day)
             for day in last_7_days
         ]
         
@@ -891,7 +931,7 @@ def get_chart_data():
             }
         })
     except Exception as e:
-        return jsonify({'message': 'Failed to fetch chart data'}), 500
+        return jsonify({'message': 'Failed to fetch chart data', 'error': str(e)}), 500
 
 # System Settings routes
 @app.route('/api/settings', methods=['GET'])
@@ -906,20 +946,47 @@ def get_settings():
 @app.route('/api/settings', methods=['PUT'])
 def update_settings():
     data = request.get_json()
+    print('[DEBUG] Incoming settings data:', data)
     try:
+        # Map camelCase to snake_case for backend compatibility
+        if 'closingTime' in data:
+            data['closing_time'] = data.pop('closingTime')
+        if 'autoDateSwitch' in data:
+            data['auto_date_switch'] = data.pop('autoDateSwitch')
+        if 'weekendHandling' in data:
+            data['weekend_handling'] = data.pop('weekendHandling')
+        # Print all incoming fields and types
+        for k, v in data.items():
+            print(f'[DEBUG] Field: {k}, Value: {v}, Type: {type(v)}')
+        # Check for required fields
+        required = ['closing_time', 'timezone', 'auto_date_switch', 'weekend_handling']
+        for field in required:
+            if field not in data:
+                print(f'[WARNING] Missing required field: {field}')
+        # Parse closing_time if it's a string (e.g., "18:00")
+        if 'closing_time' in data:
+            print('[DEBUG] closing_time before parsing:', data['closing_time'], type(data['closing_time']))
+            if isinstance(data['closing_time'], str):
+                from datetime import datetime
+                data['closing_time'] = datetime.strptime(data['closing_time'], "%H:%M").time()
+            print('[DEBUG] closing_time after parsing:', data['closing_time'], type(data['closing_time']))
         settings_data = SystemSettingsSchema(**data)
+        print('[DEBUG] Parsed settings_data:', settings_data.dict())
         settings = SystemSettings.query.first()
         if not settings:
             settings = SystemSettings()
             db.session.add(settings)
-        
         for key, value in settings_data.dict().items():
+            print(f'[DEBUG] Setting attribute {key} = {value} ({type(value)})')
             setattr(settings, key, value)
-        
         db.session.commit()
+        print('[DEBUG] Settings after commit:', settings.to_dict())
         return jsonify(settings.to_dict())
     except Exception as e:
-        return jsonify({'message': 'Invalid settings data'}), 400
+        import traceback
+        print('[ERROR] Exception in update_settings:', str(e))
+        print(traceback.format_exc())
+        return jsonify({'message': str(e)}), 400
 
 # Attendance routes
 @app.route('/api/attendance', methods=['GET'])
@@ -1490,6 +1557,10 @@ def create_payment():
                 sale.payment_status = "paid"
                 sale.paid_amount = sale.total_amount
                 sale.status = "finalized"  # Mark as finalized when fully paid
+                # If payment is cash, update customer_type to cash
+                if payment_data.payment_mode.lower() == "cash" and sale.customer_type != "cash":
+                    print(f"[DEBUG] Updating sale {sale.id} customer_type from {sale.customer_type} to cash due to full cash payment.")
+                    sale.customer_type = "cash"
             else:
                 sale.payment_status = "partial"
                 sale.paid_amount = new_paid
@@ -1887,16 +1958,14 @@ def product_sales_report():
 @app.route('/api/purchase-invoices', methods=['POST'])
 def create_purchase_invoice():
     data = request.get_json()
-    # Accept 'date' in format YYYY-MM-DD, fallback to utcnow if not provided
-    from datetime import datetime
-    invoice_date = None
+    # Use business date
+    business_date = get_business_date()
+    invoice_date = business_date
     if data.get('date'):
         try:
             invoice_date = datetime.strptime(data['date'], "%Y-%m-%d")
         except Exception:
-            invoice_date = datetime.utcnow()
-    else:
-        invoice_date = datetime.utcnow()
+            invoice_date = business_date
     invoice = PurchaseInvoice(
         purchase_id=data['purchaseId'],
         remarks=data.get('remarks'),
@@ -3072,29 +3141,27 @@ def get_expense_entries():
 @app.route('/api/expense-entries', methods=['POST'])
 @jwt_required()
 def create_expense_entry():
-    """Create a new expense entry"""
     try:
         data = request.get_json()
         user_id = get_jwt_identity()
-        
+        # Use business date
+        business_date = get_business_date()
         # Generate reference number
         last_entry = ExpenseEntry.query.order_by(ExpenseEntry.id.desc()).first()
         ref_number = f"E{1 if not last_entry else last_entry.id + 1:04d}"
-        
         # Calculate total amount
         amount = float(data.get('amount', 0))
         vat_amount = float(data.get('vatAmount', 0))
         total_amount = amount + vat_amount
-        
         expense_entry_data = ExpenseEntrySchema(**{
             **data,
             'refNumber': ref_number,
-            'totalAmount': total_amount
+            'totalAmount': total_amount,
+            'date': business_date
         })
-        
         expense_entry = ExpenseEntry(
             ref_number=ref_number,
-            date=expense_entry_data.date,
+            date=business_date,
             supplier_id=expense_entry_data.supplierId,
             expense_id=expense_entry_data.expenseId,
             description=expense_entry_data.description,
@@ -3106,10 +3173,8 @@ def create_expense_entry():
             total_amount=total_amount,
             created_by=user_id
         )
-        
         db.session.add(expense_entry)
         db.session.commit()
-        
         return jsonify(expense_entry.to_dict()), 201
     except Exception as e:
         db.session.rollback()
@@ -3199,29 +3264,27 @@ def get_dump_entries():
 @app.route('/api/dump-entries', methods=['POST'])
 @jwt_required()
 def create_dump_entry():
-    """Create a new dump entry"""
     try:
         data = request.get_json()
         user_id = get_jwt_identity()
-        
+        # Use business date
+        business_date = get_business_date()
         # Generate reference number
         last_entry = DumpEntry.query.order_by(DumpEntry.id.desc()).first()
         ref_number = f"D{1 if not last_entry else last_entry.id + 1:04d}"
-        
         # Calculate total value
         quantity = int(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
-        
         dump_entry_data = DumpEntrySchema(**{
             **data,
             'refNumber': ref_number,
-            'totalValue': total_value
+            'totalValue': total_value,
+            'date': business_date
         })
-        
         dump_entry = DumpEntry(
             ref_number=ref_number,
-            date=dump_entry_data.date,
+            date=business_date,
             supplier_id=dump_entry_data.supplierId,
             product_id=dump_entry_data.productId,
             product_type=dump_entry_data.productType,
@@ -3232,7 +3295,6 @@ def create_dump_entry():
             total_value=total_value,
             created_by=user_id
         )
-        
         db.session.add(dump_entry)
         db.session.commit()
         
@@ -3362,42 +3424,30 @@ def get_customer_returns():
 @app.route('/api/customer-returns', methods=['POST'])
 @jwt_required()
 def create_customer_return():
-    """Create a new customer return"""
     try:
         data = request.get_json()
-        print(f"[DEBUG] Received data: {data}")  # Debug log
         user_id = get_jwt_identity()
-        print(f"[DEBUG] User ID: {user_id}")  # Debug log
-        
+        # Use business date
+        business_date = get_business_date()
         # Generate reference number
         last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
         ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
-        print(f"[DEBUG] Generated ref number: {ref_number}")  # Debug log
-        
         # Calculate total value
         quantity = int(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
-        print(f"[DEBUG] Calculated total value: {total_value}")  # Debug log
-        
         # Parse date string to date object
+        parsed_date = business_date
         date_str = data.get('date')
         if date_str:
             try:
                 parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-                print(f"[DEBUG] Parsed date: {parsed_date}")  # Debug log
             except ValueError:
-                return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
-        else:
-            parsed_date = datetime.now().date()
-            print(f"[DEBUG] Using current date: {parsed_date}")  # Debug log
-        
+                parsed_date = business_date
         # Validate customer exists
         customer = Customer.query.get(data.get('customerId'))
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
-        print(f"[DEBUG] Customer found: {customer.customer_name}")  # Debug log
-        
         # Validate product exists
         product_type = data.get('productType')
         if product_type == 'regular':
@@ -3407,16 +3457,12 @@ def create_customer_return():
         
         if not product:
             return jsonify({"error": "Product not found"}), 404
-        print(f"[DEBUG] Product found: {product.description}")  # Debug log
-        
         # Validate sale exists if provided
         sale = None
         if data.get('saleId'):
             sale = Sale.query.get(data.get('saleId'))
             if not sale:
                 return jsonify({"error": "Sale not found"}), 404
-            print(f"[DEBUG] Sale found: {sale.invoice_number}")  # Debug log
-        
         # Prepare data for schema validation
         schema_data = {
             'refNumber': ref_number,
@@ -3436,11 +3482,7 @@ def create_customer_return():
             'creditNoteAmount': float(data.get('creditNoteAmount', 0)),
             'status': data.get('status', 'pending')
         }
-        print(f"[DEBUG] Schema data prepared: {schema_data}")  # Debug log
-        
         customer_return_data = CustomerReturnSchema(**schema_data)
-        print(f"[DEBUG] Schema validation passed")  # Debug log
-        
         customer_return = CustomerReturn(
             ref_number=ref_number,
             date=parsed_date,
@@ -3460,12 +3502,8 @@ def create_customer_return():
             status=customer_return_data.status,
             created_by=user_id
         )
-        print(f"[DEBUG] CustomerReturn object created")  # Debug log
-        
         db.session.add(customer_return)
         db.session.commit()
-        print(f"[DEBUG] CustomerReturn saved to database")  # Debug log
-        
         # Note: Stock is NOT updated here - it will be updated when the return is approved
         
         # If credit note is issued, update customer balance
@@ -3480,8 +3518,6 @@ def create_customer_return():
                 remarks=f"Credit note for return: {ref_number}"
             )
             db.session.add(credit_payment)
-            print(f"[DEBUG] Credit payment created")  # Debug log
-            
             # Update customer's outstanding balance
             if sale:
                 current_paid = float(sale.paid_amount or 0)
@@ -3492,10 +3528,8 @@ def create_customer_return():
                 else:
                     sale.payment_status = 'partial'
                 db.session.add(sale)
-                print(f"[DEBUG] Sale payment status updated")  # Debug log
         
         db.session.commit()
-        print(f"[DEBUG] Final commit successful")  # Debug log
         return jsonify(customer_return.to_dict()), 201
     except Exception as e:
         db.session.rollback()
@@ -3840,24 +3874,26 @@ def get_supplier_returns():
 @app.route('/api/supplier-returns', methods=['POST'])
 @jwt_required()
 def create_supplier_return():
-    """Create a new supplier return"""
     try:
         data = request.get_json()
-        print(f"[DEBUG] Received data: {data}")  # Debug log
         user_id = get_jwt_identity()
-        print(f"[DEBUG] User ID: {user_id}")  # Debug log
-        
+        # Use business date
+        business_date = get_business_date()
         # Generate reference number
         last_return = SupplierReturn.query.order_by(SupplierReturn.id.desc()).first()
         ref_number = f"SR{1 if not last_return else last_return.id + 1:04d}"
-        print(f"[DEBUG] Generated ref number: {ref_number}")  # Debug log
-        
         # Calculate total value
         quantity = int(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
-        print(f"[DEBUG] Calculated total value: {total_value}")  # Debug log
-        
+        # Parse date string to date object
+        parsed_date = business_date
+        date_str = data.get('date')
+        if date_str:
+            try:
+                parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = business_date
         # Validate supplier exists
         supplier = Supplier.query.get(data.get('supplierId'))
         print(f"[DEBUG] Supplier: {supplier}")  # Debug log
@@ -3888,12 +3924,13 @@ def create_supplier_return():
         supplier_return_data = SupplierReturnSchema(**{
             **data,
             'refNumber': ref_number,
-            'totalValue': total_value
+            'totalValue': total_value,
+            'date': parsed_date
         })
         
         supplier_return = SupplierReturn(
             ref_number=ref_number,
-            date=supplier_return_data.date,
+            date=parsed_date,
             supplier_id=supplier_return_data.supplierId,
             purchase_invoice_id=supplier_return_data.purchaseInvoiceId,
             product_id=supplier_return_data.productId,
@@ -3913,7 +3950,6 @@ def create_supplier_return():
         
         db.session.add(supplier_return)
         db.session.commit()
-        
         # Note: Stock is NOT updated here - it will be updated when the return is approved
         
         # If credit note is issued, update supplier balance
@@ -5167,6 +5203,275 @@ def full_analysis():
             'diff': round(diff, 2)
         })
     return jsonify(results)
+
+@app.route('/api/sales/<string:invoice_number>/invoice', methods=['GET'])
+def get_invoice_data(invoice_number):
+    """Return all data needed for invoice printing for a given sale invoice number."""
+    try:
+        # Get sale
+        sale = Sale.query.filter_by(invoice_number=invoice_number).first()
+        if not sale:
+            return jsonify({'error': 'Sale not found'}), 404
+        # Get company info
+        company = Company.query.first()
+        company_info = company.to_dict() if company else {}
+        # Get customer info
+        customer = sale.customer.to_dict() if sale.customer else {}
+        # Get sale items
+        items = [item.to_dict() for item in sale.items]
+        # Payment info (credit, balance, etc.)
+        paid_amount = float(sale.paid_amount or 0)
+        balance = float(sale.total_amount) - paid_amount
+        # Editable notes/payment instructions (placeholder, can be made editable later)
+        notes = (
+            "NO COMPLAINTS OR RETURNS CONSIDERED AFTER 24 HOURS\n"
+            "Make payments to:TROPIFRUIT UK LTD SORT CODE 20-26-53 ACC# 33378292"
+        )
+        # Compose response
+        return jsonify({
+            'company': company_info,
+            'customer': customer,
+            'sale': sale.to_dict(),
+            'items': items,
+            'paidAmount': paid_amount,
+            'balance': balance,
+            'notes': notes
+        })
+    except Exception as e:
+        import traceback
+        print('[ERROR] Exception in get_invoice_data:', str(e))
+        print(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reports/profit-loss', methods=['GET'])
+@jwt_required()
+def profit_loss_report():
+    from datetime import datetime, timedelta
+    from models import (
+        PurchaseInvoice, PurchaseInvoiceItem, Sale, SaleItem,
+        RegularProduct, NonProduct
+    )
+
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    search = request.args.get('search', '')
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1) if to_date else None
+
+    # Get all products (regular + non)
+    products = (
+        db.session.query(RegularProduct.id, RegularProduct.description, literal('regular').label('type'))
+        .union_all(
+            db.session.query(NonProduct.id, NonProduct.description, literal('non').label('type'))
+        )
+        .all()
+    )
+
+    result = []
+    sl_no = 1
+    for prod in products:
+        # Optional search filter
+        if search and search.lower() not in (prod.description or '').lower():
+            continue
+        # Purchases
+        purchase_query = db.session.query(
+            func.sum(PurchaseInvoiceItem.quantity),
+            func.sum(PurchaseInvoiceItem.total_price)
+        ).join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)
+        if prod.type == 'regular':
+            purchase_query = purchase_query.filter(PurchaseInvoiceItem.product_id == prod.id)
+        else:
+            purchase_query = purchase_query.filter(PurchaseInvoiceItem.product_id == prod.id)
+        if from_dt:
+            purchase_query = purchase_query.filter(PurchaseInvoice.date >= from_dt)
+        if to_dt:
+            purchase_query = purchase_query.filter(PurchaseInvoice.date < to_dt)
+        purchase_qty, purchase_total = purchase_query.first()
+        purchase_qty = purchase_qty or 0
+        purchase_total = purchase_total or 0
+        avg_purchase = (purchase_total / purchase_qty) if purchase_qty else 0
+
+        # Sales
+        sales_query = db.session.query(
+            func.sum(SaleItem.quantity),
+            func.sum(SaleItem.total_price)
+        ).join(Sale, SaleItem.sale_id == Sale.id)
+        if prod.type == 'regular':
+            sales_query = sales_query.filter(SaleItem.product_id == prod.id)
+        else:
+            sales_query = sales_query.filter(SaleItem.non_product_id == prod.id)
+        if from_dt:
+            sales_query = sales_query.filter(Sale.date >= from_dt)
+        if to_dt:
+            sales_query = sales_query.filter(Sale.date < to_dt)
+        sales_query = sales_query.filter(Sale.status == 'finalized')
+        sales_qty, sales_total = sales_query.first()
+        sales_qty = sales_qty or 0
+        sales_total = sales_total or 0
+        avg_sales = (sales_total / sales_qty) if sales_qty else 0
+
+        # Profit/Loss
+        avg_profit = avg_sales - avg_purchase
+        tot_profit = sales_total - purchase_total
+        percent_profit = (tot_profit / purchase_total * 100) if purchase_total else 0
+
+        result.append({
+            'id': prod.id,
+            'slNo': sl_no,
+            'productDescription': prod.description,
+            'totalQuantity': sales_qty,
+            'avgPurchase': avg_purchase,
+            'avgSales': avg_sales,
+            'avgProfit': avg_profit,
+            'totPurchase': purchase_total,
+            'totSales': sales_total,
+            'totProfit': tot_profit,
+            'percentProfit': percent_profit,
+            'isLoss': tot_profit < 0
+        })
+        sl_no += 1
+
+    return jsonify(result)
+
+@app.route('/api/reports/daily-accounts', methods=['GET'])
+@jwt_required()
+def daily_accounts_report():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    from datetime import datetime
+    from models import Sale, Payment, ExpenseEntry, SupplierPayment
+    from sqlalchemy import func
+
+    # Parse dates
+    if not from_date:
+        from_date = datetime.now().strftime('%Y-%m-%d')
+    if not to_date:
+        to_date = from_date
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+
+    # On Account Customer Payments (sale_id is null)
+    on_acc_customer_payments = (
+        db.session.query(Payment.payment_mode, func.sum(Payment.amount))
+        .filter(Payment.sale_id == None)
+        .filter(Payment.payment_date >= from_dt.date(), Payment.payment_date <= to_dt.date())
+        .group_by(Payment.payment_mode)
+        .all()
+    )
+    on_acc_customer_by_mode = {mode.upper(): float(amount or 0) for mode, amount in on_acc_customer_payments}
+
+    # On Account Supplier Payments (purchase_invoice_id is null)
+    on_acc_supplier_payments = (
+        db.session.query(SupplierPayment.payment_mode, func.sum(SupplierPayment.amount))
+        .filter(SupplierPayment.purchase_invoice_id == None)
+        .filter(SupplierPayment.payment_date >= from_dt.date(), SupplierPayment.payment_date <= to_dt.date())
+        .group_by(SupplierPayment.payment_mode)
+        .all()
+    )
+    on_acc_supplier_by_mode = {mode.upper(): float(amount or 0) for mode, amount in on_acc_supplier_payments}
+
+    # ... rest of the daily accounts logic ...
+    # Example: add these to receivables/payables
+    receivables = [
+        {"item": "On Account Cash", "amount": on_acc_customer_by_mode.get("CASH", 0)},
+        {"item": "On Account Card", "amount": on_acc_customer_by_mode.get("CARD", 0)},
+        {"item": "On Account Bank", "amount": on_acc_customer_by_mode.get("BANK", 0)},
+        {"item": "On Account Cheque", "amount": on_acc_customer_by_mode.get("CHEQUE", 0)},
+        # ... other receivables ...
+    ]
+    payables = [
+        {"item": "On Account Supplier Cash", "amount": on_acc_supplier_by_mode.get("CASH", 0)},
+        {"item": "On Account Supplier Card", "amount": on_acc_supplier_by_mode.get("CARD", 0)},
+        {"item": "On Account Supplier Bank", "amount": on_acc_supplier_by_mode.get("BANK", 0)},
+        {"item": "On Account Supplier Cheque", "amount": on_acc_supplier_by_mode.get("CHEQUE", 0)},
+        # ... other payables ...
+    ]
+    # ... existing code to build and return the full daily accounts report ...
+
+@app.route('/api/cash-cf', methods=['POST'])
+@jwt_required()
+def add_cash_cf():
+    data = request.get_json()
+    from datetime import datetime
+    date_str = data.get('date')
+    pounds = data.get('pounds', 0)
+    coins = data.get('coins', 0)
+    # Use business date logic
+    if date_str:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        business_date = get_business_date(date_obj)
+    else:
+        business_date = get_business_date()
+    cf = CashCarryForward.query.filter_by(date=business_date.date()).first()
+    if cf:
+        cf.pounds = pounds
+        cf.coins = coins
+    else:
+        cf = CashCarryForward(date=business_date.date(), pounds=pounds, coins=coins)
+        db.session.add(cf)
+    db.session.commit()
+    return jsonify(cf.to_dict()), 201
+
+@app.route('/api/cash-cf', methods=['GET'])
+@jwt_required()
+def get_cash_cf():
+    from datetime import datetime
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'date is required'}), 400
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+    cf = CashCarryForward.query.filter_by(date=date_obj).first()
+    if not cf:
+        return jsonify({'pounds': 0, 'coins': 0, 'date': date_str}), 200
+    return jsonify(cf.to_dict())
+
+@app.route('/api/cash-cf/range', methods=['GET'])
+@jwt_required()
+def get_cash_cf_range():
+    from datetime import datetime
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d").date()
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
+    cfs = CashCarryForward.query.filter(CashCarryForward.date >= from_dt, CashCarryForward.date <= to_dt).all()
+    return jsonify([cf.to_dict() for cf in cfs])
+
+@app.route('/api/banking', methods=['POST'])
+@jwt_required()
+def add_banking_entry():
+    data = request.get_json()
+    from datetime import datetime
+    date_str = data.get('date')
+    remarks = data.get('remarks', '')
+    payment_type = data.get('paymentType', 'CASH')
+    amount = data.get('amount', 0)
+    # Use business date logic
+    if date_str:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+        business_date = get_business_date(date_obj)
+    else:
+        business_date = get_business_date()
+    entry = BankingEntry(date=business_date.date(), remarks=remarks, payment_type=payment_type, amount=amount)
+    db.session.add(entry)
+    db.session.commit()
+    return entry.to_dict(), 201
+
+@app.route('/api/banking', methods=['GET'])
+@jwt_required()
+def get_banking_entries():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    from datetime import datetime
+    query = BankingEntry.query
+    if from_date:
+        query = query.filter(BankingEntry.date >= from_date)
+    if to_date:
+        query = query.filter(BankingEntry.date <= to_date)
+    entries = query.order_by(BankingEntry.date.desc()).all()
+    return [e.to_dict() for e in entries], 200
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

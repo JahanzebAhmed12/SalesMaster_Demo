@@ -76,6 +76,16 @@ const nonProducts = [
   { slNo: 23, productCode: "Z1000", sageCode: "Z1000", description: "TRANSPORT", sellingPrice: 30, taxVat: "0%", status: "Active" },
 ];
 
+// Helper to get next product code
+function getNextProductCode(products: RegularProduct[]) {
+  const codes = products
+    .map(p => p.productCode)
+    .filter(code => /^P\d+$/i.test(code));
+  const nums = codes.map(code => parseInt(code.replace(/^P/i, ""), 10)).filter(n => !isNaN(n));
+  const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `P${nextNum}`;
+}
+
 export default function Products() {
   const { toast } = useToast();
   const [activeView, setActiveView] = useState<"view" | "add" | "viewNonProducts" | "addNonProducts">("view");
@@ -94,6 +104,16 @@ export default function Products() {
       initialStock: 0,
     },
   });
+
+  // Auto-fill Sage Code to match Product Code
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === "productCode" && value.productCode) {
+        form.setValue("sageCode", value.productCode);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
 
   useEffect(() => {
     if (editingProduct) {
@@ -142,6 +162,21 @@ export default function Products() {
     }
   });
 
+  const deleteProductMutation = useMutation<
+    void,
+    Error,
+    number
+  >({
+    mutationFn: (id) => apiRequest("DELETE", `/api/products/regular/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      toast({ title: "Success", description: "Product deleted successfully." });
+    },
+    onError: (error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
   const filteredProducts = (products || []).filter((product) =>
     product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
     product.productCode.toLowerCase().includes(searchTerm.toLowerCase())
@@ -161,6 +196,29 @@ export default function Products() {
 
   const handleExport = (format: string) => {
     console.log(`Exporting to ${format}`);
+  };
+
+  // When switching to add mode, set the next product code
+  const handleAddProduct = () => {
+    const nextCode = getNextProductCode(products);
+    setActiveView("add");
+    setEditingProduct(null);
+    form.reset({
+      productCode: nextCode,
+      sageCode: nextCode,
+      description: "",
+      sellingPrice: 0,
+      taxRate: 0,
+      status: "active",
+      stockLevelFlag: false,
+      initialStock: 0,
+    });
+  };
+
+  const handleDelete = (product: RegularProduct) => {
+    if (window.confirm(`Are you sure you want to delete product '${product.productCode}'?`)) {
+      deleteProductMutation.mutate(product.id);
+    }
   };
 
   if (isLoading) {
@@ -200,19 +258,7 @@ export default function Products() {
           </Button>
           <Button 
             variant={activeView === "add" ? "default" : "outline"}
-            onClick={() => {
-              setActiveView("add");
-              setEditingProduct(null);
-              form.reset({
-                productCode: "",
-                description: "",
-                sellingPrice: 0,
-                taxRate: 0,
-                status: "active",
-                stockLevelFlag: false,
-                initialStock: 0,
-              });
-            }}
+            onClick={handleAddProduct}
             className="flex items-center gap-2"
           >
             <Plus className="h-4 w-4" />
@@ -295,7 +341,7 @@ export default function Products() {
                             </Button>
                           </td>
                           <td className="p-3 border-r">
-                            <Button variant="ghost" size="sm">
+                            <Button variant="ghost" size="sm" onClick={() => handleDelete(product)} disabled={deleteProductMutation.isPending}>
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </td>
@@ -330,9 +376,9 @@ export default function Products() {
                     <Input
                       id="productCode"
                       {...form.register("productCode")}
-                      placeholder="Z1018"
+                      placeholder="P1"
                       required
-                      disabled={!!editingProduct}
+                      readOnly
                     />
                   </div>
                   <div>
@@ -340,7 +386,9 @@ export default function Products() {
                     <Input
                       id="sageCode"
                       {...form.register("sageCode")}
-                      placeholder="Z1018"
+                      placeholder="P1"
+                      required
+                      readOnly
                     />
                   </div>
                   <div>

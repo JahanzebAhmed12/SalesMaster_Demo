@@ -10,6 +10,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, TrendingUp, FileText, Download, Copy, Printer, Search } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface ProfitLossItem {
   id: number;
@@ -27,73 +29,32 @@ interface ProfitLossItem {
 }
 
 export default function ProfitLoss() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  
-  // Sample data matching the design
-  const [profitData] = useState<ProfitLossItem[]>([
-    {
-      id: 1, slNo: 1, productDescription: "Aloe Vera (Sp)", totalQuantity: 1, avgPurchase: 11.11, avgSales: 12.00, 
-      avgProfit: 0.89, totPurchase: 11.11, totSales: 12.00, totProfit: 0.89, percentProfit: 7.42
+  const [trigger, setTrigger] = useState(0); // for manual search
+
+  // Fetch profit/loss data from backend
+  const { data: profitData = [], isLoading, isError } = useQuery({
+    queryKey: ["profit-loss", fromDate, toDate, searchTerm, trigger],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        fromDate: fromDate ? format(fromDate, "yyyy-MM-dd") : "",
+        toDate: toDate ? format(toDate, "yyyy-MM-dd") : "",
+        search: searchTerm,
+      });
+      return apiRequest("GET", `/api/reports/profit-loss?${params.toString()}`);
     },
-    {
-      id: 2, slNo: 2, productDescription: "Avocado", totalQuantity: 12, avgPurchase: 26.05, avgSales: 30.00, 
-      avgProfit: 3.95, totPurchase: 312.60, totSales: 360.00, totProfit: 47.40, percentProfit: 13.17
-    },
-    {
-      id: 3, slNo: 3, productDescription: "Cassava", totalQuantity: 6, avgPurchase: 32.05, avgSales: 38.00, 
-      avgProfit: 5.95, totPurchase: 192.30, totSales: 228.00, totProfit: 35.70, percentProfit: 15.66
-    },
-    {
-      id: 4, slNo: 4, productDescription: "chow chow", totalQuantity: 2, avgPurchase: 11.05, avgSales: 12.50, 
-      avgProfit: 1.45, totPurchase: 22.10, totSales: 25.00, totProfit: 2.90, percentProfit: 11.6
-    },
-    {
-      id: 5, slNo: 5, productDescription: "DASHEEN", totalQuantity: 1, avgPurchase: 50.05, avgSales: 53.00, 
-      avgProfit: 2.95, totPurchase: 50.05, totSales: 53.00, totProfit: 2.95, percentProfit: 5.57
-    },
-    {
-      id: 6, slNo: 6, productDescription: "Green banana", totalQuantity: 5, avgPurchase: 14.55, avgSales: 15.00, 
-      avgProfit: 0.45, totPurchase: 72.75, totSales: 75.00, totProfit: 2.25, percentProfit: 3
-    },
-    {
-      id: 7, slNo: 7, productDescription: "Green Plantain", totalQuantity: 9, avgPurchase: 27.92, avgSales: 28.67, 
-      avgProfit: 0.75, totPurchase: 251.28, totSales: 258.00, totProfit: 6.75, percentProfit: 2.62
-    },
-    {
-      id: 8, slNo: 8, productDescription: "JellyNut", totalQuantity: 3, avgPurchase: 22.05, avgSales: 30.00, 
-      avgProfit: 7.95, totPurchase: 66.15, totSales: 90.00, totProfit: 23.85, percentProfit: 26.5
-    },
-    {
-      id: 9, slNo: 9, productDescription: "Mango Dr", totalQuantity: 258, avgPurchase: 6.00, avgSales: 5.55, 
-      avgProfit: -0.45, totPurchase: 1548.00, totSales: 1431.00, totProfit: -116.19, percentProfit: -8.13,
-      isLoss: true
-    },
-    {
-      id: 10, slNo: 10, productDescription: "Sweet Potato Brz", totalQuantity: 7, avgPurchase: 11.34, avgSales: 13.00, 
-      avgProfit: 1.66, totPurchase: 79.38, totSales: 91.00, totProfit: 11.62, percentProfit: 12.77
-    },
-    {
-      id: 11, slNo: 11, productDescription: "Yam Poona", totalQuantity: 3, avgPurchase: 30.05, avgSales: 30.00, 
-      avgProfit: -0.05, totPurchase: 90.15, totSales: 90.00, totProfit: -0.15, percentProfit: -0.17,
-      isLoss: true
-    },
-    {
-      id: 12, slNo: 12, productDescription: "Yellow Plantain", totalQuantity: 70, avgPurchase: 26.05, avgSales: 21.79, 
-      avgProfit: -4.26, totPurchase: 1823.50, totSales: 1525.00, totProfit: -298.20, percentProfit: -19.55,
-      isLoss: true
-    }
-  ]);
+    enabled: !!fromDate && !!toDate,
+  });
 
   const totals = {
-    totalQuantity: profitData.reduce((sum, item) => sum + item.totalQuantity, 0),
-    totPurchase: profitData.reduce((sum, item) => sum + item.totPurchase, 0),
-    totSales: profitData.reduce((sum, item) => sum + item.totSales, 0),
-    totProfit: profitData.reduce((sum, item) => sum + item.totProfit, 0)
+    totalQuantity: profitData.reduce((sum: any, item: any) => sum + (item.totalQuantity || 0), 0),
+    totPurchase: profitData.reduce((sum: any, item: any) => sum + (item.totPurchase || 0), 0),
+    totSales: profitData.reduce((sum: any, item: any) => sum + (item.totSales || 0), 0),
+    totProfit: profitData.reduce((sum: any, item: any) => sum + (item.totProfit || 0), 0)
   };
-
-  const overallProfitPercent = (totals.totProfit / totals.totPurchase) * 100;
+  const overallProfitPercent = totals.totPurchase ? (totals.totProfit / totals.totPurchase) * 100 : 0;
 
   return (
     <PageLayout title="Profit/Loss Report" breadcrumb="Daily Report > Profit/Loss Report">
@@ -138,7 +99,6 @@ export default function ProfitLoss() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Label>To Date:</Label>
                 <Popover>
@@ -164,16 +124,14 @@ export default function ProfitLoss() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setTrigger((t) => t + 1)}>
                   Search
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
-
         {/* Profit/Loss Table */}
         <Card>
           <CardHeader>
@@ -208,61 +166,65 @@ export default function ProfitLoss() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sl.No</TableHead>
-                  <TableHead>Product Description</TableHead>
-                  <TableHead className="text-center">Total Quantity</TableHead>
-                  <TableHead className="text-center">AVG Purchase</TableHead>
-                  <TableHead className="text-center">AVG Sales</TableHead>
-                  <TableHead className="text-center">AVG Profit</TableHead>
-                  <TableHead className="text-center">TOT Purchase</TableHead>
-                  <TableHead className="text-center">TOT Sales</TableHead>
-                  <TableHead className="text-center">TOT Profit</TableHead>
-                  <TableHead className="text-center">PERCENT Profit %</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {profitData.map((item) => (
-                  <TableRow key={item.id} className={item.isLoss ? "bg-orange-50" : ""}>
-                    <TableCell>{item.slNo}</TableCell>
-                    <TableCell>{item.productDescription}</TableCell>
-                    <TableCell className="text-center">{item.totalQuantity}</TableCell>
-                    <TableCell className="text-center">{item.avgPurchase.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{item.avgSales.toFixed(2)}</TableCell>
-                    <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                      {item.avgProfit.toFixed(2)}
-                    </TableCell>
-                    <TableCell className="text-center">{item.totPurchase.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{item.totSales.toFixed(2)}</TableCell>
-                    <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                      {item.totProfit.toFixed(2)}
-                    </TableCell>
-                    <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                      {item.percentProfit.toFixed(2)} %
-                    </TableCell>
+            {isLoading ? (
+              <div className="text-center py-8">Loading...</div>
+            ) : isError ? (
+              <div className="text-center text-red-500 py-8">Failed to load data.</div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sl.No</TableHead>
+                    <TableHead>Product Description</TableHead>
+                    <TableHead className="text-center">Total Quantity</TableHead>
+                    <TableHead className="text-center">AVG Purchase</TableHead>
+                    <TableHead className="text-center">AVG Sales</TableHead>
+                    <TableHead className="text-center">AVG Profit</TableHead>
+                    <TableHead className="text-center">TOT Purchase</TableHead>
+                    <TableHead className="text-center">TOT Sales</TableHead>
+                    <TableHead className="text-center">TOT Profit</TableHead>
+                    <TableHead className="text-center">PERCENT Profit %</TableHead>
                   </TableRow>
-                ))}
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                  <TableCell></TableCell>
-                  <TableCell className="font-bold"></TableCell>
-                  <TableCell className="text-center font-bold">{totals.totalQuantity.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold"></TableCell>
-                  <TableCell className="text-center font-bold">£ {totals.totPurchase.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£ {totals.totSales.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£ -{totals.totProfit.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">{overallProfitPercent.toFixed(2)} %</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-            
+                </TableHeader>
+                <TableBody>
+                  {profitData.map((item: any) => (
+                    <TableRow key={item.id} className={item.isLoss ? "bg-orange-50" : ""}>
+                      <TableCell>{item.slNo}</TableCell>
+                      <TableCell>{item.productDescription}</TableCell>
+                      <TableCell className="text-center">{item.totalQuantity}</TableCell>
+                      <TableCell className="text-center">{Number(item.avgPurchase).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{Number(item.avgSales).toFixed(2)}</TableCell>
+                      <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
+                        {Number(item.avgProfit).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-center">{Number(item.totPurchase).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{Number(item.totSales).toFixed(2)}</TableCell>
+                      <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
+                        {Number(item.totProfit).toFixed(2)}
+                      </TableCell>
+                      <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
+                        {Number(item.percentProfit).toFixed(2)} %
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {/* Total Row */}
+                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold"></TableCell>
+                    <TableCell className="text-center font-bold">{totals.totalQuantity.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold"></TableCell>
+                    <TableCell className="text-center font-bold"></TableCell>
+                    <TableCell className="text-center font-bold"></TableCell>
+                    <TableCell className="text-center font-bold">£ {Number(totals.totPurchase).toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£ {Number(totals.totSales).toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£ {Number(totals.totProfit).toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">{Number(overallProfitPercent).toFixed(2)} %</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            )}
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 1 to 12 of 12 entries</div>
+              <div>Showing {profitData.length} entries</div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm">Previous</Button>

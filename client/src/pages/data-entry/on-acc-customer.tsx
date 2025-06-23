@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,71 +8,99 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Users, Search, Info, Save } from "lucide-react";
+import { CalendarIcon, Users, Search, Info, Save, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-
-interface CustomerPayment {
-  id: number;
-  slNo: number;
-  paymentDate: Date;
-  customer: string;
-  paymentMode: string;
-  currency: string;
-  amount: number;
-  remarks: string;
-  status: string;
-}
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Customer, Payment, InsertPayment } from "@shared/schema";
+import { toast } from "@/hooks/use-toast";
 
 export default function OnAccCustomer() {
-  const [selectedCustomer, setSelectedCustomer] = useState("");
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const [recordsPerPage, setRecordsPerPage] = useState("10");
-  const [payments, setPayments] = useState<CustomerPayment[]>([]);
   const [newPayment, setNewPayment] = useState({
     paymentDate: new Date(),
-    customer: "",
-    paymentMode: "CASH",
-    currency: "CAD",
     amount: 0,
-    remarks: "",
-    status: "Pending"
+    paymentMode: "CASH",
+    remarks: ""
+  });
+  const queryClient = useQueryClient();
+
+  // Fetch customers
+  const { data: customers = [], isLoading: loadingCustomers } = useQuery<Customer[]>({
+    queryKey: ["customers"],
+    queryFn: () => apiRequest("GET", "/api/customers"),
+  });
+
+  // Get selected customer object
+  const selectedCustomerObj = useMemo(() => customers.find(c => c.id.toString() === selectedCustomer), [customers, selectedCustomer]);
+  const currency = selectedCustomerObj?.customer_currency || "GBP";
+
+  // Fetch on-account payments for selected customer and date range
+  const {
+    data: payments = [],
+    isLoading: loadingPayments,
+    isError: errorPayments,
+    refetch: refetchPayments
+  } = useQuery<Payment[]>({
+    queryKey: ["on-acc-payments", selectedCustomer, fromDate, toDate],
+    enabled: !!selectedCustomer,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        customerId: selectedCustomer,
+        fromDate: format(fromDate, "yyyy-MM-dd"),
+        toDate: format(toDate, "yyyy-MM-dd")
+      });
+      const all = await apiRequest("GET", `/api/payments/history?${params}`);
+      return all.filter((p: Payment) => p.saleId == null);
+    }
+  });
+
+  // Add new on-account payment
+  const addPaymentMutation = useMutation({
+    mutationFn: async (data: InsertPayment) => {
+      return apiRequest("POST", "/api/payments", data);
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Payment added." });
+      setNewPayment({ paymentDate: new Date(), amount: 0, paymentMode: "CASH", remarks: "" });
+      refetchPayments();
+    },
+    onError: (e: any) => {
+      toast({ title: "Error", description: e?.message || "Failed to add payment." });
+    }
   });
 
   const handleAddPayment = () => {
-    if (newPayment.customer && newPayment.amount > 0) {
-      const payment: CustomerPayment = {
-        id: Date.now(),
-        slNo: payments.length + 1,
-        paymentDate: newPayment.paymentDate,
-        customer: newPayment.customer,
-        paymentMode: newPayment.paymentMode,
-        currency: newPayment.currency,
-        amount: newPayment.amount,
-        remarks: newPayment.remarks,
-        status: newPayment.status
-      };
-      setPayments([...payments, payment]);
-      setNewPayment({
-        paymentDate: new Date(),
-        customer: "",
-        paymentMode: "CASH",
-        currency: "CAD",
-        amount: 0,
-        remarks: "",
-        status: "Pending"
-      });
-    }
+    if (!selectedCustomer) return toast({ title: "Select a customer" });
+    if (!newPayment.amount || newPayment.amount <= 0) return toast({ title: "Enter a valid amount" });
+    const payload: InsertPayment = {
+      customerId: Number(selectedCustomer),
+      saleId: null,
+      amount: newPayment.amount,
+      paymentMode: newPayment.paymentMode,
+      paymentDate: format(newPayment.paymentDate, "yyyy-MM-dd"),
+      remarks: newPayment.remarks || null
+    };
+    addPaymentMutation.mutate(payload);
   };
 
-  const totalAmount = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const filteredPayments = useMemo(() =>
+    payments.filter(p =>
+      (!searchTerm || (p.remarks?.toLowerCase().includes(searchTerm.toLowerCase()) || ""))
+    ),
+    [payments, searchTerm]
+  );
+
+  const totalAmount = filteredPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
   return (
     <PageLayout title="On A/c Customer Payments" breadcrumb="On A/c Customer">
       <div className="space-y-6">
-        {/* Header Section */}
         <Card>
           <CardHeader className="pb-4">
             <div className="flex justify-between items-center">
@@ -88,77 +116,45 @@ export default function OnAccCustomer() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                <Select value={selectedCustomer} onValueChange={setSelectedCustomer} disabled={loadingCustomers}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
+                    <SelectValue placeholder={loadingCustomers ? "Loading..." : "Select customer"} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="customer1">ABC Restaurant Ltd</SelectItem>
-                    <SelectItem value="customer2">Global Foods Inc</SelectItem>
-                    <SelectItem value="customer3">Fresh Market Co</SelectItem>
-                    <SelectItem value="customer4">Premium Retail</SelectItem>
+                    {customers.map(c => (
+                      <SelectItem key={c.id} value={c.id.toString()}>{c.customer_name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
-              
               <div className="flex gap-2 items-end">
                 <div>
                   <Label className="text-xs">From Date:</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-28 justify-start text-left font-normal text-xs",
-                          !fromDate && "text-muted-foreground"
-                        )}
-                      >
-                        {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
-                      </Button>
+                      <Button variant="outline" className={cn("w-28 justify-start text-left font-normal text-xs", !fromDate && "text-muted-foreground")}>{fromDate ? format(fromDate, "yyyy-MM-dd") : "Pick date"}</Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={fromDate}
-                        onSelect={(date) => date && setFromDate(date)}
-                        initialFocus
-                      />
+                      <Calendar mode="single" selected={fromDate} onSelect={date => date && setFromDate(date)} initialFocus />
                     </PopoverContent>
                   </Popover>
                 </div>
-                
                 <div>
                   <Label className="text-xs">To Date:</Label>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-28 justify-start text-left font-normal text-xs",
-                          !toDate && "text-muted-foreground"
-                        )}
-                      >
-                        {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
-                      </Button>
+                      <Button variant="outline" className={cn("w-28 justify-start text-left font-normal text-xs", !toDate && "text-muted-foreground")}>{toDate ? format(toDate, "yyyy-MM-dd") : "Pick date"}</Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={toDate}
-                        onSelect={(date) => date && setToDate(date)}
-                        initialFocus
-                      />
+                      <Calendar mode="single" selected={toDate} onSelect={date => date && setToDate(date)} initialFocus />
                     </PopoverContent>
                   </Popover>
                 </div>
-                
-                <Button className="bg-blue-500 hover:bg-blue-600">
-                  Search
+                <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => refetchPayments()} disabled={loadingPayments}>
+                  {loadingPayments ? <Loader2 className="animate-spin h-4 w-4" /> : "Search"}
                 </Button>
               </div>
-              
               <div></div>
-              
               <div className="flex gap-2">
                 <Button variant="outline" className="flex items-center gap-2">
                   <Info size={16} />
@@ -168,7 +164,52 @@ export default function OnAccCustomer() {
             </div>
           </CardContent>
         </Card>
-
+        {/* Add Payment Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Add On A/c Payment</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <Label>Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-32 justify-start text-left font-normal">
+                      {format(newPayment.paymentDate, "yyyy-MM-dd")}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar mode="single" selected={newPayment.paymentDate} onSelect={date => date && setNewPayment(np => ({ ...np, paymentDate: date }))} initialFocus />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div>
+                <Label>Amount ({currency})</Label>
+                <Input type="number" value={newPayment.amount} onChange={e => setNewPayment(np => ({ ...np, amount: Number(e.target.value) }))} min={0} />
+              </div>
+              <div>
+                <Label>Payment Mode</Label>
+                <Select value={newPayment.paymentMode} onValueChange={val => setNewPayment(np => ({ ...np, paymentMode: val }))}>
+                  <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">Cash</SelectItem>
+                    <SelectItem value="CARD">Card</SelectItem>
+                    <SelectItem value="BANK">Bank</SelectItem>
+                    <SelectItem value="CHEQUE">Cheque</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Remarks</Label>
+                <Input value={newPayment.remarks} onChange={e => setNewPayment(np => ({ ...np, remarks: e.target.value }))} />
+              </div>
+              <Button onClick={handleAddPayment} disabled={addPaymentMutation.isPending || !selectedCustomer} className="bg-green-600 hover:bg-green-700 flex gap-2">
+                {addPaymentMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} /> Save
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
         {/* Payments Table */}
         <Card>
           <CardHeader>
@@ -188,179 +229,40 @@ export default function OnAccCustomer() {
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                <Input
-                  placeholder="Search:"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-48"
-                />
+                <Input placeholder="Search remarks..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 w-48" />
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sl.No.</TableHead>
-                  <TableHead>Payment date</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Payment Mode</TableHead>
-                  <TableHead>Currency</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Remarks</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
-                      No data available in table
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  payments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>{payment.slNo}</TableCell>
-                      <TableCell>{format(payment.paymentDate, "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{payment.customer}</TableCell>
-                      <TableCell>{payment.paymentMode}</TableCell>
-                      <TableCell>{payment.currency}</TableCell>
-                      <TableCell className="text-right">{payment.amount.toFixed(2)}</TableCell>
-                      <TableCell>{payment.remarks}</TableCell>
-                      <TableCell>{payment.status}</TableCell>
+            {loadingPayments ? (
+              <div className="flex justify-center items-center py-8"><Loader2 className="animate-spin h-6 w-6" /></div>
+            ) : errorPayments ? (
+              <div className="text-red-600">Failed to load payments.</div>
+            ) : (
+              <div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Amount ({currency})</TableHead>
+                      <TableHead>Payment Mode</TableHead>
+                      <TableHead>Remarks</TableHead>
                     </TableRow>
-                  ))
-                )}
-                
-                {/* Add New Payment Row */}
-                <TableRow className="border-t-2 border-gray-200">
-                  <TableCell>{payments.length + 1}</TableCell>
-                  <TableCell>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-24 justify-start text-left font-normal text-xs",
-                            !newPayment.paymentDate && "text-muted-foreground"
-                          )}
-                        >
-                          {newPayment.paymentDate ? format(newPayment.paymentDate, "dd/MM/yyyy") : "Pick date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={newPayment.paymentDate}
-                          onSelect={(date) => date && setNewPayment({...newPayment, paymentDate: date})}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </TableCell>
-                  <TableCell>
-                    <Select 
-                      value={newPayment.customer} 
-                      onValueChange={(value) => setNewPayment({...newPayment, customer: value})}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ABC Restaurant Ltd">ABC Restaurant Ltd</SelectItem>
-                        <SelectItem value="Global Foods Inc">Global Foods Inc</SelectItem>
-                        <SelectItem value="Fresh Market Co">Fresh Market Co</SelectItem>
-                        <SelectItem value="Premium Retail">Premium Retail</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select 
-                      value={newPayment.paymentMode} 
-                      onValueChange={(value) => setNewPayment({...newPayment, paymentMode: value})}
-                    >
-                      <SelectTrigger className="w-20">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CASH">CASH</SelectItem>
-                        <SelectItem value="CARD">CARD</SelectItem>
-                        <SelectItem value="BANK">BANK</SelectItem>
-                        <SelectItem value="CHEQUE">CHEQUE</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select 
-                      value={newPayment.currency} 
-                      onValueChange={(value) => setNewPayment({...newPayment, currency: value})}
-                    >
-                      <SelectTrigger className="w-16">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CAD">CAD</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="GBP">GBP</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={newPayment.amount}
-                      onChange={(e) => setNewPayment({...newPayment, amount: parseFloat(e.target.value) || 0})}
-                      className="w-20 text-right"
-                      min="0"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      placeholder="Remarks"
-                      value={newPayment.remarks}
-                      onChange={(e) => setNewPayment({...newPayment, remarks: e.target.value})}
-                      className="w-24"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Button 
-                      size="sm" 
-                      className="bg-green-500 hover:bg-green-600 text-white"
-                      onClick={handleAddPayment}
-                    >
-                      <Save size={14} className="mr-1" />
-                      Save
-                    </Button>
-                  </TableCell>
-                </TableRow>
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300">
-                  <TableCell className="font-bold">Total:</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="text-right font-bold">{totalAmount.toFixed(2)}</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-            
-            <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 0 to 0 of 0 entries</div>
-              <div className="flex items-center gap-4">
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">Previous</Button>
-                  <Button variant="outline" size="sm" className="bg-blue-500 text-white">1</Button>
-                  <Button variant="outline" size="sm">Next</Button>
-                </div>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPayments.slice(0, Number(recordsPerPage)).map((p, idx) => (
+                      <TableRow key={p.id}>
+                        <TableCell>{p.paymentDate}</TableCell>
+                        <TableCell>{p.amount}</TableCell>
+                        <TableCell>{p.paymentMode}</TableCell>
+                        <TableCell>{p.remarks}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="flex justify-end mt-4 font-bold">Total: {currency} {totalAmount.toFixed(2)}</div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

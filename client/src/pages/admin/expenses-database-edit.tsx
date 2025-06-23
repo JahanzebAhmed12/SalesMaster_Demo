@@ -10,6 +10,16 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Expense } from "@shared/schema";
 
+// Helper to get next expense code
+function getNextExpenseCode(expenses: any[]) {
+  const codes = expenses
+    .map((e: any) => e.expenseCode)
+    .filter((code: string) => /^E\d+$/i.test(code));
+  const nums = codes.map((code: string) => parseInt(code.replace(/^E/i, ""), 10)).filter((n: number) => !isNaN(n));
+  const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `E${nextNum}`;
+}
+
 export default function ExpenseForm() {
   const [, params] = useRoute("/admin/expenses-database-edit/:id");
   const [, setLocation] = useLocation();
@@ -31,6 +41,23 @@ export default function ExpenseForm() {
     },
     enabled: isEditing,
   });
+
+  const { data: expenses = [] } = useQuery<Expense[]>({
+    queryKey: ["expenses", ""],
+    queryFn: async () => apiRequest("GET", "/api/expenses"),
+    staleTime: 1000 * 60 * 5,
+  });
+
+  useEffect(() => {
+    if (!isEditing && expenses.length > 0) {
+      const nextCode = getNextExpenseCode(expenses);
+      setFormData((prev) => ({
+        ...prev,
+        expenseCode: nextCode,
+        sageCode: nextCode,
+      }));
+    }
+  }, [isEditing, expenses]);
 
   useEffect(() => {
     if (expense) {
@@ -120,11 +147,22 @@ export default function ExpenseForm() {
                 <Label htmlFor="expenseCode">Expense Code</Label>
                 <Input
                   id="expenseCode"
-                  value={formData.expenseCode}
-                  onChange={(e) => setFormData({ ...formData, expenseCode: e.target.value })}
+                  value={formData.expenseCode || ""}
+                  readOnly
                   placeholder="Enter expense code"
                   required
                   disabled={isViewMode}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sageCode">Sage Code</Label>
+                <Input
+                  id="sageCode"
+                  value={formData.sageCode || ""}
+                  readOnly
+                  placeholder="Sage code"
+                  disabled
                 />
               </div>
 

@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,12 +15,24 @@ import type { InsertCustomer } from "@shared/schema";
 import { useParams } from "wouter";
 import React from "react";
 
+// Helper to get next customer code
+function getNextCustomerCode(customers: any[]) {
+  const codes = customers
+    .map((c) => c.customer_code)
+    .filter((code) => /^C\d+$/i.test(code));
+  const nums = codes.map((code) => parseInt(code.replace(/^C/i, ""), 10)).filter((n) => !isNaN(n));
+  const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `C${nextNum}`;
+}
+
 export default function CustomerAdd() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const params = useParams();
   const customerId = params?.id ? parseInt(params.id) : null;
   const isEditMode = !!customerId;
+  const queryClient = useQueryClient();
+  const customers = queryClient.getQueryData<any[]>(["/api/customers"]) || [];
 
   // Fetch customer data if in edit mode
   const { data: customerData, isLoading } = useQuery({
@@ -65,6 +77,14 @@ export default function CustomerAdd() {
       form.reset(customerData);
     }
   }, [customerData, form]);
+
+  React.useEffect(() => {
+    if (!isEditMode && customers.length > 0) {
+      const nextCode = getNextCustomerCode(customers);
+      form.setValue("customer_code", nextCode);
+      form.setValue("sage_code", nextCode);
+    }
+  }, [isEditMode, customers, form]);
 
   const customerMutation = useMutation({
     mutationFn: async (data: InsertCustomer) => {
@@ -167,7 +187,7 @@ export default function CustomerAdd() {
                       <FormItem>
                         <FormLabel>Customer Code *</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input {...field} readOnly />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -180,7 +200,7 @@ export default function CustomerAdd() {
                       <FormItem>
                         <FormLabel>Sage Code</FormLabel>
                         <FormControl>
-                          <Input {...field} value={field.value || ""} />
+                        <Input {...field} value={field.value || ""} readOnly />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

@@ -9,18 +9,50 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, DollarSign, Save } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import React from "react";
 
 export default function CashCF() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 2));
+  const [fromDate, setFromDate] = useState<Date>(new Date());
   const [pounds, setPounds] = useState("");
   const [coins, setCoins] = useState("");
+  const queryClient = useQueryClient();
+
+  // Fetch C/F for selected date
+  const { data, isLoading, isError } = useQuery<{ pounds?: number; coins?: number } | undefined>({
+    queryKey: ["cash-cf", fromDate],
+    queryFn: async () => {
+      const dateStr = format(fromDate, "yyyy-MM-dd");
+      return apiRequest("GET", `/api/cash-cf?date=${dateStr}`);
+    },
+  });
+
+  // Update pounds/coins when data changes
+  React.useEffect(() => {
+    if (data) {
+      setPounds(data.pounds !== undefined ? String(data.pounds) : "");
+      setCoins(data.coins !== undefined ? String(data.coins) : "");
+    }
+  }, [data]);
+
+  // Save C/F
+  const mutation = useMutation({
+    mutationFn: async (payload: { date: string; pounds: string; coins: string }) => {
+      return apiRequest("POST", "/api/cash-cf", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cash-cf"] });
+    },
+  });
 
   const handleSave = () => {
     if (pounds || coins) {
-      console.log("Saving cash CF:", { fromDate: format(fromDate, "yyyyMMdd"), pounds, coins });
-      // Here you would typically save to backend
-      setPounds("");
-      setCoins("");
+      mutation.mutate({
+        date: format(fromDate, "yyyy-MM-dd"),
+        pounds: pounds || "0",
+        coins: coins || "0",
+      });
     }
   };
 
@@ -67,7 +99,7 @@ export default function CashCF() {
                   </PopoverContent>
                 </Popover>
               </div>
-              <Button className="bg-blue-500 hover:bg-blue-600">
+              <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => queryClient.invalidateQueries({ queryKey: ["cash-cf"] })}>
                 Search
               </Button>
               <div className="ml-auto">
@@ -82,6 +114,11 @@ export default function CashCF() {
         {/* Cash Entry Section */}
         <Card>
           <CardContent className="pt-6">
+            {isLoading ? (
+              <div className="text-center py-8">Loading...</div>
+            ) : isError ? (
+              <div className="text-center text-red-500 py-8">Failed to load data.</div>
+            ) : (
             <div className="grid grid-cols-2 gap-8 max-w-2xl mx-auto">
               <div className="text-center">
                 <h3 className="text-lg font-semibold mb-4">Pounds</h3>
@@ -106,16 +143,18 @@ export default function CashCF() {
                     className="text-center text-lg h-12"
                     placeholder="0.00"
                   />
-                  <Button 
+                  <Button
                     className="bg-green-500 hover:bg-green-600 text-white h-12 px-6"
                     onClick={handleSave}
+                    disabled={mutation.isPending}
                   >
                     <Save size={16} className="mr-2" />
-                    Save
+                    {mutation.isPending ? "Saving..." : "Save"}
                   </Button>
                 </div>
               </div>
             </div>
+            )}
           </CardContent>
         </Card>
       </div>

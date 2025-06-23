@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertNonProductSchema, NonProduct, InsertNonProduct, nonProductSchema } from "@shared/schema";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,12 +17,28 @@ import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
+// Helper to get next product code for non-products
+function getNextNonProductCode(nonProducts: NonProduct[]) {
+  const codes = nonProducts
+    .map(p => p.productCode)
+    .filter(code => /^P\d+$/i.test(code));
+  const nums = codes.map(code => parseInt(code.replace(/^P/i, ""), 10)).filter(n => !isNaN(n));
+  const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `P${nextNum}`;
+}
+
+// Helper type guard
+function isValidDate(d: unknown): d is Date {
+  return d instanceof Date && !isNaN(d.getTime());
+}
+
 const AddNonProducts = () => {
   const { id } = useParams<{ id: string }>();
   const nonProductId = id ? parseInt(id) : undefined;
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [nonProducts, setNonProducts] = useState<NonProduct[]>([]);
 
   const form = useForm<InsertNonProduct>({
     resolver: zodResolver(insertNonProductSchema),
@@ -64,11 +80,10 @@ const AddNonProducts = () => {
     mutationFn: async (newNonProduct: InsertNonProduct) => {
       console.log('Creating non-product with data:', newNonProduct);
       try {
-        // Convert date to YYYY-MM-DD format if it exists
         const dataToSend = {
           ...newNonProduct,
-          stockTakeDate: newNonProduct.stockTakeDate 
-            ? newNonProduct.stockTakeDate.toISOString().split('T')[0]  // Get only the date part
+          stockTakeDate: newNonProduct.stockTakeDate
+            ? (newNonProduct.stockTakeDate as Date).toISOString().split('T')[0]
             : null
         };
         console.log('Data being sent to server:', dataToSend);
@@ -115,10 +130,11 @@ const AddNonProducts = () => {
   const updateNonProductMutation = useMutation({
     mutationFn: (updatedNonProduct: NonProduct) => {
       console.log('Updating non-product:', updatedNonProduct);
-      // Convert date to ISO string if it exists
       const dataToSend = {
         ...updatedNonProduct,
-        stockTakeDate: updatedNonProduct.stockTakeDate ? new Date(updatedNonProduct.stockTakeDate).toISOString() : null
+        stockTakeDate: updatedNonProduct.stockTakeDate
+          ? (updatedNonProduct.stockTakeDate as Date).toISOString().split('T')[0]
+          : null
       };
       return apiRequest("PUT", `/api/products/non/${nonProductId}`, dataToSend);
     },
@@ -143,11 +159,18 @@ const AddNonProducts = () => {
 
   useEffect(() => {
     if (existingNonProduct) {
-      console.log('Loading existing non-product:', existingNonProduct);
-      // Convert string date to Date object if it exists
+      let stockTakeDate: Date | null = null;
+      if (existingNonProduct.stockTakeDate) {
+        if (typeof existingNonProduct.stockTakeDate === 'string' && existingNonProduct.stockTakeDate) {
+          const dt = new Date(existingNonProduct.stockTakeDate);
+          stockTakeDate = isValidDate(dt) ? dt : null;
+        } else if (isValidDate(existingNonProduct.stockTakeDate)) {
+          stockTakeDate = existingNonProduct.stockTakeDate;
+        }
+      }
       const data = {
         ...existingNonProduct,
-        stockTakeDate: existingNonProduct.stockTakeDate ? new Date(existingNonProduct.stockTakeDate) : null
+        stockTakeDate,
       };
       form.reset(data);
     }
@@ -160,6 +183,55 @@ const AddNonProducts = () => {
     });
     return () => subscription.unsubscribe();
   }, [form]);
+
+  // Fetch all non-products for code auto-increment
+  useEffect(() => {
+    apiRequest("GET", "/api/non_products").then((data) => {
+      setNonProducts(data || []);
+    });
+  }, []);
+
+  // Auto-fill Sage Code to match Product Code
+  useEffect(() => {
+    const subscription = form.watch((value, { name }) => {
+      if (name === "productCode" && value.productCode) {
+        form.setValue("sageCode", value.productCode);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [form]);
+
+  // When switching to add mode (no id in URL), set the next product code and sage code
+  useEffect(() => {
+    if (!nonProductId) {
+      const nextCode = getNextNonProductCode(nonProducts);
+      form.reset({
+        productCode: nextCode,
+        sageCode: nextCode,
+        description: "",
+        sellingPrice: 0,
+        taxRate: 0,
+        vatCode: "",
+        unitOfPurchase: "",
+        unitOfSale: "",
+        location: "",
+        nominalCode: "",
+        stockCategory: "",
+        departmentNumber: "",
+        supplierRef: "",
+        supplierPartNumber: "",
+        reorderLevel: 0,
+        stockLevelFlag: false,
+        commodityCode: "",
+        unitWeight: 0,
+        stockTakeDate: null,
+        reorderQuantity: 0,
+        lastStockTake: 0,
+        initialStock: 0,
+        status: "active",
+      });
+    }
+  }, [nonProductId, nonProducts, form]);
 
   const onSubmit = (data: InsertNonProduct) => {
     console.log('Form submitted with data:', data);
@@ -264,9 +336,9 @@ const AddNonProducts = () => {
                     <label htmlFor="productCode" className="block text-sm font-medium mb-2">Product Code</label>
                     <Input 
                       id="productCode" 
-                      placeholder="Enter product code" 
+                      placeholder="P1" 
                       {...form.register("productCode")}
-                      disabled={!!nonProductId}
+                      readOnly
                     />
                     {form.formState.errors.productCode && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.productCode.message}</p>
@@ -277,8 +349,9 @@ const AddNonProducts = () => {
                     <label htmlFor="sageCode" className="block text-sm font-medium mb-2">Sage Code</label>
                     <Input 
                       id="sageCode" 
-                      placeholder="Enter sage code" 
+                      placeholder="P1" 
                       {...form.register("sageCode")}
+                      readOnly
                     />
                   </div>
 
@@ -466,17 +539,23 @@ const AddNonProducts = () => {
                           )}
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
-                          {form.watch("stockTakeDate") ? (
-                            format(form.watch("stockTakeDate") as Date, "PPP")
-                          ) : (
-                            <span>Pick a date</span>
-                          )}
+                          {(() => {
+                            const date = form.watch("stockTakeDate");
+                            return isValidDate(date) ? (
+                              format(date, "PPP")
+                            ) : (
+                              <span>Pick a date</span>
+                            );
+                          })()}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
                         <Calendar
                           mode="single"
-                          selected={form.watch("stockTakeDate") || undefined}
+                          selected={(() => {
+                            const date = form.watch("stockTakeDate");
+                            return isValidDate(date) ? date : undefined;
+                          })()}
                           onSelect={(date) => form.setValue("stockTakeDate", date || null)}
                           initialFocus
                         />

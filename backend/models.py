@@ -905,4 +905,40 @@ class SupplierReturn(db.Model):
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
             'createdBy': self.created_by
+        }
+
+class CashCarryForward(db.Model):
+    __tablename__ = 'cash_carry_forward'
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False, unique=True)
+    pounds = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    coins = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'date': self.date.isoformat() if self.date else None,
+            'pounds': float(self.pounds),
+            'coins': float(self.coins),
+            'createdAt': self.created_at.isoformat() if self.created_at else None
+        }
+
+class BankingEntry(db.Model):
+    __tablename__ = 'banking_entries'
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False)
+    remarks = db.Column(db.String(255))
+    payment_type = db.Column(db.String(20), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'date': self.date.isoformat() if self.date else None,
+            'remarks': self.remarks,
+            'paymentType': self.payment_type,
+            'amount': float(self.amount),
+            'createdAt': self.created_at.isoformat() if self.created_at else None
         } 

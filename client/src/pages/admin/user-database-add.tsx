@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { InsertUser } from "@shared/schema";
 import { useEffect } from "react";
 import ProtectedRoute from "@/components/protected-route";
+import { useInvalidateMutation } from "@/lib/queryClient";
 
 function UserAddContent() {
   const [, setLocation] = useLocation();
@@ -56,38 +57,31 @@ function UserAddContent() {
     }
   }, [userData, form]);
 
-  const addUserMutation = useMutation({
-    mutationFn: async (data: any) => {
-      console.log('Mutation function called with data:', data);
-      try {
-        const response = isEditMode
-          ? await apiRequest("PUT", `/api/users/${userId}`, data)
-          : await apiRequest("POST", "/api/users", data);
-        console.log('API Response:', response);
-        return response;
-      } catch (error) {
-        console.error('API Request Error:', error);
-        throw error;
-      }
+  const addUserMutation = useInvalidateMutation(
+    async (data: any) => {
+      const response = isEditMode
+        ? await apiRequest("PUT", `/api/users/${userId}`, data)
+        : await apiRequest("POST", "/api/users", data);
+      return response;
     },
-    onSuccess: (data) => {
-      console.log('Mutation successful:', data);
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
-      toast({
-        title: "Success",
-        description: isEditMode ? "User updated successfully" : "User added successfully",
-      });
-      setLocation("/admin/user-setup");
-    },
-    onError: (error) => {
-      console.error('Error:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : `Failed to ${isEditMode ? 'update' : 'add'} user`,
-        variant: "destructive",
-      });
-    },
-  });
+    [{ queryKey: ["/api/users"] }, { queryKey: ["/api/users/attendance"] }],
+    {
+      onSuccess: (data) => {
+        toast({
+          title: "Success",
+          description: isEditMode ? "User updated successfully" : "User added successfully",
+        });
+        setLocation("/admin/user-setup");
+      },
+      onError: (error) => {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : `Failed to ${isEditMode ? 'update' : 'add'} user`,
+          variant: "destructive",
+        });
+      },
+    }
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

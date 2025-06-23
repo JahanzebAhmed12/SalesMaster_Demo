@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,46 +7,68 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Banknote, Save } from "lucide-react";
+import { CalendarIcon, Banknote, Save, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-
-interface BankingEntry {
-  id: number;
-  date: Date;
-  remarks: string;
-  paymentType: string;
-  amount: number;
-}
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { BankingEntry, InsertBankingEntry } from "@shared/schema";
+import { toast } from "@/hooks/use-toast";
 
 export default function Banking() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
-  const [bankingEntries, setBankingEntries] = useState<BankingEntry[]>([]);
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [newEntry, setNewEntry] = useState({
     date: new Date(),
     remarks: "",
     paymentType: "CASH",
     amount: 0
   });
+  const queryClient = useQueryClient();
+
+  // Fetch banking entries for date range
+  const {
+    data: bankingEntries = [],
+    isLoading,
+    isError,
+    refetch
+  } = useQuery<BankingEntry[]>({
+    queryKey: ["banking-entries", fromDate, toDate],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        fromDate: format(fromDate, "yyyy-MM-dd"),
+        toDate: format(toDate, "yyyy-MM-dd")
+      });
+      return apiRequest("GET", `/api/banking?${params}`);
+    }
+  });
+
+  // Add new banking entry
+  const addEntryMutation = useMutation({
+    mutationFn: async (data: InsertBankingEntry) => {
+      return apiRequest("POST", "/api/banking", data);
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Banking entry added." });
+      setNewEntry({ date: new Date(), remarks: "", paymentType: "CASH", amount: 0 });
+      refetch();
+    },
+    onError: (e: any) => {
+      toast({ title: "Error", description: e?.message || "Failed to add entry." });
+    }
+  });
 
   const handleAddEntry = () => {
-    if (newEntry.remarks && newEntry.amount > 0) {
-      const entry: BankingEntry = {
-        id: Date.now(),
-        date: newEntry.date,
-        remarks: newEntry.remarks,
-        paymentType: newEntry.paymentType,
-        amount: newEntry.amount
-      };
-      setBankingEntries([...bankingEntries, entry]);
-      setNewEntry({
-        date: new Date(),
-        remarks: "",
-        paymentType: "CASH",
-        amount: 0
-      });
+    if (!newEntry.remarks || !newEntry.amount || newEntry.amount <= 0) {
+      return toast({ title: "Enter remarks and a valid amount" });
     }
+    const payload: InsertBankingEntry = {
+      date: format(newEntry.date, "yyyy-MM-dd"),
+      remarks: newEntry.remarks,
+      paymentType: newEntry.paymentType,
+      amount: newEntry.amount
+    };
+    addEntryMutation.mutate(payload);
   };
 
   return (
@@ -79,7 +101,7 @@ export default function Banking() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
+                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -92,7 +114,6 @@ export default function Banking() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Label>To Date:</Label>
                 <Popover>
@@ -105,7 +126,7 @@ export default function Banking() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
+                      {toDate ? format(toDate, "yyyy-MM-dd") : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -118,11 +139,9 @@ export default function Banking() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
-              <Button className="bg-blue-500 hover:bg-blue-600">
-                Search
+              <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => refetch()} disabled={isLoading}>
+                {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : "Search"}
               </Button>
-              
               <div className="ml-auto">
                 <Button variant="outline" size="sm" className="rounded-full w-8 h-8 p-0">
                   ?
@@ -131,7 +150,6 @@ export default function Banking() {
             </div>
           </CardContent>
         </Card>
-
         {/* Banking Entry Form */}
         <Card>
           <CardContent className="pt-6">
@@ -161,7 +179,6 @@ export default function Banking() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
               <div>
                 <Label>REMARKS</Label>
                 <Input
@@ -171,7 +188,6 @@ export default function Banking() {
                   className="w-full"
                 />
               </div>
-              
               <div>
                 <Label>PAYMENT TYPE</Label>
                 <Select 
@@ -189,7 +205,6 @@ export default function Banking() {
                   </SelectContent>
                 </Select>
               </div>
-              
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Label>AMOUNT</Label>
@@ -205,29 +220,33 @@ export default function Banking() {
                 <Button 
                   className="bg-green-500 hover:bg-green-600 text-white mt-6"
                   onClick={handleAddEntry}
+                  disabled={addEntryMutation.isPending}
                 >
-                  <Save size={16} className="mr-1" />
+                  {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} className="mr-1" />
                   Save
                 </Button>
               </div>
             </div>
-            
             {/* Display saved entries */}
-            {bankingEntries.length > 0 && (
+            {isLoading ? (
+              <div className="flex justify-center items-center py-8"><Loader2 className="animate-spin h-6 w-6" /></div>
+            ) : isError ? (
+              <div className="text-red-600">Failed to load entries.</div>
+            ) : bankingEntries.length > 0 ? (
               <div className="mt-6">
                 <h3 className="font-semibold mb-2">Banking Entries:</h3>
                 <div className="space-y-2">
                   {bankingEntries.map((entry) => (
                     <div key={entry.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                      <span>{format(entry.date, "dd/MM/yyyy")}</span>
+                      <span>{format(new Date(entry.date), "dd/MM/yyyy")}</span>
                       <span>{entry.remarks}</span>
                       <span>{entry.paymentType}</span>
-                      <span className="font-semibold">£{entry.amount.toFixed(2)}</span>
+                      <span className="font-semibold">£{Number(entry.amount).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
           </CardContent>
         </Card>
       </div>

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { User } from "shared/schema";
@@ -14,6 +14,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, BarChart3, FileText, Download, Copy, Printer, Search, Eye, Info } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import React from 'react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface SalesEntry {
   id: number;
@@ -66,6 +70,86 @@ export default function DailyBookSales() {
   const totalVAT = useMemo(() => salesData.reduce((sum, item) => sum + item.vat, 0), [salesData]);
   const totalCredit = useMemo(() => salesData.reduce((sum, item) => sum + item.credit, 0), [salesData]);
   const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
+
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  // Export handlers
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(printContents);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(salesData.map((item: SalesEntry) => ({
+      'Sl.No': item.slNo,
+      'Date': item.date,
+      'Salesman': item.salesman,
+      'Boxes': item.boxes,
+      'Invoice No': item.invoiceNo,
+      'Customer Name': item.customerName,
+      'VAT': item.vat,
+      'Credit': item.credit,
+      'Cash': item.cash
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Book Sales');
+    XLSX.writeFile(wb, 'daily-book-sales.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text('Daily Book Sales', 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Credit', 'Cash'
+      ]],
+      body: salesData.map((item: SalesEntry) => [
+        item.slNo,
+        item.date,
+        item.salesman,
+        item.boxes,
+        item.invoiceNo,
+        item.customerName,
+        item.vat,
+        item.credit,
+        item.cash
+      ]),
+      startY: 22,
+    });
+    doc.save('daily-book-sales.pdf');
+  };
+
+  const handleCopy = () => {
+    const header = ['Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Credit', 'Cash'];
+    const rows = salesData.map((item: SalesEntry) => [
+      item.slNo,
+      item.date,
+      item.salesman,
+      item.boxes,
+      item.invoiceNo,
+      item.customerName,
+      item.vat,
+      item.credit,
+      item.cash
+    ]);
+    const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
+    navigator.clipboard.writeText(tsv);
+    alert('Table copied to clipboard!');
+  };
 
   return (
     <PageLayout title="Daily Book" breadcrumb="Daily Report > Daily Book Sales">
@@ -199,21 +283,17 @@ export default function DailyBookSales() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <FileText size={14} />
-                  PDF
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                  <FileText size={14} /> PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Download size={14} />
-                  Excel
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                  <Download size={14} /> Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Copy size={14} />
-                  Copy
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                  <Copy size={14} /> Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Printer size={14} />
-                  Print
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  <Printer size={14} /> Print
                 </Button>
               </div>
               <div className="relative">
@@ -228,7 +308,11 @@ export default function DailyBookSales() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" ref={tableRef}>
+              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
+                Date Range: {fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to {toDate ? format(toDate, 'yyyy-MM-dd') : '-'}<br />
+                Total Boxes: {totalBoxes} | Total VAT: £{totalVAT.toFixed(2)} | Total Credit: £{totalCredit.toFixed(2)} | Total Cash: £{totalCash.toFixed(2)}
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -263,18 +347,7 @@ export default function DailyBookSales() {
                       <TableCell className="text-center">{sale.boxes}</TableCell>
                       <TableCell>{sale.invoiceNo}</TableCell>
                       <TableCell className="text-blue-600">
-                        <div className="flex items-center gap-1">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                            <Eye size={12} />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                            <Download size={12} />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-                            <FileText size={12} />
-                          </Button>
-                          {sale.customerName}
-                        </div>
+                        {sale.customerName}
                       </TableCell>
                       <TableCell className="text-right">£{sale.vat.toFixed(2)}</TableCell>
                       <TableCell className="text-right">£{sale.credit.toFixed(2)}</TableCell>

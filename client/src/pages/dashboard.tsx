@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,10 +13,12 @@ import { DollarSign, ShoppingCart, Percent, Package, TrendingUp, TrendingDown } 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
+    queryFn: () => apiRequest("GET", "/api/dashboard/stats")
   });
 
   const { data: chartData, isLoading: chartLoading } = useQuery({
     queryKey: ["/api/dashboard/charts"],
+    queryFn: () => apiRequest("GET", "/api/dashboard/charts")
   });
 
   if (statsLoading || chartLoading) {
@@ -94,7 +97,10 @@ export default function Dashboard() {
                 <div>
                   <p className="text-gray-500 text-sm font-medium">Profit Margin</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {stats?.profitMargin?.toFixed(1) || '0'}%
+                    {typeof stats?.profitMargin === "number"
+                      ? stats.profitMargin.toFixed(1)
+                      : "0"
+                    }%
                   </p>
                   <p className="text-green-600 text-sm mt-1">
                     <TrendingUp className="inline w-4 h-4 mr-1" />

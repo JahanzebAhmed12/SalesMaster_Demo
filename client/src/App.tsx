@@ -80,6 +80,8 @@ import UserAdd from "./pages/admin/user-database-add";
 // Admin Setup
 import ClosingTime from "@/pages/closing-time";
 import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
+import InvoicePrintPage from "@/pages/print/invoice";
+import DotMatrixInvoicePrintPage from "@/pages/print/dot-matrix-invoice";
 
 function AuthenticatedRoute({ component: Component, title, breadcrumb }: { component: React.ComponentType; title: string; breadcrumb: string }) {
   const { isAuthenticated } = useAuth();
@@ -295,6 +297,11 @@ function Router() {
         <AuthenticatedRoute component={ClosingTime} title="Closing Time" breadcrumb="Closing Time" />
       </Route>
       
+      
+      {/* Print Invoice Route (public) */}
+      <Route path="/print/invoice/:invoiceNumber" component={InvoicePrintPage} />
+      {/* Dot Matrix Print Invoice Route (public) */}
+      <Route path="/print/dot-matrix-invoice/:invoiceNumber" component={DotMatrixInvoicePrintPage} />
       
       {/* Fallback to 404 */}
       <Route component={NotFound} />
