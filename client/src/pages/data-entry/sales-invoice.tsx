@@ -88,7 +88,7 @@ const SalesInvoice = () => {
       setIsCreatingSale(false);
       toast({
         title: "Error",
-        description: error.message || "Failed to create new sale",
+        description: error?.error || error?.response?.data?.error || error.message || "Failed to create new sale",
         variant: "destructive",
       });
     },
@@ -128,7 +128,7 @@ const SalesInvoice = () => {
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to update invoice",
+        description: error?.error || error?.response?.data?.error || error.message || "Failed to update invoice",
         variant: "destructive",
       });
     },
@@ -189,9 +189,6 @@ const SalesInvoice = () => {
   };
 
   const handleAddItem = () => {
-    console.log("handleAddItem triggered");
-    console.log("Current values:", { selectedProductId, itemQuantity, itemUnitPrice });
-
     if (!selectedProductId || itemQuantity <= 0 || itemUnitPrice <= 0) {
       toast({
         title: "Validation Error",
@@ -200,21 +197,17 @@ const SalesInvoice = () => {
       });
       return;
     }
-
     const isRegular = selectedProductType === "regular";
     const productList = isRegular ? regularProducts : nonProducts;
     const product = productList?.find(p => p.id === parseInt(selectedProductId));
-
     if (!product) {
       toast({
         title: "Error",
         description: "Selected product not found.",
         variant: "destructive",
       });
-      console.log("Product not found for selectedProductId:", selectedProductId);
       return;
     }
-
     const newItem: SaleItem = {
       productId: isRegular ? product.id : null,
       nonProductId: isRegular ? null : product.id,
@@ -222,19 +215,14 @@ const SalesInvoice = () => {
       unitPrice: itemUnitPrice,
       totalPrice: itemQuantity * itemUnitPrice,
       productName: product.description || null,
-      // These fields are required by backend but not used in frontend add
-      id: 0, // Dummy ID, will be set by backend
-      saleId: currentSale?.id || 0, // Dummy sale_id
-      createdAt: new Date().toISOString(), // Dummy date
-      updatedAt: new Date().toISOString() // Dummy date
+      id: 0,
+      saleId: currentSale?.id || 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
-
-    console.log("New item to add:", newItem);
     const updatedItems = [...saleItems, newItem];
     setSaleItems(updatedItems);
-    console.log("Sale items after adding:", updatedItems);
-
-    // Update the current sale with the new items and persist to backend
+    // Only update backend if invoice is already saved
     if (currentSale) {
       const updatedSalePayload: BackendSalePayload = {
         invoice_number: currentSale.invoiceNumber,
@@ -258,18 +246,8 @@ const SalesInvoice = () => {
           total_price: item.totalPrice,
         })),
       };
-
       updateSaleMutation.mutate(updatedSalePayload);
-    } else {
-      console.log("Cannot update sale: currentSale is null.");
-      toast({
-        title: "Error",
-        description: "Cannot update sale: Please refresh the page.",
-        variant: "destructive",
-      });
     }
-
-    // Reset fields
     setSelectedProductId("");
     setItemQuantity(1);
     setItemUnitPrice(0);
@@ -291,7 +269,7 @@ const SalesInvoice = () => {
       vehicle_details: vehicleDetails || null,
       gate_number: gateNumber || null,
       notes: notes || null,
-      status,
+      status: "finalized",
       items: saleItems.map(item => ({
         product_id: item.productId,
         non_product_id: item.nonProductId,
@@ -313,6 +291,20 @@ const SalesInvoice = () => {
   };
 
   const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
+
+  // Add this handler for closing/clearing unsaved invoice
+  const handleCloseInvoice = () => {
+    if (window.confirm("Are you sure you want to discard this unsaved invoice?")) {
+      setCurrentSale(null);
+      setSaleItems([]);
+      setCustomerId("");
+      setVehicleDetails("");
+      setGateNumber("");
+      setNotes("");
+      setStatus("draft");
+      setLocation("/data-entry/sales-entry");
+    }
+  };
 
   if (isCreatingSale) {
     return <div className="text-center py-8">Creating new sale...</div>;
@@ -468,9 +460,6 @@ const SalesInvoice = () => {
                     <TableCell className="text-center">
                       <Button size="sm" variant="destructive" onClick={() => {
                         const updatedItems = saleItems.filter((_, i) => i !== index);
-                        setSaleItems(updatedItems);
-                        
-                        // Update the backend
                         if (currentSale) {
                           const updatedSalePayload: BackendSalePayload = {
                             invoice_number: currentSale.invoiceNumber,
@@ -495,10 +484,14 @@ const SalesInvoice = () => {
                             })),
                           };
                           updateSaleMutation.mutate(updatedSalePayload);
+                          setSaleItems(updatedItems);
+                        } else {
+                          setSaleItems(updatedItems);
                         }
-                        
                         toast({title: "Item Removed", description: "Sale item has been removed."});
-                      }}>Remove</Button>
+                      }}>
+                        Remove
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -613,7 +606,12 @@ const SalesInvoice = () => {
                 </div>
               </div>
               <div className="mt-4 flex gap-2">
-                <Button variant="outline" size="sm" className="w-full" onClick={handleSaveInvoice}>
+                {!currentSale && (
+                  <Button variant="outline" size="sm" className="w-full" onClick={handleCloseInvoice}>
+                    Close Invoice
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" className="w-full" onClick={handleSaveInvoice} disabled={!!currentSale}>
                   Save Invoice
                 </Button>
                 <Button variant="destructive" size="sm" className="w-full" onClick={() => deleteSaleMutation.mutate()} disabled={!currentSale}>

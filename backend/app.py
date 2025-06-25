@@ -200,71 +200,71 @@ def create_sale():
         user_id = get_jwt_identity()
         business_date = get_business_date()
         # Generate next invoice number (as integer, gap is OK)
-        with db.session.begin_nested():
-            max_invoice = db.session.query(db.func.max(db.cast(Sale.invoice_number, db.Integer))).scalar() or 0
-            next_invoice = str(int(max_invoice) + 1)
-            new_sale = Sale(
-                invoice_number=next_invoice,
-                customer_id=sale_data.customer_id,
-                customer_type=sale_data.customer_type,
-                payment_status=sale_data.payment_status,
-                subtotal=sale_data.subtotal,
-                porterage=sale_data.porterage,
-                vat_rate=sale_data.vat_rate,
-                vat_amount=sale_data.vat_amount,
-                total_amount=sale_data.total_amount,
-                vehicle_details=sale_data.vehicle_details,
-                gate_number=sale_data.gate_number,
-                notes=sale_data.notes,
-                status=sale_data.status,
-                created_by=user_id,
-                date=business_date
+        max_invoice = db.session.query(db.func.max(db.cast(Sale.invoice_number, db.Integer))).scalar() or 0
+        next_invoice = str(int(max_invoice) + 1)
+        new_sale = Sale(
+            invoice_number=next_invoice,
+            customer_id=sale_data.customer_id,
+            customer_type=sale_data.customer_type,
+            payment_status=sale_data.payment_status,
+            subtotal=sale_data.subtotal,
+            porterage=sale_data.porterage,
+            vat_rate=sale_data.vat_rate,
+            vat_amount=sale_data.vat_amount,
+            total_amount=sale_data.total_amount,
+            vehicle_details=sale_data.vehicle_details,
+            gate_number=sale_data.gate_number,
+            notes=sale_data.notes,
+            status=sale_data.status,
+            created_by=user_id,
+            date=business_date
+        )
+        db.session.add(new_sale)
+        db.session.flush()  # Get new_sale.id
+        # Process sale items and update stock
+        for item_data in sale_data.items:
+            new_item = SaleItem(
+                sale_id=new_sale.id,
+                product_id=item_data.product_id,
+                non_product_id=item_data.non_product_id,
+                quantity=item_data.quantity,
+                unit_price=item_data.unit_price,
+                total_price=item_data.total_price
             )
-            db.session.add(new_sale)
-            db.session.flush()  # Get new_sale.id
-            # Process sale items and update stock
-            for item_data in sale_data.items:
-                new_item = SaleItem(
-                    sale_id=new_sale.id,
-                    product_id=item_data.product_id,
-                    non_product_id=item_data.non_product_id,
-                    quantity=item_data.quantity,
-                    unit_price=item_data.unit_price,
-                    total_price=item_data.total_price
-                )
-                db.session.add(new_item)
-                # Update stock if sale is finalized
-                if sale_data.status == 'finalized':
-                    if item_data.product_id:
-                        success, result = update_product_stock(
-                            product_id=item_data.product_id,
-                            product_type='regular',
-                            quantity_change=-item_data.quantity,
-                            movement_type='sale',
-                            reference_id=new_sale.id,
-                            reference_type='sale',
-                            remarks=f"Sale invoice: {next_invoice}",
-                            user_id=user_id
-                        )
-                        if not success:
-                            db.session.rollback()
-                            return jsonify({"error": f"Stock update failed: {result}"}), 400
-                    elif item_data.non_product_id:
-                        success, result = update_product_stock(
-                            product_id=item_data.non_product_id,
-                            product_type='non',
-                            quantity_change=-item_data.quantity,
-                            movement_type='sale',
-                            reference_id=new_sale.id,
-                            reference_type='sale',
-                            remarks=f"Sale invoice: {next_invoice}",
-                            user_id=user_id
-                        )
-                        if not success:
-                            db.session.rollback()
-                            return jsonify({"error": f"Stock update failed: {result}"}), 400
-            db.session.commit()
-        return jsonify(new_sale.to_dict()), 201
+            db.session.add(new_item)
+            # Update stock if sale is finalized
+            if sale_data.status == 'finalized':
+                if item_data.product_id:
+                    success, result = update_product_stock(
+                        product_id=item_data.product_id,
+                        product_type='regular',
+                        quantity_change=-item_data.quantity,
+                        movement_type='sale',
+                        reference_id=new_sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice: {next_invoice}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        db.session.rollback()
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                elif item_data.non_product_id:
+                    success, result = update_product_stock(
+                        product_id=item_data.non_product_id,
+                        product_type='non',
+                        quantity_change=-item_data.quantity,
+                        movement_type='sale',
+                        reference_id=new_sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale invoice: {next_invoice}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        db.session.rollback()
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+        db.session.commit()
+        result = new_sale.to_dict()  # Eagerly load all needed data while session is open
+        return jsonify(result), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
@@ -994,7 +994,35 @@ def update_settings():
 # Attendance routes
 @app.route('/api/attendance', methods=['GET'])
 def get_attendance():
-    attendance_records = Attendance.query.all()
+    year = request.args.get('year', type=int)
+    month = request.args.get('month', type=int)
+    week = request.args.get('week', type=int)
+
+    print(f"DEBUG: /api/attendance year={year}, month={month}, week={week}")
+
+    query = Attendance.query
+
+    if year and month:
+        from datetime import datetime, timedelta
+        start_date = datetime(year, month, 1)
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_date = datetime(year, month + 1, 1) - timedelta(days=1)
+        print(f"DEBUG: Attendance month start_date={start_date.date()}, end_date={end_date.date()}")
+        query = query.filter(Attendance.date >= start_date.date(), Attendance.date <= end_date.date())
+    elif year and week:
+        from datetime import datetime, timedelta
+        def iso_to_gregorian(iso_year, iso_week, iso_day):
+            fourth_jan = datetime(iso_year, 1, 4)
+            delta = timedelta(days=iso_day - fourth_jan.isoweekday())
+            return fourth_jan + timedelta(weeks=iso_week - 1) + delta
+        start_date = iso_to_gregorian(year, week, 1)  # Monday
+        end_date = iso_to_gregorian(year, week, 7)    # Sunday
+        print(f"DEBUG: Attendance week start_date={start_date.date()}, end_date={end_date.date()}")
+        query = query.filter(Attendance.date >= start_date.date(), Attendance.date <= end_date.date())
+
+    attendance_records = query.all()
     return jsonify([record.to_dict() for record in attendance_records])
 
 @app.route('/api/attendance', methods=['POST'])
@@ -1420,6 +1448,9 @@ def get_payroll_report():
             'presentDates': present_dates,
             'pay': pay
         })
+    # If all presentDays are zero, return an empty list
+    if result and all(r['presentDays'] == 0 for r in result):
+        return jsonify([])
     return jsonify(result)
 
 @app.route('/api/reports/weekly-stats', methods=['GET'])
@@ -1467,6 +1498,7 @@ def get_weekly_payroll():
     # Get the start and end dates for the week
     start_date = datetime.strptime(f'{year}-W{week}-1', '%Y-W%W-%w')
     end_date = start_date + timedelta(days=6)
+    print(f"DEBUG: /api/reports/weekly-payroll start_date={start_date.date()}, end_date={end_date.date()}")
     
     # Get users (filter by employee_id if provided)
     query = User.query
@@ -4505,39 +4537,8 @@ def all_supplier_history():
             payments_query = payments_query.filter(SupplierPayment.payment_date >= from_dt.date())
         if to_dt:
             payments_query = payments_query.filter(SupplierPayment.payment_date <= to_dt.date())
-        total_paid = sum(float(p.amount) for p in payments_query)
 
-        # Credit/Adjustment (Supplier Returns with credit note issued)
-        returns_query = SupplierReturn.query.filter(
-            SupplierReturn.supplier_id == supplier.id,
-            SupplierReturn.credit_note_issued == True
-        )
-        if from_dt:
-            returns_query = returns_query.filter(SupplierReturn.date >= from_dt.date())
-        if to_dt:
-            returns_query = returns_query.filter(SupplierReturn.date <= to_dt.date())
-        total_credit_adj = sum(float(r.credit_note_amount) for r in returns_query)
 
-        # Discount/Adjustment (not tracked, set to 0)
-        total_discount_adj = 0
-
-        # Balance/Outstanding
-        balance_outstanding = total_purchase - total_paid - total_credit_adj - total_discount_adj
-
-        result.append({
-            'id': supplier.id,
-            'slNo': sl_no,
-            'supplierName': supplier.supplier_name,
-            'purchaseInvoice': total_purchase,
-            'amountPaid': total_paid,
-            'creditAdj': total_credit_adj,
-            'discountAdj': total_discount_adj,
-            'balanceOutstanding': balance_outstanding,
-            'creditLimit': float(supplier.credit_limit) if supplier.credit_limit is not None else 0,
-            'currency': supplier.supplier_currency or 'GBP',
-        })
-        sl_no += 1
-    return jsonify(result)
 
 @app.route('/api/reports/purchase-history', methods=['GET'])
 @jwt_required()
@@ -5478,12 +5479,12 @@ def add_cash_cf():
         business_date = get_business_date(date_obj)
     else:
         business_date = get_business_date()
-    cf = CashCarryForward.query.filter_by(date=business_date.date()).first()
+    cf = CashCarryForward.query.filter_by(date=business_date).first()
     if cf:
         cf.pounds = pounds
         cf.coins = coins
     else:
-        cf = CashCarryForward(date=business_date.date(), pounds=pounds, coins=coins)
+        cf = CashCarryForward(date=business_date, pounds=pounds, coins=coins)
         db.session.add(cf)
     db.session.commit()
     return jsonify(cf.to_dict()), 201
@@ -5529,7 +5530,7 @@ def add_banking_entry():
         business_date = get_business_date(date_obj)
     else:
         business_date = get_business_date()
-    entry = BankingEntry(date=business_date.date(), remarks=remarks, payment_type=payment_type, amount=amount)
+    entry = BankingEntry(date=business_date, remarks=remarks, payment_type=payment_type, amount=amount)
     db.session.add(entry)
     db.session.commit()
     return entry.to_dict(), 201
@@ -5547,6 +5548,559 @@ def get_banking_entries():
         query = query.filter(BankingEntry.date <= to_date)
     entries = query.order_by(BankingEntry.date.desc()).all()
     return [e.to_dict() for e in entries], 200
+
+@app.route('/api/reports/all-customer-history', methods=['GET'])
+@jwt_required()
+def all_customer_history():
+    from datetime import datetime
+    from sqlalchemy import func, and_, or_
+    
+    # Get query parameters
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    customer_filter = request.args.get('customerFilter', 'All Customer')  # All Customer, Exclude Bad Debt, Show Bad Debt
+    search_term = request.args.get('search', '')
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('perPage', 10))
+    currency_filter = request.args.get('currency', '')
+    
+    # Parse dates
+    from_dt = None
+    to_dt = None
+    if from_date:
+        try:
+            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({'error': 'Invalid fromDate format. Use YYYY-MM-DD'}), 400
+    
+    if to_date:
+        try:
+            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({'error': 'Invalid toDate format. Use YYYY-MM-DD'}), 400
+    
+    # Build base customer query
+    customer_query = Customer.query
+    
+    # Apply search filter
+    if search_term:
+        customer_query = customer_query.filter(
+            or_(
+                Customer.customer_name.ilike(f'%{search_term}%'),
+                Customer.customer_code.ilike(f'%{search_term}%'),
+                Customer.address.ilike(f'%{search_term}%')
+            )
+        )
+    
+    # Apply currency filter
+    if currency_filter:
+        customer_query = customer_query.filter(Customer.customer_currency == currency_filter)
+    
+    # Apply customer filter (bad debt logic)
+    if customer_filter == 'Exclude Bad Debt':
+        # Exclude customers with outstanding balance > credit limit
+        customer_query = customer_query.filter(Customer.is_active == 'yes')
+    elif customer_filter == 'Show Bad Debt':
+        # Show only customers with outstanding balance > credit limit
+        pass  # We'll filter this after calculating balances
+    
+    # Get all customers
+    customers = customer_query.all()
+    
+    # Calculate data for each customer
+    result = []
+    sl_no = 1
+    
+    for customer in customers:
+        # Sales (Credit and Cash)
+        credit_sales_query = Sale.query.filter(
+            Sale.customer_id == customer.id,
+            Sale.customer_type.ilike('credit'),
+            Sale.status == 'confirmed'  # Only confirmed sales
+        )
+        cash_sales_query = Sale.query.filter(
+            Sale.customer_id == customer.id,
+            Sale.customer_type.ilike('cash'),
+            Sale.status == 'confirmed'  # Only confirmed sales
+        )
+        
+        if from_dt:
+            credit_sales_query = credit_sales_query.filter(Sale.date >= from_dt)
+            cash_sales_query = cash_sales_query.filter(Sale.date >= from_dt)
+        if to_dt:
+            credit_sales_query = credit_sales_query.filter(Sale.date <= to_dt)
+            cash_sales_query = cash_sales_query.filter(Sale.date <= to_dt)
+        
+        credit_invoice = sum(float(s.total_amount) for s in credit_sales_query.all())
+        cash_invoice = sum(float(s.total_amount) for s in cash_sales_query.all())
+        
+        # Payments
+        payments_query = Payment.query.filter(Payment.customer_id == customer.id)
+        if from_dt:
+            payments_query = payments_query.filter(Payment.payment_date >= from_dt.date())
+        if to_dt:
+            payments_query = payments_query.filter(Payment.payment_date <= to_dt.date())
+        amount_received = sum(float(p.amount) for p in payments_query.all())
+        
+        # Returns/Discounts (Customer Returns)
+        returns_query = CustomerReturn.query.filter(
+            CustomerReturn.customer_id == customer.id,
+            CustomerReturn.status == 'completed'  # Only completed returns
+        )
+        if from_dt:
+            returns_query = returns_query.filter(CustomerReturn.date >= from_dt.date())
+        if to_dt:
+            returns_query = returns_query.filter(CustomerReturn.date <= to_dt.date())
+        returns_discount = sum(float(r.total_value) for r in returns_query.all())
+        
+        # On Account (payments not linked to a specific sale)
+        on_account_query = Payment.query.filter(
+            Payment.customer_id == customer.id,
+            Payment.sale_id.is_(None)  # Payments not linked to specific invoices
+        )
+        if from_dt:
+            on_account_query = on_account_query.filter(Payment.payment_date >= from_dt.date())
+        if to_dt:
+            on_account_query = on_account_query.filter(Payment.payment_date <= to_dt.date())
+        on_account = sum(float(p.amount) for p in on_account_query.all())
+        
+        # Balance Outstanding: (credit + cash) - payments - returns/discounts
+        balance_outstanding = (credit_invoice + cash_invoice) - amount_received - returns_discount
+        
+        # Check if this is bad debt (balance > credit limit)
+        credit_limit = float(customer.credit_limit) if customer.credit_limit else 0
+        is_bad_debt = balance_outstanding > credit_limit and credit_limit > 0
+        
+        # Apply bad debt filter
+        if customer_filter == 'Exclude Bad Debt' and is_bad_debt:
+            continue
+        elif customer_filter == 'Show Bad Debt' and not is_bad_debt:
+            continue
+        
+        result.append({
+            'id': customer.id,
+            'slNo': sl_no,
+            'customerName': customer.customer_name,
+            'creditInvoice': round(credit_invoice, 2),
+            'cashInvoice': round(cash_invoice, 2),
+            'amountReceived': round(amount_received, 2),
+            'returnsDiscount': round(returns_discount, 2),
+            'onAccount': round(on_account, 2),
+            'balanceOutstanding': round(balance_outstanding, 2),
+            'creditLimit': credit_limit,
+            'currency': customer.customer_currency or 'GBP',
+            'isBadDebt': is_bad_debt,
+            'customerCode': customer.customer_code,
+            'address': customer.address,
+            'telephone': customer.telephone,
+            'email': customer.email
+        })
+        sl_no += 1
+    
+    # Sort by customer name
+    result.sort(key=lambda x: x['customerName'])
+    
+    # Calculate totals
+    totals = {
+        'creditInvoice': sum(item['creditInvoice'] for item in result),
+        'cashInvoice': sum(item['cashInvoice'] for item in result),
+        'amountReceived': sum(item['amountReceived'] for item in result),
+        'returnsDiscount': sum(item['returnsDiscount'] for item in result),
+        'onAccount': sum(item['onAccount'] for item in result),
+        'balanceOutstanding': sum(item['balanceOutstanding'] for item in result)
+    }
+    
+    # Group by currency
+    currency_groups = {}
+    for item in result:
+        currency = item['currency']
+        if currency not in currency_groups:
+            currency_groups[currency] = []
+        currency_groups[currency].append(item)
+    
+    # Calculate currency-wise totals
+    currency_totals = {}
+    for currency, items in currency_groups.items():
+        currency_totals[currency] = {
+            'creditInvoice': sum(item['creditInvoice'] for item in items),
+            'cashInvoice': sum(item['cashInvoice'] for item in items),
+            'amountReceived': sum(item['amountReceived'] for item in items),
+            'returnsDiscount': sum(item['returnsDiscount'] for item in items),
+            'onAccount': sum(item['onAccount'] for item in items),
+            'balanceOutstanding': sum(item['balanceOutstanding'] for item in items)
+        }
+    
+    # Pagination
+    total_records = len(result)
+    start_idx = (page - 1) * per_page
+    end_idx = start_idx + per_page
+    paginated_result = result[start_idx:end_idx]
+    
+    # Update sl_no for paginated results
+    for i, item in enumerate(paginated_result):
+        item['slNo'] = start_idx + i + 1
+    
+    return jsonify({
+        'data': paginated_result,
+        'totals': totals,
+        'currencyTotals': currency_totals,
+        'pagination': {
+            'currentPage': page,
+            'perPage': per_page,
+            'totalRecords': total_records,
+            'totalPages': (total_records + per_page - 1) // per_page,
+            'showingFrom': start_idx + 1 if total_records > 0 else 0,
+            'showingTo': min(end_idx, total_records)
+        },
+        'filters': {
+            'fromDate': from_date,
+            'toDate': to_date,
+            'customerFilter': customer_filter,
+            'searchTerm': search_term,
+            'currency': currency_filter
+        }
+    })
+
+@app.route('/api/reports/customer-currencies', methods=['GET'])
+@jwt_required()
+def get_customer_currencies():
+    """Get all unique currencies used by customers"""
+    currencies = db.session.query(Customer.customer_currency).distinct().all()
+    currency_list = [currency[0] for currency in currencies if currency[0]]
+    return jsonify(currency_list)
+
+@app.route('/api/reports/customer-aging', methods=['GET'])
+@jwt_required()
+def customer_aging_report():
+    from datetime import datetime
+    from sqlalchemy import or_, and_
+    try:
+        # --- Query Params ---
+        as_of_date = request.args.get('asOfDate')
+        customer_filter = request.args.get('customerFilter', 'All Customer')
+        search_term = request.args.get('search', '')
+        currency_filter = request.args.get('currency', '')
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('perPage', 10))
+
+        # --- Validate asOfDate ---
+        if not as_of_date:
+            return jsonify({'error': 'asOfDate is required'}), 400
+        try:
+            as_of_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({'error': 'Invalid asOfDate format. Use YYYY-MM-DD'}), 400
+
+        # --- Build Customer Query ---
+        customer_query = Customer.query
+        if search_term:
+            customer_query = customer_query.filter(
+                or_(
+                    Customer.customer_name.ilike(f'%{search_term}%'),
+                    Customer.customer_code.ilike(f'%{search_term}%'),
+                    Customer.address.ilike(f'%{search_term}%')
+                )
+            )
+        if currency_filter:
+            customer_query = customer_query.filter(Customer.customer_currency == currency_filter)
+        if customer_filter == 'Active Customers':
+            customer_query = customer_query.filter(Customer.is_active == 'yes')
+        # We'll filter Overdue Only after calculating buckets
+
+        customers = customer_query.all()
+        result = []
+        sl_no = 1
+
+        for customer in customers:
+            # --- Get all confirmed sales up to as_of_dt ---
+            sales = Sale.query.filter(
+                Sale.customer_id == customer.id,
+                Sale.status == 'confirmed',
+                Sale.date <= as_of_dt
+            ).all()
+
+            # --- Prepare buckets ---
+            buckets = {
+                'current': 0.0,
+                'days30': 0.0,
+                'days60': 0.0,
+                'days90': 0.0,
+                'days120': 0.0,
+                'days180': 0.0,
+                'over180': 0.0
+            }
+            total_outstanding = 0.0
+
+            for sale in sales:
+                # Payments up to as_of_dt for this sale
+                payments = Payment.query.filter(
+                    Payment.sale_id == sale.id,
+                    Payment.payment_date <= as_of_dt.date()
+                ).all()
+                paid = sum(float(p.amount) for p in payments)
+
+                # Returns/credit notes up to as_of_dt for this sale
+                returns = CustomerReturn.query.filter(
+                    CustomerReturn.sale_id == sale.id,
+                    CustomerReturn.status == 'completed',
+                    CustomerReturn.date <= as_of_dt.date()
+                ).all()
+                returned = sum(float(r.total_value) for r in returns)
+
+                # Outstanding for this sale
+                outstanding = float(sale.total_amount) - paid - returned
+                if outstanding <= 0:
+                    continue
+
+                # Days overdue
+                days_overdue = (as_of_dt.date() - sale.date.date()).days
+                if days_overdue < 0:
+                    days_overdue = 0
+
+                # Bucket
+                if days_overdue == 0:
+                    buckets['current'] += outstanding
+                elif 1 <= days_overdue <= 30:
+                    buckets['days30'] += outstanding
+                elif 31 <= days_overdue <= 60:
+                    buckets['days60'] += outstanding
+                elif 61 <= days_overdue <= 90:
+                    buckets['days90'] += outstanding
+                elif 91 <= days_overdue <= 120:
+                    buckets['days120'] += outstanding
+                elif 121 <= days_overdue <= 180:
+                    buckets['days180'] += outstanding
+                else:
+                    buckets['over180'] += outstanding
+                total_outstanding += outstanding
+
+            # Overdue Only filter: skip if no overdue
+            if customer_filter == 'Overdue Only' and total_outstanding == buckets['current']:
+                continue
+
+            result.append({
+                'id': customer.id,
+                'slNo': sl_no,
+                'customerName': customer.customer_name,
+                'totalOutstanding': round(total_outstanding, 2),
+                'current': round(buckets['current'], 2),
+                'days30': round(buckets['days30'], 2),
+                'days60': round(buckets['days60'], 2),
+                'days90': round(buckets['days90'], 2),
+                'days120': round(buckets['days120'], 2),
+                'days180': round(buckets['days180'], 2),
+                'over180': round(buckets['over180'], 2),
+                'currency': customer.customer_currency or 'GBP',
+                'customerCode': customer.customer_code,
+                'address': customer.address,
+                'telephone': customer.telephone,
+                'email': customer.email
+            })
+            sl_no += 1
+
+        # Sort by customer name
+        result.sort(key=lambda x: x['customerName'])
+
+        # Totals
+        totals = {
+            'totalOutstanding': sum(item['totalOutstanding'] for item in result),
+            'current': sum(item['current'] for item in result),
+            'days30': sum(item['days30'] for item in result),
+            'days60': sum(item['days60'] for item in result),
+            'days90': sum(item['days90'] for item in result),
+            'days120': sum(item['days120'] for item in result),
+            'days180': sum(item['days180'] for item in result),
+            'over180': sum(item['over180'] for item in result)
+        }
+
+        # Pagination
+        total_records = len(result)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_result = result[start_idx:end_idx]
+        for i, item in enumerate(paginated_result):
+            item['slNo'] = start_idx + i + 1
+
+        return jsonify({
+            'data': paginated_result,
+            'totals': totals,
+            'pagination': {
+                'currentPage': page,
+                'perPage': per_page,
+                'totalRecords': total_records,
+                'totalPages': (total_records + per_page - 1) // per_page,
+                'showingFrom': start_idx + 1 if total_records > 0 else 0,
+                'showingTo': min(end_idx, total_records)
+            },
+            'filters': {
+                'asOfDate': as_of_date,
+                'customerFilter': customer_filter,
+                'searchTerm': search_term,
+                'currency': currency_filter
+            }
+        })
+    except Exception as e:
+        print('Error in customer_aging_report:', str(e))
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/reports/supplier-aging', methods=['GET'])
+@jwt_required()
+def supplier_aging_report():
+    from datetime import datetime
+    from sqlalchemy import or_
+    try:
+        as_of_date = request.args.get('asOfDate')
+        supplier_filter = request.args.get('supplierFilter', 'All Suppliers')
+        search_term = request.args.get('search', '')
+        currency_filter = request.args.get('currency', '')
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('perPage', 10))
+
+        if not as_of_date:
+            return jsonify({'error': 'asOfDate is required'}), 400
+        try:
+            as_of_dt = datetime.strptime(as_of_date, "%Y-%m-%d")
+        except ValueError:
+            return jsonify({'error': 'Invalid asOfDate format. Use YYYY-MM-DD'}), 400
+
+        supplier_query = Supplier.query
+        if search_term:
+            supplier_query = supplier_query.filter(
+                or_(
+                    Supplier.supplier_name.ilike(f'%{search_term}%'),
+                    Supplier.supplier_code.ilike(f'%{search_term}%'),
+                    Supplier.address.ilike(f'%{search_term}%')
+                )
+            )
+        if currency_filter:
+            supplier_query = supplier_query.filter(Supplier.supplier_currency == currency_filter)
+        if supplier_filter == 'Active Suppliers':
+            supplier_query = supplier_query.filter(Supplier.is_active == 'Yes')
+
+        suppliers = supplier_query.all()
+        result = []
+        sl_no = 1
+
+        for supplier in suppliers:
+            purchases = Purchase.query.filter(
+                Purchase.supplier_id == supplier.id,
+                Purchase.status == 'confirmed',
+                Purchase.date <= as_of_dt
+            ).all()
+
+            buckets = {
+                'current': 0.0,
+                'days30': 0.0,
+                'days60': 0.0,
+                'days90': 0.0,
+                'days120': 0.0,
+                'days180': 0.0,
+                'over180': 0.0
+            }
+            total_outstanding = 0.0
+
+            for purchase in purchases:
+                payments = SupplierPayment.query.filter(
+                    SupplierPayment.supplier_id == supplier.id,
+                    SupplierPayment.payment_date <= as_of_dt.date()
+                ).all()
+                paid = sum(float(p.amount) for p in payments)
+
+                returns = SupplierReturn.query.filter(
+                    SupplierReturn.supplier_id == supplier.id,
+                    SupplierReturn.status == 'completed',
+                    SupplierReturn.date <= as_of_dt.date()
+                ).all()
+                returned = sum(float(r.total_value) for r in returns)
+
+                outstanding = float(purchase.amount) - paid - returned
+                if outstanding <= 0:
+                    continue
+
+                days_overdue = (as_of_dt.date() - purchase.date.date()).days
+                if days_overdue < 0:
+                    days_overdue = 0
+
+                if days_overdue == 0:
+                    buckets['current'] += outstanding
+                elif 1 <= days_overdue <= 30:
+                    buckets['days30'] += outstanding
+                elif 31 <= days_overdue <= 60:
+                    buckets['days60'] += outstanding
+                elif 61 <= days_overdue <= 90:
+                    buckets['days90'] += outstanding
+                elif 91 <= days_overdue <= 120:
+                    buckets['days120'] += outstanding
+                elif 121 <= days_overdue <= 180:
+                    buckets['days180'] += outstanding
+                else:
+                    buckets['over180'] += outstanding
+                total_outstanding += outstanding
+
+            if supplier_filter == 'Overdue Only' and total_outstanding == buckets['current']:
+                continue
+
+            result.append({
+                'id': supplier.id,
+                'slNo': sl_no,
+                'supplierName': supplier.supplier_name,
+                'totalOutstanding': round(total_outstanding, 2),
+                'current': round(buckets['current'], 2),
+                'days30': round(buckets['days30'], 2),
+                'days60': round(buckets['days60'], 2),
+                'days90': round(buckets['days90'], 2),
+                'days120': round(buckets['days120'], 2),
+                'days180': round(buckets['days180'], 2),
+                'over180': round(buckets['over180'], 2),
+                'currency': supplier.supplier_currency or 'GBP',
+                'supplierCode': supplier.supplier_code,
+                'address': supplier.address,
+                'telephone': supplier.telephone,
+                'email': supplier.email
+            })
+            sl_no += 1
+
+        result.sort(key=lambda x: x['supplierName'])
+
+        totals = {
+            'totalOutstanding': sum(item['totalOutstanding'] for item in result),
+            'current': sum(item['current'] for item in result),
+            'days30': sum(item['days30'] for item in result),
+            'days60': sum(item['days60'] for item in result),
+            'days90': sum(item['days90'] for item in result),
+            'days120': sum(item['days120'] for item in result),
+            'days180': sum(item['days180'] for item in result),
+            'over180': sum(item['over180'] for item in result)
+        }
+
+        total_records = len(result)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_result = result[start_idx:end_idx]
+        for i, item in enumerate(paginated_result):
+            item['slNo'] = start_idx + i + 1
+
+        return jsonify({
+            'data': paginated_result,
+            'totals': totals,
+            'pagination': {
+                'currentPage': page,
+                'perPage': per_page,
+                'totalRecords': total_records,
+                'totalPages': (total_records + per_page - 1) // per_page,
+                'showingFrom': start_idx + 1 if total_records > 0 else 0,
+                'showingTo': min(end_idx, total_records)
+            },
+            'filters': {
+                'asOfDate': as_of_date,
+                'supplierFilter': supplier_filter,
+                'searchTerm': search_term,
+                'currency': currency_filter
+            }
+        })
+    except Exception as e:
+        print('Error in supplier_aging_report:', str(e))
+        return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

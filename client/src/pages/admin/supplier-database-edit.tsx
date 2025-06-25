@@ -136,10 +136,14 @@ export default function SupplierForm() {
   }, [supplier, form]);
 
   useEffect(() => {
-    if (!isEditing && suppliers.length > 0) {
+    if (!isEditing) {
       const nextCode = getNextSupplierCode(suppliers);
-      form.setValue("supplier_code", nextCode);
-      form.setValue("sage_code", nextCode);
+      if (!form.getValues("supplier_code")) {
+        form.setValue("supplier_code", nextCode);
+      }
+      if (!form.getValues("sage_code")) {
+        form.setValue("sage_code", nextCode);
+      }
     }
   }, [isEditing, suppliers, form]);
 

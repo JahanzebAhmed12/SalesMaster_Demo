@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,18 +68,17 @@ export default function MonthlyReports() {
     const now = new Date();
     const lastWeek = new Date(now);
     lastWeek.setDate(now.getDate() - 7);
-    const weekNumber = getWeekNumber(lastWeek);
+    const weekNumber = getISOWeekNumber(lastWeek);
     return `${lastWeek.getFullYear()}-${weekNumber}`;
   });
 
   const [selectedUser, setSelectedUser] = useState<string>("all");
-  const [reportType, setReportType] = useState<"attendance" | "payroll">("attendance");
   const [timeFrame, setTimeFrame] = useState<"weekly" | "monthly">("monthly");
   const [shouldFetch, setShouldFetch] = useState(false);
   
   const [year, setYear] = useState(new Date().getFullYear());
   const [month, setMonth] = useState(new Date().getMonth() + 1);
-  const [weekNumber, setWeekNumber] = useState(getWeekNumber(new Date()));
+  const [weekNumber, setWeekNumber] = useState(getISOWeekNumber(new Date()));
   const [weekYear, setWeekYear] = useState(new Date().getFullYear());
 
   // Simple payroll section state
@@ -88,11 +87,24 @@ export default function MonthlyReports() {
   const [selectedPayrollUser, setSelectedPayrollUser] = useState<string>("all");
   const [payrollSearchClicked, setPayrollSearchClicked] = useState(false);
 
-  // Helper function to get week number
-  function getWeekNumber(date: Date): number {
-    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
-    const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
-    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+  // Replace getWeekNumber with ISO week calculation
+  function getISOWeekNumber(date: Date): number {
+    const tempDate = new Date(date.getTime());
+    tempDate.setHours(0, 0, 0, 0);
+    // Thursday in current week decides the year
+    tempDate.setDate(tempDate.getDate() + 3 - ((tempDate.getDay() + 6) % 7));
+    // January 4 is always in week 1
+    const week1 = new Date(tempDate.getFullYear(), 0, 4);
+    // Adjust to Thursday in week 1 and count number of weeks from date to week1
+    return (
+      1 +
+      Math.round(
+        ((tempDate.getTime() - week1.getTime()) / 86400000 -
+          3 +
+          ((week1.getDay() + 6) % 7)) /
+          7
+      )
+    );
   }
 
   // Helper function to check if a week is complete
@@ -122,18 +134,34 @@ export default function MonthlyReports() {
     };
   }).filter(option => option.isComplete);
 
-  // Generate week options for the last 6 weeks including current
-  const weekOptions = Array.from({ length: 6 }, (_, i) => {
+  // Build previous 6 weeks (including current)
+  const weekOptionsRaw: { value: string; label: string; isComplete: boolean }[] = Array.from({ length: 6 }, (_, i) => {
     const date = new Date();
     date.setDate(date.getDate() - (i * 7));
     const year = date.getFullYear();
-    const week = getWeekNumber(date);
+    const week = getISOWeekNumber(date);
     return {
       value: `${year}-${week}`,
       label: `Week ${week}, ${year}`,
       isComplete: isWeekComplete(year, week)
     };
-  }).filter(option => option.isComplete);
+  });
+  // Calculate the next week (future week)
+  const now = new Date();
+  const nextWeekDate = new Date(now);
+  nextWeekDate.setDate(now.getDate() + 7);
+  const nextWeekYear = nextWeekDate.getFullYear();
+  const nextWeekNumber = getISOWeekNumber(nextWeekDate);
+  const nextWeekOption = {
+    value: `${nextWeekYear}-${nextWeekNumber}`,
+    label: `Week ${nextWeekNumber}, ${nextWeekYear}`,
+    isComplete: isWeekComplete(nextWeekYear, nextWeekNumber)
+  };
+  // Add the next week if not already present
+  const weekOptions: { value: string; label: string; isComplete: boolean }[] = [
+    ...weekOptionsRaw,
+    ...(!weekOptionsRaw.some(opt => opt.value === nextWeekOption.value) ? [nextWeekOption] : [])
+  ];
 
   // Fetch users first
   const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -286,11 +314,31 @@ export default function MonthlyReports() {
 
   const userData = calculateUserData();
 
+  // Add this after userData is calculated
+  const hasAttendanceData = userData.some(item => item.presentDays > 0);
+
   const getAttendanceColor = (percentage: number) => {
     if (percentage >= 95) return "bg-green-100 text-green-800";
     if (percentage >= 85) return "bg-yellow-100 text-yellow-800";
     return "bg-red-100 text-red-800";
   };
+
+  // Add this effect to reset shouldFetch when selection changes
+  useEffect(() => {
+    setShouldFetch(false);
+  }, [selectedMonth, selectedWeek, timeFrame, selectedUser]);
+
+  // Generate a key for attendance table to force remount on selection change
+  const attendanceTableKey = `${timeFrame}-${selectedMonth}-${selectedWeek}-${selectedUser}`;
+
+  // Add this effect after the state declarations for year, month, selectedMonth
+  useEffect(() => {
+    if (selectedMonth) {
+      const [y, m] = selectedMonth.split('-');
+      setYear(Number(y));
+      setMonth(Number(m));
+    }
+  }, [selectedMonth]);
 
   return (
     <div className="space-y-6">
@@ -317,18 +365,6 @@ export default function MonthlyReports() {
                 <SelectContent>
                   <SelectItem value="monthly">Monthly</SelectItem>
                   <SelectItem value="weekly">Weekly</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={reportType} onValueChange={(value: "attendance" | "payroll") => {
-                setReportType(value);
-                setShouldFetch(false);
-              }}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Report Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="attendance">Attendance</SelectItem>
-                  <SelectItem value="payroll">Payroll</SelectItem>
                 </SelectContent>
               </Select>
               {timeFrame === "monthly" ? (
@@ -364,24 +400,6 @@ export default function MonthlyReports() {
                   </SelectContent>
                 </Select>
               )}
-              {reportType === "payroll" && (
-                <Select value={selectedUser} onValueChange={(value) => {
-                  setSelectedUser(value);
-                  setShouldFetch(false);
-                }}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Select user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    {users?.map(user => (
-                      <SelectItem key={user.id} value={user.id.toString()}>
-                        {user.username}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
               <Button onClick={handleFetchData} className="bg-blue-600 hover:bg-blue-700" disabled={isLoadingUsers}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 {isLoadingUsers ? "Loading..." : "Fetch Data"}
@@ -408,7 +426,7 @@ export default function MonthlyReports() {
             <div className="text-center mb-6 print-only hidden">
               <h1 className="text-2xl font-bold">TROPHFRUIT UK LTD</h1>
               <p className="text-gray-600">3 Dolphin Way, Purfleet, RM19 1NZ</p>
-              <h2 className="text-xl font-semibold mt-4 capitalize">{timeFrame} {reportType} Report</h2>
+              <h2 className="text-xl font-semibold mt-4 capitalize">{timeFrame} Attendance Report</h2>
               <p className="text-gray-600">
                 {timeFrame === "monthly" 
                   ? new Date(year, month - 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
@@ -452,139 +470,70 @@ export default function MonthlyReports() {
               </div>
             )}
 
-            {/* Report Content Based on Type */}
-            {reportType === "payroll" ? (
-              <div className="space-y-6">
-                {payrollData && payrollData.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1024px]">
-                      <thead>
-                        <tr className="border-b border-gray-200">
-                          <th className="text-left py-3 px-4 font-medium text-gray-700">User</th>
-                          <th className="text-center py-3 px-4 font-medium text-gray-700">Attendance %</th>
-                          <th className="text-center py-3 px-4 font-medium text-gray-700">Working Days</th>
-                          <th className="text-center py-3 px-4 font-medium text-gray-700">Daily Wage</th>
-                          <th className="text-center py-3 px-4 font-medium text-gray-700">Gross Pay</th>
-                          <th className="text-center py-3 px-4 font-medium text-gray-700">Tax (20%)</th>
-                          <th className="text-center py-3 px-4 font-medium text-gray-700">NI (12%)</th>
-                          <th className="text-center py-3 px-4 font-medium text-gray-700">Net Pay</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {payrollData.map((item) => {
-                          if (!item || !item.user || !item.user.username) {
-                            console.error("Invalid payroll data item (skipping):", item);
-                            return null; // Skip rendering this item if data or user info is incomplete
-                          }
-                          const initials = item.user.username.split(' ').map((n: string) => n[0]).join('').toUpperCase();
-                          
-                          return (
-                            <tr key={item.user.id} className="hover:bg-gray-50">
-                              <td className="py-4 px-4">
-                                <div className="flex items-center space-x-3">
-                                  <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-sm font-medium">
-                                    {initials}
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-900">{item.user.username}</p>
-                                    <p className="text-xs text-gray-500">{item.user.id} - {item.user.userType}</p>
-                                  </div>
+            {/* Attendance Table (above) */}
+            <div key={attendanceTableKey}>
+              {isLoadingUsers ? (
+                <div className="text-center py-8">Loading users...</div>
+              ) : shouldFetch && !hasAttendanceData ? (
+                <div className="text-center py-8 text-gray-500">
+                  No attendance data found for the selected period.
+                </div>
+              ) : hasAttendanceData ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-3 px-4 font-medium text-gray-700">User</th>
+                        <th className="text-center py-3 px-4 font-medium text-gray-700">Present Days</th>
+                        <th className="text-center py-3 px-4 font-medium text-gray-700">Absent Days</th>
+                        <th className="text-center py-3 px-4 font-medium text-gray-700">Leave Days</th>
+                        <th className="text-center py-3 px-4 font-medium text-gray-700">Holiday Days</th>
+                        <th className="text-center py-3 px-4 font-medium text-gray-700">Attendance %</th>
+                        <th className="text-center py-3 px-4 font-medium text-gray-700">Total Hours</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {userData.map((item) => {
+                        if (!item || !item.user || !item.user.username) {
+                          console.error("Invalid user attendance data item (skipping):", item);
+                          return null;
+                        }
+                        const initials = item.user.username.split(' ').map((n: string) => n[0]).join('').toUpperCase();
+                        return (
+                          <tr key={item.user.id} className="hover:bg-gray-50">
+                            <td className="py-4 px-4">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-sm font-medium">
+                                  {initials}
                                 </div>
-                              </td>
-                              <td className="py-4 px-4 text-center">
-                                <Badge className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getAttendanceColor(item.attendance.attendancePercentage)}`}>
-                                  {item.attendance.attendancePercentage}%
-                                </Badge>
-                              </td>
-                              <td className="py-4 px-4 text-center text-sm text-gray-900 font-semibold">{item.payroll.workingDays}</td>
-                              <td className="py-4 px-4 text-center text-sm text-gray-900">£{item.payroll.dailyWage}</td>
-                              <td className="py-4 px-4 text-center text-sm text-green-600 font-bold">£{item.payroll.grossPay}</td>
-                              <td className="py-4 px-4 text-center text-sm text-red-600">£{item.payroll.tax}</td>
-                              <td className="py-4 px-4 text-center text-sm text-red-600">£{item.payroll.nationalInsurance}</td>
-                              <td className="py-4 px-4 text-center text-sm text-green-700 font-bold">£{item.payroll.netPay}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    No payroll data found for the selected period.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {isLoadingUsers ? (
-                  <div className="text-center py-8">Loading users...</div>
-                ) : (
-                  <>
-                    {users && users.length > 0 ? (
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b border-gray-200">
-                              <th className="text-left py-3 px-4 font-medium text-gray-700">User</th>
-                              <th className="text-center py-3 px-4 font-medium text-gray-700">Present Days</th>
-                              <th className="text-center py-3 px-4 font-medium text-gray-700">Absent Days</th>
-                              <th className="text-center py-3 px-4 font-medium text-gray-700">Leave Days</th>
-                              <th className="text-center py-3 px-4 font-medium text-gray-700">Holiday Days</th>
-                              <th className="text-center py-3 px-4 font-medium text-gray-700">Attendance %</th>
-                              <th className="text-center py-3 px-4 font-medium text-gray-700">Total Hours</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {userData.map((item) => {
-                              if (!item || !item.user || !item.user.username) {
-                                console.error("Invalid user attendance data item (skipping):", item);
-                                return null; // Skip rendering this item if data or user info is incomplete
-                              }
-                              const initials = item.user.username.split(' ').map((n: string) => n[0]).join('').toUpperCase();
-                              
-                              return (
-                                <tr key={item.user.id} className="hover:bg-gray-50">
-                                  <td className="py-4 px-4">
-                                    <div className="flex items-center space-x-3">
-                                      <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-sm font-medium">
-                                        {initials}
-                                      </div>
-                                      <div>
-                                        <p className="text-sm font-medium text-gray-900">{item.user.username}</p>
-                                        <p className="text-xs text-gray-500">{item.user.id} - {item.user.userType}</p>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="py-4 px-4 text-center text-sm text-gray-900 font-semibold">{item.presentDays}</td>
-                                  <td className="py-4 px-4 text-center text-sm text-gray-900">{item.absentDays}</td>
-                                  <td className="py-4 px-4 text-center text-sm text-gray-900">{item.leaveDays}</td>
-                                  <td className="py-4 px-4 text-center text-sm text-gray-900">{item.holidayDays}</td>
-                                  <td className="py-4 px-4 text-center">
-                                    <Badge className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getAttendanceColor(item.attendancePercentage)}`}>
-                                      {item.attendancePercentage}%
-                                    </Badge>
-                                  </td>
-                                  <td className="py-4 px-4 text-center text-sm text-gray-900">{item.totalHours}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        {userData.length === 0 && (
-                          <div className="text-center py-8 text-gray-500">
-                            No attendance data found for the selected period.
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500">
-                        {users ? "No users found." : "Failed to load users."}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900">{item.user.username}</p>
+                                  <p className="text-xs text-gray-500">{item.user.id} - {item.user.userType}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-center text-sm text-gray-900 font-semibold">{item.presentDays}</td>
+                            <td className="py-4 px-4 text-center text-sm text-gray-900">{item.absentDays}</td>
+                            <td className="py-4 px-4 text-center text-sm text-gray-900">{item.leaveDays}</td>
+                            <td className="py-4 px-4 text-center text-sm text-gray-900">{item.holidayDays}</td>
+                            <td className="py-4 px-4 text-center">
+                              <Badge className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getAttendanceColor(item.attendancePercentage)}`}>
+                                {item.attendancePercentage}%
+                              </Badge>
+                            </td>
+                            <td className="py-4 px-4 text-center text-sm text-gray-900">{item.totalHours}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  {users ? "No users found." : "Failed to load users."}
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

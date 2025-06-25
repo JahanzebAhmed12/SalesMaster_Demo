@@ -21,10 +21,10 @@ import { cn } from "@/lib/utils";
 function getNextNonProductCode(nonProducts: NonProduct[]) {
   const codes = nonProducts
     .map(p => p.productCode)
-    .filter(code => /^P\d+$/i.test(code));
-  const nums = codes.map(code => parseInt(code.replace(/^P/i, ""), 10)).filter(n => !isNaN(n));
+    .filter(code => /^NP\d+$/i.test(code));
+  const nums = codes.map(code => parseInt(code.replace(/^NP/i, ""), 10)).filter(n => !isNaN(n));
   const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
-  return `P${nextNum}`;
+  return `NP${nextNum}`;
 }
 
 // Helper type guard
@@ -82,9 +82,7 @@ const AddNonProducts = () => {
       try {
         const dataToSend = {
           ...newNonProduct,
-          stockTakeDate: newNonProduct.stockTakeDate
-            ? (newNonProduct.stockTakeDate as Date).toISOString().split('T')[0]
-            : null
+          // stockTakeDate is already string or null
         };
         console.log('Data being sent to server:', dataToSend);
         const response = await apiRequest("POST", "/api/products/non", dataToSend);
@@ -132,9 +130,7 @@ const AddNonProducts = () => {
       console.log('Updating non-product:', updatedNonProduct);
       const dataToSend = {
         ...updatedNonProduct,
-        stockTakeDate: updatedNonProduct.stockTakeDate
-          ? (updatedNonProduct.stockTakeDate as Date).toISOString().split('T')[0]
-          : null
+        // stockTakeDate is already string or null
       };
       return apiRequest("PUT", `/api/products/non/${nonProductId}`, dataToSend);
     },
@@ -159,12 +155,9 @@ const AddNonProducts = () => {
 
   useEffect(() => {
     if (existingNonProduct) {
-      let stockTakeDate: Date | null = null;
+      let stockTakeDate: string | null = null;
       if (existingNonProduct.stockTakeDate) {
         if (typeof existingNonProduct.stockTakeDate === 'string' && existingNonProduct.stockTakeDate) {
-          const dt = new Date(existingNonProduct.stockTakeDate);
-          stockTakeDate = isValidDate(dt) ? dt : null;
-        } else if (isValidDate(existingNonProduct.stockTakeDate)) {
           stockTakeDate = existingNonProduct.stockTakeDate;
         }
       }
@@ -540,9 +533,9 @@ const AddNonProducts = () => {
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {(() => {
-                            const date = form.watch("stockTakeDate");
-                            return isValidDate(date) ? (
-                              format(date, "PPP")
+                            const dateStr = form.watch("stockTakeDate");
+                            return dateStr ? (
+                              format(new Date(dateStr), "PPP")
                             ) : (
                               <span>Pick a date</span>
                             );
@@ -553,10 +546,15 @@ const AddNonProducts = () => {
                         <Calendar
                           mode="single"
                           selected={(() => {
-                            const date = form.watch("stockTakeDate");
-                            return isValidDate(date) ? date : undefined;
+                            const dateStr = form.watch("stockTakeDate");
+                            return dateStr ? new Date(dateStr) : undefined;
                           })()}
-                          onSelect={(date) => form.setValue("stockTakeDate", date || null)}
+                          onSelect={(date) =>
+                            form.setValue(
+                              "stockTakeDate",
+                              date ? format(date, "yyyy-MM-dd") : null
+                            )
+                          }
                           initialFocus
                         />
                       </PopoverContent>

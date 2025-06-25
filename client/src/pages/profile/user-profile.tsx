@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -17,15 +17,16 @@ const profileUpdateSchema = z.object({
   email: z.string().email("Invalid email").nullable(),
   phone: z.string().nullable(),
   currentPassword: z.string().min(1, "Current password is required"),
-  newPassword: z.string().min(6, "New password must be at least 6 characters").optional(),
+  newPassword: z.string().optional(),
   confirmPassword: z.string().optional(),
 }).refine((data) => {
-  if (data.newPassword) {
+  if (data.newPassword && data.newPassword.length > 0) {
+    if (data.newPassword.length < 6) return false;
     return data.newPassword === data.confirmPassword;
   }
   return true;
 }, {
-  message: "Passwords don't match",
+  message: "Passwords don't match or new password is too short (min 6 characters)",
   path: ["confirmPassword"],
 });
 
@@ -140,8 +141,9 @@ export default function UserProfile() {
                     <FormItem>
                       <FormLabel>Email</FormLabel>
                       <FormControl>
-                        <Input {...field} type="email" />
+                        <Input {...field} type="email" value={field.value ?? ''} />
                       </FormControl>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -153,8 +155,9 @@ export default function UserProfile() {
                     <FormItem>
                       <FormLabel>Phone</FormLabel>
                       <FormControl>
-                        <Input {...field} type="tel" />
+                        <Input {...field} type="tel" value={field.value ?? ''} />
                       </FormControl>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />

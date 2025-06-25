@@ -83,6 +83,9 @@ import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
 import InvoicePrintPage from "@/pages/print/invoice";
 import DotMatrixInvoicePrintPage from "@/pages/print/dot-matrix-invoice";
 
+// User Profile
+import UserProfile from "./pages/profile/user-profile";
+
 function AuthenticatedRoute({ component: Component, title, breadcrumb }: { component: React.ComponentType; title: string; breadcrumb: string }) {
   const { isAuthenticated } = useAuth();
   
@@ -296,7 +299,11 @@ function Router() {
       <Route path="/closing-time">
         <AuthenticatedRoute component={ClosingTime} title="Closing Time" breadcrumb="Closing Time" />
       </Route>
-      
+
+      {/* User Profile */}
+      <Route path="/profile/user-profile">
+        <AuthenticatedRoute component={UserProfile} title="User Profile" breadcrumb="User Profile" />
+      </Route>
       
       {/* Print Invoice Route (public) */}
       <Route path="/print/invoice/:invoiceNumber" component={InvoicePrintPage} />

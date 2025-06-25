@@ -49,12 +49,12 @@ export default function ExpenseForm() {
   });
 
   useEffect(() => {
-    if (!isEditing && expenses.length > 0) {
+    if (!isEditing) {
       const nextCode = getNextExpenseCode(expenses);
       setFormData((prev) => ({
         ...prev,
-        expenseCode: nextCode,
-        sageCode: nextCode,
+        expenseCode: prev.expenseCode || nextCode,
+        sageCode: prev.sageCode || nextCode,
       }));
     }
   }, [isEditing, expenses]);

@@ -79,10 +79,14 @@ export default function CustomerAdd() {
   }, [customerData, form]);
 
   React.useEffect(() => {
-    if (!isEditMode && customers.length > 0) {
+    if (!isEditMode) {
       const nextCode = getNextCustomerCode(customers);
-      form.setValue("customer_code", nextCode);
-      form.setValue("sage_code", nextCode);
+      if (!form.getValues("customer_code")) {
+        form.setValue("customer_code", nextCode);
+      }
+      if (!form.getValues("sage_code")) {
+        form.setValue("sage_code", nextCode);
+      }
     }
   }, [isEditMode, customers, form]);
 
