@@ -15,6 +15,11 @@ import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ExpenseEntry, Expense, Supplier } from "@shared/schema";
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { useQuery as useTanstackQuery } from '@tanstack/react-query';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface NewExpense {
   date: Date;
@@ -44,6 +49,7 @@ export default function Expenses() {
     amount: 0,
     vatAmount: 0
   });
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   // Fetch expense entries
   const { data: expenseEntries = [], isLoading, refetch } = useQuery<ExpenseEntry[]>({
@@ -69,6 +75,29 @@ export default function Expenses() {
     queryKey: ["expenses"],
     queryFn: async () => apiRequest("GET", "/api/expenses")
   });
+
+  // Fetch company details
+  const { data: companyDetails } = useTanstackQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
+  // Fetch business date for new expense
+  const { data: businessDateData } = useTanstackQuery<{ business_date: string }>({
+    queryKey: ["business-date"],
+    queryFn: () => apiRequest("GET", "/api/business-date"),
+    enabled: dialogOpen, // Only fetch when dialog is open
+  });
+
+  useEffect(() => {
+    if (dialogOpen && businessDateData?.business_date) {
+      setNewExpense((prev) => ({
+        ...prev,
+        date: new Date(businessDateData.business_date),
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen, businessDateData?.business_date]);
 
   // Create expense entry mutation
   const createExpenseMutation = useMutation({
@@ -113,8 +142,11 @@ export default function Expenses() {
       return;
     }
 
+    // Calculate actual VAT value
+    const vatValue = (newExpense.amount * newExpense.vatAmount) / 100;
     const expenseData = {
       ...newExpense,
+      vatAmount: vatValue,
       date: format(newExpense.date, 'yyyy-MM-dd')
     };
 
@@ -126,6 +158,110 @@ export default function Expenses() {
   };
 
   const totalAmount = expenseEntries.reduce((sum, expense) => sum + expense.totalAmount, 0);
+
+  // Export handlers (same as Dumps)
+  const exportTitle = 'Expense Entries';
+  const handlePrint = () => {
+    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>${exportTitle}</div>`;
+    html += `<table style='width:100%;border-collapse:collapse;'>`;
+    html += `<thead><tr>`;
+    const headers = ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
+    headers.forEach(h => {
+      html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+    expenseEntries.forEach((item: ExpenseEntry) => {
+      html += '<tr>';
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.refNumber}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${format(new Date(item.date), "dd/MM/yyyy")}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.supplierName || '-'}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.expenseName || '-'}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.invoiceNumber || '-'}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.remarks || '-'}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.paymentMode}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.amount.toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(html);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wsData = [
+      [exportTitle],
+      ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'],
+      ...expenseEntries.map((item: ExpenseEntry) => ([
+        item.refNumber,
+        format(new Date(item.date), "dd/MM/yyyy"),
+        item.supplierName || '-',
+        item.expenseName || '-',
+        item.description,
+        item.invoiceNumber || '-',
+        item.remarks || '-',
+        item.paymentMode,
+        item.amount,
+      ])),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Expense Entries');
+    XLSX.writeFile(wb, 'expense-entries.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text(exportTitle, 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'
+      ]],
+      body: expenseEntries.map((item: ExpenseEntry) => [
+        item.refNumber,
+        format(new Date(item.date), "dd/MM/yyyy"),
+        item.supplierName || '-',
+        item.expenseName || '-',
+        item.description,
+        item.invoiceNumber || '-',
+        item.remarks || '-',
+        item.paymentMode,
+        item.amount,
+      ]),
+      startY: 22,
+    });
+    doc.save('expense-entries.pdf');
+  };
+
+  const handleCopy = () => {
+    const headers = ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
+    const rows = expenseEntries.map((item: ExpenseEntry) => [
+      item.refNumber,
+      format(new Date(item.date), "dd/MM/yyyy"),
+      item.supplierName || '-',
+      item.expenseName || '-',
+      item.description,
+      item.invoiceNumber || '-',
+      item.remarks || '-',
+      item.paymentMode,
+      item.amount,
+    ]);
+    const text = [headers, ...rows].map(row => row.join('\t')).join('\n');
+    navigator.clipboard.writeText(text);
+    toast({ title: 'Copied', description: 'Expense entries copied to clipboard.' });
+  };
 
   return (
     <PageLayout title="Expenses" breadcrumb="Expenses">
@@ -139,7 +275,7 @@ export default function Expenses() {
                 Expenses
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails?.companyName || 'Company Name'}, {companyDetails?.address1 || ''}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ''}
               </div>
             </div>
           </CardHeader>
@@ -202,10 +338,190 @@ export default function Expenses() {
               </Button>
               
               <div className="ml-auto flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Printer size={16} />
-                  Print
-                </Button>
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-green-500 hover:bg-green-600 text-white" onClick={() => setDialogOpen(true)}>
+                      Add Expense
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add New Expense</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <Label>Date</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal text-xs",
+                                !newExpense.date && "text-muted-foreground"
+                              )}
+                            >
+                              {newExpense.date ? format(newExpense.date, "yyyyMMdd") : "Pick date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={newExpense.date}
+                              onSelect={(date) => date && setNewExpense({...newExpense, date})}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <div>
+                        <Label>Supplier</Label>
+                        <Select 
+                          value={newExpense.supplierId?.toString() || ""} 
+                          onValueChange={(value) => setNewExpense({...newExpense, supplierId: value ? parseInt(value) : null})}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {suppliers.map((supplier) => (
+                              <SelectItem key={supplier.id} value={supplier.id.toString()}>
+                                {supplier.supplier_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Category</Label>
+                        <Select 
+                          value={newExpense.expenseId?.toString() || ""} 
+                          onValueChange={(value) => setNewExpense({...newExpense, expenseId: value ? parseInt(value) : null})}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {expenseCategories.map((category) => (
+                              <SelectItem key={category.id} value={category.id.toString()}>
+                                {category.expenseName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Description</Label>
+                        <Input
+                          placeholder="Description"
+                          value={newExpense.description}
+                          onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <Label>Invoice #</Label>
+                        <Input
+                          placeholder="Invoice #"
+                          value={newExpense.invoiceNumber}
+                          onChange={(e) => setNewExpense({...newExpense, invoiceNumber: e.target.value})}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <Label>Remarks</Label>
+                        <Input
+                          placeholder="Remarks"
+                          value={newExpense.remarks}
+                          onChange={(e) => setNewExpense({...newExpense, remarks: e.target.value})}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <Label>Payment Mode</Label>
+                        <Select 
+                          value={newExpense.paymentMode} 
+                          onValueChange={(value) => setNewExpense({...newExpense, paymentMode: value})}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="CASH">CASH</SelectItem>
+                            <SelectItem value="CARD">CARD</SelectItem>
+                            <SelectItem value="BANK">BANK</SelectItem>
+                            <SelectItem value="CHEQUE">CHEQUE</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Amount (Exc VAT)</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={newExpense.amount}
+                          onChange={(e) => setNewExpense({...newExpense, amount: parseFloat(e.target.value) || 0})}
+                          className="w-full text-right"
+                          min="0"
+                        />
+                      </div>
+                      <div>
+                        <Label>VAT %</Label>
+                        <Select
+                          value={newExpense.vatAmount.toString()}
+                          onValueChange={(value) => {
+                            const vatPercent = parseFloat(value);
+                            const vatAmount = (newExpense.amount * vatPercent) / 100;
+                            setNewExpense({
+                              ...newExpense,
+                              vatAmount: vatPercent,
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="VAT %" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">0%</SelectItem>
+                            <SelectItem value="5">5%</SelectItem>
+                            <SelectItem value="10">10%</SelectItem>
+                            <SelectItem value="15">15%</SelectItem>
+                            <SelectItem value="20">20%</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>VAT Amount</Label>
+                        <Input
+                          type="number"
+                          value={((newExpense.amount * newExpense.vatAmount) / 100).toFixed(2)}
+                          readOnly
+                          className="w-full text-right bg-gray-100"
+                        />
+                      </div>
+                      <div>
+                        <Label>Total (Inc VAT)</Label>
+                        <Input
+                          type="number"
+                          value={(newExpense.amount + (newExpense.amount * newExpense.vatAmount) / 100).toFixed(2)}
+                          readOnly
+                          className="w-full text-right bg-gray-100"
+                        />
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button 
+                        className="bg-green-500 hover:bg-green-600 text-white w-full"
+                        onClick={() => {
+                          handleAddExpense();
+                          if (!createExpenseMutation.isPending) setDialogOpen(false);
+                        }}
+                        disabled={createExpenseMutation.isPending}
+                      >
+                        {createExpenseMutation.isPending ? "Saving..." : "Save"}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
                 <Button variant="outline" className="flex items-center gap-2">
                   <Info size={16} />
                   ?
@@ -220,19 +536,19 @@ export default function Expenses() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                   <FileText size={14} />
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                   <Download size={14} />
                   Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} />
                   Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} />
                   Print
                 </Button>
@@ -261,18 +577,19 @@ export default function Expenses() {
                   <TableHead>Remarks</TableHead>
                   <TableHead>Payment Mode</TableHead>
                   <TableHead>Amount(Exc VAT)</TableHead>
+                  <TableHead>Amount (Inc VAT)</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : expenseEntries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       No data available in table
                     </TableCell>
                   </TableRow>
@@ -288,131 +605,10 @@ export default function Expenses() {
                       <TableCell>{expense.remarks || '-'}</TableCell>
                       <TableCell>{expense.paymentMode}</TableCell>
                       <TableCell className="text-right">£{expense.amount.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">£{(expense.amount + (expense.amount * (expense.vatAmount || 0) / 100)).toFixed(2)}</TableCell>
                     </TableRow>
                   ))
                 )}
-                
-                {/* Add New Expense Row */}
-                <TableRow className="border-t-2 border-gray-200">
-                  <TableCell>E{expenseEntries.length + 1}</TableCell>
-                  <TableCell>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-28 justify-start text-left font-normal text-xs",
-                            !newExpense.date && "text-muted-foreground"
-                          )}
-                        >
-                          {newExpense.date ? format(newExpense.date, "yyyyMMdd") : "Pick date"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={newExpense.date}
-                          onSelect={(date) => date && setNewExpense({...newExpense, date})}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </TableCell>
-                  <TableCell>
-                    <Select 
-                      value={newExpense.supplierId?.toString() || ""} 
-                      onValueChange={(value) => setNewExpense({...newExpense, supplierId: value ? parseInt(value) : null})}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {suppliers.map((supplier) => (
-                          <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                            {supplier.supplier_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Select 
-                      value={newExpense.expenseId?.toString() || ""} 
-                      onValueChange={(value) => setNewExpense({...newExpense, expenseId: value ? parseInt(value) : null})}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue placeholder="Category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {expenseCategories.map((category) => (
-                          <SelectItem key={category.id} value={category.id.toString()}>
-                            {category.expenseName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      placeholder="Description"
-                      value={newExpense.description}
-                      onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
-                      className="w-32"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      placeholder="Invoice #"
-                      value={newExpense.invoiceNumber}
-                      onChange={(e) => setNewExpense({...newExpense, invoiceNumber: e.target.value})}
-                      className="w-24"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      placeholder="Remarks"
-                      value={newExpense.remarks}
-                      onChange={(e) => setNewExpense({...newExpense, remarks: e.target.value})}
-                      className="w-24"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Select 
-                      value={newExpense.paymentMode} 
-                      onValueChange={(value) => setNewExpense({...newExpense, paymentMode: value})}
-                    >
-                      <SelectTrigger className="w-20">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CASH">CASH</SelectItem>
-                        <SelectItem value="CARD">CARD</SelectItem>
-                        <SelectItem value="BANK">BANK</SelectItem>
-                        <SelectItem value="CHEQUE">CHEQUE</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1 items-center">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={newExpense.amount}
-                        onChange={(e) => setNewExpense({...newExpense, amount: parseFloat(e.target.value) || 0})}
-                        className="w-20 text-right"
-                        min="0"
-                      />
-                      <Button 
-                        size="sm" 
-                        className="bg-green-500 hover:bg-green-600 text-white px-2"
-                        onClick={handleAddExpense}
-                        disabled={createExpenseMutation.isPending}
-                      >
-                        {createExpenseMutation.isPending ? "Saving..." : "Save"}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
                 
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300">
@@ -425,6 +621,7 @@ export default function Expenses() {
                   <TableCell></TableCell>
                   <TableCell></TableCell>
                   <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
+                  <TableCell className="text-right font-bold">£{expenseEntries.reduce((sum, expense) => sum + (expense.amount + (expense.amount * (expense.vatAmount || 0) / 100)), 0).toFixed(2)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>

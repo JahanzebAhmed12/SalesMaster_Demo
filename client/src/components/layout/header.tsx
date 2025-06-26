@@ -33,14 +33,7 @@ export default function Header({ title, breadcrumb }: HeaderProps) {
         </div>
         
         <div className="flex items-center space-x-4">
-          <div className="relative">
-            <Button variant="ghost" size="icon">
-              <Bell className="text-gray-400" size={20} />
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                3
-              </span>
-            </Button>
-          </div>
+        
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

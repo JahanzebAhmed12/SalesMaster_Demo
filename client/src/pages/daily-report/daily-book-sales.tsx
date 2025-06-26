@@ -168,8 +168,8 @@ export default function DailyBookSales() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-              <div>
+            <div className="flex flex-col md:grid md:grid-cols-6 gap-4 items-end">
+              <div className="w-full">
                 <Label>From Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -195,7 +195,7 @@ export default function DailyBookSales() {
                 </Popover>
               </div>
               
-              <div>
+              <div className="w-full">
                 <Label>To Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -221,7 +221,7 @@ export default function DailyBookSales() {
                 </Popover>
               </div>
               
-              <div>
+              <div className="w-full">
                 <Select value={paymentType} onValueChange={setPaymentType}>
                   <SelectTrigger>
                     <SelectValue />
@@ -234,7 +234,7 @@ export default function DailyBookSales() {
                 </Select>
               </div>
               
-              <div>
+              <div className="w-full">
                 <Select value={userFilter} onValueChange={setUserFilter}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Salesmen" />
@@ -254,24 +254,20 @@ export default function DailyBookSales() {
                 </Select>
               </div>
               
-              <div>
+              <div className="w-full">
                 <Button className="bg-blue-500 hover:bg-blue-600 w-full">
                   Search
                 </Button>
               </div>
               
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+              <div className="flex gap-2 w-full md:w-auto">
+                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full md:w-auto">
                   <Eye size={16} />
                   Full View
                 </Button>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full md:w-auto">
                   <Printer size={16} />
                   Print
-                </Button>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Info size={16} />
-                  Options
                 </Button>
               </div>
             </div>
@@ -308,12 +304,12 @@ export default function DailyBookSales() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto" ref={tableRef}>
+            <div className="w-full overflow-x-auto" ref={tableRef}>
               <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
                 Date Range: {fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to {toDate ? format(toDate, 'yyyy-MM-dd') : '-'}<br />
                 Total Boxes: {totalBoxes} | Total VAT: £{totalVAT.toFixed(2)} | Total Credit: £{totalCredit.toFixed(2)} | Total Cash: £{totalCash.toFixed(2)}
               </div>
-              <Table>
+              <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12 min-w-[48px]">

@@ -28,6 +28,12 @@ export default function CashCF() {
     },
   });
 
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   // Update pounds/coins when data changes
   React.useEffect(() => {
     if (data) {
@@ -68,7 +74,7 @@ export default function CashCF() {
                 CF Add
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails?.companyName || 'Company Name'}, {companyDetails?.address1 || ''}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ''}
               </div>
             </div>
           </CardHeader>

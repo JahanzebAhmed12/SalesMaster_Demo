@@ -221,15 +221,14 @@ export default function MonthlyReports() {
   const { data: payrollDataSimple = [], isLoading: loadingPayroll } = useQuery<any[]>({
     queryKey: [
       "simple-payroll",
-      fromDate && toDate && getYearMonth(fromDate).year,
-      fromDate && toDate && getYearMonth(fromDate).month,
+      fromDate?.toISOString(),
+      toDate?.toISOString(),
       selectedPayrollUser,
       payrollSearchClicked
     ],
     queryFn: async () => {
       if (!fromDate || !toDate) return [];
-      const { year, month } = getYearMonth(fromDate);
-      let url = `/api/reports/payroll?year=${year}&month=${month}`;
+      let url = `/api/reports/payroll?from_date=${fromDate.toISOString().slice(0,10)}&to_date=${toDate.toISOString().slice(0,10)}`;
       if (selectedPayrollUser !== "all") url += `&employeeId=${selectedPayrollUser}`;
       return apiRequest("GET", url);
     },
@@ -339,6 +338,15 @@ export default function MonthlyReports() {
       setMonth(Number(m));
     }
   }, [selectedMonth]);
+
+  // Add this effect after the state declarations for weekNumber, weekYear, selectedWeek
+  useEffect(() => {
+    if (selectedWeek) {
+      const [y, w] = selectedWeek.split('-');
+      setWeekYear(Number(y));
+      setWeekNumber(Number(w));
+    }
+  }, [selectedWeek]);
 
   return (
     <div className="space-y-6">

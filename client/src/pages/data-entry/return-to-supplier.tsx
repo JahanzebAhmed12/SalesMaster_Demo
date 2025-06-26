@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -39,6 +39,9 @@ import { cn } from "@/lib/utils";
 import { SupplierReturn, Supplier, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Form validation schema
 const supplierReturnSchema = z.object({
@@ -127,6 +130,7 @@ export default function ReturnToSupplier() {
   const [editingReturn, setEditingReturn] = useState<SupplierReturn | null>(null);
   const [invoiceFromDate, setInvoiceFromDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [invoiceToDate, setInvoiceToDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const tableRef = useRef<HTMLDivElement>(null);
 
   // Form
   const form = useForm<SupplierReturnFormData>({
@@ -176,11 +180,20 @@ export default function ReturnToSupplier() {
     enabled: !!form.watch('supplierId') && form.watch('supplierId') > 0
   });
 
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   // Mutations
   const createMutation = useMutation({
     mutationFn: createSupplierReturn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
+    onSuccess: (newReturn) => {
+      queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
+        if (!old) return [newReturn];
+        return [newReturn, ...old];
+      });
       toast({ title: "Success", description: "Supplier return created successfully" });
       setIsDialogOpen(false);
       form.reset();
@@ -192,8 +205,11 @@ export default function ReturnToSupplier() {
 
   const updateMutation = useMutation({
     mutationFn: updateSupplierReturn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
+    onSuccess: (updatedReturn) => {
+      queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
+        if (!old) return [updatedReturn];
+        return old.map((item: any) => item.id === updatedReturn.id ? updatedReturn : item);
+      });
       toast({ title: "Success", description: "Supplier return updated successfully" });
       setIsDialogOpen(false);
       setEditingReturn(null);
@@ -264,6 +280,108 @@ export default function ReturnToSupplier() {
     });
     return counts;
   }, [supplierReturns]);
+
+  // Export handlers
+  const cardTitle = 'Supplier Returns';
+
+  const handlePrint = () => {
+    // Generate a table without the Actions column
+    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>${cardTitle}</div>`;
+    html += `<table style='width:100%;border-collapse:collapse;'>`;
+    html += `<thead><tr>`;
+    const headers = ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'];
+    headers.forEach(h => {
+      html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+    supplierReturns.forEach(item => {
+      html += '<tr>';
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${format(new Date(item.date), 'dd/MM/yyyy')}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.refNumber}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.supplierName}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.quantity}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.unitPrice.toFixed(2)}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.totalValue.toFixed(2)}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.status}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(html);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wsData = [
+      [cardTitle],
+      ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'],
+      ...supplierReturns.map((item: any) => ([
+        format(new Date(item.date), 'dd/MM/yyyy'),
+        item.refNumber,
+        item.supplierName,
+        item.description,
+        item.quantity,
+        item.unitPrice,
+        item.totalValue,
+        item.status,
+      ])),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Supplier Returns');
+    XLSX.writeFile(wb, 'supplier-returns.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text(cardTitle, 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'
+      ]],
+      body: supplierReturns.map((item: any) => [
+        format(new Date(item.date), 'dd/MM/yyyy'),
+        item.refNumber,
+        item.supplierName,
+        item.description,
+        item.quantity,
+        item.unitPrice,
+        item.totalValue,
+        item.status,
+      ]),
+      startY: 22,
+    });
+    doc.save('supplier-returns.pdf');
+  };
+
+  const handleCopy = () => {
+    const header = ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'];
+    const rows = supplierReturns.map((item: any) => [
+      format(new Date(item.date), 'dd/MM/yyyy'),
+      item.refNumber,
+      item.supplierName,
+      item.description,
+      item.quantity,
+      item.unitPrice,
+      item.totalValue,
+      item.status,
+    ]);
+    const tsv = [cardTitle, header.join('\t'), ...rows.map(row => row.join('\t'))].join('\n');
+    navigator.clipboard.writeText(tsv);
+    toast({ title: 'Copied', description: 'Table copied to clipboard!' });
+  };
 
   // Handlers
   const handleSubmit = (data: SupplierReturnFormData) => {
@@ -388,14 +506,14 @@ export default function ReturnToSupplier() {
                 <RotateCcw size={20} />
                 Return to Supplier
               </CardTitle>
-              <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ
+              <div className="text-sm text-gray-500 text-right">
+                {/* No company name here */}
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-              <div>
+            <div className="flex flex-wrap gap-4 items-end">
+              <div className="min-w-[180px]">
                 <Label htmlFor="supplier">Supplier:</Label>
                 <Select value={selectedSupplier?.toString() || "all"} onValueChange={(value) => setSelectedSupplier(value === "all" ? undefined : parseInt(value))}>
                   <SelectTrigger>
@@ -411,8 +529,7 @@ export default function ReturnToSupplier() {
                   </SelectContent>
                 </Select>
               </div>
-              
-              <div>
+              <div className="min-w-[180px]">
                 <Label>From Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -437,8 +554,7 @@ export default function ReturnToSupplier() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
-              <div>
+              <div className="min-w-[180px]">
                 <Label>To Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -463,15 +579,18 @@ export default function ReturnToSupplier() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Printer size={16} />
-                  Print
+              <div className="flex gap-2 flex-wrap">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                  <FileText size={14} /> PDF
                 </Button>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Info size={16} />
-                  Options
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                  <Download size={14} /> Excel
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                  <Copy size={14} /> Copy
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  <Printer size={14} /> Print
                 </Button>
               </div>
             </div>
@@ -796,69 +915,71 @@ export default function ReturnToSupplier() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Unit Price</TableHead>
-                  <TableHead>Total Value</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoading ? (
+            <div ref={tableRef}>
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8">
-                      Loading...
-                    </TableCell>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Reference</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Unit Price</TableHead>
+                    <TableHead>Total Value</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ) : supplierReturns.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
-                      No supplier returns found
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  supplierReturns.map((returnItem) => (
-                    <TableRow key={returnItem.id}>
-                      <TableCell>{format(new Date(returnItem.date), 'dd/MM/yyyy')}</TableCell>
-                      <TableCell className="font-mono">{returnItem.refNumber}</TableCell>
-                      <TableCell>{returnItem.supplierName}</TableCell>
-                      <TableCell>{returnItem.description}</TableCell>
-                      <TableCell className="text-center">{returnItem.quantity}</TableCell>
-                      <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
-                      <TableCell>{getStatusBadge(returnItem.status)}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEdit(returnItem)}
-                          >
-                            <Edit className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDelete(returnItem.id)}
-                            disabled={deleteMutation.isPending}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                          {getStatusActions(returnItem)}
-                        </div>
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8">
+                        Loading...
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : supplierReturns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                        No supplier returns found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    supplierReturns.map((returnItem) => (
+                      <TableRow key={returnItem.id}>
+                        <TableCell>{format(new Date(returnItem.date), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell className="font-mono">{returnItem.refNumber}</TableCell>
+                        <TableCell>{returnItem.supplierName}</TableCell>
+                        <TableCell>{returnItem.description}</TableCell>
+                        <TableCell className="text-center">{returnItem.quantity}</TableCell>
+                        <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
+                        <TableCell>{getStatusBadge(returnItem.status)}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEdit(returnItem)}
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDelete(returnItem.id)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                            {getStatusActions(returnItem)}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </div>

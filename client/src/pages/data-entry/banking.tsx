@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { BankingEntry, InsertBankingEntry } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
+import React from "react";
 
 export default function Banking() {
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -25,6 +26,16 @@ export default function Banking() {
     amount: 0
   });
   const queryClient = useQueryClient();
+
+  // Fetch business date and set as newEntry.date on mount
+  React.useEffect(() => {
+    apiRequest('GET', '/api/business-date').then(res => {
+      if (res.businessDate) {
+        setNewEntry(prev => ({ ...prev, date: new Date(res.businessDate) }));
+      }
+    });
+    // eslint-disable-next-line
+  }, []);
 
   // Fetch banking entries for date range
   const {
@@ -71,6 +82,12 @@ export default function Banking() {
     addEntryMutation.mutate(payload);
   };
 
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   return (
     <PageLayout title="Banking" breadcrumb="Banking">
       <div className="space-y-6">
@@ -83,7 +100,7 @@ export default function Banking() {
                 Banking
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails?.companyName || 'Company Name'}, {companyDetails?.address1 || ''}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ''}
               </div>
             </div>
           </CardHeader>
@@ -202,6 +219,7 @@ export default function Banking() {
                     <SelectItem value="CARD">CARD</SelectItem>
                     <SelectItem value="BANK_TRANSFER">BANK TRANSFER</SelectItem>
                     <SelectItem value="CHEQUE">CHEQUE</SelectItem>
+                    <SelectItem value="OTHERS">OTHERS</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

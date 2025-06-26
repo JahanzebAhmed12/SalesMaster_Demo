@@ -63,7 +63,7 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
       window.location.href = '/';
       throw new Error('Session expired. Please login again.');
     }
-    throw new Error(responseData.message || `HTTP error! status: ${response.status}`);
+    throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
   }
 
   return responseData;

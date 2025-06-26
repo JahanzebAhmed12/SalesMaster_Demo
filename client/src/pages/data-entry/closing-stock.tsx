@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,9 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Package, Calendar, FileText, Download, Copy, Printer, Search, Save, Plus, AlertTriangle } from "lucide-react";
+import { Package, Calendar, FileText, Download, Copy, Printer, Search, Save, Plus, AlertTriangle, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
+import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 interface StockItem {
   id: number;
@@ -34,8 +39,22 @@ interface StockAdjustment {
   adjustmentDate: string;
 }
 
+interface ClosingStockData {
+  date: string;
+  items: {
+    [key: string]: {
+      regular: { [key: number]: number };
+      non: { [key: number]: number };
+    };
+  };
+}
+
 export default function ClosingStock() {
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [stockData, setStockData] = useState<{ [key: number]: number | undefined }>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [productFilter, setProductFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [adjustmentDialog, setAdjustmentDialog] = useState<{
@@ -48,12 +67,101 @@ export default function ClosingStock() {
     adjustment: {}
   });
 
-  const queryClient = useQueryClient();
-
   // Fetch current stock
-  const { data: stockData = [], isLoading, error } = useQuery({
-    queryKey: ['stock', 'current'],
-    queryFn: () => apiRequest('GET', '/api/stock/current')
+  const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
+    queryKey: ["currentStock"],
+    queryFn: async () => {
+      return await apiRequest("GET", "/api/stock/current");
+    },
+  });
+
+  // Fetch closing stock for selected date
+  const { data: closingStock, isLoading: isLoadingClosing } = useQuery<ClosingStockData>({
+    queryKey: ["closingStock", selectedDate],
+    queryFn: async () => {
+      const response = await fetch(`/api/stock/closing?date=${selectedDate}`);
+      if (!response.ok) throw new Error("Failed to fetch closing stock");
+      return response.json();
+    },
+    enabled: !!selectedDate,
+  });
+
+  // Update stock data when closing stock is loaded, but only if user hasn't started editing
+  useEffect(() => {
+    if (
+      closingStock &&
+      Array.isArray(closingStock) &&
+      Object.keys(stockData).length === 0
+    ) {
+      const initialData: { [key: number]: number } = {};
+      closingStock.forEach((cs: any) => {
+        initialData[cs.id] = cs.closingStock;
+      });
+      setStockData(initialData);
+    }
+  }, [closingStock, selectedDate]);
+
+  // Handle stock adjustment
+  const handleStockChange = (productId: number, value: string) => {
+    setStockData((prev) => ({
+      ...prev,
+      [productId]: value === "" ? undefined : parseInt(value, 10),
+    }));
+  };
+
+  // Save closing stock
+  const handleSave = async () => {
+    setIsSubmitting(true);
+    try {
+      const adjustments = Object.entries(stockData).map(([productId, quantity]) => {
+        const product = currentStock.find((item) => item.id === parseInt(productId));
+        return {
+          productId: parseInt(productId),
+          productType: product?.productType || "regular",
+          adjustmentType: "set",
+          quantity: quantity,
+          reason: "Closing stock adjustment",
+          adjustmentDate: selectedDate,
+        };
+      });
+
+      // Send each adjustment as a separate request
+      for (const adj of adjustments) {
+        await apiRequest("POST", "/api/stock/adjust", adj);
+        toast({
+          title: "Success",
+          description: `Closing stock for product ${adj.productId} saved successfully`,
+        });
+      }
+
+      // Refresh data
+      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
+      queryClient.invalidateQueries({ queryKey: ["closingStock"] });
+      toast({
+        title: "All Done",
+        description: "All closing stock adjustments have been saved.",
+      });
+    } catch (error) {
+      let errorMsg = "Unknown error";
+      if (error instanceof Error) {
+        errorMsg = error.message;
+      } else if (typeof error === "string") {
+        errorMsg = error;
+      }
+      toast({
+        title: "Error",
+        description: errorMsg,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Fetch company details for dynamic address
+  const { data: companyDetails } = useQuery({
+    queryKey: ["company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
   });
 
   // Stock adjustment mutation
@@ -78,7 +186,7 @@ export default function ClosingStock() {
   });
 
   // Filter stock data
-  const filteredData = stockData.filter((item: StockItem) => {
+  const filteredData = currentStock.filter((item: StockItem) => {
     const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.productCode.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = productFilter === "all" || 
@@ -87,6 +195,9 @@ export default function ClosingStock() {
     
     return matchesSearch && matchesFilter;
   });
+
+  // For linter: explicitly type filteredData for export handlers
+  const filteredDataTyped: StockItem[] = filteredData;
 
   const handleAdjustment = (product: StockItem) => {
     setAdjustmentDialog({
@@ -120,13 +231,89 @@ export default function ClosingStock() {
   const totalQuantity = filteredData.reduce((sum: number, item: StockItem) => sum + item.currentStock, 0);
   const lowStockItems = filteredData.filter((item: StockItem) => item.currentStock <= item.reorderLevel);
 
-  if (error) {
+  // Print handler
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>Current Stock</div>`;
+    html += `<table style='width:100%;border-collapse:collapse;'>`;
+    html += `<thead><tr>`;
+    const headers = ['Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'];
+    headers.forEach(h => {
+      html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+    filteredDataTyped.forEach((item) => {
+      html += '<tr>';
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description} (${item.productCode})</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.productType}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.currentStock}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.reorderLevel}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.unitOfSale || '-'}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.location || '-'}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(html);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  // Excel handler
+  const handleExcel = () => {
+    const wsData = [
+      ['Current Stock'],
+      ['Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'],
+      ...filteredDataTyped.map((item) => ([
+        `${item.description} (${item.productCode})`,
+        item.productType,
+        item.currentStock,
+        item.reorderLevel,
+        item.unitOfSale || '-',
+        item.location || '-',
+      ])),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Stock');
+    XLSX.writeFile(wb, 'closing-stock.xlsx');
+  };
+
+  // PDF handler
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text('Current Stock', 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'
+      ]],
+      body: filteredDataTyped.map((item) => [
+        `${item.description} (${item.productCode})`,
+        item.productType,
+        item.currentStock,
+        item.reorderLevel,
+        item.unitOfSale || '-',
+        item.location || '-',
+      ]),
+      startY: 22,
+    });
+    doc.save('closing-stock.pdf');
+  };
+
+  if (isLoadingStock || isLoadingClosing) {
     return (
-      <PageLayout title="Closing Stock" breadcrumb="Closing Stock">
-        <div className="text-center text-red-500">
-          Error loading stock data: {error.message}
-        </div>
-      </PageLayout>
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
     );
   }
 
@@ -139,6 +326,9 @@ export default function ClosingStock() {
             <CardTitle className="flex items-center gap-2">
               <Package size={20} />
               Closing Stock Management
+              <span className="ml-auto text-sm text-gray-500 font-normal">
+                {companyDetails?.companyName || "Company Name"}, {companyDetails?.address1 || ""}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ""}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -167,17 +357,17 @@ export default function ClosingStock() {
                 </Select>
               </div>
               <div className="md:col-span-2 flex items-end gap-2">
-                <Button className="flex items-center gap-2">
+                <Button className="flex items-center gap-2" onClick={handlePrint}>
                   <Printer size={16} />
                   Print
                 </Button>
-                <Button variant="outline" className="flex items-center gap-2">
+                <Button variant="outline" className="flex items-center gap-2" onClick={handlePDF}>
                   <FileText size={16} />
-                  Export
+                  PDF
                 </Button>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Calendar size={16} />
-                  Options
+                <Button variant="outline" className="flex items-center gap-2" onClick={handleExcel}>
+                  <Download size={16} />
+                  Excel
                 </Button>
               </div>
             </div>
@@ -229,19 +419,11 @@ export default function ClosingStock() {
                     className="pl-10 w-64"
                   />
                 </div>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <FileText size={14} />
-                  PDF
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Download size={14} />
-                  Excel
-                </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isLoadingStock ? (
               <div className="text-center py-8">Loading stock data...</div>
             ) : (
               <Table>
@@ -311,7 +493,7 @@ export default function ClosingStock() {
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
               <div>{totalItems} Items</div>
               <div className="flex items-center gap-4">
-                <span>Showing {filteredData.length} of {stockData.length} entries</span>
+                <span>Showing {filteredData.length} of {currentStock.length} entries</span>
               </div>
             </div>
           </CardContent>
@@ -422,6 +604,53 @@ export default function ClosingStock() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Closing Stock</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button
+              className="mb-4"
+              onClick={handleSave}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Saving..." : "Save Closing Stock"}
+            </Button>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product Code</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead className="text-right">Current Stock</TableHead>
+                  <TableHead className="text-right">Closing Stock</TableHead>
+                  <TableHead>Unit</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {currentStock.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="text-left">{item.productCode}</TableCell>
+                    <TableCell className="text-left">{item.description}</TableCell>
+                    <TableCell className="text-left">{item.location || "-"}</TableCell>
+                    <TableCell className="text-right">{item.currentStock}</TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        value={stockData[item.id] === undefined ? "" : stockData[item.id]}
+                        onChange={(e) => handleStockChange(item.id, e.target.value)}
+                        className="w-24 text-right"
+                        min={0}
+                      />
+                    </TableCell>
+                    <TableCell className="text-left">{item.unitOfSale || "-"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
     </PageLayout>
   );

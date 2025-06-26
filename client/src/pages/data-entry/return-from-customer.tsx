@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,10 +15,13 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { RotateCcw, FileText, Download, Search, Save, Edit, Trash2, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { RotateCcw, FileText, Download, Search, Save, Edit, Trash2, CheckCircle, XCircle, AlertCircle, Copy, Printer } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CustomerReturn, InsertCustomerReturn, Customer, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Zod schema for return form validation
 const returnSchema = z.object({
@@ -80,6 +83,7 @@ export default function ReturnFromCustomer() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [invoiceFromDate, setInvoiceFromDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [invoiceToDate, setInvoiceToDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<ReturnFormData>({
     resolver: zodResolver(returnSchema),
@@ -129,6 +133,12 @@ export default function ReturnFromCustomer() {
       return Promise.resolve([]);
     },
     enabled: !!form.watch("customerId") && form.watch("customerId") > 0
+  });
+
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
   // Mutations
@@ -327,6 +337,117 @@ export default function ReturnFromCustomer() {
     return <Badge variant={variants[status as keyof typeof variants] || "secondary"}>{status}</Badge>;
   };
 
+  // Export handlers
+  const cardTitle = `Customer Returns${companyDetails?.companyName ? ' - ' + companyDetails.companyName : ''}`;
+
+  const handlePrint = () => {
+    if (!tableRef.current) return;
+    // Generate a table without the Actions column
+    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>${cardTitle}</div>`;
+    html += `<table style='width:100%;border-collapse:collapse;'>`;
+    html += `<thead><tr>`;
+    const headers = ['Ref No', 'Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'];
+    headers.forEach(h => {
+      html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+    returns.forEach(item => {
+      html += '<tr>';
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.refNumber}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${format(new Date(item.date), 'dd/MM/yyyy')}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.customerName}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.invoiceNumber || '-'}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.quantity}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.unitPrice.toFixed(2)}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.totalValue.toFixed(2)}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.status}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.creditNoteIssued ? `£${item.creditNoteAmount.toFixed(2)}` : '-'}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print Table</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write(html);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wsData = [
+      [cardTitle],
+      ['Ref No', 'Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'],
+      ...returns.map((item: any) => ([
+        item.refNumber,
+        format(new Date(item.date), 'dd/MM/yyyy'),
+        item.customerName,
+        item.description,
+        item.invoiceNumber || '-',
+        item.quantity,
+        item.unitPrice,
+        item.totalValue,
+        item.status,
+        item.creditNoteIssued ? item.creditNoteAmount : '-',
+      ])),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Customer Returns');
+    XLSX.writeFile(wb, 'customer-returns.xlsx');
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.text(cardTitle, 14, 16);
+    autoTable(doc, {
+      head: [[
+        'Ref No', 'Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'
+      ]],
+      body: returns.map((item: any) => [
+        item.refNumber,
+        format(new Date(item.date), 'dd/MM/yyyy'),
+        item.customerName,
+        item.description,
+        item.invoiceNumber || '-',
+        item.quantity,
+        item.unitPrice,
+        item.totalValue,
+        item.status,
+        item.creditNoteIssued ? item.creditNoteAmount : '-'
+      ]),
+      startY: 22,
+    });
+    doc.save('customer-returns.pdf');
+  };
+
+  const handleCopy = () => {
+    const header = ['Ref No', 'Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'];
+    const rows = returns.map((item: any) => [
+      item.refNumber,
+      format(new Date(item.date), 'dd/MM/yyyy'),
+      item.customerName,
+      item.description,
+      item.invoiceNumber || '-',
+      item.quantity,
+      item.unitPrice,
+      item.totalValue,
+      item.status,
+      item.creditNoteIssued ? item.creditNoteAmount : '-'
+    ]);
+    const tsv = [cardTitle, header.join('\t'), ...rows.map(row => row.join('\t'))].join('\n');
+    navigator.clipboard.writeText(tsv);
+    toast({ title: 'Copied', description: 'Table copied to clipboard!' });
+  };
+
   if (isLoading) {
     return <div className="flex items-center justify-center h-96">Loading returns...</div>;
   }
@@ -334,6 +455,14 @@ export default function ReturnFromCustomer() {
   return (
     <PageLayout title="Returns from Customer" breadcrumb="Returns from Customer">
       <div className="space-y-6">
+        {/* Page Title and Company Details Row */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Returns from Customer</h1>
+          <div className="text-sm text-gray-600 text-right">
+            {companyDetails?.companyName || 'Company Name'}, {companyDetails?.address1 || ''}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ''}
+          </div>
+        </div>
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
@@ -472,15 +601,23 @@ export default function ReturnFromCustomer() {
                   <Save className="h-4 w-4 mr-2" />
                   {isAddingReturn ? "Cancel" : "Add Return"}
                 </Button>
-                <Button variant="outline" size="sm">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
+                <Button variant="outline" size="sm" onClick={handlePDF}>
+                  <FileText className="h-4 w-4 mr-1" /> PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExcel}>
+                  <Download className="h-4 w-4 mr-1" /> Excel
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleCopy}>
+                  <Copy className="h-4 w-4 mr-1" /> Copy
+                </Button>
+                <Button variant="outline" size="sm" onClick={handlePrint}>
+                  <Printer className="h-4 w-4 mr-1" /> Print
                 </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" ref={tableRef}>
               <Table>
                 <TableHeader>
                   <TableRow>

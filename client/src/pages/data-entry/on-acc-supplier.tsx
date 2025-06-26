@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -100,6 +100,25 @@ export default function OnAccSupplier() {
 
   const totalAmount = filteredPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
+  // Fetch company details for dynamic address
+  const { data: companyDetails } = useQuery({
+    queryKey: ["company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
+  // Fetch business date for new payment
+  const { data: businessDateData } = useQuery({
+    queryKey: ["business-date"],
+    queryFn: () => apiRequest("GET", "/api/business-date"),
+  });
+
+  useEffect(() => {
+    if (businessDateData?.business_date) {
+      setNewPayment((prev) => ({ ...prev, paymentDate: new Date(businessDateData.business_date) }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessDateData?.business_date]);
+
   return (
     <PageLayout title="On A/c Supplier Payments" breadcrumb="On A/c Supplier">
       <div className="space-y-6">
@@ -111,7 +130,7 @@ export default function OnAccSupplier() {
                 On A/c Supplier Payments
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails?.companyName || "Company Name"}, {companyDetails?.address1 || ""}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ""}
               </div>
             </div>
           </CardHeader>

@@ -151,9 +151,14 @@ export default function AdminSetup() {
   const updateSettingsMutation = useMutation({
     mutationFn: async (data: Partial<SystemSettings>) => {
       const response = await apiRequest('PUT', '/api/settings', data);
+      return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      if (data.closingTime) setClosingTime(data.closingTime);
+      if (data.timezone) setTimezone(data.timezone);
+      if (typeof data.autoDateSwitch === 'boolean') setAutoDateSwitch(data.autoDateSwitch);
+      if (data.weekendHandling) setWeekendHandling(data.weekendHandling);
       toast({
         title: "Settings Updated",
         description: "System configuration has been saved successfully.",

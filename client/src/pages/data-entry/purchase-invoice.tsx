@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ const queryParams = new URLSearchParams(window.location.search);
 const purchaseId = queryParams.get("purchaseId");
 
 export default function PurchaseInvoice() {
+  const queryClient = useQueryClient();
   const { toast } = useToast();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
@@ -24,6 +25,7 @@ export default function PurchaseInvoice() {
   const [items, setItems] = useState<any[]>([]);
   const [remarks, setRemarks] = useState("");
   const [, setLocation] = useLocation();
+  const [shouldRefetch, setShouldRefetch] = useState(false);
 
   // Fetch purchase details
   const { data: purchase, isLoading, isError, refetch } = useQuery({
@@ -42,6 +44,28 @@ export default function PurchaseInvoice() {
   const regularProducts = productsData?.regularProducts || [];
   const nonProducts = productsData?.nonProducts || [];
 
+  // Query for fetching purchase invoice data
+  const { data: invoice, refetch: refetchInvoice } = useQuery({
+    queryKey: ['purchase-invoice', purchaseId],
+    queryFn: () => purchaseId ? apiRequest('GET', `/api/purchase-invoices/${purchaseId}`) : null,
+    enabled: !!purchaseId,
+  });
+
+  // Effect for handling refetching
+  useEffect(() => {
+    if (shouldRefetch && purchaseId) {
+      refetchInvoice().then(() => {
+        setShouldRefetch(false);
+      }).catch((error) => {
+        toast({
+          title: "Error",
+          description: "Failed to refresh invoice data",
+          variant: "destructive",
+        });
+      });
+    }
+  }, [shouldRefetch, refetchInvoice, purchaseId, toast]);
+
   // Save invoice mutation
   const createInvoiceMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/purchase-invoices", data),
@@ -59,6 +83,32 @@ export default function PurchaseInvoice() {
         variant: "destructive",
       });
     }
+  });
+
+  // Mutation for adding products
+  const addProductMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('POST', `/api/purchase-invoices/${purchaseId}/items`, data),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Product added to invoice successfully",
+      });
+      // Reset form fields
+      setSelectedProductId("");
+      setQuantity(1);
+      setUnitPrice(0);
+      // Trigger refetch
+      setShouldRefetch(true);
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: ['purchase-invoice', purchaseId] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add product to invoice",
+        variant: "destructive",
+      });
+    },
   });
 
   // When product changes, set unit price
@@ -90,18 +140,7 @@ export default function PurchaseInvoice() {
 
   // Add product to invoice
   const handleAddProduct = () => {
-    let product = null;
-    
-    // Check if it's a regular product (starts with 'regular-') or non-product
-    if (selectedProductId.startsWith('regular-')) {
-      const productId = selectedProductId.replace('regular-', '');
-      product = regularProducts.find((p: any) => String(p.id) === productId);
-    } else if (selectedProductId.startsWith('non-')) {
-      const productId = selectedProductId.replace('non-', '');
-      product = nonProducts.find((p: any) => String(p.id) === productId);
-    }
-    
-    if (!product || quantity <= 0 || unitPrice <= 0) {
+    if (!selectedProductId || quantity <= 0 || unitPrice <= 0) {
       toast({
         title: "Error",
         description: "Please select a product and enter valid quantity and price",
@@ -110,26 +149,14 @@ export default function PurchaseInvoice() {
       return;
     }
 
-    const totalPrice = quantity * unitPrice;
-    console.log('Adding product:', {
-      productId: product.id,
-      productName: product.description,
+    const productData = {
+      productId: parseInt(selectedProductId),
       quantity,
       unitPrice,
-      totalPrice,
-      calculation: `${quantity} * ${unitPrice} = ${totalPrice}`
-    });
+      totalPrice: quantity * unitPrice
+    };
 
-    setItems([...items, {
-      productId: product.id,
-      productName: product.description,
-      quantity,
-      unitPrice,
-      totalPrice
-    }]);
-    setSelectedProductId("");
-    setQuantity(1);
-    setUnitPrice(0);
+    addProductMutation.mutate(productData);
   };
 
   // Save invoice

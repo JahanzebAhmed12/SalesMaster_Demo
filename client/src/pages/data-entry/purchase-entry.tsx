@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,12 +30,13 @@ type PurchaseFormData = z.infer<typeof purchaseSchema>;
 export default function PurchaseEntry() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation();
+  const [, navigate] = useLocation();
+  const [shouldRefetch, setShouldRefetch] = useState(false);
   
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseSchema),
     defaultValues: {
-      invoiceDate: new Date().toISOString().split('T')[0],
+      invoiceDate: "", // Will be set after fetching business date
       deliveryNo: "",
       supplierInvoice: "",
       awb: "",
@@ -44,16 +45,44 @@ export default function PurchaseEntry() {
     },
   });
 
+  // Fetch business date from backend and set as default invoiceDate
+  useEffect(() => {
+    apiRequest("GET", "/api/business-date").then((res) => {
+      if (res.businessDate && !form.getValues("invoiceDate")) {
+        form.setValue("invoiceDate", res.businessDate);
+      }
+    });
+    // eslint-disable-next-line
+  }, []);
+
   // Fetch suppliers from backend
   const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
     queryKey: ["/api/suppliers"],
     queryFn: () => apiRequest("GET", "/api/suppliers"),
   });
 
-  const { data: purchases = [], isLoading } = useQuery({
-    queryKey: ["/api/purchases"],
+  // Query for fetching purchases
+  const { data: purchases, refetch, isLoading } = useQuery({
+    queryKey: ['purchases'],
+    queryFn: () => apiRequest('GET', '/api/purchases')
   });
 
+  // Effect for handling refetching
+  useEffect(() => {
+    if (shouldRefetch) {
+      refetch().then(() => {
+        setShouldRefetch(false);
+      }).catch((error) => {
+        toast({
+          title: "Error",
+          description: "Failed to refresh purchase data",
+          variant: "destructive",
+        });
+      });
+    }
+  }, [shouldRefetch, refetch, toast]);
+
+  // Mutation for creating purchase
   const createPurchaseMutation = useMutation({
     mutationFn: (data: PurchaseFormData) => {
       // Convert supplierId to integer and add default amount
@@ -65,23 +94,20 @@ export default function PurchaseEntry() {
       return apiRequest("POST", "/api/purchases", purchaseData);
     },
     onSuccess: (purchase) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      
-      // Add the newly created purchase to the cache for immediate access
-      queryClient.setQueryData(["/api/purchases", purchase.id.toString()], purchase);
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard/stats'] });
       
       toast({
         title: "Success",
         description: "Purchase entry created successfully",
       });
       form.reset();
-      setLocation(`/data-entry/purchase-invoice?purchaseId=${purchase.id}`);
+      navigate(`/data-entry/purchase-invoice?purchaseId=${purchase.id}`);
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to create purchase entry",
+        description: error.message || "Failed to create purchase",
         variant: "destructive",
       });
     },

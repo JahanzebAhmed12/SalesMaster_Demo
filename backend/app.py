@@ -430,12 +430,13 @@ def create_purchase():
         return jsonify({'message': f'Invalid purchase data: {str(e)}'}), 400
 
 @app.route('/api/purchases/<int:id>', methods=['GET'])
+@jwt_required()
 def get_purchase(id):
     try:
         purchase = Purchase.query.get_or_404(id)
         return jsonify(purchase.to_dict())
     except Exception as e:
-        return jsonify({'message': str(e)}), 404
+        return jsonify({"error": str(e)}), 500
         
 # Product routes
 @app.route('/api/products', methods=['GET'])
@@ -1403,29 +1404,56 @@ def get_monthly_stats():
 
 @app.route('/api/reports/payroll', methods=['GET'])
 def get_payroll_report():
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    employee_id = request.args.get('employeeId', type=int)
+    result = []
+    query = User.query
+    if employee_id:
+        query = query.filter(User.id == employee_id)
+    users = query.all()
+
+    # If from_date and to_date are provided, use them for filtering
+    if from_date and to_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+        for user in users:
+            present_days = Attendance.query.filter(
+                Attendance.user_id == user.id,
+                Attendance.date >= from_dt.date(),
+                Attendance.date <= to_dt.date(),
+                Attendance.status == 'present'
+            ).all()
+            present_dates = [a.date.isoformat() for a in present_days]
+            present_count = len(present_dates)
+            daily_wage = float(user.daily_wage) if user.daily_wage else 0
+            pay = present_count * daily_wage
+            result.append({
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'userType': user.user_type,
+                    'status': user.status,
+                    'dailyWage': daily_wage
+                },
+                'presentDays': present_count,
+                'presentDates': present_dates,
+                'pay': pay
+            })
+        if result and all(r['presentDays'] == 0 for r in result):
+            return jsonify([])
+        return jsonify(result)
+    # Fallback to year/month logic
     year = request.args.get('year', type=int)
     month = request.args.get('month', type=int)
-    employee_id = request.args.get('employeeId', type=int)
-    
     if not year or not month:
         return jsonify({'error': 'Year and month are required'}), 400
-    
-    # Get date range for the month
     start_date = datetime(year, month, 1)
     if month == 12:
         end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
     else:
         end_date = datetime(year, month + 1, 1) - timedelta(days=1)
-    
-    # Get users (filter by employee_id if provided)
-    query = User.query
-    if employee_id:
-        query = query.filter(User.id == employee_id)
-    users = query.all()
-    
-    result = []
     for user in users:
-        # Get present days for the user in the specified month
         present_days = Attendance.query.filter(
             Attendance.user_id == user.id,
             Attendance.date >= start_date.date(),
@@ -1448,7 +1476,6 @@ def get_payroll_report():
             'presentDates': present_dates,
             'pay': pay
         })
-    # If all presentDays are zero, return an empty list
     if result and all(r['presentDays'] == 0 for r in result):
         return jsonify([])
     return jsonify(result)
@@ -2732,6 +2759,70 @@ def get_low_stock_products():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+
+@app.route('/api/stock/closing', methods=['GET'])
+def get_closing_stock():
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({"error": "Missing date parameter"}), 400
+    try:
+        # Parse the date (assume format YYYY-MM-DD)
+        date = datetime.strptime(date_str, "%Y-%m-%d")
+    except Exception:
+        return jsonify({"error": "Invalid date format"}), 400
+
+    closing_stock = []
+
+    # Regular products
+    regular_products = RegularProduct.query.all()
+    for product in regular_products:
+        # Find last movement on or before the date
+        movement = StockMovement.query.filter(
+            StockMovement.product_id == product.id,
+            StockMovement.product_type == 'regular',
+            StockMovement.created_at <= date
+        ).order_by(StockMovement.created_at.desc()).first()
+        if movement:
+            stock = movement.new_stock
+        else:
+            stock = product.initial_stock or 0
+        closing_stock.append({
+            'id': product.id,
+            'productCode': product.product_code,
+            'description': product.description,
+            'productType': 'regular',
+            'closingStock': stock,
+            'reorderLevel': product.reorder_level,
+            'unitOfSale': product.unit_of_sale,
+            'location': product.location
+        })
+
+    # Non products
+    non_products = NonProduct.query.all()
+    for product in non_products:
+        movement = StockMovement.query.filter(
+            StockMovement.product_id == product.id,
+            StockMovement.product_type == 'non',
+            StockMovement.created_at <= date
+        ).order_by(StockMovement.created_at.desc()).first()
+        if movement:
+            stock = movement.new_stock
+        else:
+            stock = product.initial_stock or 0
+        closing_stock.append({
+            'id': product.id,
+            'productCode': product.product_code,
+            'description': product.description,
+            'productType': 'non',
+            'closingStock': stock,
+            'reorderLevel': product.reorder_level,
+            'unitOfSale': product.unit_of_sale,
+            'location': product.location
+        })
+
+    return jsonify(closing_stock), 200
+
 @app.route('/api/reports/stock-check', methods=['GET'])
 @jwt_required()
 def stock_check_report():
@@ -3331,24 +3422,24 @@ def create_dump_entry():
             created_by=user_id
         )
         db.session.add(dump_entry)
-        db.session.commit()
-        
+
         # Update stock movement
         success, result = update_product_stock(
             product_id=dump_entry_data.productId,
             product_type=dump_entry_data.productType,
             quantity_change=-quantity,  # Negative for dumps
             movement_type='dump',
-            reference_id=dump_entry.id,
+            reference_id=None,  # or dump_entry.id if needed
             reference_type='dump',
             remarks=f"Dump entry: {dump_entry_data.description}",
             user_id=user_id
         )
-        
+
         if not success:
             db.session.rollback()
             return jsonify({"error": f"Stock update failed: {result}"}), 400
-        
+
+        db.session.commit()
         return jsonify(dump_entry.to_dict()), 201
     except Exception as e:
         db.session.rollback()
@@ -6101,6 +6192,11 @@ def supplier_aging_report():
     except Exception as e:
         print('Error in supplier_aging_report:', str(e))
         return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/business-date', methods=['GET'])
+def get_business_date_api():
+    business_date = get_business_date()
+    return jsonify({"businessDate": business_date.isoformat()})
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 
