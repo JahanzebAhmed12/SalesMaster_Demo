@@ -231,19 +231,8 @@ export default function DailyBookPurchase() {
                 <Button className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white">
                   Newstock Full
                 </Button>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Printer size={16} />
-                  Print
-                </Button>
                 <Button className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white">
                   Sage
-                </Button>
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Settings size={16} />
-                  Options
                 </Button>
               </div>
             </div>

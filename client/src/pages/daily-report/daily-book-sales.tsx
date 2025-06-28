@@ -265,10 +265,6 @@ export default function DailyBookSales() {
                   <Eye size={16} />
                   Full View
                 </Button>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full md:w-auto">
-                  <Printer size={16} />
-                  Print
-                </Button>
               </div>
             </div>
           </CardContent>
@@ -324,48 +320,58 @@ export default function DailyBookSales() {
                     <TableHead className="min-w-[80px]">VAT</TableHead>
                     <TableHead className="min-w-[100px]">Credit</TableHead>
                     <TableHead className="min-w-[100px]">Cash</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isLoadingSales ? (
-                  <TableRow>
-                    <TableCell colSpan={10}>Loading...</TableCell>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ) : (
-                  salesData.map((sale) => (
-                    <TableRow key={sale.id}>
-                      <TableCell>
-                        <input type="checkbox" className="rounded" />
-                      </TableCell>
-                      <TableCell>{sale.slNo}</TableCell>
-                      <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
-                      <TableCell>{sale.salesman}</TableCell>
-                      <TableCell className="text-center">{sale.boxes}</TableCell>
-                      <TableCell>{sale.invoiceNo}</TableCell>
-                      <TableCell className="text-blue-600">
-                        {sale.customerName}
-                      </TableCell>
-                      <TableCell className="text-right">£{sale.vat.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">£{sale.credit.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">£{sale.cash.toFixed(2)}</TableCell>
+                </TableHeader>
+                <TableBody>
+                  {isLoadingSales ? (
+                    <TableRow>
+                      <TableCell colSpan={10}>Loading...</TableCell>
                     </TableRow>
-                  ))
-                )}
-                
-                {/* Total Row */}
-                <TableRow className="border-t-2 border-gray-300 bg-gray-50">
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="font-bold">{salesData.length} Items</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="text-center font-bold">{totalBoxes}</TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell className="text-right font-bold">£{totalVAT.toFixed(2)}</TableCell>
-                  <TableCell className="text-right font-bold">£{totalCredit.toFixed(2)}</TableCell>
-                  <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
-                </TableRow>
-              </TableBody>
+                  ) : (
+                    salesData.map((sale) => (
+                      <TableRow key={sale.id}>
+                        <TableCell>
+                          <input type="checkbox" className="rounded" />
+                        </TableCell>
+                        <TableCell>{sale.slNo}</TableCell>
+                        <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
+                        <TableCell>{sale.salesman}</TableCell>
+                        <TableCell className="text-center">{sale.boxes}</TableCell>
+                        <TableCell>{sale.invoiceNo}</TableCell>
+                        <TableCell className="text-blue-600">
+                          {sale.customerName}
+                        </TableCell>
+                        <TableCell className="text-right">£{sale.vat.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{sale.credit.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{sale.cash.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}
+                          >
+                            Print Invoice
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  
+                  {/* Total Row */}
+                  <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                    <TableCell className="font-bold">{salesData.length} Items</TableCell>
+                    <TableCell></TableCell>
+                    <TableCell className="text-center font-bold">{totalBoxes}</TableCell>
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
+                    <TableCell className="text-right font-bold">£{totalVAT.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">£{totalCredit.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
+                  </TableRow>
+                </TableBody>
               </Table>
             </div>
             

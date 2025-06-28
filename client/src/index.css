@@ -142,3 +142,7 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--foreground));
 }
+
+div[style*="overflow-auto"], div.overflow-auto {
+  overflow: visible !important;
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,18 @@ interface BackendSalePayload {
   }>;
 }
 
+// Add StockItem type
+interface StockItem {
+  id: number;
+  productCode: string;
+  description: string;
+  productType: 'regular' | 'non';
+  currentStock: number;
+  reorderLevel: number;
+  unitOfSale: string | null;
+  location: string | null;
+}
+
 const SalesInvoice = () => {
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
   const [location, setLocation] = useLocation();
@@ -61,37 +73,18 @@ const SalesInvoice = () => {
   const [notes, setNotes] = useState<string>("");
   const [status, setStatus] = useState<string>("draft");
 
-  // Extract from URL for initial values
-  useEffect(() => {
-    setCustomerId(queryParams.get('customerId') || "");
-    setVehicleDetails(queryParams.get('vehicleDetails') || "");
-    setGateNumber(queryParams.get('gateNumber') || "");
-  }, []);
+  // Stock search state
+  const [productSearch, setProductSearch] = useState("");
+  const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct)[]>([]);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const productInputRef = useRef<HTMLInputElement>(null);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Mutation to create a new sale
-  const createSaleMutation = useMutation({
-    mutationFn: (data: Partial<BackendSalePayload>) => {
-      return apiRequest("POST", "/api/sales", data);
-    },
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      setCurrentSale(response);
-      setIsCreatingSale(false);
-      toast({
-        title: "Success",
-        description: "New sale created successfully",
-      });
-    },
-    onError: (error: any) => {
-      setIsCreatingSale(false);
-      toast({
-        title: "Error",
-        description: error?.error || error?.response?.data?.error || error.message || "Failed to create new sale",
-        variant: "destructive",
-      });
-    },
+  // Fetch current stock
+  const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
+    queryKey: ["currentStock"],
+    queryFn: async () => await apiRequest("GET", "/api/stock/current"),
   });
 
   // Fetch customers (needed for customer name display if not directly in sale)
@@ -112,18 +105,178 @@ const SalesInvoice = () => {
     queryFn: () => apiRequest("GET", "/api/non_products"),
   });
 
+  // Filter products by type and search (move after useQuery declarations)
+  useEffect(() => {
+    let list = selectedProductType === "regular" ? regularProducts || [] : nonProducts || [];
+    if (productSearch) {
+      const term = productSearch.toLowerCase();
+      list = list.filter(
+        (p: any) =>
+          p.productCode?.toLowerCase().includes(term) ||
+          p.description?.toLowerCase().includes(term)
+      );
+    }
+    setProductOptions(list);
+    setHighlightedProduct(-1);
+  }, [productSearch, selectedProductType, regularProducts, nonProducts]);
+
+  // Get actual database stock (without frontend reduction)
+  const getActualStock = (productId: number, type: 'regular' | 'non_product' | 'non') => {
+    const stockType = type === 'regular' ? 'regular' : 'non';
+    const item = currentStock.find(
+      (s) => s.id === productId && s.productType === stockType
+    );
+    return item ? item.currentStock : 0;
+  };
+
+  // Find current stock for a product with real-time reduction for items in current invoice
+  const getCurrentStock = (productId: number, type: 'regular' | 'non_product' | 'non') => {
+    const stockType = type === 'regular' ? 'regular' : 'non';
+    const item = currentStock.find(
+      (s) => s.id === productId && s.productType === stockType
+    );
+    if (!item) return 0;
+    
+    // Only apply real-time reduction for new invoices (draft)
+    // For saved invoices, show actual database stock to prevent double reduction
+    if (!currentSale) {
+      // Calculate real-time stock reduction based on items in current invoice (not yet saved)
+      const reservedQuantity = saleItems
+        .filter(saleItem => {
+          if (type === 'regular') {
+            return saleItem.productId === productId;
+          } else {
+            return saleItem.nonProductId === productId;
+          }
+        })
+        .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
+      
+      return Math.max(0, item.currentStock - reservedQuantity);
+    } else {
+      // For saved invoices, return actual database stock
+      return item.currentStock;
+    }
+  };
+
+  // Keyboard navigation for product dropdown (match sales entry logic)
+  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showProductDropdown || productOptions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev < productOptions.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev > 0 ? prev - 1 : productOptions.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedProduct >= 0 && highlightedProduct < productOptions.length) {
+        const p = productOptions[highlightedProduct];
+        setSelectedProductId(p.id.toString());
+        setProductSearch(`${p.productCode} - ${p.description}`);
+        setItemUnitPrice(p.sellingPrice);
+        setShowProductDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowProductDropdown(false);
+    }
+  };
+
+  // Close dropdown on blur (with delay to allow click)
+  const handleProductBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    setTimeout(() => setShowProductDropdown(false), 100);
+  };
+
+  // When productId changes, update productSearch and unit price
+  useEffect(() => {
+    if (!selectedProductId) return;
+    const list = selectedProductType === "regular" ? regularProducts || [] : nonProducts || [];
+    const p = list.find((x: any) => x.id.toString() === selectedProductId);
+    if (p) {
+      setProductSearch(`${p.productCode} - ${p.description}`);
+      setItemUnitPrice(p.sellingPrice);
+    }
+  }, [selectedProductId, selectedProductType, regularProducts, nonProducts]);
+
+  // Extract from URL for initial values and pre-populate customer details
+  useEffect(() => {
+    if (customerIdFromUrl) {
+      setCustomerId(customerIdFromUrl);
+    }
+    if (vehicleDetailsFromUrl) {
+      setVehicleDetails(vehicleDetailsFromUrl);
+    }
+    if (gateNumberFromUrl) {
+      setGateNumber(gateNumberFromUrl);
+    }
+  }, [customerIdFromUrl, vehicleDetailsFromUrl, gateNumberFromUrl]);
+
+  // Get customer details for display
+  const selectedCustomer = customers?.find(c => c.id === parseInt(customerId));
+  const customerName = currentSale?.customerId 
+    ? customers?.find(c => c.id === currentSale.customerId)?.customer_name || 'N/A'
+    : selectedCustomer?.customer_name || 'N/A';
+  const customerType = currentSale?.customerType || "credit";
+  const paymentStatus = currentSale?.paymentStatus || "pending";
+
+  // Mutation to create a new sale
+  const createSaleMutation = useMutation({
+    mutationFn: (data: Partial<BackendSalePayload>) => {
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      return apiRequest("POST", "/api/sales", data, { signal: controller.signal })
+        .finally(() => clearTimeout(timeoutId));
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
+      setCurrentSale(response);
+      setIsCreatingSale(false);
+      toast({
+        title: "Success",
+        description: "New sale created successfully",
+      });
+    },
+    onError: (error: any) => {
+      setIsCreatingSale(false);
+      let errorMessage = "Failed to create new sale";
+      
+      if (error.name === 'AbortError') {
+        errorMessage = "Request timed out. Please try again.";
+      } else if (error?.error) {
+        errorMessage = error.error;
+      } else if (error?.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Mutation to update sale (add/remove items, finalize)
   const updateSaleMutation = useMutation<Sale, Error, BackendSalePayload>({
     mutationFn: (payload) => apiRequest("PUT", `/api/sales/${currentSale?.id}`, payload),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales", data.invoiceNumber] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
       toast({
         title: "Success",
         description: "Invoice updated successfully",
       });
       setCurrentSale(data);
       setSaleItems(data.items || []);
+      // Force refresh stock data to show correct levels
+      queryClient.refetchQueries({ queryKey: ["currentStock"] });
     },
     onError: (error: any) => {
       toast({
@@ -144,6 +297,7 @@ const SalesInvoice = () => {
       });
       // Invalidate sales queries to clear cache
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
+      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
       if (currentSale?.invoiceNumber) {
         queryClient.invalidateQueries({ queryKey: ["/api/sales", currentSale.invoiceNumber] });
       }
@@ -172,22 +326,6 @@ const SalesInvoice = () => {
     return 'N/A';
   };
 
-  const customerName = customers?.find(c => c.id === currentSale?.customerId)?.customer_name || 'N/A';
-
-  const handleProductSelection = (value: string) => {
-    setSelectedProductId(value);
-    const productId = parseInt(value);
-    const isRegular = selectedProductType === "regular";
-    const productList = isRegular ? regularProducts : nonProducts;
-    const product = productList?.find(p => p.id === productId);
-
-    if (product) {
-      setItemUnitPrice(product.sellingPrice);
-    } else {
-      setItemUnitPrice(0); // Reset if product not found
-    }
-  };
-
   const handleAddItem = () => {
     if (!selectedProductId || itemQuantity <= 0 || itemUnitPrice <= 0) {
       toast({
@@ -197,6 +335,33 @@ const SalesInvoice = () => {
       });
       return;
     }
+
+    // Check if we have enough stock (actual database stock)
+    const actualStockLevel = getActualStock(parseInt(selectedProductId), selectedProductType);
+    
+    // Calculate total quantity already in this invoice for this product
+    const existingQuantity = saleItems
+      .filter(item => {
+        if (selectedProductType === 'regular') {
+          return item.productId === parseInt(selectedProductId);
+        } else {
+          return item.nonProductId === parseInt(selectedProductId);
+        }
+      })
+      .reduce((sum, item) => sum + item.quantity, 0);
+    
+    const totalRequestedQuantity = existingQuantity + itemQuantity;
+    
+    if (totalRequestedQuantity > actualStockLevel) {
+      const availableStock = getCurrentStock(parseInt(selectedProductId), selectedProductType);
+      toast({
+        title: "Insufficient Stock",
+        description: `Only ${availableStock} units available in stock. You already have ${existingQuantity} in this invoice.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const isRegular = selectedProductType === "regular";
     const productList = isRegular ? regularProducts : nonProducts;
     const product = productList?.find(p => p.id === parseInt(selectedProductId));
@@ -222,6 +387,7 @@ const SalesInvoice = () => {
     };
     const updatedItems = [...saleItems, newItem];
     setSaleItems(updatedItems);
+    
     // Only update backend if invoice is already saved
     if (currentSale) {
       const updatedSalePayload: BackendSalePayload = {
@@ -248,13 +414,33 @@ const SalesInvoice = () => {
       };
       updateSaleMutation.mutate(updatedSalePayload);
     }
+    // For new invoices, stock will be reduced when the invoice is saved
     setSelectedProductId("");
     setItemQuantity(1);
     setItemUnitPrice(0);
+    setProductSearch("");
   };
 
   // Save handler: create sale only when Save is clicked
   const handleSaveInvoice = () => {
+    if (!customerId) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a customer first.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (saleItems.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please add at least one item to the invoice.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsCreatingSale(true);
     const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const payload: Partial<BackendSalePayload> = {
@@ -307,7 +493,15 @@ const SalesInvoice = () => {
   };
 
   if (isCreatingSale) {
-    return <div className="text-center py-8">Creating new sale...</div>;
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Creating Invoice...</h2>
+          <p className="text-gray-600">Please wait while we process your sale. This may take a few seconds.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -320,7 +514,7 @@ const SalesInvoice = () => {
               <h1 className="text-2xl font-bold text-gray-900 mb-4">INVOICE</h1>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-4">
-                  <span>Date: {new Date(currentSale?.date || '').toLocaleDateString('en-GB')}</span>
+                  <span>Date: {new Date(currentSale?.date || Date.now()).toLocaleDateString('en-GB')}</span>
                   {/* Print Invoice Button */}
                   {currentSale?.invoiceNumber && (
                     <>
@@ -342,26 +536,26 @@ const SalesInvoice = () => {
                   )}
                 </div>
                 <div className="flex items-center gap-4">
-                  <span>Invoice: {currentSale?.invoiceNumber}</span>
+                  <span>Invoice: {currentSale?.invoiceNumber || 'Draft'}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span>Customer type: {currentSale?.customerType}</span>
-                  <Badge className="bg-green-600 text-white">{currentSale?.paymentStatus}</Badge>
+                  <span>Customer type: {customerType}</span>
+                  <Badge className="bg-green-600 text-white">{paymentStatus}</Badge>
                 </div>
                 <div>
                   <span>Customer Name: </span>
                   <span className="font-semibold">{customerName}</span>
                 </div>
-                {currentSale?.vehicleDetails && (
+                {(currentSale?.vehicleDetails || vehicleDetails) && (
                   <div>
                     <span>Vehicle Details: </span>
-                    <span className="font-semibold">{currentSale?.vehicleDetails}</span>
+                    <span className="font-semibold">{currentSale?.vehicleDetails || vehicleDetails}</span>
                   </div>
                 )}
-                {currentSale?.gateNumber && (
+                {(currentSale?.gateNumber || gateNumber) && (
                   <div>
                     <span>Gate Number: </span>
-                    <span className="font-semibold">{currentSale?.gateNumber}</span>
+                    <span className="font-semibold">{currentSale?.gateNumber || gateNumber}</span>
                   </div>
                 )}
               </div>
@@ -402,7 +596,6 @@ const SalesInvoice = () => {
               <Button variant="outline" size="sm">Pdf</Button>
               <Button variant="outline" size="sm">Excel</Button>
               <Button variant="outline" size="sm">Copy</Button>
-              <Button variant="outline" size="sm">Print</Button>
               <Button variant="outline" size="sm">Cust_Outstanding</Button>
             </div>
             
@@ -418,15 +611,6 @@ const SalesInvoice = () => {
             </div>
           </div>
 
-          {/* Print/Action Icons */}
-          <div className="flex justify-center gap-2 mb-6">
-            <Button variant="outline" size="sm">🖨️</Button>
-            <Button variant="outline" size="sm">🖨️</Button>
-            <Button variant="outline" size="sm">📁</Button>
-            <Button variant="outline" size="sm">✉️</Button>
-            <Button variant="outline" size="sm" className="bg-blue-600 text-white">⚡</Button>
-          </div>
-
           {/* Search */}
           <div className="flex justify-end mb-4">
             <div className="flex items-center gap-2">
@@ -439,124 +623,151 @@ const SalesInvoice = () => {
         {/* Products Table */}
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead className="text-center">Quantity</TableHead>
-                  <TableHead className="text-center">Unit price</TableHead>
-                  <TableHead className="text-center">Total</TableHead>
-                  <TableHead className="text-center">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* Existing items */}
-                {saleItems.map((item, index) => (
-                  <TableRow key={index}>
-                    <TableCell>{item.productName}</TableCell>
-                    <TableCell className="text-center">{item.quantity}</TableCell>
-                    <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
+            <div className="relative w-full overflow-visible">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product</TableHead>
+                    <TableHead className="text-center">Current Stock</TableHead>
+                    <TableHead className="text-center">Quantity</TableHead>
+                    <TableHead className="text-center">Unit price</TableHead>
+                    <TableHead className="text-center">Total</TableHead>
+                    <TableHead className="text-center">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {/* Existing items */}
+                  {saleItems.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell>{item.productName}</TableCell>
+                      <TableCell className="text-center">
+                        {item.productId
+                          ? getCurrentStock(item.productId, 'regular')
+                          : item.nonProductId
+                            ? getCurrentStock(item.nonProductId, 'non')
+                            : '-'}
+                      </TableCell>
+                      <TableCell className="text-center">{item.quantity}</TableCell>
+                      <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">
+                        <Button size="sm" variant="destructive" onClick={() => {
+                          const updatedItems = saleItems.filter((_, i) => i !== index);
+                          if (currentSale) {
+                            const updatedSalePayload: BackendSalePayload = {
+                              invoice_number: currentSale.invoiceNumber,
+                              customer_id: currentSale.customerId,
+                              customer_type: currentSale.customerType,
+                              payment_status: currentSale.paymentStatus,
+                              subtotal: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                              porterage: currentSale.porterage,
+                              vat_rate: currentSale.vatRate,
+                              vat_amount: currentSale.vatAmount,
+                              total_amount: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                              vehicle_details: currentSale.vehicleDetails,
+                              gate_number: currentSale.gateNumber,
+                              notes: currentSale.notes,
+                              status: currentSale.status,
+                              items: updatedItems.map(item => ({
+                                product_id: item.productId,
+                                non_product_id: item.nonProductId,
+                                quantity: item.quantity,
+                                unit_price: item.unitPrice,
+                                total_price: item.totalPrice,
+                              })),
+                            };
+                            updateSaleMutation.mutate(updatedSalePayload);
+                            setSaleItems(updatedItems);
+                          } else {
+                            setSaleItems(updatedItems);
+                          }
+                          toast({title: "Item Removed", description: "Sale item has been removed."});
+                        }}>
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {/* New item entry row */}
+                  <TableRow style={{ overflow: "visible" }}>
+                    <TableCell colSpan={2} style={{ overflow: "visible", position: "relative" }}>
+                      <div className="relative">
+                        <Input
+                          ref={productInputRef}
+                          placeholder={`Type to search ${selectedProductType === 'regular' ? 'regular' : 'non'} products...`}
+                          value={productSearch}
+                          onChange={e => {
+                            setProductSearch(e.target.value);
+                            setShowProductDropdown(true);
+                            setSelectedProductId("");
+                          }}
+                          onFocus={() => setShowProductDropdown(!!productSearch)}
+                          onBlur={handleProductBlur}
+                          onKeyDown={handleProductKeyDown}
+                          autoComplete="off"
+                        />
+                        {showProductDropdown && productOptions.length > 0 && (
+                          <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow">
+                            {productOptions.map((p, idx) => (
+                              <div
+                                key={p.id}
+                                className={`p-2 cursor-pointer flex items-center ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
+                                onMouseDown={() => {
+                                  setSelectedProductId(p.id.toString());
+                                  setProductSearch(`${p.productCode} - ${p.description}`);
+                                  setItemUnitPrice(p.sellingPrice);
+                                  setShowProductDropdown(false);
+                                }}
+                                onMouseEnter={() => setHighlightedProduct(idx)}
+                              >
+                                <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
+                                <span className="ml-2">{p.description}</span>
+                                <span className="ml-auto text-xs text-gray-500">Stock: {getCurrentStock(p.id, selectedProductType)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Show current stock below input if a product is selected */}
+                        {selectedProductId && (
+                          <div className="text-xs text-gray-600 mt-1">Current Stock: {getCurrentStock(Number(selectedProductId), selectedProductType)}</div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Input 
+                        className="text-center" 
+                        type="number" 
+                        value={itemQuantity}
+                        onChange={(e) => setItemQuantity(parseInt(e.target.value) || 0)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input 
+                        className="text-center" 
+                        type="number" 
+                        step="0.01"
+                        value={itemUnitPrice}
+                        onChange={(e) => setItemUnitPrice(parseFloat(e.target.value) || 0)}
+                      />
+                    </TableCell>
                     <TableCell className="text-center">
-                      <Button size="sm" variant="destructive" onClick={() => {
-                        const updatedItems = saleItems.filter((_, i) => i !== index);
-                        if (currentSale) {
-                          const updatedSalePayload: BackendSalePayload = {
-                            invoice_number: currentSale.invoiceNumber,
-                            customer_id: currentSale.customerId,
-                            customer_type: currentSale.customerType,
-                            payment_status: currentSale.paymentStatus,
-                            subtotal: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
-                            porterage: currentSale.porterage,
-                            vat_rate: currentSale.vatRate,
-                            vat_amount: currentSale.vatAmount,
-                            total_amount: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
-                            vehicle_details: currentSale.vehicleDetails,
-                            gate_number: currentSale.gateNumber,
-                            notes: currentSale.notes,
-                            status: currentSale.status,
-                            items: updatedItems.map(item => ({
-                              product_id: item.productId,
-                              non_product_id: item.nonProductId,
-                              quantity: item.quantity,
-                              unit_price: item.unitPrice,
-                              total_price: item.totalPrice,
-                            })),
-                          };
-                          updateSaleMutation.mutate(updatedSalePayload);
-                          setSaleItems(updatedItems);
-                        } else {
-                          setSaleItems(updatedItems);
-                        }
-                        toast({title: "Item Removed", description: "Sale item has been removed."});
-                      }}>
-                        Remove
+                      £{(itemQuantity * itemUnitPrice).toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button 
+                        size="sm" 
+                        className="bg-green-600 hover:bg-green-700"
+                        onClick={() => {
+                          handleAddItem();
+                        }}
+                      >
+                        Add
                       </Button>
                     </TableCell>
                   </TableRow>
-                ))}
-                {/* New item entry row */}
-                <TableRow>
-                  <TableCell>
-                    <Select
-                      value={selectedProductId}
-                      onValueChange={handleProductSelection}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {selectedProductType === "regular" ? (
-                          regularProducts?.map(product => (
-                            <SelectItem key={product.id} value={product.id.toString()}>
-                              {product.description}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          nonProducts?.map(product => (
-                            <SelectItem key={product.id} value={product.id.toString()}>
-                              {product.description}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Input 
-                      className="text-center" 
-                      type="number" 
-                      value={itemQuantity}
-                      onChange={(e) => setItemQuantity(parseInt(e.target.value) || 0)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input 
-                      className="text-center" 
-                      type="number" 
-                      step="0.01"
-                      value={itemUnitPrice}
-                      onChange={(e) => setItemUnitPrice(parseFloat(e.target.value) || 0)}
-                    />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    £{(itemQuantity * itemUnitPrice).toFixed(2)}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Button 
-                      size="sm" 
-                      className="bg-green-600 hover:bg-green-700"
-                      onClick={() => {
-                        console.log("Add button clicked!");
-                        handleAddItem();
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+                </TableBody>
+              </Table>
+            </div>
 
             {/* Table Summary */}
             <div className="p-4 border-t">

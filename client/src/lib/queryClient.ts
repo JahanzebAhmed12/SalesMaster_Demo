@@ -34,7 +34,7 @@ export function useInvalidateMutation<TData, TVariables = void, TError = unknown
   });
 }
 
-export const apiRequest = async <T = any>(method: string, endpoint: string, data?: any): Promise<T> => {
+export const apiRequest = async <T = any>(method: string, endpoint: string, data?: any, options?: { signal?: AbortSignal }): Promise<T> => {
   const url = `${API_BASE_URL}${endpoint}`;
   const token = localStorage.getItem('jwt_token');
   
@@ -47,12 +47,19 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(url, {
+  const fetchOptions: RequestInit = {
     method,
     headers,
     credentials: 'include',
     body: data ? JSON.stringify(data) : undefined,
-  });
+  };
+
+  // Add signal if provided (for timeout handling)
+  if (options?.signal) {
+    fetchOptions.signal = options.signal;
+  }
+
+  const response = await fetch(url, fetchOptions);
 
   const responseData = await response.json();
 

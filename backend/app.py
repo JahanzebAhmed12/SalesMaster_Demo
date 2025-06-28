@@ -15,6 +15,7 @@ from flask_jwt_extended import create_access_token, jwt_required, JWTManager, ge
 from calendar import monthrange
 from sqlalchemy import func, or_, extract, literal
 import calendar
+import time
 
 # Load environment variables
 load_dotenv()
@@ -34,15 +35,41 @@ CORS(app,
      }})
 
 # Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///salesmaster.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(os.path.dirname(__file__), "instance", "salesmaster.db")}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'max_overflow': 20,
+    'connect_args': {
+        'timeout': 60,  # Increased timeout to 60 seconds
+        'check_same_thread': False,  # Allow multiple threads
+        'isolation_level': None,  # Autocommit mode
+        'cached_statements': 128,  # Cache prepared statements
+    }
+}
 
 # Initialize database
 db.init_app(app)
 migrate = Migrate(app, db)
 
-# Create database tables
+# Database health check function
+def check_database_health():
+    """Check if database is healthy and accessible"""
+    try:
+        # Test database connection
+        db.session.execute(db.text("SELECT 1"))
+        db.session.commit()
+        return True
+    except Exception as e:
+        db.session.rollback()
+        return False
+
+# Initialize database with health check
 with app.app_context():
+    # Check database health before creating tables
+    if not check_database_health():
+        print("Warning: Database connection issues detected")
+    
     db.create_all()
     create_admin_user()  # Create admin user if it doesn't exist
 
@@ -58,48 +85,59 @@ def user_identity_lookup(user_id):
 
 # Stock management helper functions
 def update_product_stock(product_id, product_type, quantity_change, movement_type, reference_id=None, reference_type=None, remarks=None, user_id=None):
-    """Update product stock and create movement record"""
-    try:
-        # Get the product
-        if product_type == 'regular':
-            product = RegularProduct.query.get(product_id)
-        else:
-            product = NonProduct.query.get(product_id)
-        
-        if not product:
-            raise ValueError(f"Product not found: {product_id}")
-        
-        previous_stock = product.current_stock
-        new_stock = previous_stock + quantity_change
-        
-        # Ensure stock doesn't go negative (except for adjustments)
-        if new_stock < 0 and movement_type != 'adjustment':
-            raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
-        
-        # Update product stock
-        product.current_stock = new_stock
-        
-        # Create stock movement record
-        movement = StockMovement(
-            product_id=product_id,
-            product_type=product_type,
-            movement_type=movement_type,
-            quantity=quantity_change,
-            reference_id=reference_id,
-            reference_type=reference_type,
-            previous_stock=previous_stock,
-            new_stock=new_stock,
-            remarks=remarks,
-            created_by=user_id
-        )
-        
-        db.session.add(movement)
-        db.session.commit()
-        
-        return True, new_stock
-    except Exception as e:
-        db.session.rollback()
-        return False, str(e)
+    """Update product stock and create movement record within existing transaction"""
+    max_retries = 3
+    retry_delay = 0.05  # 50ms
+    
+    for attempt in range(max_retries):
+        try:
+            # Get the product with row-level locking
+            if product_type == 'regular':
+                product = db.session.query(RegularProduct).filter(
+                    RegularProduct.id == product_id
+                ).with_for_update().first()
+            else:
+                product = db.session.query(NonProduct).filter(
+                    NonProduct.id == product_id
+                ).with_for_update().first()
+            
+            if not product:
+                raise ValueError(f"Product not found: {product_id}")
+            
+            previous_stock = product.current_stock
+            new_stock = previous_stock + quantity_change
+            
+            # Ensure stock doesn't go negative (except for adjustments)
+            if new_stock < 0 and movement_type != 'adjustment':
+                raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
+            
+            # Update product stock
+            product.current_stock = new_stock
+            
+            # Create stock movement record
+            movement = StockMovement(
+                product_id=product_id,
+                product_type=product_type,
+                movement_type=movement_type,
+                quantity=quantity_change,
+                reference_id=reference_id,
+                reference_type=reference_type,
+                previous_stock=previous_stock,
+                new_stock=new_stock,
+                remarks=remarks,
+                created_by=user_id
+            )
+            db.session.add(movement)
+            
+            # Don't commit here - let the calling function handle the transaction
+            return True, new_stock
+                
+        except Exception as e:
+            # Retry if database is locked
+            if 'database is locked' in str(e).lower() and attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            return False, str(e)
 
 def get_product_stock(product_id, product_type):
     """Get current stock for a product"""
@@ -129,6 +167,19 @@ def get_business_date(now=None):
     if now.time() > closing_time:
         return (now + timedelta(days=1)).date()
     return now.date()
+
+# Health check endpoint
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint to test database connectivity"""
+    try:
+        # Test database connection
+        db.session.execute(db.text("SELECT 1"))
+        db.session.commit()
+        return jsonify({"status": "healthy", "database": "connected"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "unhealthy", "database": "disconnected", "error": str(e)}), 500
 
 # Auth routes
 @app.route('/api/auth/login', methods=['POST'])
@@ -189,85 +240,131 @@ def get_sales():
 @app.route('/api/sales', methods=['POST'])
 @jwt_required()
 def create_sale():
-    try:
-        data = request.get_json()
-        # Remove invoice_number from data before schema validation
-        data.pop('invoice_number', None)
-        sale_data = SaleSchema(**data)
-        customer = Customer.query.get(sale_data.customer_id)
-        if not customer:
-            return jsonify({"error": "Customer not found"}), 404
-        user_id = get_jwt_identity()
-        business_date = get_business_date()
-        # Generate next invoice number (as integer, gap is OK)
-        max_invoice = db.session.query(db.func.max(db.cast(Sale.invoice_number, db.Integer))).scalar() or 0
-        next_invoice = str(int(max_invoice) + 1)
-        new_sale = Sale(
-            invoice_number=next_invoice,
-            customer_id=sale_data.customer_id,
-            customer_type=sale_data.customer_type,
-            payment_status=sale_data.payment_status,
-            subtotal=sale_data.subtotal,
-            porterage=sale_data.porterage,
-            vat_rate=sale_data.vat_rate,
-            vat_amount=sale_data.vat_amount,
-            total_amount=sale_data.total_amount,
-            vehicle_details=sale_data.vehicle_details,
-            gate_number=sale_data.gate_number,
-            notes=sale_data.notes,
-            status=sale_data.status,
-            created_by=user_id,
-            date=business_date
-        )
-        db.session.add(new_sale)
-        db.session.flush()  # Get new_sale.id
-        # Process sale items and update stock
-        for item_data in sale_data.items:
-            new_item = SaleItem(
-                sale_id=new_sale.id,
-                product_id=item_data.product_id,
-                non_product_id=item_data.non_product_id,
-                quantity=item_data.quantity,
-                unit_price=item_data.unit_price,
-                total_price=item_data.total_price
+    max_retries = 3
+    retry_delay = 0.1  # 100ms
+    
+    for attempt in range(max_retries):
+        try:
+            # Start a new transaction with proper isolation
+            db.session.begin()
+            
+            data = request.get_json()
+            # Remove invoice_number from data before schema validation
+            data.pop('invoice_number', None)
+            sale_data = SaleSchema(**data)
+            
+            # Validate customer exists
+            customer = Customer.query.get(sale_data.customer_id)
+            if not customer:
+                db.session.rollback()
+                return jsonify({"error": "Customer not found"}), 404
+            
+            user_id = get_jwt_identity()
+            business_date = get_business_date()
+            
+            # Generate next invoice number with proper locking
+            # Use a separate query to avoid conflicts
+            max_invoice_result = db.session.execute(
+                db.text("SELECT MAX(CAST(invoice_number AS INTEGER)) FROM sale")
+            ).scalar()
+            max_invoice = max_invoice_result or 0
+            next_invoice = str(int(max_invoice) + 1)
+            
+            # Create sale with all data at once
+            new_sale = Sale(
+                invoice_number=next_invoice,
+                customer_id=sale_data.customer_id,
+                customer_type=sale_data.customer_type,
+                payment_status=sale_data.payment_status,
+                subtotal=sale_data.subtotal,
+                porterage=sale_data.porterage,
+                vat_rate=sale_data.vat_rate,
+                vat_amount=sale_data.vat_amount,
+                total_amount=sale_data.total_amount,
+                vehicle_details=sale_data.vehicle_details,
+                gate_number=sale_data.gate_number,
+                notes=sale_data.notes,
+                status=sale_data.status,
+                created_by=user_id,
+                date=business_date
             )
-            db.session.add(new_item)
-            # Update stock if sale is finalized
-            if sale_data.status == 'finalized':
-                if item_data.product_id:
-                    success, result = update_product_stock(
-                        product_id=item_data.product_id,
-                        product_type='regular',
-                        quantity_change=-item_data.quantity,
-                        movement_type='sale',
-                        reference_id=new_sale.id,
-                        reference_type='sale',
-                        remarks=f"Sale invoice: {next_invoice}",
-                        user_id=user_id
-                    )
-                    if not success:
-                        db.session.rollback()
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
-                elif item_data.non_product_id:
-                    success, result = update_product_stock(
-                        product_id=item_data.non_product_id,
-                        product_type='non',
-                        quantity_change=-item_data.quantity,
-                        movement_type='sale',
-                        reference_id=new_sale.id,
-                        reference_type='sale',
-                        remarks=f"Sale invoice: {next_invoice}",
-                        user_id=user_id
-                    )
-                    if not success:
-                        db.session.rollback()
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
-        db.session.commit()
-        result = new_sale.to_dict()  # Eagerly load all needed data while session is open
-        return jsonify(result), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 500
+            
+            # Add sale to session
+            db.session.add(new_sale)
+            db.session.flush()  # Get new_sale.id without committing
+            
+            # Process all sale items at once
+            sale_items = []
+            stock_updates = []
+            
+            for item_data in sale_data.items:
+                new_item = SaleItem(
+                    sale_id=new_sale.id,
+                    product_id=item_data.product_id,
+                    non_product_id=item_data.non_product_id,
+                    quantity=item_data.quantity,
+                    unit_price=item_data.unit_price,
+                    total_price=item_data.total_price
+                )
+                sale_items.append(new_item)
+                
+                # Prepare stock updates if sale is finalized
+                if sale_data.status == 'finalized':
+                    if item_data.product_id:
+                        stock_updates.append({
+                            'product_id': item_data.product_id,
+                            'product_type': 'regular',
+                            'quantity_change': -item_data.quantity,
+                            'remarks': f"Sale invoice: {next_invoice}"
+                        })
+                    elif item_data.non_product_id:
+                        stock_updates.append({
+                            'product_id': item_data.non_product_id,
+                            'product_type': 'non',
+                            'quantity_change': -item_data.quantity,
+                            'remarks': f"Sale invoice: {next_invoice}"
+                        })
+            
+            # Add all sale items at once
+            db.session.add_all(sale_items)
+            
+            # Process stock updates efficiently
+            for stock_update in stock_updates:
+                success, result = update_product_stock(
+                    product_id=stock_update['product_id'],
+                    product_type=stock_update['product_type'],
+                    quantity_change=stock_update['quantity_change'],
+                    movement_type='sale',
+                    reference_id=new_sale.id,
+                    reference_type='sale',
+                    remarks=stock_update['remarks'],
+                    user_id=user_id
+                )
+                if not success:
+                    db.session.rollback()
+                    return jsonify({"error": f"Stock update failed: {result}"}), 400
+            
+            # Commit everything at once
+            db.session.commit()
+            
+            # Return the result
+            result = new_sale.to_dict()
+            return jsonify(result), 201
+            
+        except Exception as e:
+            db.session.rollback()
+            # Retry if database is locked
+            if 'database is locked' in str(e).lower() and attempt < max_retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+            # Return specific error messages
+            error_msg = str(e)
+            if 'UNIQUE constraint failed' in error_msg:
+                return jsonify({"error": "Invoice number already exists. Please try again."}), 400
+            elif 'FOREIGN KEY constraint failed' in error_msg:
+                return jsonify({"error": "Invalid customer or product reference."}), 400
+            else:
+                return jsonify({"error": f"Failed to create sale: {error_msg}"}), 500
 
 @app.route('/api/sales/<string:invoice_number>', methods=['GET'])
 @jwt_required()
@@ -289,9 +386,15 @@ def update_sale(id):
         sale = Sale.query.get_or_404(id)
         user_id = get_jwt_identity()
         
-        # Store old status to check if it's changing to finalized
+        # Store old status and items to check changes
         old_status = sale.status
         new_status = sale_data.status
+        old_items = {(item.product_id, item.non_product_id, item.quantity) for item in sale.items}
+        new_items = {(item.product_id, item.non_product_id, item.quantity) for item in sale_data.items}
+        
+        # Find new items that need stock reduction
+        added_items = new_items - old_items
+        removed_items = old_items - new_items
         
         # Update sale fields
         for key, value in sale_data.dict(exclude={'items'}).items():
@@ -312,7 +415,7 @@ def update_sale(id):
             )
             sale.items.append(sale_item)
         
-        # Handle stock updates when status changes to finalized
+        # Handle stock updates for status changes
         if old_status != 'finalized' and new_status == 'finalized':
             # Stock should be reduced when status changes to finalized
             for item_data in sale_data.items:
@@ -372,6 +475,69 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Sale invoice status changed from finalized: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+        elif old_status == 'finalized' and new_status == 'finalized':
+            # For saved invoices, handle stock changes for added/removed items
+            for item_tuple in added_items:
+                product_id, non_product_id, quantity = item_tuple
+                if product_id:
+                    # Regular product - reduce stock for new item
+                    success, result = update_product_stock(
+                        product_id=product_id,
+                        product_type='regular',
+                        quantity_change=-quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item added to finalized sale: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                elif non_product_id:
+                    # Non-product - reduce stock for new item
+                    success, result = update_product_stock(
+                        product_id=non_product_id,
+                        product_type='non',
+                        quantity_change=-quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item added to finalized sale: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+            
+            for item_tuple in removed_items:
+                product_id, non_product_id, quantity = item_tuple
+                if product_id:
+                    # Regular product - restore stock for removed item
+                    success, result = update_product_stock(
+                        product_id=product_id,
+                        product_type='regular',
+                        quantity_change=quantity,  # Positive to restore
+                        movement_type='sale_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item removed from finalized sale: {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+                elif non_product_id:
+                    # Non-product - restore stock for removed item
+                    success, result = update_product_stock(
+                        product_id=non_product_id,
+                        product_type='non',
+                        quantity_change=quantity,  # Positive to restore
+                        movement_type='sale_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item removed from finalized sale: {sale.invoice_number}",
                         user_id=user_id
                     )
                     if not success:
@@ -1761,7 +1927,10 @@ def daily_book_sales():
         to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
         query = query.filter(Sale.date < to_dt)
     if payment_type and payment_type != 'All':
-        pass  # We'll filter by payment mode after fetching sales
+        if payment_type == 'Cash':
+            query = query.filter(Sale.customer_type.ilike('cash'))
+        elif payment_type == 'Credit':
+            query = query.filter(Sale.customer_type.ilike('credit'))
     if salesman and salesman != 'all':
         query = query.filter(User.username == salesman)
     if search:
@@ -1769,16 +1938,15 @@ def daily_book_sales():
             (Sale.invoice_number.ilike(f'%{search}%')) |
             (Customer.customer_name.ilike(f'%{search}%'))
         )
-    # Only show finalized and paid sales
+    # Only show finalized sales
     query = query.filter(Sale.status == 'finalized')
-    query = query.filter(Sale.paid_amount > 0)
     sales = query.order_by(Sale.date.desc()).all()
     result = []
     for idx, sale in enumerate(sales, 1):
         boxes = sum(item.quantity for item in sale.items)
-        # Sum payments by mode for this sale
         cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
-        credit_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'credit')
+        # For credit sales, show the invoice amount as credit; for others, 0
+        credit_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'credit' else 0
         result.append({
             'id': sale.id,
             'slNo': idx,
@@ -1788,17 +1956,9 @@ def daily_book_sales():
             'invoiceNo': sale.invoice_number,
             'customerName': sale.customer.customer_name if sale.customer else '',
             'vat': float(sale.vat_amount),
-            'credit': credit_paid,
+            'credit': credit_amount,
             'cash': cash_paid,
         })
-    # Filter result by actual payment mode if needed
-    if payment_type and payment_type != 'All':
-        payment_type_lower = payment_type.lower()
-        filtered_result = []
-        for entry, sale in zip(result, sales):
-            if any(p.payment_mode and p.payment_mode.lower() == payment_type_lower for p in sale.payments):
-                filtered_result.append(entry)
-        result = filtered_result
     return jsonify(result)
 
 @app.route('/api/reports/customer-statement', methods=['GET'])
@@ -2073,6 +2233,7 @@ def create_purchase_invoice():
 def get_purchase_invoice(invoice_id):
     invoice = PurchaseInvoice.query.get_or_404(invoice_id)
     return jsonify(invoice.to_dict())
+
 
 @app.route('/api/debug/products', methods=['GET'])
 def debug_products():
@@ -6197,6 +6358,8 @@ def supplier_aging_report():
 def get_business_date_api():
     business_date = get_business_date()
     return jsonify({"businessDate": business_date.isoformat()})
+
+
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

@@ -166,8 +166,8 @@ export default function ProductPurchaseReport() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-              <div>
+            <div className="flex flex-wrap gap-3 items-end">
+              <div style={{ minWidth: 180, flex: '1 1 180px' }}>
                 <Label>From Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -192,8 +192,7 @@ export default function ProductPurchaseReport() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
-              <div>
+              <div style={{ minWidth: 180, flex: '1 1 180px' }}>
                 <Label>To Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
@@ -218,8 +217,7 @@ export default function ProductPurchaseReport() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
-              <div>
+              <div style={{ minWidth: 120, flex: '1 1 120px' }}>
                 <Select value={showAll} onValueChange={setShowAll}>
                   <SelectTrigger>
                     <SelectValue />
@@ -230,23 +228,35 @@ export default function ProductPurchaseReport() {
                   </SelectContent>
                 </Select>
               </div>
-              
-              <div>
-                <Button 
-                  className="bg-blue-500 hover:bg-blue-600 w-full"
+              <div style={{ minWidth: 160, flex: '2 1 160px' }}>
+                <Input
+                  placeholder="Search:"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex gap-2" style={{ minWidth: 320 }}>
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600"
+                  style={{ minWidth: 80 }}
                   onClick={handleSearch}
                   disabled={isLoading}
                 >
                   {isLoading ? "Searching..." : "Search"}
                 </Button>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+                <Button
+                  className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                  style={{ minWidth: 70 }}
+                  onClick={handlePrint}
+                >
                   <Printer size={16} />
                   Print
                 </Button>
-                <Button className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white">
+                <Button
+                  className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white"
+                  style={{ minWidth: 160 }}
+                >
                   Compare with Purchase
                 </Button>
               </div>
@@ -268,18 +278,6 @@ export default function ProductPurchaseReport() {
                 <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} /> Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
-                  <Printer size={14} /> Print
-                </Button>
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                <Input
-                  placeholder="Search:"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-48"
-                />
               </div>
             </div>
           </CardHeader>

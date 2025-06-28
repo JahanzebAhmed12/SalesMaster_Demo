@@ -87,14 +87,35 @@ function InvoiceTemplate({ data }: { data: InvoiceData }) {
             <span>Porterage</span><span>£{sale?.porterage?.toFixed(2) ?? "0.00"}</span>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: 4, fontWeight: "bold" }}>
-            <span>TOTAL</span><span>£{sale?.total_amount?.toFixed(2) ?? "0.00"}</span>
+            <span>TOTAL</span>
+            <span>£{(sale?.total_amount ?? sale?.totalAmount ?? 0).toFixed(2)}</span>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-            <span>CREDIT</span><span>£{sale?.paid_amount?.toFixed(2) ?? "0.00"}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: 4, fontWeight: "bold" }}>
-            <span>BALANCE</span><span>£{balance?.toFixed(2) ?? "0.00"}</span>
-          </div>
+
+          {sale?.customer_type === "cash" ? (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
+                <span>PAID</span>
+                <span>
+                  {(sale?.payment_mode ?? sale?.paymentMode ?? "cash")} £{(sale?.paid_amount ?? sale?.paidAmount ?? 0).toFixed(2)}
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
+                <span>CREDIT</span>
+                <span>
+                  £{((sale?.total_amount ?? sale?.totalAmount ?? 0) - (sale?.paid_amount ?? sale?.paidAmount ?? 0)).toFixed(2)}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
+                <span>BALANCE</span>
+                <span>
+                  £{((sale?.total_amount ?? sale?.totalAmount ?? 0) - (sale?.paid_amount ?? sale?.paidAmount ?? 0)).toFixed(2)}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
       {/* Footer */}
