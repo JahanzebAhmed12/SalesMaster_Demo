@@ -7,3 +7,6 @@ pydantic==2.6.3
 flask_sqlalchemy
 flask_migrate
 flask-jwt-extended
+flask-mail
+WeasyPrint  
+xhtml2pdf

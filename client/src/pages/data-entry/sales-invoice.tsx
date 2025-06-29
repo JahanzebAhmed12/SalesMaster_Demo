@@ -47,23 +47,34 @@ interface StockItem {
   location: string | null;
 }
 
+interface HeldInvoice {
+  holdId: string;
+  customerId: string;
+  notes: string;
+  saleItems: any[];
+  holdTime: string;
+}
+
 const SalesInvoice = () => {
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
-  const [location, setLocation] = useLocation();
+  const [locationStr, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Extract only customerId, vehicleDetails, gateNumber from URL
-  const queryParams = new URLSearchParams(window.location.search);
-  const customerIdFromUrl = queryParams.get('customerId');
-  const vehicleDetailsFromUrl = queryParams.get('vehicleDetails');
-  const gateNumberFromUrl = queryParams.get('gateNumber');
+  // Use the latest location from useLocation
+  
+  
 
-  // State for current sale and items
-  const [currentSale, setCurrentSale] = useState<Sale | null>(null);
-  const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
-  const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
-  const [selectedProductId, setSelectedProductId] = useState<string>("");
+
+  
+
+// Log at the top of the component
+
+// State for current sale and items
+const [currentSale, setCurrentSale] = useState<Sale | null>(null);
+const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
+const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
+const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [itemQuantity, setItemQuantity] = useState<number>(1);
   const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
   const [isCreatingSale, setIsCreatingSale] = useState(false);
@@ -72,7 +83,7 @@ const SalesInvoice = () => {
   const [gateNumber, setGateNumber] = useState<string>("");
   const [notes, setNotes] = useState<string>("");
   const [status, setStatus] = useState<string>("draft");
-
+  
   // Stock search state
   const [productSearch, setProductSearch] = useState("");
   const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct)[]>([]);
@@ -80,6 +91,44 @@ const SalesInvoice = () => {
   const [highlightedProduct, setHighlightedProduct] = useState(-1);
   const productInputRef = useRef<HTMLInputElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(()=>{
+    // const queryParams = new URLSearchParams(locationStr.split('?')[1] || '');
+    const params = new URLSearchParams(window.location.search);
+      console.log(params)
+
+
+    const customerIdFromUrl = params.get('customerId');
+
+    console.log(customerIdFromUrl, "bbbbbbbbb")
+    if(customerIdFromUrl){
+      setCustomerId(customerIdFromUrl as any)
+    }
+    // const vehicleDetailsFromUrl = queryParams.get('vehicleDetails');
+    // const gateNumberFromUrl = queryParams.get('gateNumber');
+    // const heldInvoiceIdFromUrl = queryParams.get('heldInvoiceId');
+  
+  }, [])
+
+  // Restore draft saleItems if present and not a held invoice
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const heldInvoiceIdFromUrl = params.get('heldInvoiceId');
+    if (!heldInvoiceIdFromUrl) {
+      const draft = localStorage.getItem('currentInvoiceDraft');
+      if (draft) {
+        try {
+          const items = JSON.parse(draft);
+          if (Array.isArray(items) && items.length > 0) {
+            setSaleItems(items);
+            console.log('Restored draft saleItems:', items);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  }, []);
 
   // Fetch current stock
   const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
@@ -141,7 +190,7 @@ const SalesInvoice = () => {
     // For saved invoices, show actual database stock to prevent double reduction
     if (!currentSale) {
       // Calculate real-time stock reduction based on items in current invoice (not yet saved)
-      const reservedQuantity = saleItems
+      const currentInvoiceReservedQuantity = saleItems
         .filter(saleItem => {
           if (type === 'regular') {
             return saleItem.productId === productId;
@@ -151,7 +200,26 @@ const SalesInvoice = () => {
         })
         .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
       
-      return Math.max(0, item.currentStock - reservedQuantity);
+      // Calculate reserved quantity from all held invoices
+      const heldInvoicesReservedQuantity = (heldInvoices as HeldInvoice[])
+        .filter((heldInvoice: HeldInvoice) => {
+          // Skip the current invoice if it's being held
+          return heldInvoice.holdId !== (currentSale as any)?.holdId;
+        })
+        .flatMap(heldInvoice => heldInvoice.saleItems || [])
+        .filter(saleItem => {
+          if (type === 'regular') {
+            return saleItem.productId === productId;
+          } else {
+            return saleItem.nonProductId === productId;
+          }
+        })
+        .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
+      
+      // Total reserved quantity = current invoice + all held invoices
+      const totalReservedQuantity = currentInvoiceReservedQuantity + heldInvoicesReservedQuantity;
+      
+      return Math.max(0, item.currentStock - totalReservedQuantity);
     } else {
       // For saved invoices, return actual database stock
       return item.currentStock;
@@ -198,17 +266,17 @@ const SalesInvoice = () => {
   }, [selectedProductId, selectedProductType, regularProducts, nonProducts]);
 
   // Extract from URL for initial values and pre-populate customer details
-  useEffect(() => {
-    if (customerIdFromUrl) {
-      setCustomerId(customerIdFromUrl);
-    }
-    if (vehicleDetailsFromUrl) {
-      setVehicleDetails(vehicleDetailsFromUrl);
-    }
-    if (gateNumberFromUrl) {
-      setGateNumber(gateNumberFromUrl);
-    }
-  }, [customerIdFromUrl, vehicleDetailsFromUrl, gateNumberFromUrl]);
+  // useEffect(() => {
+  //   if (customerIdFromUrl) {
+  //     setCustomerId(customerIdFromUrl);
+  //   }
+  //   if (vehicleDetailsFromUrl) {
+  //     setVehicleDetails(vehicleDetailsFromUrl);
+  //   }
+  //   if (gateNumberFromUrl) {
+  //     setGateNumber(gateNumberFromUrl);
+  //   }
+  // }, [customerIdFromUrl, vehicleDetailsFromUrl, gateNumberFromUrl]);
 
   // Get customer details for display
   const selectedCustomer = customers?.find(c => c.id === parseInt(customerId));
@@ -422,7 +490,9 @@ const SalesInvoice = () => {
   };
 
   // Save handler: create sale only when Save is clicked
-  const handleSaveInvoice = () => {
+  const [mailInvoice, setMailInvoice] = useState(false);
+  const [printInvoice, setPrintInvoice] = useState(false);
+  const handleSaveInvoice = (mailInvoice = false, printInvoice = false) => {
     if (!customerId) {
       toast({
         title: "Validation Error",
@@ -443,7 +513,7 @@ const SalesInvoice = () => {
 
     setIsCreatingSale(true);
     const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
-    const payload: Partial<BackendSalePayload> = {
+    const payload: Partial<BackendSalePayload & { mailInvoice?: boolean }> = {
       customer_id: parseInt(customerId),
       customer_type: "credit",
       payment_status: "pending",
@@ -463,8 +533,15 @@ const SalesInvoice = () => {
         unit_price: item.unitPrice,
         total_price: item.totalPrice,
       })),
+      mailInvoice,
     };
-    createSaleMutation.mutate(payload);
+    createSaleMutation.mutate(payload, {
+      onSuccess: (response) => {
+        if (printInvoice && response?.invoiceNumber) {
+          window.open(`/print/invoice/${response.invoiceNumber}`, '_blank');
+        }
+      }
+    });
   };
 
   const calculateTotalSummary = () => {
@@ -490,6 +567,140 @@ const SalesInvoice = () => {
       setStatus("draft");
       setLocation("/data-entry/sales-entry");
     }
+  };
+
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editItem, setEditItem] = useState<any>(null);
+
+  const [heldInvoices, setHeldInvoices] = useState<HeldInvoice[]>([]);
+
+  // Load held invoices from localStorage on mount
+  useEffect(() => {
+    setHeldInvoices(JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[]);
+  }, []);
+
+  // Handle held invoice resumption from URL parameter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const heldInvoiceIdFromUrl = params.get('heldInvoiceId');
+    console.log('Restore effect running, heldInvoiceIdFromUrl:', heldInvoiceIdFromUrl);
+    if (heldInvoiceIdFromUrl) {
+      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
+      const invoice = held.find(inv => inv.holdId === heldInvoiceIdFromUrl);
+      if (invoice) {
+        console.log('Restoring saleItems from held invoice:', invoice.saleItems);
+        if (invoice.saleItems.length > 0) {
+          invoice.saleItems.forEach((item, idx) => {
+            console.log(`  [restore] Item ${idx}:`, item, Object.keys(item));
+          });
+        }
+        setCustomerId(invoice.customerId);
+        setVehicleDetails(invoice.vehicleDetails || "");
+        setGateNumber(invoice.gateNumber || "");
+        setNotes(invoice.notes);
+        // If products are loaded, format items immediately
+        if (regularProducts && nonProducts) {
+          const formattedItems = invoice.saleItems.map((item, idx) => {
+            let productName = item.productName;
+            if (!productName) {
+              if (item.productId) {
+                const product = regularProducts.find(p => p.id === item.productId);
+                productName = product?.description || `Product ${item.productId}`;
+              } else if (item.nonProductId) {
+                const product = nonProducts.find(p => p.id === item.nonProductId);
+                productName = product?.description || `Non-Product ${item.nonProductId}`;
+              }
+            }
+            const totalPrice = item.totalPrice || (item.quantity * item.unitPrice);
+            const formatted = {
+              ...item,
+              productName,
+              totalPrice
+            };
+            console.log(`[format immediate] Item ${idx}:`, formatted, Object.keys(formatted));
+            return formatted;
+          });
+          console.log('Setting formatted saleItems:', formattedItems);
+          setSaleItems(formattedItems);
+        } else {
+          setSaleItems(invoice.saleItems);
+        }
+        // Remove from held list after successful restoration
+        const updated = held.filter(inv => inv.holdId !== heldInvoiceIdFromUrl);
+        setHeldInvoices(updated);
+        localStorage.setItem('heldInvoices', JSON.stringify(updated));
+        toast({ title: "Invoice Resumed", description: "Held invoice has been loaded successfully." });
+      }
+    }
+  }, [toast, regularProducts, nonProducts]);
+
+  // Format sale items once products are loaded (for held invoices that were resumed before products loaded)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const heldInvoiceIdFromUrl = params.get('heldInvoiceId');
+    if (regularProducts && nonProducts && saleItems.length > 0 && heldInvoiceIdFromUrl) {
+      const formattedItems = saleItems.map((item, idx) => {
+        let productName = item.productName;
+        if (!productName) {
+          if (item.productId) {
+            const product = regularProducts.find(p => p.id === item.productId);
+            productName = product?.description || `Product ${item.productId}`;
+          } else if (item.nonProductId) {
+            const product = nonProducts.find(p => p.id === item.nonProductId);
+            productName = product?.description || `Non-Product ${item.nonProductId}`;
+          }
+        }
+        const totalPrice = item.totalPrice || (item.quantity * item.unitPrice);
+        const formatted = {
+          ...item,
+          productName,
+          totalPrice
+        };
+        console.log(`[format after products loaded] Item ${idx}:`, formatted, Object.keys(formatted));
+        return formatted;
+      });
+      console.log('Re-formatting saleItems after products loaded:', formattedItems);
+      setSaleItems(formattedItems);
+    }
+  }, [regularProducts, nonProducts, saleItems.length]);
+
+  // --- LOGGING: Before rendering table ---
+  // Place this just before rendering the table
+  console.log('Rendering saleItems:', saleItems);
+  if (saleItems.length > 0) {
+    saleItems.forEach((item, idx) => {
+      console.log(`  [render] Item ${idx}:`, item, Object.keys(item));
+    });
+  }
+
+  const handleHoldInvoice = () => {
+    const holdId = Date.now().toString();
+    console.log('Saving saleItems to held invoice:', saleItems);
+    if (saleItems.length > 0) {
+      saleItems.forEach((item, idx) => {
+        console.log(`  [save] Item ${idx}:`, item, Object.keys(item));
+      });
+    }
+    const invoiceData = {
+      customerId,
+      vehicleDetails,
+      gateNumber,
+      notes,
+      saleItems,
+      holdId,
+      holdTime: new Date().toISOString(),
+    };
+    const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
+    held.push(invoiceData);
+    localStorage.setItem('heldInvoices', JSON.stringify(held));
+    setHeldInvoices(held);
+    // Clear current form
+    setCustomerId("");
+    setVehicleDetails("");
+    setGateNumber("");
+    setNotes("");
+    setSaleItems([]);
+    toast({ title: "Invoice Held", description: "You can resume it later from Held Invoices." });
   };
 
   if (isCreatingSale) {
@@ -618,6 +829,11 @@ const SalesInvoice = () => {
               <Input className="w-48" />
             </div>
           </div>
+
+          {/* Add Hold/Resume UI at the top of the page */}
+          <div className="flex items-center gap-4 mb-4">
+            <Button onClick={handleHoldInvoice} variant="outline">Hold Invoice</Button>
+          </div>
         </div>
 
         {/* Products Table */}
@@ -638,55 +854,103 @@ const SalesInvoice = () => {
                 <TableBody>
                   {/* Existing items */}
                   {saleItems.map((item, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{item.productName}</TableCell>
-                      <TableCell className="text-center">
-                        {item.productId
-                          ? getCurrentStock(item.productId, 'regular')
-                          : item.nonProductId
-                            ? getCurrentStock(item.nonProductId, 'non')
-                            : '-'}
-                      </TableCell>
-                      <TableCell className="text-center">{item.quantity}</TableCell>
-                      <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">
-                        <Button size="sm" variant="destructive" onClick={() => {
-                          const updatedItems = saleItems.filter((_, i) => i !== index);
-                          if (currentSale) {
-                            const updatedSalePayload: BackendSalePayload = {
-                              invoice_number: currentSale.invoiceNumber,
-                              customer_id: currentSale.customerId,
-                              customer_type: currentSale.customerType,
-                              payment_status: currentSale.paymentStatus,
-                              subtotal: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
-                              porterage: currentSale.porterage,
-                              vat_rate: currentSale.vatRate,
-                              vat_amount: currentSale.vatAmount,
-                              total_amount: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
-                              vehicle_details: currentSale.vehicleDetails,
-                              gate_number: currentSale.gateNumber,
-                              notes: currentSale.notes,
-                              status: currentSale.status,
-                              items: updatedItems.map(item => ({
-                                product_id: item.productId,
-                                non_product_id: item.nonProductId,
-                                quantity: item.quantity,
-                                unit_price: item.unitPrice,
-                                total_price: item.totalPrice,
-                              })),
-                            };
-                            updateSaleMutation.mutate(updatedSalePayload);
+                    editingIndex === index ? (
+                      <TableRow key={index}>
+                        <TableCell>{item.productName}</TableCell>
+                        <TableCell className="text-center">
+                          {item.productId
+                            ? getCurrentStock(item.productId, 'regular')
+                            : item.nonProductId
+                              ? getCurrentStock(item.nonProductId, 'non')
+                              : '-'}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Input
+                            type="number"
+                            value={editItem?.quantity ?? item.quantity}
+                            onChange={e => setEditItem({...item, quantity: parseInt(e.target.value) || 0})}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={editItem?.unitPrice ?? item.unitPrice}
+                            onChange={e => setEditItem({...item, unitPrice: parseFloat(e.target.value) || 0})}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          £{((editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice)).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button size="sm" onClick={() => {
+                            // Save changes
+                            const updatedItems = saleItems.map((it, i) => i === index ? {...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice)} : it);
                             setSaleItems(updatedItems);
-                          } else {
-                            setSaleItems(updatedItems);
-                          }
-                          toast({title: "Item Removed", description: "Sale item has been removed."});
-                        }}>
-                          Remove
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                            setEditingIndex(null);
+                            setEditItem(null);
+                          }}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setEditingIndex(null);
+                            setEditItem(null);
+                          }}>Cancel</Button>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      <TableRow key={index}>
+                        <TableCell>{item.productName}</TableCell>
+                        <TableCell className="text-center">
+                          {item.productId
+                            ? getCurrentStock(item.productId, 'regular')
+                            : item.nonProductId
+                              ? getCurrentStock(item.nonProductId, 'non')
+                              : '-'}
+                        </TableCell>
+                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">
+                          <Button size="sm" variant="outline" onClick={() => {
+                            setEditingIndex(index);
+                            setEditItem(item);
+                          }}>Edit</Button>
+                          <Button size="sm" variant="destructive" onClick={() => {
+                            const updatedItems = saleItems.filter((_, i) => i !== index);
+                            if (currentSale) {
+                              const updatedSalePayload: BackendSalePayload = {
+                                invoice_number: currentSale.invoiceNumber,
+                                customer_id: currentSale.customerId,
+                                customer_type: currentSale.customerType,
+                                payment_status: currentSale.paymentStatus,
+                                subtotal: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                                porterage: currentSale.porterage,
+                                vat_rate: currentSale.vatRate,
+                                vat_amount: currentSale.vatAmount,
+                                total_amount: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                                vehicle_details: currentSale.vehicleDetails,
+                                gate_number: currentSale.gateNumber,
+                                notes: currentSale.notes,
+                                status: currentSale.status,
+                                items: updatedItems.map(item => ({
+                                  product_id: item.productId,
+                                  non_product_id: item.nonProductId,
+                                  quantity: item.quantity,
+                                  unit_price: item.unitPrice,
+                                  total_price: item.totalPrice,
+                                })),
+                              };
+                              updateSaleMutation.mutate(updatedSalePayload);
+                              setSaleItems(updatedItems);
+                            } else {
+                              setSaleItems(updatedItems);
+                            }
+                            toast({title: "Item Removed", description: "Sale item has been removed."});
+                          }}>
+                            Remove
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
                   ))}
                   {/* New item entry row */}
                   <TableRow style={{ overflow: "visible" }}>
@@ -779,7 +1043,6 @@ const SalesInvoice = () => {
               <div className="text-sm text-gray-500 mt-2">
                 Showing {saleItems.length} of {saleItems.length} entries
               </div>
-              
               {/* Pagination (can be removed or simplified if not needed for sales items) */}
               <div className="flex justify-between items-center mt-4">
                 <Button variant="outline" size="sm">◀</Button>
@@ -817,17 +1080,27 @@ const SalesInvoice = () => {
                 </div>
               </div>
               <div className="mt-4 flex gap-2">
-                {!currentSale && (
-                  <Button variant="outline" size="sm" className="w-full" onClick={handleCloseInvoice}>
-                    Close Invoice
-                  </Button>
-                )}
-                <Button variant="outline" size="sm" className="w-full" onClick={handleSaveInvoice} disabled={!!currentSale}>
+                <Button variant="outline" size="sm" className="w-full" onClick={() => handleSaveInvoice(mailInvoice, printInvoice)} disabled={!!currentSale}>
                   Save Invoice
                 </Button>
-                <Button variant="destructive" size="sm" className="w-full" onClick={() => deleteSaleMutation.mutate()} disabled={!currentSale}>
-                  Delete Invoice
-                </Button>
+              </div>
+              <div className="flex items-center gap-4 mt-2">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={mailInvoice}
+                    onChange={e => setMailInvoice(e.target.checked)}
+                  />
+                  Mail invoice to customer
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={printInvoice}
+                    onChange={e => setPrintInvoice(e.target.checked)}
+                  />
+                  Print invoice automatically
+                </label>
               </div>
             </CardContent>
           </Card>

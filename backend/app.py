@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, current_app
 from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
@@ -16,6 +16,7 @@ from calendar import monthrange
 from sqlalchemy import func, or_, extract, literal
 import calendar
 import time
+from mail_utils import init_mail, send_invoice_email
 
 # Load environment variables
 load_dotenv()
@@ -237,6 +238,10 @@ def get_sales():
     sales = Sale.query.all()
     return jsonify([sale.to_dict() for sale in sales])
 
+def send_invoice_email_placeholder(email, sale):
+    # Deprecated: use mail_utils.send_invoice_email
+    pass
+
 @app.route('/api/sales', methods=['POST'])
 @jwt_required()
 def create_sale():
@@ -349,6 +354,11 @@ def create_sale():
             
             # Return the result
             result = new_sale.to_dict()
+            # Mail invoice if requested
+            if request.json.get('mailInvoice'):
+                customer = Customer.query.get(new_sale.customer_id)
+                if customer and customer.email:
+                    send_invoice_email(mail, customer.email, new_sale, customer)
             return jsonify(result), 201
             
         except Exception as e:
@@ -395,6 +405,13 @@ def update_sale(id):
         # Find new items that need stock reduction
         added_items = new_items - old_items
         removed_items = old_items - new_items
+        
+        # Debug logging
+        print(f"[DEBUG] Old items: {old_items}")
+        print(f"[DEBUG] New items: {new_items}")
+        print(f"[DEBUG] Added items: {added_items}")
+        print(f"[DEBUG] Removed items: {removed_items}")
+        print(f"[DEBUG] Old status: {old_status}, New status: {new_status}")
         
         # Update sale fields
         for key, value in sale_data.dict(exclude={'items'}).items():
@@ -479,8 +496,8 @@ def update_sale(id):
                     )
                     if not success:
                         return jsonify({"error": f"Stock restoration failed: {result}"}), 400
-        elif old_status == 'finalized' and new_status == 'finalized':
-            # For saved invoices, handle stock changes for added/removed items
+        else:
+            # For any other status changes (including when status remains the same), handle stock changes for added/removed items
             for item_tuple in added_items:
                 product_id, non_product_id, quantity = item_tuple
                 if product_id:
@@ -492,7 +509,7 @@ def update_sale(id):
                         movement_type='sale',
                         reference_id=sale.id,
                         reference_type='sale',
-                        remarks=f"Item added to finalized sale: {sale.invoice_number}",
+                        remarks=f"Item added to sale: {sale.invoice_number}",
                         user_id=user_id
                     )
                     if not success:
@@ -506,7 +523,7 @@ def update_sale(id):
                         movement_type='sale',
                         reference_id=sale.id,
                         reference_type='sale',
-                        remarks=f"Item added to finalized sale: {sale.invoice_number}",
+                        remarks=f"Item added to sale: {sale.invoice_number}",
                         user_id=user_id
                     )
                     if not success:
@@ -523,7 +540,7 @@ def update_sale(id):
                         movement_type='sale_cancellation',
                         reference_id=sale.id,
                         reference_type='sale',
-                        remarks=f"Item removed from finalized sale: {sale.invoice_number}",
+                        remarks=f"Item removed from sale: {sale.invoice_number}",
                         user_id=user_id
                     )
                     if not success:
@@ -537,13 +554,85 @@ def update_sale(id):
                         movement_type='sale_cancellation',
                         reference_id=sale.id,
                         reference_type='sale',
-                        remarks=f"Item removed from finalized sale: {sale.invoice_number}",
+                        remarks=f"Item removed from sale: {sale.invoice_number}",
                         user_id=user_id
                     )
                     if not success:
                         return jsonify({"error": f"Stock restoration failed: {result}"}), 400
         
         db.session.commit()
+        
+        # Additional stock update for any added/removed items that weren't processed above
+        if added_items or removed_items:
+            print(f"[DEBUG] Processing additional stock updates for added: {added_items}, removed: {removed_items}")
+            for item_tuple in added_items:
+                product_id, non_product_id, quantity = item_tuple
+                if product_id:
+                    # Regular product - reduce stock for new item
+                    success, result = update_product_stock(
+                        product_id=product_id,
+                        product_type='regular',
+                        quantity_change=-quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item added to sale (fallback): {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        print(f"[DEBUG] Stock update failed: {result}")
+                elif non_product_id:
+                    # Non-product - reduce stock for new item
+                    success, result = update_product_stock(
+                        product_id=non_product_id,
+                        product_type='non',
+                        quantity_change=-quantity,  # Negative for sales
+                        movement_type='sale',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item added to sale (fallback): {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        print(f"[DEBUG] Stock update failed: {result}")
+            
+            for item_tuple in removed_items:
+                product_id, non_product_id, quantity = item_tuple
+                if product_id:
+                    # Regular product - restore stock for removed item
+                    success, result = update_product_stock(
+                        product_id=product_id,
+                        product_type='regular',
+                        quantity_change=quantity,  # Positive to restore
+                        movement_type='sale_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item removed from sale (fallback): {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        print(f"[DEBUG] Stock restoration failed: {result}")
+                elif non_product_id:
+                    # Non-product - restore stock for removed item
+                    success, result = update_product_stock(
+                        product_id=non_product_id,
+                        product_type='non',
+                        quantity_change=quantity,  # Positive to restore
+                        movement_type='sale_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Item removed from sale (fallback): {sale.invoice_number}",
+                        user_id=user_id
+                    )
+                    if not success:
+                        print(f"[DEBUG] Stock restoration failed: {result}")
+        
+        # Mail invoice if requested
+        if request.json.get('mailInvoice'):
+            customer = Customer.query.get(sale.customer_id)
+            if customer and customer.email:
+                send_invoice_email(mail, customer.email, sale, customer)
+        
         return jsonify(sale.to_dict())
     except Exception as e:
         db.session.rollback()

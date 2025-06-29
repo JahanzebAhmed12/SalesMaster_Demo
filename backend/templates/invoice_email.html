@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Invoice #{{ sale.invoice_number }}</title>
+</head>
+<body>
+  <h2>Invoice #{{ sale.invoice_number }}</h2>
+  <p>Date: {{ sale.date.strftime('%d-%m-%Y') }}</p>
+  <p>Customer: {{ customer.customer_name }}</p>
+  <hr>
+  <table border="1" cellpadding="5" cellspacing="0">
+    <tr>
+      <th>Product</th>
+      <th>Qty</th>
+      <th>Unit Price</th>
+      <th>Total</th>
+    </tr>
+    {% for item in sale.items %}
+    <tr>
+      <td>{{ item.product_name or item.non_product_name }}</td>
+      <td>{{ item.quantity }}</td>
+      <td>£{{ '%.2f'|format(item.unit_price) }}</td>
+      <td>£{{ '%.2f'|format(item.total_price) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <hr>
+  <p><strong>Total: £{{ '%.2f'|format(sale.total_amount) }}</strong></p>
+</body>
+</html>
