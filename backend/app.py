@@ -53,6 +53,9 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 db.init_app(app)
 migrate = Migrate(app, db)
 
+# Initialize mail system
+mail = init_mail(app)
+
 # Database health check function
 def check_database_health():
     """Check if database is healthy and accessible"""
@@ -303,14 +306,27 @@ def create_sale():
             stock_updates = []
             
             for item_data in sale_data.items:
+                # Determine product name
+                product_name = None
+                if item_data.product_id:
+                    product = RegularProduct.query.get(item_data.product_id)
+                    if product:
+                        product_name = product.description
+                elif item_data.non_product_id:
+                    product = NonProduct.query.get(item_data.non_product_id)
+                    if product:
+                        product_name = product.description
                 new_item = SaleItem(
                     sale_id=new_sale.id,
                     product_id=item_data.product_id,
                     non_product_id=item_data.non_product_id,
                     quantity=item_data.quantity,
                     unit_price=item_data.unit_price,
-                    total_price=item_data.total_price
+                    total_price=item_data.total_price,
+                    notes=item_data.notes
                 )
+                # Attach productName for template use
+                new_item.productName = product_name
                 sale_items.append(new_item)
                 
                 # Prepare stock updates if sale is finalized
@@ -358,7 +374,12 @@ def create_sale():
             if request.json.get('mailInvoice'):
                 customer = Customer.query.get(new_sale.customer_id)
                 if customer and customer.email:
-                    send_invoice_email(mail, customer.email, new_sale, customer)
+                    try:
+                        send_invoice_email(mail, customer.email, new_sale, customer)
+                        print(f"Email sent successfully to {customer.email}")
+                    except Exception as e:
+                        print(f"Failed to send email: {str(e)}")
+                        # Don't fail the sale creation if email fails
             return jsonify(result), 201
             
         except Exception as e:
@@ -423,13 +444,26 @@ def update_sale(id):
         # Update sale items
         sale.items = []  # Clear existing items
         for item_data in sale_data.items:
+            # Determine product name
+            product_name = None
+            if item_data.product_id:
+                product = RegularProduct.query.get(item_data.product_id)
+                if product:
+                    product_name = product.description
+            elif item_data.non_product_id:
+                product = NonProduct.query.get(item_data.non_product_id)
+                if product:
+                    product_name = product.description
             sale_item = SaleItem(
                 product_id=item_data.product_id,
                 non_product_id=item_data.non_product_id,
                 quantity=item_data.quantity,
                 unit_price=item_data.unit_price,
-                total_price=item_data.total_price
+                total_price=item_data.total_price,
+                notes=item_data.notes
             )
+            # Attach productName for template use
+            sale_item.productName = product_name
             sale.items.append(sale_item)
         
         # Handle stock updates for status changes
@@ -631,7 +665,7 @@ def update_sale(id):
         if request.json.get('mailInvoice'):
             customer = Customer.query.get(sale.customer_id)
             if customer and customer.email:
-                send_invoice_email(mail, customer.email, sale, customer)
+                send_invoice_email(customer.email, sale, customer)
         
         return jsonify(sale.to_dict())
     except Exception as e:
@@ -2689,7 +2723,16 @@ def sales_analysis_report():
 
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
-# Fetch all sales in range
+    
+    # Create list of dates between from_date and to_date
+    date_list = []
+    current_date = from_dt.date()
+    end_date = to_dt.date()
+    while current_date < end_date:
+        date_list.append(current_date)
+        current_date += timedelta(days=1)
+    
+    # Fetch all sales in range
     sales = Sale.query.filter(
         Sale.date >= from_dt,
         Sale.date < to_dt,
@@ -6448,7 +6491,40 @@ def get_business_date_api():
     business_date = get_business_date()
     return jsonify({"businessDate": business_date.isoformat()})
 
-
+@app.route('/api/test/mail', methods=['POST'])
+def test_mail():
+    """Test endpoint to check if mail functionality works"""
+    try:
+        data = request.get_json()
+        test_email = data.get('email', 'test@example.com')
+        
+        # Create a test sale and customer
+        test_customer = Customer(
+            customer_code='TEST001',
+            customer_name='Test Customer',
+            email=test_email
+        )
+        
+        test_sale = Sale(
+            invoice_number='TEST-001',
+            customer_id=1,  # This will be replaced
+            subtotal=100.00,
+            total_amount=100.00,
+            status='finalized'
+        )
+        
+        # Try to send email
+        send_invoice_email(mail, test_email, test_sale, test_customer)
+        
+        return jsonify({
+            "success": True,
+            "message": f"Test email sent to {test_email}"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True) 

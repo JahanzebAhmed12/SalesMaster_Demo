@@ -63,7 +63,6 @@ const menuSections: MenuSection[] = [
       { title: "Product Sales Report", path: "/daily-report/product-sales-report" },
       { title: "Product Purchase Report", path: "/daily-report/product-purchase-report" },
       { title: "Profit Loss", path: "/daily-report/profit-loss" },
-      { title: "Stock Template-print ", path: "/daily-report/stock-template" },
       { title: "Sales Analysis", path: "/daily-report/sales-analysis" },
       { title: "Daily Accounts", path: "/daily-report/daily-accounts" },
     ],

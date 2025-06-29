@@ -92,6 +92,7 @@ class SaleItem(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)
     total_price = db.Column(db.Numeric(10, 2), nullable=False)
+    notes = db.Column(db.Text)  # Notes for the product item
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -109,6 +110,7 @@ class SaleItem(db.Model):
             'quantity': self.quantity,
             'unitPrice': float(self.unit_price),
             'totalPrice': float(self.total_price),
+            'notes': self.notes,
             'createdAt': self.created_at.isoformat(),
             'updatedAt': self.updated_at.isoformat()
         }

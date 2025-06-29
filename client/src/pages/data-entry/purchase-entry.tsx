@@ -76,7 +76,11 @@ export default function PurchaseEntry() {
         description: "Purchase entry created successfully",
       });
       form.reset();
-      setLocation(`/data-entry/purchase-invoice?purchaseId=${purchase.id}`);
+      
+      // Add a small delay to ensure the cache is set before navigation
+      setTimeout(() => {
+        setLocation(`/data-entry/purchase-invoice?purchaseId=${purchase.id}`);
+      }, 100);
     },
     onError: () => {
       toast({

@@ -81,6 +81,9 @@ export default function StockCheck() {
     os: filteredData.reduce((sum, item) => sum + item.os, 0),
     ns: filteredData.reduce((sum, item) => sum + item.ns, 0),
     sales: filteredData.reduce((sum, item) => sum + item.sales, 0),
+    crtn: filteredData.reduce((sum, item) => sum + item.crtn, 0),
+    dmps: filteredData.reduce((sum, item) => sum + item.dmps, 0),
+    srtn: filteredData.reduce((sum, item) => sum + item.srtn, 0),
     stock: filteredData.reduce((sum, item) => sum + item.stock, 0),
     clStock: filteredData.reduce((sum, item) => sum + item.clStock, 0)
   };
@@ -413,9 +416,9 @@ export default function StockCheck() {
                       <TableCell className="text-center font-bold">{totals.os}</TableCell>
                       <TableCell className="text-center font-bold">{totals.ns}</TableCell>
                       <TableCell className="text-center font-bold">{totals.sales}</TableCell>
-                      <TableCell className="text-center font-bold">0</TableCell>
-                      <TableCell className="text-center font-bold">0</TableCell>
-                      <TableCell className="text-center font-bold">0</TableCell>
+                      <TableCell className="text-center font-bold">{totals.crtn}</TableCell>
+                      <TableCell className="text-center font-bold">{totals.dmps}</TableCell>
+                      <TableCell className="text-center font-bold">{totals.srtn}</TableCell>
                       <TableCell className="text-center font-bold">{totals.stock}</TableCell>
                       <TableCell className="text-center font-bold">{totals.clStock}</TableCell>
                       <TableCell></TableCell>

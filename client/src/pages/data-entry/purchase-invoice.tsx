@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -13,9 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import PageLayout from "@/components/common/page-layout";
 
-const queryParams = new URLSearchParams(window.location.search);
-const purchaseId = queryParams.get("purchaseId");
-
 export default function PurchaseInvoice() {
   const { toast } = useToast();
   const [selectedProductId, setSelectedProductId] = useState("");
@@ -23,7 +20,16 @@ export default function PurchaseInvoice() {
   const [unitPrice, setUnitPrice] = useState(0);
   const [items, setItems] = useState<any[]>([]);
   const [remarks, setRemarks] = useState("");
-  const [, setLocation] = useLocation();
+  const [locationStr, setLocation] = useLocation();
+  const [purchaseId, setPurchaseId] = useState<string | null>(null);
+
+  // Extract purchaseId from URL on component mount and URL changes
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("purchaseId");
+    console.log("PurchaseInvoice: Extracted purchaseId from URL:", id);
+    setPurchaseId(id);
+  }, [locationStr]);
 
   // Fetch purchase details
   const { data: purchase, isLoading, isError, refetch } = useQuery({
@@ -31,8 +37,17 @@ export default function PurchaseInvoice() {
     queryFn: () => apiRequest("GET", `/api/purchases/${purchaseId}`),
     enabled: !!purchaseId,
     retry: 3,
-    retryDelay: 1000, // Retry after 1 second
+    retryDelay: 1000,
+    staleTime: 0, // Always fetch fresh data
+    refetchOnWindowFocus: true,
+    // Add placeholder data to prevent loading state when data is in cache
+    placeholderData: (previousData) => previousData,
   });
+
+  // Debug logging for query state
+  useEffect(() => {
+    console.log("PurchaseInvoice: Query state - purchaseId:", purchaseId, "isLoading:", isLoading, "isError:", isError, "data:", purchase);
+  }, [purchaseId, isLoading, isError, purchase]);
 
   // Fetch products
   const { data: productsData } = useQuery({
@@ -162,9 +177,23 @@ export default function PurchaseInvoice() {
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="text-center py-4">Loading purchase details...</div>
+              <div className="text-center py-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                <p>Loading purchase details...</p>
+                {purchaseId && <p className="text-sm text-gray-500">Purchase ID: {purchaseId}</p>}
+              </div>
             ) : isError ? (
-              <div className="text-center py-4 text-red-500">Error loading purchase details</div>
+              <div className="text-center py-4 text-red-500">
+                <p>Error loading purchase details</p>
+                <Button 
+                  onClick={() => refetch()} 
+                  variant="outline" 
+                  size="sm" 
+                  className="mt-2"
+                >
+                  Retry
+                </Button>
+              </div>
             ) : purchase ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
@@ -185,6 +214,11 @@ export default function PurchaseInvoice() {
                     {purchase.status}
                   </Badge>
                 </div>
+              </div>
+            ) : !purchaseId ? (
+              <div className="text-center py-4 text-gray-500">
+                <p>No purchase ID provided in URL</p>
+                <p className="text-sm">Please navigate from a purchase entry</p>
               </div>
             ) : (
               <div className="text-center py-4 text-gray-500">

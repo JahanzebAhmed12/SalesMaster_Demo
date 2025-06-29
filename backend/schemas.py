@@ -8,6 +8,7 @@ class SaleItemSchema(BaseModel):
     quantity: int
     unit_price: float
     total_price: float
+    notes: Optional[str] = None
 
     class Config:
         from_attributes = True

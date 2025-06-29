@@ -75,6 +75,7 @@ export const saleItemSchema = z.object({
   unitPrice: z.number(),
   totalPrice: z.number(),
   productName: z.string().nullable(), // For frontend display
+  notes: z.string().nullable(), // Notes for the product item
   createdAt: z.string(),
   updatedAt: z.string(),
 });

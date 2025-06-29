@@ -32,6 +32,7 @@ interface BackendSalePayload {
     quantity: number;
     unit_price: number;
     total_price: number;
+    notes: string | null;
   }>;
 }
 
@@ -50,6 +51,8 @@ interface StockItem {
 interface HeldInvoice {
   holdId: string;
   customerId: string;
+  vehicleDetails?: string;
+  gateNumber?: string;
   notes: string;
   saleItems: any[];
   holdTime: string;
@@ -75,22 +78,23 @@ const [currentSale, setCurrentSale] = useState<Sale | null>(null);
 const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
 const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
 const [selectedProductId, setSelectedProductId] = useState<string>("");
-  const [itemQuantity, setItemQuantity] = useState<number>(1);
-  const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
-  const [isCreatingSale, setIsCreatingSale] = useState(false);
-  const [customerId, setCustomerId] = useState<string>("");
-  const [vehicleDetails, setVehicleDetails] = useState<string>("");
-  const [gateNumber, setGateNumber] = useState<string>("");
-  const [notes, setNotes] = useState<string>("");
-  const [status, setStatus] = useState<string>("draft");
+const [itemQuantity, setItemQuantity] = useState<number>(1);
+const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
+const [itemNotes, setItemNotes] = useState<string>("");
+const [isCreatingSale, setIsCreatingSale] = useState(false);
+const [customerId, setCustomerId] = useState<string>("");
+const [vehicleDetails, setVehicleDetails] = useState<string>("");
+const [gateNumber, setGateNumber] = useState<string>("");
+const [notes, setNotes] = useState<string>("");
+const [status, setStatus] = useState<string>("draft");
   
-  // Stock search state
-  const [productSearch, setProductSearch] = useState("");
-  const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct)[]>([]);
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [highlightedProduct, setHighlightedProduct] = useState(-1);
-  const productInputRef = useRef<HTMLInputElement>(null);
-  const productDropdownRef = useRef<HTMLDivElement>(null);
+// Stock search state
+const [productSearch, setProductSearch] = useState("");
+const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct)[]>([]);
+const [showProductDropdown, setShowProductDropdown] = useState(false);
+const [highlightedProduct, setHighlightedProduct] = useState(-1);
+const productInputRef = useRef<HTMLInputElement>(null);
+const productDropdownRef = useRef<HTMLDivElement>(null);
   
   useEffect(()=>{
     // const queryParams = new URLSearchParams(locationStr.split('?')[1] || '');
@@ -448,6 +452,7 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
       unitPrice: itemUnitPrice,
       totalPrice: itemQuantity * itemUnitPrice,
       productName: product.description || null,
+      notes: itemNotes || null,
       id: 0,
       saleId: currentSale?.id || 0,
       createdAt: new Date().toISOString(),
@@ -478,6 +483,7 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
           quantity: item.quantity,
           unit_price: item.unitPrice,
           total_price: item.totalPrice,
+          notes: item.notes,
         })),
       };
       updateSaleMutation.mutate(updatedSalePayload);
@@ -486,6 +492,7 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
     setSelectedProductId("");
     setItemQuantity(1);
     setItemUnitPrice(0);
+    setItemNotes("");
     setProductSearch("");
   };
 
@@ -532,6 +539,7 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
         quantity: item.quantity,
         unit_price: item.unitPrice,
         total_price: item.totalPrice,
+        notes: item.notes,
       })),
       mailInvoice,
     };
@@ -848,6 +856,7 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">Unit price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
+                    <TableHead className="text-center">Notes</TableHead>
                     <TableHead className="text-center">Action</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -882,6 +891,13 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
                         <TableCell className="text-center">
                           £{((editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice)).toFixed(2)}
                         </TableCell>
+                        <TableCell>
+                          <Input
+                            placeholder="Add notes..."
+                            value={editItem?.notes ?? item.notes ?? ""}
+                            onChange={e => setEditItem({...item, notes: e.target.value})}
+                          />
+                        </TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" onClick={() => {
                             // Save changes
@@ -910,6 +926,9 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
                         <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">
+                          {item.notes || 'N/A'}
+                        </TableCell>
+                        <TableCell className="text-center">
                           <Button size="sm" variant="outline" onClick={() => {
                             setEditingIndex(index);
                             setEditItem(item);
@@ -937,6 +956,7 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
                                   quantity: item.quantity,
                                   unit_price: item.unitPrice,
                                   total_price: item.totalPrice,
+                                  notes: item.notes,
                                 })),
                               };
                               updateSaleMutation.mutate(updatedSalePayload);
@@ -1016,6 +1036,14 @@ const [selectedProductId, setSelectedProductId] = useState<string>("");
                     </TableCell>
                     <TableCell className="text-center">
                       £{(itemQuantity * itemUnitPrice).toFixed(2)}
+                    </TableCell>
+                    <TableCell>
+                      <Input 
+                        className="text-center" 
+                        placeholder="Add notes..."
+                        value={itemNotes}
+                        onChange={(e) => setItemNotes(e.target.value)}
+                      />
                     </TableCell>
                     <TableCell className="text-center">
                       <Button 
