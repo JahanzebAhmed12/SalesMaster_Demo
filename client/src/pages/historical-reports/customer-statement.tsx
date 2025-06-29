@@ -18,6 +18,25 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface StatementData {
   id: number;
   slNo: number;
@@ -43,6 +62,12 @@ export default function CustomerStatement() {
   const [loading, setLoading] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
+  // Fetch company details
+  const { data: companyDetails, isLoading: isLoadingCompany } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
   // Fetch customers for dropdown
   const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -64,15 +89,93 @@ export default function CustomerStatement() {
     setToDate(new Date());
   }, []);
 
+  // Send statement via email
+  const handleSendStatement = async () => {
+    if (!selectedCustomer || statementData.length === 0) {
+      alert('Please select a customer and generate a statement first');
+      return;
+    }
+    
+    // Get customer email from selected customer
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    if (!selectedCustomerData?.email) {
+      alert('Customer email not found. Please ensure the customer has an email address.');
+      return;
+    }
+
+    try {
+      const response = await apiRequest("POST", "/api/send/customer-statement", {
+        customerId: parseInt(selectedCustomer),
+        fromDate: fromDate.toISOString().split('T')[0],
+        toDate: toDate.toISOString().split('T')[0],
+        statementType: 'Full Statement'
+      });
+
+      if (response.success) {
+        alert('Customer statement email sent successfully!');
+      } else {
+        alert('Failed to send email: ' + response.message);
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      alert('Failed to send email. Please try again.');
+    }
+  };
+
   // Export handlers
   const handlePrint = () => {
     if (!tableRef.current) return;
+    
+    // Get customer details
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    
     const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Customer Statement</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.company-info{text-align:center;margin-bottom:10px;font-size:14px;}');
+      printWindow.document.write('.customer-info{margin-bottom:15px;}');
+      printWindow.document.write('.period-info{margin-bottom:15px;font-weight:bold;}');
+      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
+      printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
+      
+      // Add company header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>CUSTOMER STATEMENT</h2>');
+      if (companyDetails) {
+        printWindow.document.write(`<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add customer information
+      if (selectedCustomerData) {
+        printWindow.document.write('<div class="customer-info">');
+        printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomerData.customer_name}<br>`);
+        if (selectedCustomerData.address) {
+          printWindow.document.write(`<strong>Address:</strong> ${selectedCustomerData.address}<br>`);
+        }
+        if (selectedCustomerData.telephone) {
+          printWindow.document.write(`<strong>Phone:</strong> ${selectedCustomerData.telephone}<br>`);
+        }
+        if (selectedCustomerData.email) {
+          printWindow.document.write(`<strong>Email:</strong> ${selectedCustomerData.email}`);
+        }
+        printWindow.document.write('</div>');
+      }
+      
+      // Add period information
+      printWindow.document.write('<div class="period-info">');
+      printWindow.document.write(`<strong>Statement Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`);
+      printWindow.document.write('</div>');
+      
+      // Add the table content
       printWindow.document.write(printContents);
       printWindow.document.write('</body></html>');
       printWindow.document.close();
@@ -82,6 +185,34 @@ export default function CustomerStatement() {
   };
 
   const handleExcel = () => {
+    // Get customer details
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    
+    // Create workbook with multiple sheets
+    const wb = XLSX.utils.book_new();
+    
+    // Add customer info sheet
+    const customerInfo = [
+      ['CUSTOMER STATEMENT'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Customer Information:'],
+      ['Name:', selectedCustomerData?.customer_name || ''],
+      ['Address:', selectedCustomerData?.address || ''],
+      ['Phone:', selectedCustomerData?.telephone || ''],
+      ['Email:', selectedCustomerData?.email || ''],
+      [''],
+      ['Statement Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      ['Statement Type:', statementType],
+      [''],
+    ];
+    
+    const wsInfo = XLSX.utils.aoa_to_sheet(customerInfo);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Customer Info');
+    
+    // Add data sheet
     const ws = XLSX.utils.json_to_sheet(statementData.map((row: StatementData) => ({
       'Sl.No': row.slNo,
       'Date': row.date,
@@ -95,14 +226,50 @@ export default function CustomerStatement() {
       'Balance': row.balance,
       'Running Balance': row.runningBalance
     })));
-    const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Customer Statement');
+    
     XLSX.writeFile(wb, 'customer-statement.xlsx');
   };
 
   const handlePDF = () => {
+    // Get customer details
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    
     const doc = new jsPDF();
-    doc.text('Customer Statement', 10, 10);
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('CUSTOMER STATEMENT', 105, 20, { align: 'center' });
+    
+    // Add company info
+    doc.setFontSize(10);
+    if (companyDetails) {
+      doc.text(`${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    }
+    
+    // Add customer info
+    doc.setFontSize(12);
+    doc.text('Customer Information:', 20, 45);
+    doc.setFontSize(10);
+    if (selectedCustomerData) {
+      doc.text(`Name: ${selectedCustomerData.customer_name}`, 20, 55);
+      if (selectedCustomerData.address) {
+        doc.text(`Address: ${selectedCustomerData.address}`, 20, 65);
+      }
+      if (selectedCustomerData.telephone) {
+        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, 75);
+      }
+      if (selectedCustomerData.email) {
+        doc.text(`Email: ${selectedCustomerData.email}`, 20, 85);
+      }
+    }
+    
+    // Add period and statement type info
+    doc.setFontSize(12);
+    doc.text(`Statement Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, 100);
+    doc.text(`Statement Type: ${statementType}`, 20, 110);
+    
+    // Add table
     autoTable(doc, {
       head: [[
         'Sl.No', 'Date', 'Invoice #', 'Description', 'Credit Inv.', 'Cash Inv.', 'Paid', 'Credit/Adj', 'Discount/Adj', 'Balance', 'Running Balance'
@@ -120,8 +287,9 @@ export default function CustomerStatement() {
         row.balance,
         row.runningBalance
       ]),
-      startY: 20
+      startY: 120,
     });
+    
     doc.save('customer-statement.pdf');
   };
 
@@ -156,7 +324,14 @@ export default function CustomerStatement() {
                 Customer Statement
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails ? (
+                  <>
+                    {companyDetails.companyName}, {companyDetails.address1}
+                    {companyDetails.address2 && `, ${companyDetails.address2}`}
+                  </>
+                ) : (
+                  "Loading company details..."
+                )}
               </div>
             </div>
           </CardHeader>
@@ -269,11 +444,15 @@ export default function CustomerStatement() {
               </div>
               
               <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handleSendStatement}>
                   <Mail size={16} />
                   Email
                 </Button>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+                <Button 
+                  className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                  disabled={!selectedCustomer || statementData.length === 0}
+                  onClick={handlePrint}
+                >
                   <Printer size={16} />
                   Print
                 </Button>
@@ -316,14 +495,6 @@ export default function CustomerStatement() {
                 <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} />
                   Copy
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
-                  <Printer size={14} />
-                  Print
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
-                  <Mail size={14} />
-                  Email
                 </Button>
               </div>
               <div className="relative">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer } from "@shared/schema";
@@ -19,6 +19,25 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function CustomerHistory() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -27,7 +46,103 @@ export default function CustomerHistory() {
   const [searchTerm, setSearchTerm] = useState("");
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
   const tableRef = useRef<HTMLDivElement>(null);
+
+  // Fetch company details
+  const { data: companyDetails, isLoading: isLoadingCompany } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
+  // Calculate totals from history data
+  const totals = useMemo(() => ({
+    creditInv: historyData.reduce((sum, row) => sum + (row.creditInv || 0), 0),
+    cashInv: historyData.reduce((sum, row) => sum + (row.cashInv || 0), 0),
+    paid: historyData.reduce((sum, row) => sum + (row.paid || 0), 0),
+    balance: historyData.reduce((sum, row) => sum + (row.balance || 0), 0),
+    runningBalance: historyData.length > 0 ? historyData[historyData.length - 1]?.runningBalance || 0 : 0
+  }), [historyData]);
+
+  // Handle checkbox selection
+  const handleCheckboxChange = (invoiceNo: string, checked: boolean) => {
+    const newSelected = new Set(selectedInvoices);
+    if (checked) {
+      newSelected.add(invoiceNo);
+    } else {
+      newSelected.delete(invoiceNo);
+    }
+    setSelectedInvoices(newSelected);
+  };
+
+  // Handle select all checkboxes
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allInvoices = historyData.map(row => row.invoiceNo).filter(Boolean);
+      setSelectedInvoices(new Set(allInvoices));
+    } else {
+      setSelectedInvoices(new Set());
+    }
+  };
+
+  // Print selected invoices
+  const handlePrintSelected = () => {
+    if (selectedInvoices.size === 0) {
+      alert('Please select at least one invoice to print');
+      return;
+    }
+    
+    selectedInvoices.forEach((invoiceNo) => {
+      window.open(`/print/invoice/${invoiceNo}`, '_blank');
+    });
+  };
+
+  // Send selected invoices via email
+  const handleSendSelected = async () => {
+    if (selectedInvoices.size === 0) {
+      alert('Please select at least one invoice to send');
+      return;
+    }
+    
+    // Get customer email from selected customer
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    if (!selectedCustomerData?.email) {
+      alert('Customer email not found. Please ensure the customer has an email address.');
+      return;
+    }
+
+    try {
+      const response = await apiRequest("POST", "/api/send/customer-history", {
+        customerId: parseInt(selectedCustomer),
+        fromDate: fromDate.toISOString().split('T')[0],
+        toDate: toDate.toISOString().split('T')[0]
+      });
+
+      if (response.success) {
+        alert('Customer history email sent successfully!');
+      } else {
+        alert('Failed to send email: ' + response.message);
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      alert('Failed to send email. Please try again.');
+    }
+  };
+
+  // Send individual invoice via email
+  const handleSendInvoice = (invoiceNo: string) => {
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    if (!selectedCustomerData?.email) {
+      alert('Customer email not found. Please ensure the customer has an email address.');
+      return;
+    }
+
+    const subject = encodeURIComponent(`Invoice: ${invoiceNo}`);
+    const body = encodeURIComponent(`Please find attached invoice: ${invoiceNo}`);
+    const mailtoLink = `mailto:${selectedCustomerData.email}?subject=${subject}&body=${body}`;
+    
+    window.open(mailtoLink, '_blank');
+  };
 
   // Fetch customers for dropdown
   const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
@@ -44,12 +159,57 @@ export default function CustomerHistory() {
   // Export handlers
   const handlePrint = () => {
     if (!tableRef.current) return;
+    
+    // Get customer details
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    
     const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Customer History Statement</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.company-info{text-align:center;margin-bottom:10px;font-size:14px;}');
+      printWindow.document.write('.customer-info{margin-bottom:15px;}');
+      printWindow.document.write('.period-info{margin-bottom:15px;font-weight:bold;}');
+      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
+      printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
+      
+      // Add company header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>CUSTOMER HISTORY STATEMENT</h2>');
+      if (companyDetails) {
+        printWindow.document.write(`<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add customer information
+      if (selectedCustomerData) {
+        printWindow.document.write('<div class="customer-info">');
+        printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomerData.customer_name}<br>`);
+        if (selectedCustomerData.address) {
+          printWindow.document.write(`<strong>Address:</strong> ${selectedCustomerData.address}<br>`);
+        }
+        if (selectedCustomerData.telephone) {
+          printWindow.document.write(`<strong>Phone:</strong> ${selectedCustomerData.telephone}<br>`);
+        }
+        if (selectedCustomerData.email) {
+          printWindow.document.write(`<strong>Email:</strong> ${selectedCustomerData.email}`);
+        }
+        printWindow.document.write('</div>');
+      }
+      
+      // Add period information
+      printWindow.document.write('<div class="period-info">');
+      printWindow.document.write(`<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`);
+      printWindow.document.write('</div>');
+      
+      // Add the table content
       printWindow.document.write(printContents);
       printWindow.document.write('</body></html>');
       printWindow.document.close();
@@ -59,6 +219,33 @@ export default function CustomerHistory() {
   };
 
   const handleExcel = () => {
+    // Get customer details
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    
+    // Create workbook with multiple sheets
+    const wb = XLSX.utils.book_new();
+    
+    // Add customer info sheet
+    const customerInfo = [
+      ['CUSTOMER HISTORY STATEMENT'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Customer Information:'],
+      ['Name:', selectedCustomerData?.customer_name || ''],
+      ['Address:', selectedCustomerData?.address || ''],
+      ['Phone:', selectedCustomerData?.telephone || ''],
+      ['Email:', selectedCustomerData?.email || ''],
+      [''],
+      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      [''],
+    ];
+    
+    const wsInfo = XLSX.utils.aoa_to_sheet(customerInfo);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Customer Info');
+    
+    // Add data sheet
     const ws = XLSX.utils.json_to_sheet(historyData.map((row: any) => ({
       'Sl.No': row.slNo,
       'Date': row.date,
@@ -69,14 +256,49 @@ export default function CustomerHistory() {
       'Balance': row.balance,
       'Running Balance': row.runningBalance
     })));
-    const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Customer History');
+    
     XLSX.writeFile(wb, 'customer-history.xlsx');
   };
 
   const handlePDF = () => {
+    // Get customer details
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    
     const doc = new jsPDF();
-    doc.text('Customer History Statement', 10, 10);
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('CUSTOMER HISTORY STATEMENT', 105, 20, { align: 'center' });
+    
+    // Add company info
+    doc.setFontSize(10);
+    if (companyDetails) {
+      doc.text(`${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    }
+    
+    // Add customer info
+    doc.setFontSize(12);
+    doc.text('Customer Information:', 20, 45);
+    doc.setFontSize(10);
+    if (selectedCustomerData) {
+      doc.text(`Name: ${selectedCustomerData.customer_name}`, 20, 55);
+      if (selectedCustomerData.address) {
+        doc.text(`Address: ${selectedCustomerData.address}`, 20, 65);
+      }
+      if (selectedCustomerData.telephone) {
+        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, 75);
+      }
+      if (selectedCustomerData.email) {
+        doc.text(`Email: ${selectedCustomerData.email}`, 20, 85);
+      }
+    }
+    
+    // Add period info
+    doc.setFontSize(12);
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, 100);
+    
+    // Add table
     autoTable(doc, {
       head: [[
         'Sl.No', 'Date', 'Invoice #', 'Credit Inv.', 'Cash Inv.', 'Paid', 'Balance', 'Running Balance'
@@ -91,8 +313,9 @@ export default function CustomerHistory() {
         row.balance,
         row.runningBalance
       ]),
-      startY: 20
+      startY: 110,
     });
+    
     doc.save('customer-history.pdf');
   };
 
@@ -124,7 +347,14 @@ export default function CustomerHistory() {
                 Customer History
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails ? (
+                  <>
+                    {companyDetails.companyName}, {companyDetails.address1}
+                    {companyDetails.address2 && `, ${companyDetails.address2}`}
+                  </>
+                ) : (
+                  "Loading company details..."
+                )}
               </div>
             </div>
           </CardHeader>
@@ -234,7 +464,11 @@ export default function CustomerHistory() {
               >
                 {loading ? "Loading..." : "Search"}
               </Button>
-              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+              <Button 
+                className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                disabled={!selectedCustomer || historyData.length === 0}
+                onClick={handleSendSelected}
+              >
                 <Mail size={16} />
                 Send
               </Button>
@@ -281,7 +515,13 @@ export default function CustomerHistory() {
                   <Printer size={14} />
                   Print
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex items-center gap-1"
+                  disabled={!selectedCustomer || historyData.length === 0}
+                  onClick={handleSendSelected}
+                >
                   <Mail size={14} />
                   Email
                 </Button>
@@ -307,7 +547,14 @@ export default function CustomerHistory() {
                     <TableHead>Sl.No</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Invoice #</TableHead>
-                    <TableHead className="text-center">📊</TableHead>
+                    <TableHead className="text-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedInvoices.size === historyData.length && historyData.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="w-4 h-4"
+                      />
+                    </TableHead>
                     <TableHead className="text-center">Credit Inv.</TableHead>
                     <TableHead className="text-center">Cash Inv.</TableHead>
                     <TableHead className="text-center">Paid</TableHead>
@@ -315,12 +562,13 @@ export default function CustomerHistory() {
                     <TableHead className="text-center">Discount /Adj</TableHead>
                     <TableHead className="text-center">Balance</TableHead>
                     <TableHead className="text-center">Running Balance</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {historyData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center text-gray-500 py-8">
+                      <TableCell colSpan={12} className="text-center text-gray-500 py-8">
                         No data available in table
                       </TableCell>
                     </TableRow>
@@ -330,7 +578,14 @@ export default function CustomerHistory() {
                         <TableCell>{row.slNo}</TableCell>
                         <TableCell>{format(new Date(row.date), "yyyy-MM-dd")}</TableCell>
                         <TableCell>{row.invoiceNo}</TableCell>
-                        <TableCell></TableCell>
+                        <TableCell className="text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedInvoices.has(row.invoiceNo)}
+                            onChange={(e) => handleCheckboxChange(row.invoiceNo, e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                        </TableCell>
                         <TableCell className="text-center">£{row.creditInv.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{row.cashInv.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{row.paid.toFixed(2)}</TableCell>
@@ -338,6 +593,16 @@ export default function CustomerHistory() {
                         <TableCell className="text-center"></TableCell>
                         <TableCell className="text-center font-medium">{row.balance.toFixed(2)}</TableCell>
                         <TableCell className="text-center font-bold">{row.runningBalance.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0 bg-cyan-500 text-white" onClick={() => window.open(`/print/invoice/${row.invoiceNo}`, '_blank')} title="Print Invoice">
+                              <Printer size={14} />
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-6 w-6 p-0 bg-cyan-500 text-white" onClick={() => handleSendInvoice(row.invoiceNo)} title="Send Invoice">
+                              <Mail size={14} />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -348,20 +613,33 @@ export default function CustomerHistory() {
                     <TableCell className="font-bold">Total</TableCell>
                     <TableCell></TableCell>
                     <TableCell className="flex justify-center gap-1">
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-cyan-500 text-white">
-                        📧
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-cyan-500 text-white">
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-6 w-6 p-0 bg-cyan-500 text-white"
+                        onClick={handlePrintSelected}
+                        title="Print Selected Invoices"
+                      >
                         📄
                       </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-6 w-6 p-0 bg-cyan-500 text-white"
+                        onClick={handleSendSelected}
+                        title="Send Selected Invoices"
+                      >
+                        📧
+                      </Button>
                     </TableCell>
-                    <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                    <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                    <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                    <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                    <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                    <TableCell className="text-center font-bold">£ 0.00</TableCell>
-                    <TableCell className="text-center font-bold">£ 0.00</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.creditInv.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.cashInv.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.paid.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£0.00</TableCell>
+                    <TableCell className="text-center font-bold">£0.00</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.runningBalance.toFixed(2)}</TableCell>
+                    <TableCell></TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

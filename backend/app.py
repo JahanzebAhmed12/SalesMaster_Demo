@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, session, current_app
+from flask import Flask, request, jsonify, session, current_app, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
@@ -16,7 +16,7 @@ from calendar import monthrange
 from sqlalchemy import func, or_, extract, literal
 import calendar
 import time
-from mail_utils import init_mail, send_invoice_email
+from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email
 
 # Load environment variables
 load_dotenv()
@@ -6048,8 +6048,9 @@ def all_customer_history():
             on_account_query = on_account_query.filter(Payment.payment_date <= to_dt.date())
         on_account = sum(float(p.amount) for p in on_account_query.all())
         
-        # Balance Outstanding: (credit + cash) - payments - returns/discounts
-        balance_outstanding = (credit_invoice + cash_invoice) - amount_received - returns_discount
+        # Balance Outstanding: credit invoices - payments - returns/discounts
+        # Cash invoices are typically paid immediately, so they don't contribute to outstanding balance
+        balance_outstanding = credit_invoice - amount_received - returns_discount
         
         # Check if this is bad debt (balance > credit limit)
         credit_limit = float(customer.credit_limit) if customer.credit_limit else 0
@@ -6498,19 +6499,15 @@ def test_mail():
         data = request.get_json()
         test_email = data.get('email', 'test@example.com')
         
-        # Create a test sale and customer
+        # Create test data
         test_customer = Customer(
-            customer_code='TEST001',
-            customer_name='Test Customer',
+            customer_name="Test Customer",
             email=test_email
         )
         
         test_sale = Sale(
-            invoice_number='TEST-001',
-            customer_id=1,  # This will be replaced
-            subtotal=100.00,
-            total_amount=100.00,
-            status='finalized'
+            invoice_number="TEST001",
+            total_amount=100.00
         )
         
         # Try to send email
@@ -6523,8 +6520,227 @@ def test_mail():
     except Exception as e:
         return jsonify({
             "success": False,
-            "error": str(e)
+            "message": f"Failed to send test email: {str(e)}"
         }), 500
 
-if __name__ == '__main__':
-    app.run(port=5000, debug=True) 
+@app.route('/api/send/customer-statement', methods=['POST'])
+@jwt_required()
+def send_customer_statement_email_api():
+    """Send customer statement email with PDF attachment"""
+    try:
+        data = request.get_json()
+        customer_id = data.get('customerId')
+        from_date_str = data.get('fromDate')
+        to_date_str = data.get('toDate')
+        statement_type = data.get('statementType', 'Full Statement')
+        
+        if not customer_id or not from_date_str or not to_date_str:
+            return jsonify({'message': 'Missing required parameters'}), 400
+        
+        # Parse dates
+        from_date = datetime.strptime(from_date_str, '%Y-%m-%d')
+        to_date = datetime.strptime(to_date_str, '%Y-%m-%d')
+        
+        # Get customer
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            return jsonify({'message': 'Customer not found'}), 404
+        
+        if not customer.email:
+            return jsonify({'message': 'Customer email not found'}), 400
+        
+        # Get statement data
+        from_date_start = from_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        to_date_end = to_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Query sales and payments for the customer in the date range
+        sales = Sale.query.filter(
+            Sale.customer_id == customer_id,
+            Sale.date >= from_date_start,
+            Sale.date <= to_date_end
+        ).order_by(Sale.date).all()
+        
+        payments = Payment.query.filter(
+            Payment.customer_id == customer_id,
+            Payment.payment_date >= from_date.date(),
+            Payment.payment_date <= to_date.date()
+        ).order_by(Payment.payment_date).all()
+        
+        # Build statement data
+        statement_data = []
+        running_balance = 0
+        sl_no = 1
+        
+        # Add sales
+        for sale in sales:
+            if sale.customer_type == 'credit':
+                running_balance += float(sale.total_amount)
+                statement_data.append({
+                    'slNo': sl_no,
+                    'date': sale.date.strftime('%d/%m/%Y'),
+                    'invoiceNo': sale.invoice_number,
+                    'description': f'Credit Invoice #{sale.invoice_number}',
+                    'creditInv': float(sale.total_amount),
+                    'cashInv': 0,
+                    'paid': 0,
+                    'creditAdj': 0,
+                    'discountAdj': 0,
+                    'balance': float(sale.total_amount),
+                    'runningBalance': running_balance
+                })
+                sl_no += 1
+        
+        # Add payments
+        for payment in payments:
+            running_balance -= float(payment.amount)
+            statement_data.append({
+                'slNo': sl_no,
+                'date': payment.payment_date.strftime('%d/%m/%Y'),
+                'invoiceNo': f'PAY-{payment.id}',
+                'description': f'Payment - {payment.payment_mode}',
+                'creditInv': 0,
+                'cashInv': 0,
+                'paid': float(payment.amount),
+                'creditAdj': 0,
+                'discountAdj': 0,
+                'balance': -float(payment.amount),
+                'runningBalance': running_balance
+            })
+            sl_no += 1
+        
+        # Sort by date
+        statement_data.sort(key=lambda x: datetime.strptime(x['date'], '%d/%m/%Y'))
+        
+        # Update sl_no after sorting
+        for i, item in enumerate(statement_data, 1):
+            item['slNo'] = i
+        
+        # Send email
+        success = send_customer_statement_email(mail, customer.email, customer, statement_data, from_date, to_date, statement_type)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Customer statement email sent to {customer.email}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to send email'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error sending customer statement email: {str(e)}'
+        }), 500
+
+@app.route('/api/send/customer-history', methods=['POST'])
+@jwt_required()
+def send_customer_history_email_api():
+    """Send customer history email with PDF attachment"""
+    try:
+        data = request.get_json()
+        customer_id = data.get('customerId')
+        from_date_str = data.get('fromDate')
+        to_date_str = data.get('toDate')
+        
+        if not customer_id or not from_date_str or not to_date_str:
+            return jsonify({'message': 'Missing required parameters'}), 400
+        
+        # Parse dates
+        from_date = datetime.strptime(from_date_str, '%Y-%m-%d')
+        to_date = datetime.strptime(to_date_str, '%Y-%m-%d')
+        
+        # Get customer
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            return jsonify({'message': 'Customer not found'}), 404
+        
+        if not customer.email:
+            return jsonify({'message': 'Customer email not found'}), 400
+        
+        # Get history data using existing customer history logic
+        from_date_start = from_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        to_date_end = to_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Query sales for the customer in the date range
+        sales = Sale.query.filter(
+            Sale.customer_id == customer_id,
+            Sale.date >= from_date_start,
+            Sale.date <= to_date_end
+        ).order_by(Sale.date).all()
+        
+        # Query payments for the customer in the date range
+        payments = Payment.query.filter(
+            Payment.customer_id == customer_id,
+            Payment.payment_date >= from_date.date(),
+            Payment.payment_date <= to_date.date()
+        ).order_by(Payment.payment_date).all()
+        
+        # Build history data
+        history_data = []
+        running_balance = 0
+        sl_no = 1
+        
+        # Add sales
+        for sale in sales:
+            if sale.customer_type == 'credit':
+                running_balance += float(sale.total_amount)
+                history_data.append({
+                    'slNo': sl_no,
+                    'date': sale.date.strftime('%d/%m/%Y'),
+                    'invoiceNo': sale.invoice_number,
+                    'creditInv': float(sale.total_amount),
+                    'cashInv': 0,
+                    'paid': 0,
+                    'creditAdj': 0,
+                    'discountAdj': 0,
+                    'balance': float(sale.total_amount),
+                    'runningBalance': running_balance
+                })
+                sl_no += 1
+        
+        # Add payments
+        for payment in payments:
+            running_balance -= float(payment.amount)
+            history_data.append({
+                'slNo': sl_no,
+                'date': payment.payment_date.strftime('%d/%m/%Y'),
+                'invoiceNo': f'PAY-{payment.id}',
+                'creditInv': 0,
+                'cashInv': 0,
+                'paid': float(payment.amount),
+                'creditAdj': 0,
+                'discountAdj': 0,
+                'balance': -float(payment.amount),
+                'runningBalance': running_balance
+            })
+            sl_no += 1
+        
+        # Sort by date
+        history_data.sort(key=lambda x: datetime.strptime(x['date'], '%d/%m/%Y'))
+        
+        # Update sl_no after sorting
+        for i, item in enumerate(history_data, 1):
+            item['slNo'] = i
+        
+        # Send email
+        success = send_customer_history_email(mail, customer.email, customer, history_data, from_date, to_date)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Customer history email sent to {customer.email}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to send email'
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error sending customer history email: {str(e)}'
+        }), 500

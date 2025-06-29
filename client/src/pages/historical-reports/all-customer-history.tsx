@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Users, FileText, Download, Copy, Printer, Search, Printer as PrintIcon, FileText as ReportIcon, Globe, Loader2 } from "lucide-react";
+import { CalendarIcon, Users, FileText, Download, Copy, Printer, Search, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface CustomerData {
   id: number;
@@ -31,6 +34,20 @@ interface CustomerData {
   address?: string;
   telephone?: string;
   email?: string;
+}
+
+interface ExcelDataRow {
+  'Sl.No': number | string;
+  'Customer Name': string;
+  'Customer Code': string;
+  'Credit Invoice': number;
+  'Cash Invoice': number;
+  'Amount Received': number;
+  'Returns/Discount': number;
+  'On Account': number;
+  'Balance Outstanding': number;
+  'Credit Limit': number | string;
+  'Currency': string;
 }
 
 interface ApiResponse {
@@ -179,6 +196,276 @@ export default function AllCustomerHistory() {
     fetchCustomerHistory();
   }, [customerFilter, currencyFilter]);
 
+  // Export handlers
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>All Customer History</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+      
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>ALL CUSTOMER HISTORY</h2>');
+      printWindow.document.write('<p>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ</p>');
+      printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th>');
+      printWindow.document.write('<th>Customer Name</th>');
+      printWindow.document.write('<th>Credit Invoice</th>');
+      printWindow.document.write('<th>Cash Invoice</th>');
+      printWindow.document.write('<th>Amount Received</th>');
+      printWindow.document.write('<th>Returns/Discount</th>');
+      printWindow.document.write('<th>On Account</th>');
+      printWindow.document.write('<th>Balance Outstanding</th>');
+      printWindow.document.write('<th>Credit Limit</th>');
+      printWindow.document.write('<th>Currency</th>');
+      printWindow.document.write('</tr></thead>');
+      
+      printWindow.document.write('<tbody>');
+      
+      // Add customer rows
+      customerData.forEach(customer => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${customer.slNo}</td>`);
+        printWindow.document.write(`<td>${customer.customerName} (${customer.customerCode})</td>`);
+        printWindow.document.write(`<td>${customer.creditInvoice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.cashInvoice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.amountReceived.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.returnsDiscount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.onAccount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.balanceOutstanding.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.creditLimit.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.currency}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      
+      // Add currency totals
+      Object.entries(currencyTotals).forEach(([currency, currencyTotal]) => {
+        printWindow.document.write('<tr class="totals">');
+        printWindow.document.write('<td></td>');
+        printWindow.document.write(`<td>TOTAL (${currency})</td>`);
+        printWindow.document.write(`<td>${currencyTotal.creditInvoice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${currencyTotal.cashInvoice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${currencyTotal.amountReceived.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${currencyTotal.returnsDiscount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${currencyTotal.onAccount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${currencyTotal.balanceOutstanding.toFixed(2)}</td>`);
+        printWindow.document.write('<td></td>');
+        printWindow.document.write(`<td>${currency}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      
+      // Add grand total
+      printWindow.document.write('<tr class="totals">');
+      printWindow.document.write('<td></td>');
+      printWindow.document.write('<td>GRAND TOTAL</td>');
+      printWindow.document.write(`<td>${totals.creditInvoice.toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${totals.cashInvoice.toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${totals.amountReceived.toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${totals.returnsDiscount.toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${totals.onAccount.toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${totals.balanceOutstanding.toFixed(2)}</td>`);
+      printWindow.document.write('<td></td>');
+      printWindow.document.write('<td></td>');
+      printWindow.document.write('</tr>');
+      
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Prepare data for Excel
+    const excelData: ExcelDataRow[] = customerData.map(customer => ({
+      'Sl.No': customer.slNo,
+      'Customer Name': customer.customerName,
+      'Customer Code': customer.customerCode,
+      'Credit Invoice': customer.creditInvoice,
+      'Cash Invoice': customer.cashInvoice,
+      'Amount Received': customer.amountReceived,
+      'Returns/Discount': customer.returnsDiscount,
+      'On Account': customer.onAccount,
+      'Balance Outstanding': customer.balanceOutstanding,
+      'Credit Limit': customer.creditLimit,
+      'Currency': customer.currency
+    }));
+    
+    // Add currency totals
+    Object.entries(currencyTotals).forEach(([currency, currencyTotal]) => {
+      excelData.push({
+        'Sl.No': '',
+        'Customer Name': `TOTAL (${currency})`,
+        'Customer Code': '',
+        'Credit Invoice': currencyTotal.creditInvoice,
+        'Cash Invoice': currencyTotal.cashInvoice,
+        'Amount Received': currencyTotal.amountReceived,
+        'Returns/Discount': currencyTotal.returnsDiscount,
+        'On Account': currencyTotal.onAccount,
+        'Balance Outstanding': currencyTotal.balanceOutstanding,
+        'Credit Limit': '',
+        'Currency': currency
+      });
+    });
+    
+    // Add grand total
+    excelData.push({
+      'Sl.No': '',
+      'Customer Name': 'GRAND TOTAL',
+      'Customer Code': '',
+      'Credit Invoice': totals.creditInvoice,
+      'Cash Invoice': totals.cashInvoice,
+      'Amount Received': totals.amountReceived,
+      'Returns/Discount': totals.returnsDiscount,
+      'On Account': totals.onAccount,
+      'Balance Outstanding': totals.balanceOutstanding,
+      'Credit Limit': '',
+      'Currency': ''
+    });
+    
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    XLSX.utils.book_append_sheet(wb, ws, 'All Customer History');
+    
+    // Save file
+    XLSX.writeFile(wb, `all_customer_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('ALL CUSTOMER HISTORY', 105, 20, { align: 'center' });
+    
+    // Add company info
+    doc.setFontSize(10);
+    doc.text('TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ', 105, 30, { align: 'center' });
+    
+    // Add period info
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, 40, { align: 'center' });
+    
+    // Prepare table data
+    const tableData = customerData.map(customer => [
+      customer.slNo.toString(),
+      `${customer.customerName} (${customer.customerCode})`,
+      customer.creditInvoice.toFixed(2),
+      customer.cashInvoice.toFixed(2),
+      customer.amountReceived.toFixed(2),
+      customer.returnsDiscount.toFixed(2),
+      customer.onAccount.toFixed(2),
+      customer.balanceOutstanding.toFixed(2),
+      customer.creditLimit.toFixed(2),
+      customer.currency
+    ]);
+    
+    // Add currency totals
+    Object.entries(currencyTotals).forEach(([currency, currencyTotal]) => {
+      tableData.push([
+        '',
+        `TOTAL (${currency})`,
+        currencyTotal.creditInvoice.toFixed(2),
+        currencyTotal.cashInvoice.toFixed(2),
+        currencyTotal.amountReceived.toFixed(2),
+        currencyTotal.returnsDiscount.toFixed(2),
+        currencyTotal.onAccount.toFixed(2),
+        currencyTotal.balanceOutstanding.toFixed(2),
+        '',
+        currency
+      ]);
+    });
+    
+    // Add grand total
+    tableData.push([
+      '',
+      'GRAND TOTAL',
+      totals.creditInvoice.toFixed(2),
+      totals.cashInvoice.toFixed(2),
+      totals.amountReceived.toFixed(2),
+      totals.returnsDiscount.toFixed(2),
+      totals.onAccount.toFixed(2),
+      totals.balanceOutstanding.toFixed(2),
+      '',
+      ''
+    ]);
+    
+    // Create table
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Customer Name', 'Credit Inv.', 'Cash Inv.', 'Amount Rec.', 
+        'Returns/Disc.', 'On Account', 'Balance Out.', 'Credit Limit', 'Currency'
+      ]],
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 20 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 20 },
+        9: { cellWidth: 15 }
+      }
+    });
+    
+    doc.save(`all_customer_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    let text = 'Sl.No\tCustomer Name\tCustomer Code\tCredit Invoice\tCash Invoice\tAmount Received\tReturns/Discount\tOn Account\tBalance Outstanding\tCredit Limit\tCurrency\n';
+    
+    // Add customer data
+    customerData.forEach(customer => {
+      text += `${customer.slNo}\t${customer.customerName}\t${customer.customerCode}\t${customer.creditInvoice.toFixed(2)}\t${customer.cashInvoice.toFixed(2)}\t${customer.amountReceived.toFixed(2)}\t${customer.returnsDiscount.toFixed(2)}\t${customer.onAccount.toFixed(2)}\t${customer.balanceOutstanding.toFixed(2)}\t${customer.creditLimit.toFixed(2)}\t${customer.currency}\n`;
+    });
+    
+    // Add currency totals
+    Object.entries(currencyTotals).forEach(([currency, currencyTotal]) => {
+      text += `\tTOTAL (${currency})\t\t${currencyTotal.creditInvoice.toFixed(2)}\t${currencyTotal.cashInvoice.toFixed(2)}\t${currencyTotal.amountReceived.toFixed(2)}\t${currencyTotal.returnsDiscount.toFixed(2)}\t${currencyTotal.onAccount.toFixed(2)}\t${currencyTotal.balanceOutstanding.toFixed(2)}\t\t${currency}\n`;
+    });
+    
+    // Add grand total
+    text += `\tGRAND TOTAL\t\t${totals.creditInvoice.toFixed(2)}\t${totals.cashInvoice.toFixed(2)}\t${totals.amountReceived.toFixed(2)}\t${totals.returnsDiscount.toFixed(2)}\t${totals.onAccount.toFixed(2)}\t${totals.balanceOutstanding.toFixed(2)}\t\t\n`;
+    
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: "Success",
+        description: "Data copied to clipboard",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to copy data to clipboard",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <PageLayout title="All Customer History" breadcrumb="Historical Reports > All Customer History">
       <div className="space-y-6">
@@ -290,8 +577,8 @@ export default function AllCustomerHistory() {
                 </Select>
               </div>
               <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <PrintIcon size={16} />
+                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handlePrint}>
+                  <Printer size={16} />
                   Print
                 </Button>
                 <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
@@ -313,19 +600,19 @@ export default function AllCustomerHistory() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline">Show all rows</Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                   <FileText size={14} />
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                   <Download size={14} />
                   Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} />
                   Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} />
                   Print
                 </Button>

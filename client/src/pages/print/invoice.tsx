@@ -1,7 +1,27 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
 import logo from "@/public/printlogo.png"
+
+// Public API request function (no authentication required)
+const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
+  const url = `http://localhost:5000${endpoint}`;
+  
+  const response = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+  });
+
+  const responseData = await response.json();
+
+  if (!response.ok) {
+    throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
+  }
+
+  return responseData;
+};
 
 interface InvoiceData {
   company: any;
@@ -130,6 +150,13 @@ function InvoiceTemplate({ data }: { data: InvoiceData }) {
       >
         Print
       </button>
+      <button
+        onClick={() => window.close()}
+        style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+        className="no-print"
+      >
+        Close
+      </button>
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -149,8 +176,8 @@ export default function InvoicePrintPage() {
 
   useEffect(() => {
     if (!invoiceNumber) return;
-    setLoading(true);
-    apiRequest("GET", `/api/sales/${invoiceNumber}/invoice`)
+    
+    publicApiRequest("GET", `/api/sales/${invoiceNumber}/invoice`)
       .then((res) => {
         setData(res);
         setLoading(false);
@@ -161,9 +188,17 @@ export default function InvoicePrintPage() {
       });
   }, [invoiceNumber]);
 
-  if (loading) return <div style={{ textAlign: "center", marginTop: 40 }}>Loading...</div>;
-  if (error) return <div style={{ color: "red", textAlign: "center", marginTop: 40 }}>{error}</div>;
-  if (!data) return null;
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+  
+  if (error) {
+    return <div>Error: {error}</div>;
+  }
+  
+  if (!data) {
+    return <div>No data found</div>;
+  }
 
   return <InvoiceTemplate data={data} />;
 } 
