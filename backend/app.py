@@ -16,7 +16,7 @@ from calendar import monthrange
 from sqlalchemy import func, or_, extract, literal
 import calendar
 import time
-from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email
+from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email, send_purchase_invoice_email, send_supplier_statement_email
 
 # Load environment variables
 load_dotenv()
@@ -2357,6 +2357,35 @@ def get_purchase_invoice(invoice_id):
     invoice = PurchaseInvoice.query.get_or_404(invoice_id)
     return jsonify(invoice.to_dict())
 
+@app.route('/api/purchase-invoices/<int:invoice_id>/print', methods=['GET'])
+def print_purchase_invoice(invoice_id):
+    from models import Company, Supplier, PurchaseInvoice, PurchaseInvoiceItem, Purchase
+    invoice = PurchaseInvoice.query.get_or_404(invoice_id)
+    purchase = Purchase.query.get(invoice.purchase_id)
+    supplier = Supplier.query.get(purchase.supplier_id)
+    company = Company.query.first()
+    items = [item.to_dict() for item in invoice.items]
+    return jsonify({
+        "company": company.to_dict() if company else {},
+        "supplier": supplier.to_dict() if supplier else {},
+        "invoice": invoice.to_dict(),
+        "items": items
+    })
+
+@app.route('/api/purchase-invoices/<int:invoice_id>/send', methods=['POST'])
+def send_purchase_invoice(invoice_id):
+    from flask import request
+    from models import Supplier, PurchaseInvoice, Purchase
+    data = request.get_json() or {}
+    supplier_id = data.get('supplierId')
+    supplier = Supplier.query.get_or_404(supplier_id)
+    invoice = PurchaseInvoice.query.get_or_404(invoice_id)
+    purchase = Purchase.query.get(invoice.purchase_id)
+    try:
+        send_purchase_invoice_email(current_app.extensions['mail'], supplier.email, invoice, supplier)
+        return jsonify({"success": True, "message": "Email sent"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
 
 @app.route('/api/debug/products', methods=['GET'])
 def debug_products():
@@ -4791,12 +4820,11 @@ def supplier_statement():
         return datetime.combine(dt, datetime.min.time())
 
     # Fetch purchases for this supplier in the date range
-    purchases = Purchase.query.filter(
-        Purchase.supplier_id == supplier_id,
-        func.date(Purchase.date) >= from_dt.date(),
-        func.date(Purchase.date) < to_dt.date(),
-        Purchase.status.in_(['pending', 'approved', 'finalized', 'paid'])
-    ).all()
+    purchase_invoices = PurchaseInvoice.query.join(Purchase).filter(
+    Purchase.supplier_id == supplier_id,
+    func.date(PurchaseInvoice.date) >= from_dt.date(),
+    func.date(PurchaseInvoice.date) < to_dt.date()
+    ).order_by(PurchaseInvoice.date).all()
 
     # Fetch payments for this supplier in the date range
     payments = SupplierPayment.query.filter(
@@ -4819,18 +4847,20 @@ def supplier_statement():
     entries = []
 
     # Purchases (debit)
-    for purchase in purchases:
+    for invoice in purchase_invoices:
+        invoice_total = sum(float(item.total_price) for item in invoice.items)
+        print(f"[DEBUG] Invoice {invoice.id} total: {invoice_total}")
         entries.append({
-            'date': to_datetime(purchase.date),
+            'date': to_datetime(invoice.date),
             'type': 'purchase',
-            'invoiceNo': getattr(purchase, 'id', None),
-            'description': 'Purchase Invoice',
-            'purchaseInv': float(purchase.amount),
+            'invoiceNo': invoice.id,
+            'description': f'Purchase Invoice #{invoice.id}',
+            'purchaseInv': invoice_total,  # This will now be correct!
             'paid': 0,
             'creditAdj': 0,
             'discountAdj': 0,
-            'balance': float(purchase.amount),
-            'purchase_id': purchase.id
+            'balance': invoice_total,
+            'invoice_id': invoice.id
         })
     # Payments (credit)
     for payment in payments:
@@ -6000,12 +6030,12 @@ def all_customer_history():
         credit_sales_query = Sale.query.filter(
             Sale.customer_id == customer.id,
             Sale.customer_type.ilike('credit'),
-            Sale.status == 'confirmed'  # Only confirmed sales
+            Sale.status == 'finalized'  # Only finalized sales
         )
         cash_sales_query = Sale.query.filter(
             Sale.customer_id == customer.id,
             Sale.customer_type.ilike('cash'),
-            Sale.status == 'confirmed'  # Only confirmed sales
+            Sale.status == 'finalized'  # Only finalized sales
         )
         
         if from_dt:
@@ -6743,4 +6773,105 @@ def send_customer_history_email_api():
         return jsonify({
             'success': False,
             'message': f'Error sending customer history email: {str(e)}'
+        }), 500
+
+@app.route('/api/send/supplier-statement', methods=['POST'])
+@jwt_required()
+def send_supplier_statement_email_api():
+    """Send supplier statement email with PDF attachment"""
+    try:
+        data = request.get_json()
+        supplier_id = data.get('supplierId')
+        from_date_str = data.get('fromDate')
+        to_date_str = data.get('toDate')
+        statement_type = data.get('type', 'All')
+        
+        if not supplier_id or not from_date_str or not to_date_str:
+            return jsonify({'message': 'Missing required parameters'}), 400
+        
+        # Parse dates
+        from_date = datetime.strptime(from_date_str, '%Y-%m-%d')
+        to_date = datetime.strptime(to_date_str, '%Y-%m-%d')
+        
+        # Get supplier
+        supplier = Supplier.query.get(supplier_id)
+        if not supplier:
+            return jsonify({'message': 'Supplier not found'}), 404
+        if not supplier.email:
+            return jsonify({'message': 'Supplier email not found'}), 400
+        
+        from_date_start = from_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        to_date_end = to_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        # Query purchase invoices and payments for the supplier in the date range
+        purchase_invoices = PurchaseInvoice.query.join(Purchase).filter(
+            Purchase.supplier_id == supplier_id,
+            PurchaseInvoice.date >= from_date_start,
+            PurchaseInvoice.date <= to_date_end
+        ).order_by(PurchaseInvoice.date).all()
+        supplier_payments = SupplierPayment.query.filter(
+            SupplierPayment.supplier_id == supplier_id,
+            SupplierPayment.payment_date >= from_date.date(),
+            SupplierPayment.payment_date <= to_date.date()
+        ).order_by(SupplierPayment.payment_date).all()
+        
+        # Build statement data
+        statement_data = []
+        running_balance = 0
+        sl_no = 1
+        for invoice in purchase_invoices:
+            print(f"[DEBUG] Processing invoice {invoice.id}")
+            print(f"[DEBUG] Invoice items count: {len(invoice.items)}")
+            invoice_total = sum(float(item.total_price) for item in invoice.items)
+            running_balance += invoice_total
+            statement_data.append({
+                'slNo': sl_no,
+                'date': invoice.date.strftime('%d/%m/%Y'),
+                'invoiceNo': invoice.id,
+                'description': f'Purchase Invoice #{invoice.id}',
+                'purchaseInv': invoice_total,
+                'paid': 0,
+                'creditAdj': 0,
+                'discountAdj': 0,
+                'balance': invoice_total,
+                'runningBalance': running_balance
+            })
+            sl_no += 1
+        for payment in supplier_payments:
+            running_balance -= float(payment.amount)
+            statement_data.append({
+                'slNo': sl_no,
+                'date': payment.payment_date.strftime('%d/%m/%Y'),
+                'invoiceNo': f'PAY-{payment.id}',
+                'description': f'Payment - {payment.payment_mode}',
+                'purchaseInv': 0,
+                'paid': float(payment.amount),
+                'creditAdj': 0,
+                'discountAdj': 0,
+                'balance': -float(payment.amount),
+                'runningBalance': running_balance
+            })
+            sl_no += 1
+        statement_data.sort(key=lambda x: datetime.strptime(x['date'], '%d/%m/%Y'))
+        for i, item in enumerate(statement_data, 1):
+            item['slNo'] = i
+
+        success = send_supplier_statement_email(mail, supplier.email, supplier, statement_data, from_date, to_date, statement_type)
+
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Supplier statement email sent to {supplier.email}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to send email'
+            }), 500
+        # Placeholder for sending email
+        # success = send_supplier_statement_email(mail, supplier.email, supplier, statement_data, from_date, to_date, statement_type)
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Error sending supplier statement email: {str(e)}'
         }), 500

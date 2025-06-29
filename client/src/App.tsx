@@ -82,6 +82,7 @@ import ClosingTime from "@/pages/closing-time";
 import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
 import InvoicePrintPage from "@/pages/print/invoice";
 import DotMatrixInvoicePrintPage from "@/pages/print/dot-matrix-invoice";
+import PurchaseInvoicePrintPage from "@/pages/print/purchase-invoice";
 
 // User Profile
 import UserProfile from "./pages/profile/user-profile";
@@ -309,6 +310,7 @@ function Router() {
       <Route path="/print/invoice/:invoiceNumber" component={InvoicePrintPage} />
       {/* Dot Matrix Print Invoice Route (public) */}
       <Route path="/print/dot-matrix-invoice/:invoiceNumber" component={DotMatrixInvoicePrintPage} />
+      <Route path="/print/purchase-invoice/:invoiceId" component={PurchaseInvoicePrintPage} />
       
       {/* Fallback to 404 */}
       <Route component={NotFound} />
