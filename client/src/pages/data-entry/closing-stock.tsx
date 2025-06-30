@@ -605,52 +605,7 @@ export default function ClosingStock() {
           </DialogContent>
         </Dialog>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Closing Stock</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Button
-              className="mb-4"
-              onClick={handleSave}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Saving..." : "Save Closing Stock"}
-            </Button>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product Code</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead className="text-right">Current Stock</TableHead>
-                  <TableHead className="text-right">Closing Stock</TableHead>
-                  <TableHead>Unit</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentStock.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="text-left">{item.productCode}</TableCell>
-                    <TableCell className="text-left">{item.description}</TableCell>
-                    <TableCell className="text-left">{item.location || "-"}</TableCell>
-                    <TableCell className="text-right">{item.currentStock}</TableCell>
-                    <TableCell className="text-right">
-                      <Input
-                        type="number"
-                        value={stockData[item.id] === undefined ? "" : stockData[item.id]}
-                        onChange={(e) => handleStockChange(item.id, e.target.value)}
-                        className="w-24 text-right"
-                        min={0}
-                      />
-                    </TableCell>
-                    <TableCell className="text-left">{item.unitOfSale || "-"}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+       
       </div>
     </PageLayout>
   );

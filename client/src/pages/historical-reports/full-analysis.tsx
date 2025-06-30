@@ -9,6 +9,9 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface AnalysisData {
   month: string;
@@ -22,6 +25,25 @@ interface AnalysisData {
   netPurchase: number;
   expenses: number;
   diff: number;
+}
+
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 function toLocalDateString(date: Date) {
@@ -54,6 +76,11 @@ export default function FullAnalysis() {
     enabled: !!searchClicked,
   });
 
+  const { data: companyDetails } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
   const totals = analysisData.reduce(
     (acc, item) => {
       acc.sales += item.sales || 0;
@@ -70,6 +97,154 @@ export default function FullAnalysis() {
     { sales: 0, returns: 0, netSales: 0, purchase: 0, returnsSup: 0, dumps: 0, netPurchase: 0, expenses: 0, diff: 0 }
   );
 
+  // Export handlers
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Full Analysis Report</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('</head><body>');
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>MONTH WISE PURCHASE / SALES</h2>');
+      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
+      printWindow.document.write('</div>');
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Month</th>');
+      printWindow.document.write('<th>Year</th>');
+      printWindow.document.write('<th>Sales</th>');
+      printWindow.document.write('<th>Returns</th>');
+      printWindow.document.write('<th>Net Sales</th>');
+      printWindow.document.write('<th>Purchase</th>');
+      printWindow.document.write('<th>Returns_Sup</th>');
+      printWindow.document.write('<th>Dumps</th>');
+      printWindow.document.write('<th>Net Purchase</th>');
+      printWindow.document.write('<th>Expenses</th>');
+      printWindow.document.write('<th>Diff</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      analysisData.forEach((item) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.month}</td>`);
+        printWindow.document.write(`<td>${item.year}</td>`);
+        printWindow.document.write(`<td>£${Number(item.sales).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.returns).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.netSales).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.purchase).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.returnsSup).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.dumps).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.netPurchase).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.expenses).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.diff).toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wb = XLSX.utils.book_new();
+    // Info sheet
+    const info = [
+      ['MONTH WISE PURCHASE / SALES'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
+      [''],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
+    // Data sheet
+    const ws = XLSX.utils.json_to_sheet(analysisData.map((item) => ({
+      'Month': item.month,
+      'Year': item.year,
+      'Sales': Number(item.sales),
+      'Returns': Number(item.returns),
+      'Net Sales': Number(item.netSales),
+      'Purchase': Number(item.purchase),
+      'Returns_Sup': Number(item.returnsSup),
+      'Dumps': Number(item.dumps),
+      'Net Purchase': Number(item.netPurchase),
+      'Expenses': Number(item.expenses),
+      'Diff': Number(item.diff)
+    })));
+    XLSX.utils.book_append_sheet(wb, ws, 'Full Analysis');
+    XLSX.writeFile(wb, `full_analysis_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('MONTH WISE PURCHASE / SALES', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    const tableData = analysisData.map((item) => [
+      item.month,
+      item.year,
+      `£${Number(item.sales).toFixed(2)}`,
+      `£${Number(item.returns).toFixed(2)}`,
+      `£${Number(item.netSales).toFixed(2)}`,
+      `£${Number(item.purchase).toFixed(2)}`,
+      `£${Number(item.returnsSup).toFixed(2)}`,
+      `£${Number(item.dumps).toFixed(2)}`,
+      `£${Number(item.netPurchase).toFixed(2)}`,
+      `£${Number(item.expenses).toFixed(2)}`,
+      `£${Number(item.diff).toFixed(2)}`
+    ]);
+    autoTable(doc, {
+      head: [[
+        'Month', 'Year', 'Sales', 'Returns', 'Net Sales', 'Purchase', 'Returns_Sup', 'Dumps', 'Net Purchase', 'Expenses', 'Diff'
+      ]],
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 25 },
+        7: { cellWidth: 25 },
+        8: { cellWidth: 30 },
+        9: { cellWidth: 25 },
+        10: { cellWidth: 25 }
+      }
+    });
+    doc.save(`full_analysis_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    let text = 'Month\tYear\tSales\tReturns\tNet Sales\tPurchase\tReturns_Sup\tDumps\tNet Purchase\tExpenses\tDiff\n';
+    text += analysisData.map((item) => [
+      item.month,
+      item.year,
+      `£${Number(item.sales).toFixed(2)}`,
+      `£${Number(item.returns).toFixed(2)}`,
+      `£${Number(item.netSales).toFixed(2)}`,
+      `£${Number(item.purchase).toFixed(2)}`,
+      `£${Number(item.returnsSup).toFixed(2)}`,
+      `£${Number(item.dumps).toFixed(2)}`,
+      `£${Number(item.netPurchase).toFixed(2)}`,
+      `£${Number(item.expenses).toFixed(2)}`,
+      `£${Number(item.diff).toFixed(2)}`
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -78,7 +253,14 @@ export default function FullAnalysis() {
           <div className="flex justify-between items-center">
             <h1 className="text-xl font-semibold text-gray-900">Month Wise Purchase / Sales</h1>
             <div className="text-sm text-gray-500">
-              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ, ...
+              {companyDetails ? (
+                <>
+                  {companyDetails.companyName}, {companyDetails.address1}
+                  {companyDetails.address2 && `, ${companyDetails.address2}`}
+                </>
+              ) : (
+                "Loading company details..."
+              )}
             </div>
           </div>
         </div>
@@ -155,18 +337,18 @@ export default function FullAnalysis() {
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handlePDF}>
                   <FileText className="w-4 h-4 mr-2" />
                   PDF
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleExcel}>
                   Excel
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleCopy}>
                   <Copy className="w-4 h-4 mr-2" />
                   Copy
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handlePrint}>
                   <Printer className="w-4 h-4 mr-2" />
                   Print
                 </Button>
@@ -216,28 +398,28 @@ export default function FullAnalysis() {
                     <TableRow key={index}>
                       <TableCell className="text-center">{item.month}</TableCell>
                       <TableCell className="text-center">{item.year}</TableCell>
-                      <TableCell className="text-center">{item.sales.toLocaleString()}</TableCell>
-                      <TableCell className="text-center">{item.returns}</TableCell>
-                      <TableCell className="text-center">{item.netSales.toLocaleString()}</TableCell>
-                      <TableCell className="text-center">{item.purchase.toLocaleString()}</TableCell>
-                      <TableCell className="text-center">{item.returnsSup}</TableCell>
-                      <TableCell className="text-center">{item.dumps}</TableCell>
-                      <TableCell className="text-center">{item.netPurchase.toLocaleString()}</TableCell>
-                      <TableCell className="text-center">{item.expenses}</TableCell>
-                      <TableCell className="text-center text-red-600">{item.diff.toLocaleString()}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.sales).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.returns).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.netSales).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.purchase).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.returnsSup).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.dumps).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.netPurchase).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {Number(item.expenses).toFixed(2)}</TableCell>
+                      <TableCell className="text-center text-red-600">£ {Number(item.diff).toFixed(2)}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="bg-green-100 font-semibold">
                     <TableCell className="text-center" colSpan={2}>TOTAL</TableCell>
-                    <TableCell className="text-center">£ {totals.sales.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">£ {totals.returns.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">£ {totals.netSales.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">£ {totals.purchase.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">£ {totals.returnsSup.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">£ {totals.dumps.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">£ {totals.netPurchase.toLocaleString()}</TableCell>
-                    <TableCell className="text-center">£ {totals.expenses.toLocaleString()}</TableCell>
-                    <TableCell className="text-center text-red-600">£ {totals.diff.toLocaleString()}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.sales).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.returns).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.netSales).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.purchase).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.returnsSup).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.dumps).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.netPurchase).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {Number(totals.expenses).toFixed(2)}</TableCell>
+                    <TableCell className="text-center text-red-600">£ {Number(totals.diff).toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

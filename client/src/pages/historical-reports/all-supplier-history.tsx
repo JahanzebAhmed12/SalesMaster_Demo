@@ -12,6 +12,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Building, FileText, Download, Copy, Printer, Search, Printer as PrintIcon, FileText as ReportIcon, Globe } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface SupplierData {
   id: number;
@@ -26,6 +30,25 @@ interface SupplierData {
   currency: string;
 }
 
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function AllSupplierHistory() {
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
@@ -34,6 +57,11 @@ export default function AllSupplierHistory() {
   const [supplierData, setSupplierData] = useState<SupplierData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: companyDetails } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
 
   // Calculate totals
   const totals = {
@@ -59,6 +87,149 @@ export default function AllSupplierHistory() {
     setLoading(false);
   };
 
+  // Export handlers
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>All Supplier History</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>ALL SUPPLIER HISTORY</h2>');
+      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
+      printWindow.document.write('</div>');
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th>');
+      printWindow.document.write('<th>Supplier Name</th>');
+      printWindow.document.write('<th>Purchase Invoice</th>');
+      printWindow.document.write('<th>Amount Paid</th>');
+      printWindow.document.write('<th>Credit/Adj</th>');
+      printWindow.document.write('<th>Discount/Adj</th>');
+      printWindow.document.write('<th>Balance Outstanding</th>');
+      printWindow.document.write('<th>Credit Limit</th>');
+      printWindow.document.write('<th>Currency</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      supplierData.forEach(supplier => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${supplier.slNo}</td>`);
+        printWindow.document.write(`<td>${supplier.supplierName}</td>`);
+        printWindow.document.write(`<td>${supplier.purchaseInvoice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${supplier.amountPaid.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${supplier.creditAdj.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${supplier.discountAdj.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${supplier.balanceOutstanding.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${supplier.creditLimit}</td>`);
+        printWindow.document.write(`<td>${supplier.currency}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wb = XLSX.utils.book_new();
+    // Info sheet
+    const info = [
+      ['ALL SUPPLIER HISTORY'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      [''],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
+    // Data sheet
+    const ws = XLSX.utils.json_to_sheet(supplierData.map(supplier => ({
+      'Sl.No': supplier.slNo,
+      'Supplier Name': supplier.supplierName,
+      'Purchase Invoice': supplier.purchaseInvoice,
+      'Amount Paid': supplier.amountPaid,
+      'Credit/Adj': supplier.creditAdj,
+      'Discount/Adj': supplier.discountAdj,
+      'Balance Outstanding': supplier.balanceOutstanding,
+      'Credit Limit': supplier.creditLimit,
+      'Currency': supplier.currency
+    })));
+    XLSX.utils.book_append_sheet(wb, ws, 'All Supplier History');
+    XLSX.writeFile(wb, `all_supplier_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('ALL SUPPLIER HISTORY', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, 40, { align: 'center' });
+    const tableData = supplierData.map(supplier => [
+      supplier.slNo.toString(),
+      supplier.supplierName,
+      supplier.purchaseInvoice.toFixed(2),
+      supplier.amountPaid.toFixed(2),
+      supplier.creditAdj.toFixed(2),
+      supplier.discountAdj.toFixed(2),
+      supplier.balanceOutstanding.toFixed(2),
+      supplier.creditLimit.toString(),
+      supplier.currency
+    ]);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Supplier Name', 'Purchase Invoice', 'Amount Paid', 'Credit/Adj', 'Discount/Adj', 'Balance Outstanding', 'Credit Limit', 'Currency'
+      ]],
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 20 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 15 }
+      }
+    });
+    doc.save(`all_supplier_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    let text = 'Sl.No\tSupplier Name\tPurchase Invoice\tAmount Paid\tCredit/Adj\tDiscount/Adj\tBalance Outstanding\tCredit Limit\tCurrency\n';
+    text += supplierData.map(supplier => [
+      supplier.slNo,
+      supplier.supplierName,
+      supplier.purchaseInvoice,
+      supplier.amountPaid,
+      supplier.creditAdj,
+      supplier.discountAdj,
+      supplier.balanceOutstanding,
+      supplier.creditLimit,
+      supplier.currency
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
+  };
+
   return (
     <PageLayout title="All Supplier History" breadcrumb="Historical Reports > All Supplier History">
       <div className="space-y-6">
@@ -71,7 +242,14 @@ export default function AllSupplierHistory() {
                 All Supplier History
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails ? (
+                  <>
+                    {companyDetails.companyName}, {companyDetails.address1}
+                    {companyDetails.address2 && `, ${companyDetails.address2}`}
+                  </>
+                ) : (
+                  "Loading company details..."
+                )}
               </div>
             </div>
           </CardHeader>
@@ -139,30 +317,32 @@ export default function AllSupplierHistory() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={handleSearch} disabled={loading}>
-                  {loading ? "Loading..." : "Search"}
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <PrintIcon size={16} />
-                  Print
-                </Button>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  Weekly statement
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <ReportIcon size={16} />
-                  Report
-                </Button>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Globe size={16} />
-                  Select Currency
-                </Button>
-              </div>
+            </div>
+            {/* Move action buttons below date pickers */}
+            <div className="flex flex-wrap gap-2 mt-4">
+              <Button className="bg-blue-500 hover:bg-blue-600" onClick={handleSearch} disabled={loading}>
+                {loading ? "Loading..." : "Search"}
+              </Button>
+              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handlePrint}>
+                <PrintIcon size={16} />
+                Print
+              </Button>
+              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handlePDF}>
+                <FileText size={16} />
+                PDF
+              </Button>
+              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handleExcel}>
+                <Download size={16} />
+                Excel
+              </Button>
+              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handleCopy}>
+                <Copy size={16} />
+                Copy
+              </Button>
+              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
+                <Globe size={16} />
+                Select Currency
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -178,19 +358,19 @@ export default function AllSupplierHistory() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline">Show all rows</Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                   <FileText size={14} />
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                   <Download size={14} />
                   Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} />
                   Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} />
                   Print
                 </Button>

@@ -733,7 +733,7 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
               <h1 className="text-2xl font-bold text-gray-900 mb-4">INVOICE</h1>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-4">
-                  <span>Date: {new Date(currentSale?.date || Date.now()).toLocaleDateString('en-GB')}</span>
+                  <span>Date: {new Date(currentSale?.date || Date.now()).toLocaleString('en-GB')}</span>
                   {/* Print Invoice Button */}
                   {currentSale?.invoiceNumber && (
                     <>

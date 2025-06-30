@@ -13,6 +13,9 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface DateWiseSalesData {
   id: number;
@@ -24,6 +27,25 @@ interface DateWiseSalesData {
   averageSale: number;
   topProduct: string;
   topCustomer: string;
+}
+
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 function toLocalDateString(date: Date) {
@@ -62,12 +84,147 @@ export default function DateWiseSales() {
     enabled: !!searchClicked,
   });
 
+  const { data: companyDetails } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
   const totals = {
     totalSales: salesData.reduce((sum, item) => sum + (item.totalSales || 0), 0),
     creditSales: salesData.reduce((sum, item) => sum + (item.creditSales || 0), 0),
     cashSales: salesData.reduce((sum, item) => sum + (item.cashSales || 0), 0),
     totalInvoices: salesData.reduce((sum, item) => sum + (item.totalInvoices || 0), 0),
     averageSale: salesData.length ? salesData.reduce((sum, item) => sum + (item.averageSale || 0), 0) / salesData.length : 0
+  };
+
+  // Export handlers
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Date Wise Sales Report</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('</head><body>');
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>DATE WISE SALES REPORT</h2>');
+      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
+      printWindow.document.write('</div>');
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Date</th>');
+      printWindow.document.write('<th>Total Sales</th>');
+      printWindow.document.write('<th>Credit Sales</th>');
+      printWindow.document.write('<th>Cash Sales</th>');
+      printWindow.document.write('<th>Total Invoices</th>');
+      printWindow.document.write('<th>Average Sale</th>');
+      printWindow.document.write('<th>Top Product</th>');
+      printWindow.document.write('<th>Top Customer</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      salesData.forEach((sale) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${format(new Date(sale.date), "dd/MM/yyyy")}</td>`);
+        printWindow.document.write(`<td>£${sale.totalSales.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${sale.creditSales.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${sale.cashSales.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${sale.totalInvoices}</td>`);
+        printWindow.document.write(`<td>£${sale.averageSale.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${sale.topProduct}</td>`);
+        printWindow.document.write(`<td>${sale.topCustomer}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wb = XLSX.utils.book_new();
+    // Info sheet
+    const info = [
+      ['DATE WISE SALES REPORT'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
+      [''],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
+    // Data sheet
+    const ws = XLSX.utils.json_to_sheet(salesData.map((sale) => ({
+      'Date': format(new Date(sale.date), "dd/MM/yyyy"),
+      'Total Sales': sale.totalSales,
+      'Credit Sales': sale.creditSales,
+      'Cash Sales': sale.cashSales,
+      'Total Invoices': sale.totalInvoices,
+      'Average Sale': sale.averageSale,
+      'Top Product': sale.topProduct,
+      'Top Customer': sale.topCustomer
+    })));
+    XLSX.utils.book_append_sheet(wb, ws, 'Date Wise Sales');
+    XLSX.writeFile(wb, `date_wise_sales_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('DATE WISE SALES REPORT', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    const tableData = salesData.map((sale) => [
+      format(new Date(sale.date), "dd/MM/yyyy"),
+      `£${sale.totalSales.toFixed(2)}`,
+      `£${sale.creditSales.toFixed(2)}`,
+      `£${sale.cashSales.toFixed(2)}`,
+      sale.totalInvoices,
+      `£${sale.averageSale.toFixed(2)}`,
+      sale.topProduct,
+      sale.topCustomer
+    ]);
+    autoTable(doc, {
+      head: [[
+        'Date', 'Total Sales', 'Credit Sales', 'Cash Sales', 'Total Invoices', 'Average Sale', 'Top Product', 'Top Customer'
+      ]],
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 30 },
+        7: { cellWidth: 30 }
+      }
+    });
+    doc.save(`date_wise_sales_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    let text = 'Date\tTotal Sales\tCredit Sales\tCash Sales\tTotal Invoices\tAverage Sale\tTop Product\tTop Customer\n';
+    text += salesData.map((sale) => [
+      format(new Date(sale.date), "dd/MM/yyyy"),
+      sale.totalSales,
+      sale.creditSales,
+      sale.cashSales,
+      sale.totalInvoices,
+      sale.averageSale,
+      sale.topProduct,
+      sale.topCustomer
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
   };
 
   return (
@@ -82,7 +239,14 @@ export default function DateWiseSales() {
                 Date Wise Sales Report
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails ? (
+                  <>
+                    {companyDetails.companyName}, {companyDetails.address1}
+                    {companyDetails.address2 && `, ${companyDetails.address2}`}
+                  </>
+                ) : (
+                  "Loading company details..."
+                )}
               </div>
             </div>
           </CardHeader>
@@ -152,35 +316,14 @@ export default function DateWiseSales() {
                   </SelectContent>
                 </Select>
               </div>
-              
-              <div>
-                <Select value={groupBy} onValueChange={setGroupBy}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Daily">Daily</SelectItem>
-                    <SelectItem value="Weekly">Weekly</SelectItem>
-                    <SelectItem value="Monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+           
               
               <div>
                 <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setSearchClicked(v => !v)}>
                   Generate Report
                 </Button>
               </div>
-              
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Printer size={16} />
-                  Print
-                </Button>
-                <Button className="bg-orange-500 hover:bg-orange-600 text-white">
-                  Export
-                </Button>
-              </div>
+             
             </div>
           </CardContent>
         </Card>
@@ -196,19 +339,19 @@ export default function DateWiseSales() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline">Show all rows</Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                   <FileText size={14} />
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                   <Download size={14} />
                   Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} />
                   Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} />
                   Print
                 </Button>
@@ -235,13 +378,12 @@ export default function DateWiseSales() {
                   <TableHead className="text-center">Average Sale</TableHead>
                   <TableHead>Top Product</TableHead>
                   <TableHead>Top Customer</TableHead>
-                  <TableHead className="text-center">📊</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-4">Loading...</TableCell>
+                    <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
                   </TableRow>
                 ) : salesData.map((sale) => (
                   <TableRow key={sale.id} className="hover:bg-gray-50">
@@ -253,11 +395,6 @@ export default function DateWiseSales() {
                     <TableCell className="text-center">£{sale.averageSale.toFixed(2)}</TableCell>
                     <TableCell>{sale.topProduct}</TableCell>
                     <TableCell>{sale.topCustomer}</TableCell>
-                    <TableCell className="text-center">
-                      <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-purple-500 text-white">
-                        <TrendingUp size={14} />
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 ))}
                 
@@ -271,7 +408,6 @@ export default function DateWiseSales() {
                   <TableCell className="text-center font-bold">£{totals.averageSale.toFixed(2)}</TableCell>
                   <TableCell className="font-bold">-</TableCell>
                   <TableCell className="font-bold">-</TableCell>
-                  <TableCell></TableCell>
                 </TableRow>
               </TableBody>
             </Table>

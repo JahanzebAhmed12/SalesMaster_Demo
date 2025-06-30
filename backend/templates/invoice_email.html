@@ -204,7 +204,12 @@
       <tbody>
         {% for item in sale.items %}
         <tr>
-          <td>{{ item.productName or item.product_name or item.description or '-' }}</td>
+          <td>
+            <div>{{ item.productName or item.product_name or item.description or '-' }}</div>
+            {% if item.notes %}
+            <div style="font-size: 11px; color: #666; font-style: italic; margin-top: 2px">{{ item.notes }}</div>
+            {% endif %}
+          </td>
           <td>{{ item.quantity }}</td>
           <td>{{ "%.2f"|format(item.unit_price or item.unitPrice) if item.unit_price or item.unitPrice else '-' }}</td>
           <td>£{{ "%.2f"|format(item.total_price or item.totalPrice) if item.total_price or item.totalPrice else '-' }}</td>

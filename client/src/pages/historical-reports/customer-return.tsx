@@ -38,6 +38,25 @@ interface CustomerReturnData {
   refundStatus: string;
 }
 
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 function toLocalDateString(date: Date) {
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
@@ -75,6 +94,11 @@ export default function CustomerReturn() {
     enabled: !!searchClicked,
   });
 
+  const { data: companyDetails } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
   const totals = {
     totalQuantity: returnData.reduce((sum, item) => sum + (item.quantity || 0), 0),
     totalAmount: returnData.reduce((sum, item) => sum + (item.returnAmount || 0), 0)
@@ -82,28 +106,69 @@ export default function CustomerReturn() {
 
   // Export handlers
   const handlePrint = () => {
-    if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Customer Returns</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>CUSTOMER RETURNS REPORT</h2>');
+      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
+      printWindow.document.write('</div>');
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th>');
+      printWindow.document.write('<th>Return Date</th>');
+      printWindow.document.write('<th>Customer Name</th>');
+      printWindow.document.write('<th>Invoice No</th>');
+      printWindow.document.write('<th>Product Name</th>');
+      printWindow.document.write('<th>Quantity</th>');
+      printWindow.document.write('<th>Return Reason</th>');
+      printWindow.document.write('<th>Return Amount</th>');
+      printWindow.document.write('<th>Status</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      returnData.forEach((item) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.slNo}</td>`);
+        printWindow.document.write(`<td>${format(new Date(item.returnDate), "dd/MM/yyyy")}</td>`);
+        printWindow.document.write(`<td>${item.customerName}</td>`);
+        printWindow.document.write(`<td>${item.invoiceNo}</td>`);
+        printWindow.document.write(`<td>${item.productName}</td>`);
+        printWindow.document.write(`<td>${item.quantity}</td>`);
+        printWindow.document.write(`<td>${item.returnReason}</td>`);
+        printWindow.document.write(`<td>£${item.returnAmount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${item.refundStatus}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
+      setTimeout(() => printWindow.print(), 500);
     }
   };
 
   const handleExcel = () => {
+    const wb = XLSX.utils.book_new();
+    // Info sheet
+    const info = [
+      ['CUSTOMER RETURNS REPORT'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
+      [''],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
+    // Data sheet
     const ws = XLSX.utils.json_to_sheet(returnData.map((item) => ({
       'Sl.No': item.slNo,
-      'Return Date': item.returnDate,
+      'Return Date': format(new Date(item.returnDate), "dd/MM/yyyy"),
       'Customer Name': item.customerName,
       'Invoice No': item.invoiceNo,
       'Product Name': item.productName,
@@ -112,39 +177,58 @@ export default function CustomerReturn() {
       'Return Amount': item.returnAmount,
       'Status': item.refundStatus
     })));
-    const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Customer Returns');
-    XLSX.writeFile(wb, 'customer-returns.xlsx');
+    XLSX.writeFile(wb, `customer_returns_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
   };
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    doc.text('Customer Returns', 14, 16);
+    doc.setFontSize(16);
+    doc.text('CUSTOMER RETURNS REPORT', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    const tableData = returnData.map((item) => [
+      item.slNo,
+      format(new Date(item.returnDate), "dd/MM/yyyy"),
+      item.customerName,
+      item.invoiceNo,
+      item.productName,
+      item.quantity,
+      item.returnReason,
+      `£${item.returnAmount.toFixed(2)}`,
+      item.refundStatus
+    ]);
     autoTable(doc, {
       head: [[
         'Sl.No', 'Return Date', 'Customer Name', 'Invoice No', 'Product Name', 'Quantity', 'Return Reason', 'Return Amount', 'Status'
       ]],
-      body: returnData.map((item) => [
-        item.slNo,
-        item.returnDate,
-        item.customerName,
-        item.invoiceNo,
-        item.productName,
-        item.quantity,
-        item.returnReason,
-        item.returnAmount,
-        item.refundStatus
-      ]),
-      startY: 22,
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 30 },
+        5: { cellWidth: 15 },
+        6: { cellWidth: 30 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 20 }
+      }
     });
-    doc.save('customer-returns.pdf');
+    doc.save(`customer_returns_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };
 
-  const handleCopy = () => {
-    const header = ['Sl.No', 'Return Date', 'Customer Name', 'Invoice No', 'Product Name', 'Quantity', 'Return Reason', 'Return Amount', 'Status'];
-    const rows = returnData.map((item) => [
+  const handleCopy = async () => {
+    let text = 'Sl.No\tReturn Date\tCustomer Name\tInvoice No\tProduct Name\tQuantity\tReturn Reason\tReturn Amount\tStatus\n';
+    text += returnData.map((item) => [
       item.slNo,
-      item.returnDate,
+      format(new Date(item.returnDate), "dd/MM/yyyy"),
       item.customerName,
       item.invoiceNo,
       item.productName,
@@ -152,10 +236,8 @@ export default function CustomerReturn() {
       item.returnReason,
       item.returnAmount,
       item.refundStatus
-    ]);
-    const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
-    navigator.clipboard.writeText(tsv);
-    alert('Table copied to clipboard!');
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
   };
 
   return (
@@ -170,7 +252,14 @@ export default function CustomerReturn() {
                 Customer Returns
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails ? (
+                  <>
+                    {companyDetails.companyName}, {companyDetails.address1}
+                    {companyDetails.address2 && `, ${companyDetails.address2}`}
+                  </>
+                ) : (
+                  "Loading company details..."
+                )}
               </div>
             </div>
           </CardHeader>
@@ -261,33 +350,7 @@ export default function CustomerReturn() {
                 </Button>
               </div>
               
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Printer size={16} />
-                  Print
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="bg-orange-500 hover:bg-orange-600 text-white flex items-center gap-2 z-50">
-                      Export
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="z-50 min-w-[8rem]">
-                    <DropdownMenuItem onClick={handleExcel} className="flex items-center gap-2">
-                      <Download size={16} /> Excel
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handlePDF} className="flex items-center gap-2">
-                      <FileText size={16} /> PDF
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handlePrint} className="flex items-center gap-2">
-                      <Printer size={16} /> Print
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleCopy} className="flex items-center gap-2">
-                      <Copy size={16} /> Copy
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+             
             </div>
           </CardContent>
         </Card>
@@ -303,6 +366,18 @@ export default function CustomerReturn() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline">Show all rows</Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                  PDF
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                  Excel
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                  Copy
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  Print
+                </Button>
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
@@ -327,13 +402,12 @@ export default function CustomerReturn() {
                     <TableHead>Return Reason</TableHead>
                     <TableHead className="text-center">Return Amount</TableHead>
                     <TableHead className="text-center">Status</TableHead>
-                    <TableHead className="text-center">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-4">Loading...</TableCell>
+                      <TableCell colSpan={9} className="text-center py-4">Loading...</TableCell>
                     </TableRow>
                   ) : returnData.map((returnItem) => (
                     <TableRow key={returnItem.id} className="hover:bg-gray-50">
@@ -354,16 +428,6 @@ export default function CustomerReturn() {
                           {returnItem.refundStatus}
                         </span>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex gap-1 justify-center">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-blue-500 text-white">
-                            👁️
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-green-500 text-white">
-                            ✏️
-                          </Button>
-                        </div>
-                      </TableCell>
                     </TableRow>
                   ))}
                   
@@ -377,7 +441,6 @@ export default function CustomerReturn() {
                     <TableCell className="text-center font-bold">{totals.totalQuantity}</TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-center font-bold">£{totals.totalAmount.toFixed(2)}</TableCell>
-                    <TableCell></TableCell>
                     <TableCell></TableCell>
                   </TableRow>
                 </TableBody>

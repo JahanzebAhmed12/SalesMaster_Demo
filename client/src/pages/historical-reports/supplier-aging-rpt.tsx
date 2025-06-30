@@ -16,6 +16,7 @@ import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useQuery } from "@tanstack/react-query";
 
 interface SupplierAgingData {
   id: number;
@@ -62,6 +63,25 @@ interface ApiResponse {
     searchTerm: string;
     currency: string;
   };
+}
+
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export default function SupplierAgingRpt() {
@@ -171,75 +191,99 @@ export default function SupplierAgingRpt() {
     // eslint-disable-next-line
   }, [supplierFilter, currencyFilter, asOfDate]);
 
+  // Fetch company details
+  const { data: company } = useQuery<CompanyDetails>({
+    queryKey: ["company-details"],
+    queryFn: async () => apiRequest("GET", "/api/company-details"),
+  });
+
   // Export to Excel handler
   const handleExportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(
-      agingData.map((row) => ({
-        "Sl.No": row.slNo,
-        "Supplier Name": row.supplierName,
-        "Total Outstanding": row.totalOutstanding,
-        "Current": row.current,
-        "1-30 Days": row.days30,
-        "31-60 Days": row.days60,
-        "61-90 Days": row.days90,
-        "91-120 Days": row.days120,
-        "121-180 Days": row.days180,
-        "Over 180 Days": row.over180,
-        "Currency": row.currency,
-      }))
-    );
+    const ws = XLSX.utils.json_to_sheet(agingData.map((item) => ({
+      'Sl No': item.slNo,
+      'Supplier Name': item.supplierName,
+      'Total Outstanding': Number(item.totalOutstanding).toFixed(2),
+      'Current': Number(item.current).toFixed(2),
+      '30 Days': Number(item.days30).toFixed(2),
+      '60 Days': Number(item.days60).toFixed(2),
+      '90 Days': Number(item.days90).toFixed(2),
+      '120 Days': Number(item.days120).toFixed(2),
+      '180 Days': Number(item.days180).toFixed(2),
+      'Over 180': Number(item.over180).toFixed(2),
+      'Currency': item.currency,
+      'Supplier Code': item.supplierCode,
+      'Address': item.address,
+      'Telephone': item.telephone,
+      'Email': item.email,
+    })));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Supplier Aging Report");
-    XLSX.writeFile(wb, `supplier-aging-report.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "Supplier Aging");
+    XLSX.writeFile(wb, "SupplierAgingReport.xlsx");
   };
 
   // Export to PDF handler
   const handleExportPDF = () => {
     const doc = new jsPDF();
+    doc.text(company?.companyName || '', 10, 10);
+    doc.text(company?.address1 || '', 10, 16);
     autoTable(doc, {
       head: [[
-        "Sl.No", "Supplier Name", "Total Outstanding", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "91-120 Days", "121-180 Days", "Over 180 Days", "Currency"
+        'Sl No', 'Supplier Name', 'Total Outstanding', 'Current', '30 Days', '60 Days', '90 Days', '120 Days', '180 Days', 'Over 180', 'Currency', 'Supplier Code', 'Address', 'Telephone', 'Email'
       ]],
-      body: agingData.map((row) => [
-        row.slNo,
-        row.supplierName,
-        row.totalOutstanding.toFixed(2),
-        row.current.toFixed(2),
-        row.days30.toFixed(2),
-        row.days60.toFixed(2),
-        row.days90.toFixed(2),
-        row.days120.toFixed(2),
-        row.days180.toFixed(2),
-        row.over180.toFixed(2),
-        row.currency
+      body: agingData.map((item) => [
+        item.slNo,
+        item.supplierName,
+        Number(item.totalOutstanding).toFixed(2),
+        Number(item.current).toFixed(2),
+        Number(item.days30).toFixed(2),
+        Number(item.days60).toFixed(2),
+        Number(item.days90).toFixed(2),
+        Number(item.days120).toFixed(2),
+        Number(item.days180).toFixed(2),
+        Number(item.over180).toFixed(2),
+        item.currency,
+        item.supplierCode,
+        item.address,
+        item.telephone,
+        item.email,
       ]),
-      styles: { fontSize: 8 },
-      margin: { top: 20 },
-      didDrawPage: (data) => {
-        doc.text("Supplier Aging Report", 14, 10);
-      },
+      startY: 22,
     });
-    doc.save("supplier-aging-report.pdf");
+    doc.save("SupplierAgingReport.pdf");
   };
 
   // Print only the table section
   const handlePrintTable = () => {
-    if (!tableSectionRef.current) return;
-    const printContents = tableSectionRef.current.innerHTML;
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Supplier Aging Report</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;} .bg-rose-50{background:#fff1f2;} .bg-gray-100{background:#f3f4f6;} .bg-slate-100{background:#f1f5f9;} .font-bold{font-weight:bold;}</style>');
-      printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
-    }
+    const printWindow = window.open('', '', 'width=900,height=700');
+    if (!printWindow) return;
+    printWindow.document.write('<html><head><title>Supplier Aging Report</title></head><body>');
+    printWindow.document.write(`<h2>${company?.companyName || ''}</h2>`);
+    printWindow.document.write(`<div>${company?.address1 || ''}</div>`);
+    printWindow.document.write('<table border="1"><thead><tr>');
+    printWindow.document.write('<th>Sl No</th><th>Supplier Name</th><th>Total Outstanding</th><th>Current</th><th>30 Days</th><th>60 Days</th><th>90 Days</th><th>120 Days</th><th>180 Days</th><th>Over 180</th><th>Currency</th><th>Supplier Code</th><th>Address</th><th>Telephone</th><th>Email</th>');
+    printWindow.document.write('</tr></thead><tbody>');
+    agingData.forEach(item => {
+      printWindow.document.write('<tr>');
+      printWindow.document.write(`<td>${item.slNo}</td>`);
+      printWindow.document.write(`<td>${item.supplierName}</td>`);
+      printWindow.document.write(`<td>${Number(item.totalOutstanding).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${Number(item.current).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${Number(item.days30).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${Number(item.days60).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${Number(item.days90).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${Number(item.days120).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${Number(item.days180).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${Number(item.over180).toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${item.currency}</td>`);
+      printWindow.document.write(`<td>${item.supplierCode}</td>`);
+      printWindow.document.write(`<td>${item.address}</td>`);
+      printWindow.document.write(`<td>${item.telephone}</td>`);
+      printWindow.document.write(`<td>${item.email}</td>`);
+      printWindow.document.write('</tr>');
+    });
+    printWindow.document.write('</tbody></table></body></html>');
+    printWindow.document.close();
+    printWindow.print();
   };
 
   return (
@@ -254,7 +298,7 @@ export default function SupplierAgingRpt() {
                 Supplier Aging Report
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {company?.companyName || 'TROPIFRUIT UK LTD'}, {company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ...'}
               </div>
             </div>
           </CardHeader>

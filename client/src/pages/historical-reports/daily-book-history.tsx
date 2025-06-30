@@ -6,11 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, FileText, Copy, Printer, ChevronUp } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface DailyBookData {
   slNo: number;
@@ -23,14 +26,33 @@ interface DailyBookData {
   cash: number;
 }
 
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 function toLocalDateString(date: Date) {
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export default function DailyBookHistory() {
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
+  const [fromDate, setFromDate] = useState<Date>(subDays(new Date(), 7));
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [user, setUser] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [reportType, setReportType] = useState<string>("All");
@@ -71,6 +93,148 @@ export default function DailyBookHistory() {
     cash: dailyBookData.reduce((sum, item) => sum + (item.cash || 0), 0)
   };
 
+  const { data: companyDetails } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
+  // Export handlers
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Daily Book History</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('</head><body>');
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>DAILY BOOK HISTORY REPORT</h2>');
+      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
+      printWindow.document.write('</div>');
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th>');
+      printWindow.document.write('<th>Date</th>');
+      printWindow.document.write('<th>User</th>');
+      printWindow.document.write('<th>Invoice No</th>');
+      printWindow.document.write('<th>Customer Name</th>');
+      printWindow.document.write('<th>Credit</th>');
+      printWindow.document.write('<th>Cr. Paid</th>');
+      printWindow.document.write('<th>Cash</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      dailyBookData.forEach((item) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.slNo}</td>`);
+        printWindow.document.write(`<td>${format(new Date(item.date), "dd-MM-yyyy")}</td>`);
+        printWindow.document.write(`<td>${item.user}</td>`);
+        printWindow.document.write(`<td>${item.invoiceNo}</td>`);
+        printWindow.document.write(`<td>${item.customerName}</td>`);
+        printWindow.document.write(`<td>£${item.credit.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${item.crPaid.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${item.cash.toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wb = XLSX.utils.book_new();
+    // Info sheet
+    const info = [
+      ['DAILY BOOK HISTORY REPORT'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
+      [''],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
+    // Data sheet
+    const ws = XLSX.utils.json_to_sheet(dailyBookData.map((item) => ({
+      'Sl.No': item.slNo,
+      'Date': format(new Date(item.date), "dd-MM-yyyy"),
+      'User': item.user,
+      'Invoice No': item.invoiceNo,
+      'Customer Name': item.customerName,
+      'Credit': item.credit,
+      'Cr. Paid': item.crPaid,
+      'Cash': item.cash
+    })));
+    XLSX.utils.book_append_sheet(wb, ws, 'Daily Book History');
+    XLSX.writeFile(wb, `daily_book_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('DAILY BOOK HISTORY REPORT', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    const tableData = dailyBookData.map((item) => [
+      item.slNo,
+      format(new Date(item.date), "dd-MM-yyyy"),
+      item.user,
+      item.invoiceNo,
+      item.customerName,
+      `£${item.credit.toFixed(2)}`,
+      `£${item.crPaid.toFixed(2)}`,
+      `£${item.cash.toFixed(2)}`
+    ]);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Date', 'User', 'Invoice No', 'Customer Name', 'Credit', 'Cr. Paid', 'Cash'
+      ]],
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 30 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 20 },
+        7: { cellWidth: 20 }
+      }
+    });
+    doc.save(`daily_book_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    let text = 'Sl.No\tDate\tUser\tInvoice No\tCustomer Name\tCredit\tCr. Paid\tCash\n';
+    text += dailyBookData.map((item) => [
+      item.slNo,
+      format(new Date(item.date), "dd-MM-yyyy"),
+      item.user,
+      item.invoiceNo,
+      item.customerName,
+      item.credit,
+      item.crPaid,
+      item.cash
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
+  };
+
+  // Invoice button logic
+  const handleInvoice = (invoiceNo: string) => {
+    // Always open the standard invoice print page with path param
+    const url = `/print/invoice/${invoiceNo}`;
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -79,7 +243,14 @@ export default function DailyBookHistory() {
           <div className="flex justify-between items-center">
             <h1 className="text-xl font-semibold text-gray-900">Daily Book</h1>
             <div className="text-sm text-gray-500">
-              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ, ...
+              {companyDetails ? (
+                <>
+                  {companyDetails.companyName}, {companyDetails.address1}
+                  {companyDetails.address2 && `, ${companyDetails.address2}`}
+                </>
+              ) : (
+                "Loading company details..."
+              )}
             </div>
           </div>
         </div>
@@ -102,14 +273,14 @@ export default function DailyBookHistory() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "20250610"}
+                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "From Date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
                     <Calendar
                       mode="single"
                       selected={fromDate}
-                      onSelect={setFromDate}
+                      onSelect={date => date && setFromDate(date)}
                       initialFocus
                     />
                   </PopoverContent>
@@ -128,14 +299,14 @@ export default function DailyBookHistory() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyy-MM-dd") : "20250610"}
+                      {toDate ? format(toDate, "yyyy-MM-dd") : "To Date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0">
                     <Calendar
                       mode="single"
                       selected={toDate}
-                      onSelect={setToDate}
+                      onSelect={date => date && setToDate(date)}
                       initialFocus
                     />
                   </PopoverContent>
@@ -212,18 +383,18 @@ export default function DailyBookHistory() {
           <CardContent className="p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
               <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handlePDF}>
                   <FileText className="w-4 h-4 mr-2" />
                   PDF
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleExcel}>
                   Excel
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handleCopy}>
                   <Copy className="w-4 h-4 mr-2" />
                   Copy
                 </Button>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" onClick={handlePrint}>
                   <Printer className="w-4 h-4 mr-2" />
                   Print
                 </Button>
@@ -274,7 +445,7 @@ export default function DailyBookHistory() {
                       <TableCell className="text-center">
                         <div className="flex items-center gap-2 justify-center">
                           <span className="flex gap-1">
-                            <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 p-1 text-xs">
+                            <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 p-1 text-xs" onClick={() => handleInvoice(item.invoiceNo)}>
                               📄
                             </Button>
                           </span>

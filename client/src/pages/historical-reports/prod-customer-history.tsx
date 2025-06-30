@@ -11,10 +11,32 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 function toLocalDateString(date: Date) {
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export default function ProdCustomerHistory() {
@@ -74,6 +96,123 @@ export default function ProdCustomerHistory() {
 
   const loading = loadingCustomers || loadingProducts || loadingHistory;
 
+  const { data: companyDetails } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
+  // Export handlers
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Product-Customer History</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('</head><body>');
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>PRODUCT-CUSTOMER HISTORY</h2>');
+      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
+      printWindow.document.write('</div>');
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th>');
+      printWindow.document.write('<th>Product</th>');
+      printWindow.document.write('<th>Quantity</th>');
+      printWindow.document.write('<th>Avg Price</th>');
+      printWindow.document.write('<th>Total</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      historyData.forEach((row: any) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${row.slNo}</td>`);
+        printWindow.document.write(`<td>${row.product}</td>`);
+        printWindow.document.write(`<td>${row.quantity}</td>`);
+        printWindow.document.write(`<td>${row.avgPrice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${row.total.toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wb = XLSX.utils.book_new();
+    // Info sheet
+    const info = [
+      ['PRODUCT-CUSTOMER HISTORY'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
+      [''],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
+    // Data sheet
+    const ws = XLSX.utils.json_to_sheet(historyData.map((row: any) => ({
+      'Sl.No': row.slNo,
+      'Product': row.product,
+      'Quantity': row.quantity,
+      'Avg Price': row.avgPrice,
+      'Total': row.total
+    })));
+    XLSX.utils.book_append_sheet(wb, ws, 'Product-Customer History');
+    XLSX.writeFile(wb, `prod_customer_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('PRODUCT-CUSTOMER HISTORY', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    const tableData = historyData.map((row: any) => [
+      row.slNo,
+      row.product,
+      row.quantity,
+      row.avgPrice.toFixed(2),
+      row.total.toFixed(2)
+    ]);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Product', 'Quantity', 'Avg Price', 'Total'
+      ]],
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 25 }
+      }
+    });
+    doc.save(`prod_customer_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    let text = 'Sl.No\tProduct\tQuantity\tAvg Price\tTotal\n';
+    text += historyData.map((row: any) => [
+      row.slNo,
+      row.product,
+      row.quantity,
+      row.avgPrice.toFixed(2),
+      row.total.toFixed(2)
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -82,7 +221,14 @@ export default function ProdCustomerHistory() {
           <div className="flex justify-between items-center">
             <h1 className="text-xl font-semibold text-gray-900">Customer-wise Product History</h1>
             <div className="text-sm text-gray-500">
-              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ, ...
+              {companyDetails ? (
+                <>
+                  {companyDetails.companyName}, {companyDetails.address1}
+                  {companyDetails.address2 && `, ${companyDetails.address2}`}
+                </>
+              ) : (
+                "Loading company details..."
+              )}
             </div>
           </div>
         </div>
@@ -202,7 +348,23 @@ export default function ProdCustomerHistory() {
         {/* From Sales Section */}
         <Card>
           <CardContent className="p-6">
-            <h3 className="text-lg font-semibold mb-4 text-blue-600 border-b-2 border-blue-300 pb-2">From Sales</h3>
+            <h3 className="text-lg font-semibold mb-4 text-blue-600 border-b-2 border-blue-300 pb-2 flex items-center justify-between">
+              From Sales
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                  PDF
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                  Excel
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                  Copy
+                </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  Print
+                </Button>
+              </div>
+            </h3>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>

@@ -54,7 +54,7 @@ function InvoiceTemplate({ data }: { data: InvoiceData }) {
             Invoice No: {sale?.invoice_number || sale?.invoiceNumber || "-"}
           </div>
           <div style={{ fontWeight: "bold", fontSize: 28, letterSpacing: 1 }}>INVOICE</div>
-          <div style={{ fontWeight: 400, fontSize: 16, marginTop: 8 }}>Date: {sale?.date ? new Date(sale.date).toLocaleDateString() : "-"}</div>
+          <div style={{ fontWeight: 400, fontSize: 16, marginTop: 8 }}>Date: {sale?.date ? new Date(sale.date).toLocaleString() : "-"}</div>
         </div>
       </div>
       <hr style={{ margin: "16px 0" }} />
@@ -80,7 +80,12 @@ function InvoiceTemplate({ data }: { data: InvoiceData }) {
         <tbody>
           {items.map((item, idx) => (
             <tr key={item.id || idx}>
-              <td style={{ border: "1px solid #888", padding: 4 }}>{item.productName || item.description || "-"}</td>
+              <td style={{ border: "1px solid #888", padding: 4 }}>
+                <div>{item.productName || item.description || "-"}</div>
+                {item.notes && (
+                  <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>{item.notes}</div>
+                )}
+              </td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.quantity}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>

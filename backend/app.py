@@ -4927,8 +4927,6 @@ def supplier_statement():
 def all_supplier_history():
     from_date = request.args.get('fromDate')
     to_date = request.args.get('toDate')
-    # Optionally, add filters for active/outstanding only, etc.
-
     from datetime import datetime
     from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
@@ -4937,21 +4935,41 @@ def all_supplier_history():
     result = []
     sl_no = 1
     for supplier in suppliers:
-        # Purchases
         purchases_query = Purchase.query.filter(Purchase.supplier_id == supplier.id)
+        purchase_invoices_query = PurchaseInvoice.query.join(Purchase).filter(Purchase.supplier_id == supplier.id)
         if from_dt:
-            purchases_query = purchases_query.filter(Purchase.date >= from_dt)
+            purchase_invoices_query = purchase_invoices_query.filter(PurchaseInvoice.date >= from_dt)
         if to_dt:
-            purchases_query = purchases_query.filter(Purchase.date <= to_dt)
-        total_purchase = sum(float(p.amount) for p in purchases_query)
+            purchase_invoices_query = purchase_invoices_query.filter(PurchaseInvoice.date <= to_dt)
+        total_purchase = sum(float(inv.paid_amount if inv.paid_amount else 0) + sum(float(item.total_price) for item in inv.items) for inv in purchase_invoices_query)
 
-        # Payments
         payments_query = SupplierPayment.query.filter(SupplierPayment.supplier_id == supplier.id)
         if from_dt:
             payments_query = payments_query.filter(SupplierPayment.payment_date >= from_dt.date())
         if to_dt:
             payments_query = payments_query.filter(SupplierPayment.payment_date <= to_dt.date())
+        total_paid = sum(float(p.amount) for p in payments_query)
 
+        credit_adj = 0  # Placeholder for credit adjustments
+        discount_adj = 0  # Placeholder for discount adjustments
+        balance_outstanding = total_purchase - total_paid + credit_adj + discount_adj
+        credit_limit = float(supplier.credit_limit) if supplier.credit_limit is not None else 0
+        currency = supplier.supplier_currency
+
+        result.append({
+            'id': supplier.id,
+            'slNo': sl_no,
+            'supplierName': supplier.supplier_name,
+            'purchaseInvoice': total_purchase,
+            'amountPaid': total_paid,
+            'creditAdj': credit_adj,
+            'discountAdj': discount_adj,
+            'balanceOutstanding': balance_outstanding,
+            'creditLimit': credit_limit,
+            'currency': currency
+        })
+        sl_no += 1
+    return jsonify(result)
 
 
 @app.route('/api/reports/purchase-history', methods=['GET'])
@@ -5033,7 +5051,20 @@ def purchase_history_report():
             'totalAmount': float(row.item_total) if row.item_total else 0,
             'paymentStatus': row.invoice_payment_status.capitalize() if row.invoice_payment_status else '',
         })
-    return jsonify(purchase_data)
+    total_quantity = sum(item['quantity'] for item in purchase_data)
+    total_amount = sum(item['totalAmount'] for item in purchase_data)
+    paid_amount = sum(item['totalAmount'] for item in purchase_data if item['paymentStatus'] == 'Paid')
+    pending_amount = sum(item['totalAmount'] for item in purchase_data if item['paymentStatus'] == 'Pending')
+
+    return jsonify({
+        "data": purchase_data,
+        "totals": {
+            "totalQuantity": total_quantity,
+            "totalAmount": total_amount,
+            "paidAmount": paid_amount,
+            "pendingAmount": pending_amount
+        }
+    })
 
 @app.route('/api/reports/product-history', methods=['GET'])
 @jwt_required()
@@ -5757,128 +5788,154 @@ def profit_loss_report():
 def daily_accounts_report():
     from_date = request.args.get('fromDate')
     to_date = request.args.get('toDate')
-    from datetime import datetime
-    from models import Sale, Payment, ExpenseEntry, SupplierPayment
-    from sqlalchemy import func
+    
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
 
-    # Parse dates
-    if not from_date:
-        from_date = datetime.now().strftime('%Y-%m-%d')
-    if not to_date:
-        to_date = from_date
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
-    # On Account Customer Payments (sale_id is null)
-    on_acc_customer_payments = (
-        db.session.query(Payment.payment_mode, func.sum(Payment.amount))
-        .filter(Payment.sale_id == None)
-        .filter(Payment.payment_date >= from_dt.date(), Payment.payment_date <= to_dt.date())
-        .group_by(Payment.payment_mode)
-        .all()
-    )
-    on_acc_customer_by_mode = {mode.upper(): float(amount or 0) for mode, amount in on_acc_customer_payments}
+    def sum_payment(mode, sale_id_null=False):
+        query = db.session.query(func.sum(Payment.amount)).filter(
+            Payment.payment_mode.ilike(mode),
+            Payment.payment_date >= from_dt.date(),
+            Payment.payment_date <= to_dt.date()
+        )
+        if sale_id_null:
+            query = query.filter(Payment.sale_id == None)
+        else:
+            query = query.filter(Payment.sale_id != None)
+        return float(query.scalar() or 0)  # Convert Decimal to float here
 
-    # On Account Supplier Payments (purchase_invoice_id is null)
-    on_acc_supplier_payments = (
-        db.session.query(SupplierPayment.payment_mode, func.sum(SupplierPayment.amount))
-        .filter(SupplierPayment.purchase_invoice_id == None)
-        .filter(SupplierPayment.payment_date >= from_dt.date(), SupplierPayment.payment_date <= to_dt.date())
-        .group_by(SupplierPayment.payment_mode)
-        .all()
-    )
-    on_acc_supplier_by_mode = {mode.upper(): float(amount or 0) for mode, amount in on_acc_supplier_payments}
-
-    # ... rest of the daily accounts logic ...
-    # Example: add these to receivables/payables
-    receivables = [
-        {"item": "On Account Cash", "amount": on_acc_customer_by_mode.get("CASH", 0)},
-        {"item": "On Account Card", "amount": on_acc_customer_by_mode.get("CARD", 0)},
-        {"item": "On Account Bank", "amount": on_acc_customer_by_mode.get("BANK", 0)},
-        {"item": "On Account Cheque", "amount": on_acc_customer_by_mode.get("CHEQUE", 0)},
-        # ... other receivables ...
+    # --- Receivables Cash ---
+    sales_cash = sum_payment('cash', sale_id_null=False)
+    account_cash = sum_payment('cash', sale_id_null=True)
+    on_account_cash = sum_payment('cash', sale_id_null=True)
+    bf = db.session.query(CashCarryForward).filter(
+        CashCarryForward.date == from_dt.date()
+    ).first()
+    bf_amount = float(bf.pounds + bf.coins) if bf else 0  # Convert Decimal to float
+    total_cash = sales_cash + account_cash + on_account_cash + bf_amount
+    receivables_cash = [
+        {"item": "Sales Cash", "amount": sales_cash},
+        {"item": "Account Cash", "amount": account_cash},
+        {"item": "On Account Cash", "amount": on_account_cash},
+        {"item": "B/F", "amount": bf_amount},
+        {"item": "TOTAL CASH", "amount": total_cash}
     ]
-    payables = [
-        {"item": "On Account Supplier Cash", "amount": on_acc_supplier_by_mode.get("CASH", 0)},
-        {"item": "On Account Supplier Card", "amount": on_acc_supplier_by_mode.get("CARD", 0)},
-        {"item": "On Account Supplier Bank", "amount": on_acc_supplier_by_mode.get("BANK", 0)},
-        {"item": "On Account Supplier Cheque", "amount": on_acc_supplier_by_mode.get("CHEQUE", 0)},
-        # ... other payables ...
+
+    # --- Receivables Others ---
+    cheque = sum_payment('cheque')
+    card = sum_payment('card')
+    bank_transfer = sum_payment('bank transfer')
+    others = sum_payment('others')
+    on_account_cheque = sum_payment('cheque', sale_id_null=True)
+    on_account_card = sum_payment('card', sale_id_null=True)
+    on_account_bank = sum_payment('bank transfer', sale_id_null=True)
+    on_account_others = sum_payment('others', sale_id_null=True)
+    total_others = cheque + card + bank_transfer + others + on_account_cheque + on_account_card + on_account_bank + on_account_others
+    receivables_others = [
+        {"item": "Cheque", "amount": cheque},
+        {"item": "Card", "amount": card},
+        {"item": "Bank Transfer", "amount": bank_transfer},
+        {"item": "Others", "amount": others},
+        {"item": "On Account Cheque", "amount": on_account_cheque},
+        {"item": "On Account Card", "amount": on_account_card},
+        {"item": "On Account Bank", "amount": on_account_bank},
+        {"item": "On Account Others", "amount": on_account_others},
+        {"item": "TOTAL", "amount": total_others}
     ]
-    # ... existing code to build and return the full daily accounts report ...
 
-    # --- Receivables and Payables (On Account Payments) already built above ---
-
-    # --- Banking Entries ---
-    from models import BankingEntry, CashCarryForward, DumpEntry, CustomerReturn, SupplierReturn
-    banking_entries = BankingEntry.query.filter(
+    # --- Banking ---
+    banking_entries = db.session.query(BankingEntry).filter(
         BankingEntry.date >= from_dt.date(),
         BankingEntry.date <= to_dt.date()
     ).all()
-    banking = [b.to_dict() for b in banking_entries]
+    def sum_banking(mode):
+        return sum(float(b.amount or 0) for b in banking_entries if b.payment_type and b.payment_type.lower() == mode)  # Convert Decimal to float
+    banking_cash = sum_banking('cash')
+    banking_cheque = sum_banking('cheque')
+    banking_card = sum_banking('card')
+    banking_others = sum_banking('others')
+    sub_total = banking_cash + banking_cheque
+    total_banking = banking_cash + banking_cheque + banking_card + banking_others
+    banking = [
+        {"item": "Cash", "amount": banking_cash},
+        {"item": "Cheque", "amount": banking_cheque},
+        {"item": "SUB TOTAL", "amount": sub_total},
+        {"item": "Card", "amount": banking_card},
+        {"item": "Others", "amount": banking_others},
+        {"item": "TOTAL", "amount": total_banking}
+    ]
 
-    # --- Cash Carry Forward ---
-    cf = CashCarryForward.query.filter(
-        CashCarryForward.date >= from_dt.date(),
-        CashCarryForward.date <= to_dt.date()
-    ).all()
-    cf_total = sum(float(x.pounds or 0) + float(x.coins or 0) for x in cf)
-
-    # --- Expenses ---
-    expense_entries = ExpenseEntry.query.filter(
+    # --- Payables Cash ---
+    misc_expenses_cash = float(db.session.query(func.sum(ExpenseEntry.amount)).filter(  # Convert Decimal to float
+        ExpenseEntry.payment_mode.ilike('cash'),
         ExpenseEntry.date >= from_dt.date(),
         ExpenseEntry.date <= to_dt.date()
-    ).all()
-    expenses = [e.to_dict() for e in expense_entries]
-    expenses_total = sum(float(e.total_amount or 0) for e in expense_entries)
+    ).scalar() or 0)
+    supplier_payments_cash = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+        SupplierPayment.payment_mode.ilike('cash'),
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date <= to_dt.date()
+    ).scalar() or 0)
+    supplier_payments_onac = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+        SupplierPayment.payment_mode.ilike('cash'),
+        SupplierPayment.purchase_invoice_id == None,
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date <= to_dt.date()
+    ).scalar() or 0)
+    total_payables_cash = misc_expenses_cash + supplier_payments_cash + supplier_payments_onac
+    payables_cash = [
+        {"item": "Misc Expenses", "amount": misc_expenses_cash},
+        {"item": "Supplier Payments Cash", "amount": supplier_payments_cash},
+        {"item": "Supplier Payments On/Ac", "amount": supplier_payments_onac},
+        {"item": "TOTAL", "amount": total_payables_cash}
+    ]
 
-    # --- Dumps ---
-    dump_entries = DumpEntry.query.filter(
-        DumpEntry.date >= from_dt.date(),
-        DumpEntry.date <= to_dt.date()
-    ).all()
-    dumps = [d.to_dict() for d in dump_entries]
-    dumps_total = sum(float(d.total_value or 0) for d in dump_entries)
+    # --- Payables Others ---
+    misc_expenses_others = float(db.session.query(func.sum(ExpenseEntry.amount)).filter(  # Convert Decimal to float
+        ExpenseEntry.payment_mode.ilike('others'),
+        ExpenseEntry.date >= from_dt.date(),
+        ExpenseEntry.date <= to_dt.date()
+    ).scalar() or 0)
+    supplier_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+        SupplierPayment.payment_mode.ilike('others'),
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date <= to_dt.date()
+    ).scalar() or 0)
+    onac_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+        SupplierPayment.payment_mode.ilike('others'),
+        SupplierPayment.purchase_invoice_id == None,
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date <= to_dt.date()
+    ).scalar() or 0)
+    total_payables_others = misc_expenses_others + supplier_payments_others + onac_payments_others
+    payables_others = [
+        {"item": "Misc Expenses", "amount": misc_expenses_others},
+        {"item": "Supplier Payments", "amount": supplier_payments_others},
+        {"item": "On/Ac Payments", "amount": onac_payments_others},
+        {"item": "TOTAL", "amount": total_payables_others}
+    ]
 
-    # --- Customer Returns ---
-    customer_returns = CustomerReturn.query.filter(
-        CustomerReturn.date >= from_dt.date(),
-        CustomerReturn.date <= to_dt.date()
-    ).all()
-    customer_returns_list = [cr.to_dict() for cr in customer_returns]
-    customer_returns_total = sum(float(cr.total_value or 0) for cr in customer_returns)
+    # --- C/F ---
+    cf_total = bf_amount
 
-    # --- Supplier Returns ---
-    supplier_returns = SupplierReturn.query.filter(
-        SupplierReturn.date >= from_dt.date(),
-        SupplierReturn.date <= to_dt.date()
-    ).all()
-    supplier_returns_list = [sr.to_dict() for sr in supplier_returns]
-    supplier_returns_total = sum(float(sr.total_value or 0) for sr in supplier_returns)
-
-    # --- Totals and Balances (example, adjust as needed) ---
-    actual_balance = cf_total + sum(r['amount'] for r in receivables) - sum(p['amount'] for p in payables)
-    shortfall = actual_balance - expenses_total
+    # --- Actual Balance and Shortfall ---
+    actual_balance = cf_total + total_cash + total_others - total_payables_cash - total_payables_others
+    shortfall = actual_balance  # Adjust as per your business logic
 
     return jsonify({
-        "receivablesCash": receivables,
-        "receivablesOthers": [],
-        "payablesCash": payables,
-        "payablesOthers": [],
+        "receivablesCash": receivables_cash,
+        "receivablesOthers": receivables_others,
+        "payablesCash": payables_cash,
+        "payablesOthers": payables_others,
         "banking": banking,
         "cfTotal": cf_total,
         "actualBalance": actual_balance,
-        "shortfall": shortfall,
-        "expenses": expenses,
-        "expensesTotal": expenses_total,
-        "dumps": dumps,
-        "dumpsTotal": dumps_total,
-        "customerReturns": customer_returns_list,
-        "customerReturnsTotal": customer_returns_total,
-        "supplierReturns": supplier_returns_list,
-        "supplierReturnsTotal": supplier_returns_total
+        "shortfall": shortfall
     }), 200
-
+    
 @app.route('/api/cash-cf', methods=['POST'])
 @jwt_required()
 def add_cash_cf():
@@ -6230,7 +6287,7 @@ def customer_aging_report():
             # --- Get all confirmed sales up to as_of_dt ---
             sales = Sale.query.filter(
                 Sale.customer_id == customer.id,
-                Sale.status == 'confirmed',
+                Sale.status == 'finalized',
                 Sale.date <= as_of_dt
             ).all()
 
@@ -6363,6 +6420,7 @@ def customer_aging_report():
 def supplier_aging_report():
     from datetime import datetime
     from sqlalchemy import or_
+    from models import PurchaseInvoice, Purchase, Supplier, SupplierPayment, SupplierReturn
     try:
         as_of_date = request.args.get('asOfDate')
         supplier_filter = request.args.get('supplierFilter', 'All Suppliers')
@@ -6397,10 +6455,10 @@ def supplier_aging_report():
         sl_no = 1
 
         for supplier in suppliers:
-            purchases = Purchase.query.filter(
+            invoices = PurchaseInvoice.query.join(Purchase).filter(
                 Purchase.supplier_id == supplier.id,
-                Purchase.status == 'confirmed',
-                Purchase.date <= as_of_dt
+                PurchaseInvoice.payment_status.in_(['pending', 'partial']),
+                PurchaseInvoice.date <= as_of_dt
             ).all()
 
             buckets = {
@@ -6414,28 +6472,34 @@ def supplier_aging_report():
             }
             total_outstanding = 0.0
 
-            for purchase in purchases:
+            for invoice in invoices:
+                # Payments up to as_of_dt for this invoice
                 payments = SupplierPayment.query.filter(
-                    SupplierPayment.supplier_id == supplier.id,
+                    SupplierPayment.purchase_invoice_id == invoice.id,
                     SupplierPayment.payment_date <= as_of_dt.date()
                 ).all()
                 paid = sum(float(p.amount) for p in payments)
 
+                # Returns up to as_of_dt for this invoice
                 returns = SupplierReturn.query.filter(
-                    SupplierReturn.supplier_id == supplier.id,
+                    SupplierReturn.purchase_invoice_id == invoice.id,
                     SupplierReturn.status == 'completed',
                     SupplierReturn.date <= as_of_dt.date()
                 ).all()
                 returned = sum(float(r.total_value) for r in returns)
 
-                outstanding = float(purchase.amount) - paid - returned
+                # Outstanding for this invoice
+                invoice_total = sum(float(item.total_price) for item in invoice.items)
+                outstanding = invoice_total - paid - returned
                 if outstanding <= 0:
                     continue
 
-                days_overdue = (as_of_dt.date() - purchase.date.date()).days
+                # Days overdue
+                days_overdue = (as_of_dt.date() - invoice.date.date()).days
                 if days_overdue < 0:
                     days_overdue = 0
 
+                # Bucket
                 if days_overdue == 0:
                     buckets['current'] += outstanding
                 elif 1 <= days_overdue <= 30:
@@ -6516,7 +6580,7 @@ def supplier_aging_report():
     except Exception as e:
         print('Error in supplier_aging_report:', str(e))
         return jsonify({'error': 'Internal server error'}), 500
-
+        
 @app.route('/api/business-date', methods=['GET'])
 def get_business_date_api():
     business_date = get_business_date()
@@ -6875,3 +6939,55 @@ def send_supplier_statement_email_api():
             'success': False,
             'message': f'Error sending supplier statement email: {str(e)}'
         }), 500
+
+
+        
+@app.route('/api/reports/eec-report', methods=['GET'])
+@jwt_required()
+def eec_report():
+    from datetime import datetime
+    from models import PurchaseInvoice, PurchaseInvoiceItem, Purchase, Supplier, RegularProduct, NonProduct
+    fromDate = request.args.get('fromDate')
+    toDate = request.args.get('toDate')
+    if not fromDate or not toDate:
+        return jsonify([])
+    from_dt = datetime.strptime(fromDate, "%Y-%m-%d")
+    to_dt = datetime.strptime(toDate, "%Y-%m-%d")
+    # Query all purchase invoice items in the date range
+    items = (
+        db.session.query(
+            PurchaseInvoiceItem,
+            PurchaseInvoice.date,
+            Purchase,
+            Supplier,
+            RegularProduct,
+            NonProduct
+        )
+        .join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)
+        .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+        .join(Supplier, Purchase.supplier_id == Supplier.id)
+        .outerjoin(RegularProduct, PurchaseInvoiceItem.product_id == RegularProduct.id)
+        .outerjoin(NonProduct, PurchaseInvoiceItem.product_id == NonProduct.id)
+        .filter(PurchaseInvoice.date >= from_dt, PurchaseInvoice.date <= to_dt)
+        .order_by(PurchaseInvoice.date.asc())
+        .all()
+    )
+    data = []
+    for idx, (item, inv_date, purchase, supplier, reg_prod, non_prod) in enumerate(items, 1):
+        # Prefer regular product info, fallback to non-product
+        product_code = reg_prod.product_code if reg_prod else (non_prod.product_code if non_prod else "")
+        unit_weight = reg_prod.unit_weight if reg_prod else (non_prod.unit_weight if non_prod else 0)
+        commodity = reg_prod.description if reg_prod else (non_prod.description if non_prod else item.product_name)
+        data.append({
+            'slNo': idx,
+            'date': inv_date.strftime('%Y-%m-%d') if inv_date else '',
+            'commodity': commodity,
+            'cCode': product_code,
+            'weight': float(unit_weight) if unit_weight else 0,
+            'quantity': int(item.quantity) if item.quantity else 0,
+            'uPrice': float(item.unit_price) if item.unit_price else 0,
+            'amount': float(item.total_price) if item.total_price else 0,
+            'supplier': supplier.supplier_name if supplier else '',
+            'country': supplier.customer_country if supplier else ''
+        })
+    return jsonify(data)

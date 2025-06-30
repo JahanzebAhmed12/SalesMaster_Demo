@@ -16,6 +16,7 @@ import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { useQuery } from "@tanstack/react-query";
 
 interface CustomerAgingData {
   id: number;
@@ -62,6 +63,25 @@ interface ApiResponse {
     searchTerm: string;
     currency: string;
   };
+}
+
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export default function CustomerAgingRpt() {
@@ -171,6 +191,12 @@ export default function CustomerAgingRpt() {
     // eslint-disable-next-line
   }, [customerFilter, currencyFilter, asOfDate]);
 
+  // Fetch company details
+  const { data: company } = useQuery<CompanyDetails>({
+    queryKey: ["company-details"],
+    queryFn: async () => apiRequest("GET", "/api/company-details"),
+  });
+
   // Export to Excel handler
   const handleExportExcel = () => {
     const ws = XLSX.utils.json_to_sheet(
@@ -196,6 +222,8 @@ export default function CustomerAgingRpt() {
   // Export to PDF handler
   const handleExportPDF = () => {
     const doc = new jsPDF();
+    doc.text(company?.companyName || '', 10, 10);
+    doc.text(company?.address1 || '', 10, 16);
     autoTable(doc, {
       head: [[
         "Sl.No", "Customer Name", "Total Outstanding", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "91-120 Days", "121-180 Days", "Over 180 Days", "Currency"
@@ -213,11 +241,7 @@ export default function CustomerAgingRpt() {
         row.over180.toFixed(2),
         row.currency
       ]),
-      styles: { fontSize: 8 },
-      margin: { top: 20 },
-      didDrawPage: (data) => {
-        doc.text("Customer Aging Report", 14, 10);
-      },
+      startY: 22,
     });
     doc.save("customer-aging-report.pdf");
   };
@@ -226,19 +250,36 @@ export default function CustomerAgingRpt() {
   const handlePrintTable = () => {
     if (!tableSectionRef.current) return;
     const printContents = tableSectionRef.current.innerHTML;
-    const printWindow = window.open('', '', 'height=600,width=900');
+    const printWindow = window.open('', '', 'width=900,height=700');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer Aging Report</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;} .bg-yellow-50{background:#fffde7;} .bg-red-100{background:#ffebee;} .font-bold{font-weight:bold;}</style>');
-      printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
-      printWindow.document.write('</body></html>');
+      printWindow.document.write('<html><head><title>Customer Aging Report</title></head><body>');
+      printWindow.document.write(`<h2>${company?.companyName || ''}</h2>`);
+      printWindow.document.write(`<div>${company?.address1 || ''}</div>`);
+      printWindow.document.write('<table border="1"><thead><tr>');
+      printWindow.document.write('<th>Sl No</th><th>Customer Name</th><th>Total Outstanding</th><th>Current</th><th>30 Days</th><th>60 Days</th><th>90 Days</th><th>120 Days</th><th>180 Days</th><th>Over 180</th><th>Currency</th><th>Customer Code</th><th>Address</th><th>Telephone</th><th>Email</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      agingData.forEach(item => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.slNo}</td>`);
+        printWindow.document.write(`<td>${item.customerName}</td>`);
+        printWindow.document.write(`<td>${Number(item.totalOutstanding).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${Number(item.current).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${Number(item.days30).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${Number(item.days60).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${Number(item.days90).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${Number(item.days120).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${Number(item.days180).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${Number(item.over180).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${item.currency}</td>`);
+        printWindow.document.write(`<td>${item.customerCode}</td>`);
+        printWindow.document.write(`<td>${item.address}</td>`);
+        printWindow.document.write(`<td>${item.telephone}</td>`);
+        printWindow.document.write(`<td>${item.email}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table></body></html>');
       printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
+      printWindow.print();
     }
   };
 
@@ -254,7 +295,7 @@ export default function CustomerAgingRpt() {
                 Customer Aging Report
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {company?.companyName || 'TROPIFRUIT UK LTD'}, {company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ...'}
               </div>
             </div>
           </CardHeader>

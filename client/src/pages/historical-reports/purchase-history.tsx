@@ -13,6 +13,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, ShoppingCart, FileText, Download, Copy, Printer, Search } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface PurchaseHistoryData {
   id: number;
@@ -26,6 +29,25 @@ interface PurchaseHistoryData {
   unitPrice: number;
   totalAmount: number;
   paymentStatus: string;
+}
+
+interface CompanyDetails {
+  id: number;
+  companyName: string;
+  address1: string;
+  address2?: string;
+  telephone?: string;
+  mobile?: string;
+  fax?: string;
+  website?: string;
+  email?: string;
+  vatNo?: string;
+  compRegNo?: string;
+  bankDetails?: string;
+  einlNumber?: string;
+  remarks?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export default function PurchaseHistory() {
@@ -44,7 +66,7 @@ export default function PurchaseHistory() {
 
   // Fetch purchase history
   const {
-    data: purchaseData = [],
+    data: purchaseResponse = { data: [], totals: { totalQuantity: 0, totalAmount: 0, paidAmount: 0, pendingAmount: 0 } },
     isLoading: loadingPurchases,
     error: purchaseError,
   } = useQuery({
@@ -72,11 +94,161 @@ export default function PurchaseHistory() {
     enabled: !!fromDate && !!toDate && !!suppliers,
   });
 
-  const totals = {
-    totalQuantity: purchaseData.reduce((sum: number, item: PurchaseHistoryData) => sum + item.quantity, 0),
-    totalAmount: purchaseData.reduce((sum: number, item: PurchaseHistoryData) => sum + item.totalAmount, 0),
-    paidAmount: purchaseData.filter((item: PurchaseHistoryData) => item.paymentStatus === 'Paid').reduce((sum: number, item: PurchaseHistoryData) => sum + item.totalAmount, 0),
-    pendingAmount: purchaseData.filter((item: PurchaseHistoryData) => item.paymentStatus === 'Pending').reduce((sum: number, item: PurchaseHistoryData) => sum + item.totalAmount, 0)
+  const purchaseData = Array.isArray(purchaseResponse.data) ? purchaseResponse.data : [];
+  const totals = purchaseResponse.totals || { totalQuantity: 0, totalAmount: 0, paidAmount: 0, pendingAmount: 0 };
+
+  const { data: companyDetails } = useQuery<CompanyDetails>({
+    queryKey: ["/api/company-details"],
+    queryFn: () => apiRequest("GET", "/api/company-details"),
+  });
+
+  // Export handlers
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Purchase History Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>PURCHASE HISTORY REPORT</h2>');
+      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
+      printWindow.document.write('</div>');
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th>');
+      printWindow.document.write('<th>Date</th>');
+      printWindow.document.write('<th>Supplier Name</th>');
+      printWindow.document.write('<th>Invoice No</th>');
+      printWindow.document.write('<th>Delivery No</th>');
+      printWindow.document.write('<th>Product Name</th>');
+      printWindow.document.write('<th>Quantity</th>');
+      printWindow.document.write('<th>Unit Price</th>');
+      printWindow.document.write('<th>Total Amount</th>');
+      printWindow.document.write('<th>Payment Status</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      purchaseData.forEach((purchase: PurchaseHistoryData) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${purchase.slNo}</td>`);
+        printWindow.document.write(`<td>${format(new Date(purchase.date), "dd/MM/yyyy")}</td>`);
+        printWindow.document.write(`<td>${purchase.supplierName}</td>`);
+        printWindow.document.write(`<td>${purchase.invoiceNo}</td>`);
+        printWindow.document.write(`<td>${purchase.deliveryNo}</td>`);
+        printWindow.document.write(`<td>${purchase.productName}</td>`);
+        printWindow.document.write(`<td>${purchase.quantity}</td>`);
+        printWindow.document.write(`<td>£${purchase.unitPrice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${purchase.totalAmount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${purchase.paymentStatus}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    const wb = XLSX.utils.book_new();
+    // Info sheet
+    const info = [
+      ['PURCHASE HISTORY REPORT'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      [''],
+    ];
+    const wsInfo = XLSX.utils.aoa_to_sheet(info);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
+    // Data sheet
+    const ws = XLSX.utils.json_to_sheet(purchaseData.map((purchase: PurchaseHistoryData) => ({
+      'Sl.No': purchase.slNo,
+      'Date': format(new Date(purchase.date), "dd/MM/yyyy"),
+      'Supplier Name': purchase.supplierName,
+      'Invoice No': purchase.invoiceNo,
+      'Delivery No': purchase.deliveryNo,
+      'Product Name': purchase.productName,
+      'Quantity': purchase.quantity,
+      'Unit Price': purchase.unitPrice,
+      'Total Amount': purchase.totalAmount,
+      'Payment Status': purchase.paymentStatus
+    })));
+    XLSX.utils.book_append_sheet(wb, ws, 'Purchase History');
+    XLSX.writeFile(wb, `purchase_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('PURCHASE HISTORY REPORT', 105, 20, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, 40, { align: 'center' });
+    const tableData = purchaseData.map((purchase: PurchaseHistoryData) => [
+      purchase.slNo.toString(),
+      format(new Date(purchase.date), "dd/MM/yyyy"),
+      purchase.supplierName,
+      purchase.invoiceNo,
+      purchase.deliveryNo,
+      purchase.productName,
+      purchase.quantity.toString(),
+      `£${purchase.unitPrice.toFixed(2)}`,
+      `£${purchase.totalAmount.toFixed(2)}`,
+      purchase.paymentStatus
+    ]);
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Date', 'Supplier Name', 'Invoice No', 'Delivery No', 'Product Name', 'Quantity', 'Unit Price', 'Total Amount', 'Payment Status'
+      ]],
+      body: tableData,
+      startY: 50,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 30 },
+        6: { cellWidth: 15 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 25 },
+        9: { cellWidth: 20 }
+      }
+    });
+    doc.save(`purchase_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    let text = 'Sl.No\tDate\tSupplier Name\tInvoice No\tDelivery No\tProduct Name\tQuantity\tUnit Price\tTotal Amount\tPayment Status\n';
+    text += purchaseData.map((purchase: PurchaseHistoryData) => [
+      purchase.slNo,
+      format(new Date(purchase.date), "dd/MM/yyyy"),
+      purchase.supplierName,
+      purchase.invoiceNo,
+      purchase.deliveryNo,
+      purchase.productName,
+      purchase.quantity,
+      purchase.unitPrice,
+      purchase.totalAmount,
+      purchase.paymentStatus
+    ].join('\t')).join('\n');
+    await navigator.clipboard.writeText(text);
   };
 
   return (
@@ -91,7 +263,14 @@ export default function PurchaseHistory() {
                 Purchase History Report
               </CardTitle>
               <div className="text-sm text-gray-500">
-                TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+                {companyDetails ? (
+                  <>
+                    {companyDetails.companyName}, {companyDetails.address1}
+                    {companyDetails.address2 && `, ${companyDetails.address2}`}
+                  </>
+                ) : (
+                  "Loading company details..."
+                )}
               </div>
             </div>
           </CardHeader>
@@ -178,15 +357,6 @@ export default function PurchaseHistory() {
                   {loadingPurchases ? "Loading..." : "Generate Report"}
                 </Button>
               </div>
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Printer size={16} />
-                  Print
-                </Button>
-                <Button className="bg-orange-500 hover:bg-orange-600 text-white">
-                  Export
-                </Button>
-              </div>
             </div>
             {purchaseError && <div className="text-red-500 mt-2">Error loading data: {purchaseError.message}</div>}
           </CardContent>
@@ -202,19 +372,19 @@ export default function PurchaseHistory() {
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
                 <Button size="sm" variant="outline">Show all rows</Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                   <FileText size={14} />
                   PDF
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                   <Download size={14} />
                   Excel
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} />
                   Copy
                 </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1">
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} />
                   Print
                 </Button>
@@ -245,11 +415,10 @@ export default function PurchaseHistory() {
                     <TableHead className="text-center">Unit Price</TableHead>
                     <TableHead className="text-center">Total Amount</TableHead>
                     <TableHead className="text-center">Payment Status</TableHead>
-                    <TableHead className="text-center">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {purchaseData.map((purchase: PurchaseHistoryData) => (
+                  {(Array.isArray(purchaseData) ? purchaseData : []).map((purchase: PurchaseHistoryData) => (
                     <TableRow key={purchase.id} className="hover:bg-gray-50">
                       <TableCell>{purchase.slNo}</TableCell>
                       <TableCell>{format(new Date(purchase.date), "dd/MM/yyyy")}</TableCell>
@@ -269,16 +438,6 @@ export default function PurchaseHistory() {
                           {purchase.paymentStatus}
                         </span>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex gap-1 justify-center">
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-blue-500 text-white">
-                            👁️
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-6 w-6 p-0 bg-green-500 text-white">
-                            ✏️
-                          </Button>
-                        </div>
-                      </TableCell>
                     </TableRow>
                   ))}
                   {/* Total Row */}
@@ -292,7 +451,6 @@ export default function PurchaseHistory() {
                     <TableCell className="text-center font-bold">{totals.totalQuantity}</TableCell>
                     <TableCell className="text-center font-bold">-</TableCell>
                     <TableCell className="text-center font-bold">£{totals.totalAmount.toFixed(2)}</TableCell>
-                    <TableCell></TableCell>
                     <TableCell></TableCell>
                   </TableRow>
                 </TableBody>
