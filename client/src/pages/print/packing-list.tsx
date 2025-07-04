@@ -17,6 +17,8 @@ interface PackingListData {
 }
 
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
+  // const normalizedEndpoint = endpoint.replace(/^\/api/, '');
+  // const url = `/api${normalizedEndpoint}`;
   const url = `http://localhost:5000${endpoint}`;
   const response = await fetch(url, {
     method,

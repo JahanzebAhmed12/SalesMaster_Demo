@@ -1,7 +1,7 @@
 import { QueryClient, useMutation, useQueryClient, UseMutationOptions, UseMutationResult } from "@tanstack/react-query";
 
 const API_BASE_URL = 'http://localhost:5000';
-
+ 
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -35,6 +35,8 @@ export function useInvalidateMutation<TData, TVariables = void, TError = unknown
 }
 
 export const apiRequest = async <T = any>(method: string, endpoint: string, data?: any, options?: { signal?: AbortSignal }): Promise<T> => {
+   // const normalizedEndpoint = endpoint.replace(/^\/api/, '');
+  // const url = `/api${normalizedEndpoint}`;
   const url = `${API_BASE_URL}${endpoint}`;
   const token = localStorage.getItem('jwt_token');
   
