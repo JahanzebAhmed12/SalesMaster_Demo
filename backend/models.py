@@ -414,6 +414,12 @@ class SystemSettings(db.Model):
     auto_date_switch = db.Column(db.Boolean, nullable=False, default=True)
     weekend_handling = db.Column(db.String(20), nullable=False, default='skip')
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    show_outstanding_balance = db.Column(db.Boolean, nullable=False, default=True)
+    invoice_footer = db.Column(db.String(255), nullable=False, default='NO COMPLAINTS OR RETURN')
+    delivery_note_with_price = db.Column(db.Boolean, nullable=False, default=False)
+    delivery_note_name_or_code = db.Column(db.String(10), nullable=False, default='name')
+    delivery_acknowledgement = db.Column(db.Boolean, nullable=False, default=False)
+    show_profit = db.Column(db.Boolean, nullable=False, default=True)
 
     def to_dict(self):
         return {
@@ -422,7 +428,13 @@ class SystemSettings(db.Model):
             'timezone': self.timezone,
             'autoDateSwitch': self.auto_date_switch,
             'weekendHandling': self.weekend_handling,
-            'updatedAt': self.updated_at.isoformat()
+            'updatedAt': self.updated_at.isoformat(),
+            'showOutstandingBalance': self.show_outstanding_balance,
+            'invoiceFooter': self.invoice_footer,
+            'deliveryNoteWithPrice': self.delivery_note_with_price,
+            'deliveryNoteNameOrCode': self.delivery_note_name_or_code,
+            'deliveryAcknowledgement': self.delivery_acknowledgement,
+            'showProfit': self.show_profit
         }
 
 class Attendance(db.Model):
@@ -943,4 +955,44 @@ class BankingEntry(db.Model):
             'paymentType': self.payment_type,
             'amount': float(self.amount),
             'createdAt': self.created_at.isoformat() if self.created_at else None
-        } 
+        }
+
+class UserRestriction(db.Model):
+    __tablename__ = 'user_restrictions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    section = db.Column(db.String(50), nullable=False)  # e.g., 'data_entry', 'daily_reports', etc.
+    allowed = db.Column(db.Boolean, default=True)
+
+    user = db.relationship('User', backref='user_restrictions') 
+
+class UserBackDateOption(db.Model):
+    __tablename__ = 'user_backdate_options'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    editing = db.Column(db.Boolean, default=False)
+    deleting = db.Column(db.Boolean, default=False)
+
+    user = db.relationship('User', backref=db.backref('backdate_option', uselist=False))
+
+    def to_dict(self):
+        return {
+            'userId': self.user_id,
+            'editing': self.editing,
+            'deleting': self.deleting
+        }
+
+class UserInvoiceRestriction(db.Model):
+    __tablename__ = 'user_invoice_restriction'
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    restricted = db.Column(db.Boolean, default=False)
+
+    user = db.relationship('User', backref='invoice_restriction')
+
+class UserDailyBookType(db.Model):
+    __tablename__ = 'user_daily_book_type'
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+    show_all = db.Column(db.Boolean, default=True)
+    show_only = db.Column(db.Boolean, default=False)
+
+    user = db.relationship('User', backref='daily_book_type')

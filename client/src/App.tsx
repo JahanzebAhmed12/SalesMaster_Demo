@@ -83,9 +83,12 @@ import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
 import InvoicePrintPage from "@/pages/print/invoice";
 import DotMatrixInvoicePrintPage from "@/pages/print/dot-matrix-invoice";
 import PurchaseInvoicePrintPage from "@/pages/print/purchase-invoice";
+import DeliveryNotePrintPage from "./pages/print/delivery-note";
+import PackingListPrintPage from "./pages/print/packing-list";
 
 // User Profile
 import UserProfile from "./pages/profile/user-profile";
+import ProtectedRoute from "@/components/protected-route";
 
 function AuthenticatedRoute({ component: Component, title, breadcrumb }: { component: React.ComponentType; title: string; breadcrumb: string }) {
   const { isAuthenticated } = useAuth();
@@ -111,199 +114,319 @@ function Router() {
       
       {/* Data Entry Routes */}
       <Route path="/data-entry/sales-entry">
-        <AuthenticatedRoute component={SalesEntry} title="Sales Entry" breadcrumb="Data Entry > Sales Entry" />
+        <ProtectedRoute requiredSection="data_entry" title="Sales Entry" breadcrumb="Data Entry > Sales Entry">
+          <SalesEntry />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/sales-invoice">
-        <AuthenticatedRoute component={SalesInvoice} title="Sales Invoice" breadcrumb="Data Entry > Sales Invoice" />
+        <ProtectedRoute requiredSection="data_entry" title="Sales Invoice" breadcrumb="Data Entry > Sales Invoice">
+          <SalesInvoice />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/purchase-entry">
-        <AuthenticatedRoute component={PurchaseEntry} title="Purchase Entry" breadcrumb="Data Entry > Purchase Entry" />
+        <ProtectedRoute requiredSection="data_entry" title="Purchase Entry" breadcrumb="Data Entry > Purchase Entry">
+          <PurchaseEntry />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/purchase-invoice">
-        <AuthenticatedRoute component={PurchaseInvoice} title="Purchase Invoice" breadcrumb="Data Entry > Purchase Invoice" />
+        <ProtectedRoute requiredSection="data_entry" title="Purchase Invoice" breadcrumb="Data Entry > Purchase Invoice">
+          <PurchaseInvoice />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/closing-stock">
-        <AuthenticatedRoute component={ClosingStock} title="Closing Stock" breadcrumb="Data Entry > Closing Stock" />
+        <ProtectedRoute requiredSection="data_entry" title="Closing Stock" breadcrumb="Data Entry > Closing Stock">
+          <ClosingStock />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/return-from-customer">
-        <AuthenticatedRoute component={ReturnFromCustomer} title="Return from Customer" breadcrumb="Data Entry > Return from Customer" />
+        <ProtectedRoute requiredSection="data_entry" title="Return from Customer" breadcrumb="Data Entry > Return from Customer">
+          <ReturnFromCustomer />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/return-to-supplier">
-        <AuthenticatedRoute component={ReturnToSupplier} title="Return to Supplier" breadcrumb="Data Entry > Return to Supplier" />
+        <ProtectedRoute requiredSection="data_entry" title="Return to Supplier" breadcrumb="Data Entry > Return to Supplier">
+          <ReturnToSupplier />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/dumps">
-        <AuthenticatedRoute component={Dumps} title="Dumps" breadcrumb="Data Entry > Dumps" />
+        <ProtectedRoute requiredSection="data_entry" title="Dumps" breadcrumb="Data Entry > Dumps">
+          <Dumps />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/cash-cf">
-        <AuthenticatedRoute component={CashCF} title="Cash C/F" breadcrumb="Data Entry > Cash C/F" />
+        <ProtectedRoute requiredSection="data_entry" title="Cash C/F" breadcrumb="Data Entry > Cash C/F">
+          <CashCF />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/banking">
-        <AuthenticatedRoute component={Banking} title="Banking" breadcrumb="Data Entry > Banking" />
+        <ProtectedRoute requiredSection="data_entry" title="Banking" breadcrumb="Data Entry > Banking">
+          <Banking />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/expenses">
-        <AuthenticatedRoute component={Expenses} title="Expenses" breadcrumb="Data Entry > Expenses" />
+        <ProtectedRoute requiredSection="data_entry" title="Expenses" breadcrumb="Data Entry > Expenses">
+          <Expenses />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/on-acc-customer">
-        <AuthenticatedRoute component={OnAccCustomer} title="On A/c Customer" breadcrumb="Data Entry > On A/c Customer" />
+        <ProtectedRoute requiredSection="data_entry" title="On A/c Customer" breadcrumb="Data Entry > On A/c Customer">
+          <OnAccCustomer />
+        </ProtectedRoute>
       </Route>
       <Route path="/data-entry/on-acc-supplier">
-        <AuthenticatedRoute component={OnAccSupplier} title="On A/c Supplier" breadcrumb="Data Entry > On A/c Supplier" />
+        <ProtectedRoute requiredSection="data_entry" title="On A/c Supplier" breadcrumb="Data Entry > On A/c Supplier">
+          <OnAccSupplier />
+        </ProtectedRoute>
       </Route>
       
       {/* Daily Report Routes */}
       <Route path="/daily-report/daily-book-sales">
-        <AuthenticatedRoute component={DailyBookSales} title="Daily Book Sales" breadcrumb="Daily Report > Daily Book Sales" />
+        <ProtectedRoute requiredSection="daily_reports" title="Daily Book Sales" breadcrumb="Daily Report > Daily Book Sales">
+          <DailyBookSales />
+        </ProtectedRoute>
       </Route>
       <Route path="/daily-report/daily-book-purchase">
-        <AuthenticatedRoute component={DailyBookPurchase} title="Daily Book Purchase" breadcrumb="Daily Report > Daily Book Purchase" />
+        <ProtectedRoute requiredSection="daily_reports" title="Daily Book Purchase" breadcrumb="Daily Report > Daily Book Purchase">
+          <DailyBookPurchase />
+        </ProtectedRoute>
       </Route>
       <Route path="/daily-report/stock-check">
-        <AuthenticatedRoute component={StockCheck} title="Stock Check" breadcrumb="Daily Report > Stock Check" />
+        <ProtectedRoute requiredSection="daily_reports" title="Stock Check" breadcrumb="Daily Report > Stock Check">
+          <StockCheck />
+        </ProtectedRoute>
       </Route>
       <Route path="/daily-report/product-sales-report">
-        <AuthenticatedRoute component={ProductSalesReport} title="Product Sales Report" breadcrumb="Daily Report > Product Sales Report" />
+        <ProtectedRoute requiredSection="daily_reports" title="Product Sales Report" breadcrumb="Daily Report > Product Sales Report">
+          <ProductSalesReport />
+        </ProtectedRoute>
       </Route>
       <Route path="/daily-report/product-purchase-report">
-        <AuthenticatedRoute component={ProductPurchaseReport} title="Product Purchase Report" breadcrumb="Daily Report > Product Purchase Report" />
+        <ProtectedRoute requiredSection="daily_reports" title="Product Purchase Report" breadcrumb="Daily Report > Product Purchase Report">
+          <ProductPurchaseReport />
+        </ProtectedRoute>
       </Route>
       <Route path="/daily-report/profit-loss">
-        <AuthenticatedRoute component={ProfitLoss} title="Profit/Loss Report" breadcrumb="Daily Report > Profit/Loss Report" />
+        <ProtectedRoute requiredSection="daily_reports" title="Profit/Loss Report" breadcrumb="Daily Report > Profit/Loss Report">
+          <ProfitLoss />
+        </ProtectedRoute>
       </Route>
       <Route path="/daily-report/stock-template">
-        <AuthenticatedRoute component={StockTemplate} title="Stock Template" breadcrumb="Daily Report > Stock Template" />
+        <ProtectedRoute requiredSection="daily_reports" title="Stock Template" breadcrumb="Daily Report > Stock Template">
+          <StockTemplate />
+        </ProtectedRoute>
       </Route>
       <Route path="/daily-report/sales-analysis">
-        <AuthenticatedRoute component={SalesAnalysis} title="Sales Analysis" breadcrumb="Daily Report > Sales Analysis" />
+        <ProtectedRoute requiredSection="daily_reports" title="Sales Analysis" breadcrumb="Daily Report > Sales Analysis">
+          <SalesAnalysis />
+        </ProtectedRoute>
       </Route>
      
       <Route path="/daily-report/daily-accounts">
-        <AuthenticatedRoute component={DailyAccounts} title="Daily Accounts" breadcrumb="Daily Report > Daily Accounts" />
+        <ProtectedRoute requiredSection="daily_reports" title="Daily Accounts" breadcrumb="Daily Report > Daily Accounts">
+          <DailyAccounts />
+        </ProtectedRoute>
       </Route>
       
       {/* Historical Reports Routes */}
       <Route path="/historical-reports/customer-history">
-        <AuthenticatedRoute component={CustomerHistory} title="Customer History" breadcrumb="Historical Reports > Customer History" />
+        <ProtectedRoute requiredSection="historical_reports" title="Customer History" breadcrumb="Historical Reports > Customer History">
+          <CustomerHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/customer-statement">
-        <AuthenticatedRoute component={CustomerStatement} title="Customer Statement" breadcrumb="Historical Reports > Customer Statement" />
+        <ProtectedRoute requiredSection="historical_reports" title="Customer Statement" breadcrumb="Historical Reports > Customer Statement">
+          <CustomerStatement />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/all-customer-history">
-        <AuthenticatedRoute component={AllCustomerHistory} title="All Customer History" breadcrumb="Historical Reports > All Customer History" />
+        <ProtectedRoute requiredSection="historical_reports" title="All Customer History" breadcrumb="Historical Reports > All Customer History">
+          <AllCustomerHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/customer-aging-rpt">
-        <AuthenticatedRoute component={CustomerAgingRpt} title="Customer Aging Report" breadcrumb="Historical Reports > Customer Aging Report" />
+        <ProtectedRoute requiredSection="historical_reports" title="Customer Aging Report" breadcrumb="Historical Reports > Customer Aging Report">
+          <CustomerAgingRpt />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/supplier-aging-rpt">
-        <AuthenticatedRoute component={SupplierAgingRpt} title="Supplier Aging Report" breadcrumb="Historical Reports > Supplier Aging Report" />
+        <ProtectedRoute requiredSection="historical_reports" title="Supplier Aging Report" breadcrumb="Historical Reports > Supplier Aging Report">
+          <SupplierAgingRpt />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/supplier-history">
-        <AuthenticatedRoute component={SupplierHistory} title="Supplier History" breadcrumb="Historical Reports > Supplier History" />
+        <ProtectedRoute requiredSection="historical_reports" title="Supplier History" breadcrumb="Historical Reports > Supplier History">
+          <SupplierHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/all-supplier-history">
-        <AuthenticatedRoute component={AllSupplierHistory} title="All Supplier History" breadcrumb="Historical Reports > All Supplier History" />
+        <ProtectedRoute requiredSection="historical_reports" title="All Supplier History" breadcrumb="Historical Reports > All Supplier History">
+          <AllSupplierHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/purchase-history">
-        <AuthenticatedRoute component={PurchaseHistory} title="Purchase History" breadcrumb="Historical Reports > Purchase History" />
+        <ProtectedRoute requiredSection="historical_reports" title="Purchase History" breadcrumb="Historical Reports > Purchase History">
+          <PurchaseHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/product-history">
-        <AuthenticatedRoute component={ProductHistory} title="Product History" breadcrumb="Historical Reports > Product History" />
+        <ProtectedRoute requiredSection="historical_reports" title="Product History" breadcrumb="Historical Reports > Product History">
+          <ProductHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/prod-customer-history">
-        <AuthenticatedRoute component={ProdCustomerHistory} title="Product/Customer History" breadcrumb="Historical Reports > Product/Customer History" />
+        <ProtectedRoute requiredSection="historical_reports" title="Product/Customer History" breadcrumb="Historical Reports > Product/Customer History">
+          <ProdCustomerHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/date-wise-sales">
-        <AuthenticatedRoute component={DateWiseSales} title="Date Wise Sales" breadcrumb="Historical Reports > Date Wise Sales" />
+        <ProtectedRoute requiredSection="historical_reports" title="Date Wise Sales" breadcrumb="Historical Reports > Date Wise Sales">
+          <DateWiseSales />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/customer-return">
-        <AuthenticatedRoute component={CustomerReturn} title="Customer Return" breadcrumb="Historical Reports > Customer Return" />
+        <ProtectedRoute requiredSection="historical_reports" title="Customer Return" breadcrumb="Historical Reports > Customer Return">
+          <CustomerReturn />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/supplier-return">
-        <AuthenticatedRoute component={SupplierReturn} title="Supplier Returns" breadcrumb="Historical Reports > Supplier Returns" />
+        <ProtectedRoute requiredSection="historical_reports" title="Supplier Returns" breadcrumb="Historical Reports > Supplier Returns">
+          <SupplierReturn />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/daily-book-history">
-        <AuthenticatedRoute component={DailyBookHistory} title="Daily Book History" breadcrumb="Historical Reports > Daily Book History" />
+        <ProtectedRoute requiredSection="historical_reports" title="Daily Book History" breadcrumb="Historical Reports > Daily Book History">
+          <DailyBookHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/full-analysis">
-        <AuthenticatedRoute component={FullAnalysis} title="Full Analysis" breadcrumb="Historical Reports > Full Analysis" />
+        <ProtectedRoute requiredSection="historical_reports" title="Full Analysis" breadcrumb="Historical Reports > Full Analysis">
+          <FullAnalysis />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/eec-report">
-        <AuthenticatedRoute component={EecReport} title="EEC Report" breadcrumb="Historical Reports > EEC Report" />
+        <ProtectedRoute requiredSection="historical_reports" title="EEC Report" breadcrumb="Historical Reports > EEC Report">
+          <EecReport />
+        </ProtectedRoute>
       </Route>
       <Route path="/historical-reports/supplier-return">
-        <AuthenticatedRoute component={SupplierReturn} title="Supplier Return" breadcrumb="Historical Reports > Supplier Return" />
+        <ProtectedRoute requiredSection="historical_reports" title="Supplier Return" breadcrumb="Historical Reports > Supplier Return">
+          <SupplierReturn />
+        </ProtectedRoute>
       </Route>
       
       {/* Payment Routes */}
       <Route path="/payments/customer-payment">
-        <AuthenticatedRoute component={CustomerPayment} title="Customer Payment" breadcrumb="Payments > Customer Payment" />
+        <ProtectedRoute requiredSection="payments" title="Customer Payment" breadcrumb="Payments > Customer Payment">
+          <CustomerPayment />
+        </ProtectedRoute>
       </Route>
       <Route path="/payments/supplier-payment">
-        <AuthenticatedRoute component={SupplierPayment} title="Supplier Payment" breadcrumb="Payments > Supplier Payment" />
+        <ProtectedRoute requiredSection="payments" title="Supplier Payment" breadcrumb="Payments > Supplier Payment">
+          <SupplierPayment />
+        </ProtectedRoute>
       </Route>
       <Route path="/payments/customer-payment-history">
-        <AuthenticatedRoute component={CustomerPaymentHistory} title="Customer Payment History" breadcrumb="Payments > Customer Payment History" />
+        <ProtectedRoute requiredSection="payments" title="Customer Payment History" breadcrumb="Payments > Customer Payment History">
+          <CustomerPaymentHistory />
+        </ProtectedRoute>
       </Route>
       <Route path="/payments/sup-payment-history">
-        <AuthenticatedRoute component={SupPaymentHistory} title="Supplier Payment History" breadcrumb="Payments > Supplier Payment History" />
+        <ProtectedRoute requiredSection="payments" title="Supplier Payment History" breadcrumb="Payments > Supplier Payment History">
+          <SupPaymentHistory />
+        </ProtectedRoute>
       </Route>
       {/* Attenedence and Payroll */}
 
       <Route path="/payroll/monthly-report">
-        <AuthenticatedRoute component={MonthlyReports} title="Monthly Report" breadcrumb="Monthly Report" />
+        <ProtectedRoute requiredSection="payroll" title="Monthly Report" breadcrumb="Monthly Report">
+          <MonthlyReports />
+        </ProtectedRoute>
       </Route>
       <Route path="/payroll/payroll">
-        <AuthenticatedRoute component={Payroll} title="Yearly Report" breadcrumb="Yearly Report" />
+        <ProtectedRoute requiredSection="payroll" title="Yearly Report" breadcrumb="Yearly Report">
+          <Payroll />
+        </ProtectedRoute>
       </Route>
       {/* Admin Pages */}
      <Route path="/admin/products-database">
-        <AuthenticatedRoute component={ProductsDatabase} title="Products Database" breadcrumb="Products Database" />
+        <ProtectedRoute requiredSection="admin_setup" title="Products Database" breadcrumb="Products Database">
+          <ProductsDatabase />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/view-nonproduct">
-        <AuthenticatedRoute component={ViewNonProducts} title="View NonProduct" breadcrumb="View Non Product" />
+        <ProtectedRoute requiredSection="admin_setup" title="View NonProduct" breadcrumb="View Non Product">
+          <ViewNonProducts />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/add-nonproduct/:id?">
-        <AuthenticatedRoute component={AddNonProducts} title="Add/Edit NonProduct" breadcrumb="Add/Edit NonProduct" />
+        <ProtectedRoute requiredSection="admin_setup" title="Add/Edit NonProduct" breadcrumb="Add/Edit NonProduct">
+          <AddNonProducts />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/user-setup">
-        <AuthenticatedRoute component={UserDatabase} title="User Database" breadcrumb="User Database" />
+        <ProtectedRoute requiredSection="admin_setup" title="User Database" breadcrumb="User Database">
+          <UserDatabase />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/user-database-add/:id?">
-        <AuthenticatedRoute component={UserAdd} title="User Add" breadcrumb="User Add" />
+        <ProtectedRoute requiredSection="admin_setup" title="User Add" breadcrumb="User Add">
+          <UserAdd />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/customer-database">
-        <AuthenticatedRoute component={CustomerDatabase} title="Customer Database" breadcrumb="Customer Database" />
+        <ProtectedRoute requiredSection="admin_setup" title="Customer Database" breadcrumb="Customer Database">
+          <CustomerDatabase />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/customer-database-edit/:id?">
-        <AuthenticatedRoute component={CustomerDatabaseEdit} title="Customer Database Edit" breadcrumb="Customer Database Edit" />
+        <ProtectedRoute requiredSection="admin_setup" title="Customer Database Edit" breadcrumb="Customer Database Edit">
+          <CustomerDatabaseEdit />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/supplier-database">
-        <AuthenticatedRoute component={SupplierDatabase} title="Supplier Database" breadcrumb="Supplier Database" />
+        <ProtectedRoute requiredSection="admin_setup" title="Supplier Database" breadcrumb="Supplier Database">
+          <SupplierDatabase />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/supplier-database-edit/:id?">
-        <AuthenticatedRoute component={SupplierDatabaseEdit} title="Supplier Database Edit" breadcrumb="Supplier Database Edit" />
+        <ProtectedRoute requiredSection="admin_setup" title="Supplier Database Edit" breadcrumb="Supplier Database Edit">
+          <SupplierDatabaseEdit />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/expenses-database">
-        <AuthenticatedRoute component={ExpensesDatabase} title="Expenses Database" breadcrumb="Expenses Database" />
+        <ProtectedRoute requiredSection="admin_setup" title="Expenses Database" breadcrumb="Expenses Database">
+          <ExpensesDatabase />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/expenses-database-edit/:id?">
-        <AuthenticatedRoute component={ExpensesDatabaseEdit} title="Expenses Database Edit" breadcrumb="Expenses Database Edit" />
+        <ProtectedRoute requiredSection="admin_setup" title="Expenses Database Edit" breadcrumb="Expenses Database Edit">
+          <ExpensesDatabaseEdit />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/company-details">
-        <AuthenticatedRoute component={CompanyDetails} title="Company Details" breadcrumb="Company Details" />
+        <ProtectedRoute requiredSection="admin_setup" title="Company Details" breadcrumb="Company Details">
+          <CompanyDetails />
+        </ProtectedRoute>
       </Route>
       <Route path="/admin/admin-functions">
-        <AuthenticatedRoute component={AdminFunctions} title="Admin Functions" breadcrumb="Admin Functions" />
+        <ProtectedRoute requiredSection="admin_setup" title="Admin Functions" breadcrumb="Admin Functions">
+          <AdminFunctions />
+        </ProtectedRoute>
       </Route>
 
 
       {/* Admin Setup */}
       <Route path="/closing-time">
-        <AuthenticatedRoute component={ClosingTime} title="Closing Time" breadcrumb="Closing Time" />
+        <ProtectedRoute requiredSection="admin_setup" title="Closing Time" breadcrumb="Closing Time">
+          <ClosingTime />
+        </ProtectedRoute>
       </Route>
 
       {/* User Profile */}
       <Route path="/profile/user-profile">
-        <AuthenticatedRoute component={UserProfile} title="User Profile" breadcrumb="User Profile" />
+        <ProtectedRoute requiredSection="profile" title="User Profile" breadcrumb="User Profile">
+          <UserProfile />
+        </ProtectedRoute>
       </Route>
       
       {/* Print Invoice Route (public) */}
@@ -311,6 +434,10 @@ function Router() {
       {/* Dot Matrix Print Invoice Route (public) */}
       <Route path="/print/dot-matrix-invoice/:invoiceNumber" component={DotMatrixInvoicePrintPage} />
       <Route path="/print/purchase-invoice/:invoiceId" component={PurchaseInvoicePrintPage} />
+      <Route path="/print/delivery-note/:invoiceNumber">
+        <DeliveryNotePrintPage />
+      </Route>
+      <Route path="/print/packing-list/:invoiceNumber" component={PackingListPrintPage} />
       
       {/* Fallback to 404 */}
       <Route component={NotFound} />

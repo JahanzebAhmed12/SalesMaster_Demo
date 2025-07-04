@@ -9,17 +9,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 import SalesPurchaseChart from "@/components/charts/sales-purchase-chart";
 import ProfitTrendChart from "@/components/charts/profit-trend-chart";
 import { DollarSign, ShoppingCart, Percent, Package, TrendingUp, TrendingDown } from "lucide-react";
+import React from "react";
+import { useAuth } from "@/lib/auth";
 
 export default function Dashboard() {
+  const [range, setRange] = React.useState("7days");
+  const [profitRange, setProfitRange] = React.useState("month");
+  const [showProfit, setShowProfit] = React.useState(true);
+  const { user } = useAuth();
+
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
     queryFn: () => apiRequest("GET", "/api/dashboard/stats")
   });
 
   const { data: chartData, isLoading: chartLoading } = useQuery({
-    queryKey: ["/api/dashboard/charts"],
-    queryFn: () => apiRequest("GET", "/api/dashboard/charts")
+    queryKey: ["/api/dashboard/charts", range, profitRange],
+    queryFn: () => apiRequest("GET", `/api/dashboard/charts?range=${range}&profitRange=${profitRange}`),
   });
+
+  React.useEffect(() => {
+    fetch("http://localhost:5000/api/settings")
+      .then(res => res.json())
+      .then(settings => setShowProfit(settings.showProfit !== false));
+  }, []);
 
   if (statsLoading || chartLoading) {
     return (
@@ -40,7 +53,7 @@ export default function Dashboard() {
         <div className="bg-gradient-to-r from-primary to-blue-600 rounded-xl p-6 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold mb-2">Welcome back, Admin!</h2>
+              <h2 className="text-2xl font-bold mb-2">Welcome back, {user?.username || 'User'}!</h2>
               <p className="text-blue-100">Here's what's happening with your business today.</p>
             </div>
             <div className="text-6xl opacity-20">
@@ -91,28 +104,30 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-500 text-sm font-medium">Profit Margin</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {typeof stats?.profitMargin === "number"
-                      ? stats.profitMargin.toFixed(1)
-                      : "0"
-                    }%
-                  </p>
-                  <p className="text-green-600 text-sm mt-1">
-                    <TrendingUp className="inline w-4 h-4 mr-1" />
-                    +1.8% from last week
-                  </p>
+          {showProfit && (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm font-medium">Profit Margin</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {typeof stats?.profitMargin === "number"
+                        ? stats.profitMargin.toFixed(1)
+                        : "0"
+                      }%
+                    </p>
+                    <p className="text-green-600 text-sm mt-1">
+                      <TrendingUp className="inline w-4 h-4 mr-1" />
+                      +1.8% from last week
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Percent className="text-blue-600" />
+                  </div>
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Percent className="text-blue-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardContent className="p-6">
@@ -140,7 +155,7 @@ export default function Dashboard() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Sales vs Purchases</CardTitle>
-                <Select defaultValue="7days">
+                <Select value={range} onValueChange={val => setRange(val)}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
@@ -159,28 +174,30 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Profit Trend</CardTitle>
-                <Select defaultValue="month">
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="month">This Month</SelectItem>
-                    <SelectItem value="lastmonth">Last Month</SelectItem>
-                    <SelectItem value="quarter">This Quarter</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {chartData?.profitTrend && (
-                <ProfitTrendChart data={chartData.profitTrend} />
-              )}
-            </CardContent>
-          </Card>
+          {showProfit && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Profit Trend</CardTitle>
+                  <Select value={profitRange} onValueChange={val => setProfitRange(val)}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="month">This Month</SelectItem>
+                      <SelectItem value="lastmonth">Last Month</SelectItem>
+                      <SelectItem value="quarter">This Quarter</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {chartData?.profitTrend && (
+                  <ProfitTrendChart data={chartData.profitTrend} showProfit={showProfit} />
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Recent Transactions */}

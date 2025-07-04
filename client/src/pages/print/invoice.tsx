@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import logo from "@/public/printlogo.png"
+import { apiRequest } from "@/lib/queryClient";
 
 // Public API request function (no authentication required)
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
+  // const normalizedEndpoint = endpoint.replace(/^\/api/, '');
+  // const url = `http://localhost:5000${normalizedEndpoint}`;
+
   const url = `http://localhost:5000${endpoint}`;
   
   const response = await fetch(url, {
@@ -34,6 +38,14 @@ interface InvoiceData {
 }
 
 function InvoiceTemplate({ data }: { data: InvoiceData }) {
+  const [showOutstandingBalance, setShowOutstandingBalance] = useState(true);
+  const [invoiceFooter, setInvoiceFooter] = useState("");
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then((settings) => {
+      setShowOutstandingBalance(!!settings.showOutstandingBalance);
+      setInvoiceFooter(settings.invoiceFooter || "");
+    });
+  }, []);
   if (!data) return null;
   const { company, customer, sale, items, paidAmount, balance, notes } = data;
   return (
@@ -65,6 +77,7 @@ function InvoiceTemplate({ data }: { data: InvoiceData }) {
           <div style={{ border: "1px solid #888", padding: 8, minWidth: 200, fontWeight: "bold" }}>{customer?.customer_name || "CUSTOMER"}</div>
           {customer?.address && <div style={{ fontSize: 14, marginTop: 2 }}>{customer.address}</div>}
           {customer?.vat_number && <div style={{ fontSize: 14 }}>VAT No: {customer.vat_number}</div>}
+          {sale?.gateNumber && <div style={{ fontSize: 14, marginTop: 2 }}><b>Others/Gate:</b> {sale.gateNumber}</div>}
         </div>
       </div>
       {/* Items Table */}
@@ -133,16 +146,24 @@ function InvoiceTemplate({ data }: { data: InvoiceData }) {
                   £{((sale?.total_amount ?? sale?.totalAmount ?? 0) - (sale?.paid_amount ?? sale?.paidAmount ?? 0)).toFixed(2)}
                 </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-                <span>BALANCE</span>
-                <span>
-                  £{((sale?.total_amount ?? sale?.totalAmount ?? 0) - (sale?.paid_amount ?? sale?.paidAmount ?? 0)).toFixed(2)}
-                </span>
-              </div>
+              {showOutstandingBalance && (
+                <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
+                  <span>BALANCE</span>
+                  <span>
+                    £{((sale?.total_amount ?? sale?.totalAmount ?? 0) - (sale?.paid_amount ?? sale?.paidAmount ?? 0)).toFixed(2)}
+                  </span>
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
+      {/* Dynamic Invoice Footer */}
+      {invoiceFooter && (
+        <div style={{ fontSize: 15, color: '#1a237e', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'center' }}>
+          {invoiceFooter}
+        </div>
+      )}
       {/* Footer */}
       <div style={{ marginTop: 16, fontSize: 13, color: "#444" }}>
         <div>Invoice Time: {sale?.date ? new Date(sale.date).toLocaleString() : "-"}</div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Header from "@/components/layout/header";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import type { UserRestriction, User } from "@shared/schema";
+
+const restrictionSections = [
+  { key: "data_entry", label: "DATA ENTRY" },
+  { key: "daily_reports", label: "DAILY REPORTS" },
+  { key: "historical_reports", label: "HISTORICAL REPORTS" },
+  { key: "payments", label: "PAYMENTS" },
+  { key: "admin_setup", label: "ADMIN SET UP" },
+];
 
 const AdminFunctions = () => {
   const [userWorkTime, setUserWorkTime] = useState({
@@ -55,26 +66,17 @@ const AdminFunctions = () => {
     }
   });
 
-  const [backDateOptions, setBackDateOptions] = useState({
-    admin: { editing: true, deleting: false },
-    cashier: { editing: true, deleting: false },
-    burhan: { editing: true, deleting: false },
-    butt: { editing: true, deleting: false }
-  });
+  const [backDateOptions, setBackDateOptions] = useState<Record<number, { editing: boolean; deleting: boolean }>>({});
 
-  const [invoiceType, setInvoiceType] = useState("basic");
   const [stockRestriction, setStockRestriction] = useState("sell");
-  const [currentDateEditing, setCurrentDateEditing] = useState({
-    admin: { editing: true },
-    cashier: { editing: false },
-    burhan: { editing: false },
-    butt: { editing: true }
-  });
+  const [currentDateEditing, setCurrentDateEditing] = useState<Record<number, boolean>>({});
 
   const [emailConfig, setEmailConfig] = useState({
-    emailId: "info@tropifruittuk.com",
-    password: "••••••••••••"
+    MAIL_EMAIL: "",
+    MAIL_PASSWORD: "",
+    MAIL_DEFAULT_SENDER: ""
   });
+  const [savingEmailConfig, setSavingEmailConfig] = useState(false);
 
   const [showHideProfit, setShowHideProfit] = useState({
     admin: { show: true, hide: false },
@@ -83,30 +85,29 @@ const AdminFunctions = () => {
     butt: { show: false, hide: true }
   });
 
-  const [productSearchType, setProductSearchType] = useState("all");
-  const [searchDays, setSearchDays] = useState("1");
   const [taxDetails, setTaxDetails] = useState({
     withTax: false,
     taxPercentage: "0"
   });
-  const [porterageDetails, setPorterageDetails] = useState({
-    withPorterage: true,
-    porterageCharge: "0.07"
-  });
+  const [savingTaxDetails, setSavingTaxDetails] = useState(false);
 
-  const [dailyBookType, setDailyBookType] = useState({
-    admin: { showAll: true, showOnly: false },
-    cashier: { showAll: true, showOnly: false },
-    burhan: { showAll: true, showOnly: false },
-    butt: { showAll: true, showOnly: false }
+  const [porterageDetails, setPorterageDetails] = useState({
+    withPorterage: false,
+    porterageCharge: "0.00"
   });
+  const [savingPorterageDetails, setSavingPorterageDetails] = useState(false);
+
+  const [dailyBookType, setDailyBookType] = useState<Record<number, { showAll: boolean; showOnly: boolean }>>({});
+  const [savingDailyBookType, setSavingDailyBookType] = useState(false);
 
   const [recordsPerInvoice, setRecordsPerInvoice] = useState("0");
   const [showOutstandingBalance, setShowOutstandingBalance] = useState(false);
-  const [invoiceFooter, setInvoiceFooter] = useState("NO COMPLAINTS OR RETURN");
+  const [savingOutstandingBalance, setSavingOutstandingBalance] = useState(false);
+  const [invoiceFooter, setInvoiceFooter] = useState("");
+  const [savingInvoiceFooter, setSavingInvoiceFooter] = useState(false);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
-  const [recordsPerPage, setRecordsPerPage] = useState("All");
   const [deliveryNoteWithPrice, setDeliveryNoteWithPrice] = useState(false);
+  const [savingDeliveryNoteWithPrice, setSavingDeliveryNoteWithPrice] = useState(false);
   const [showNameOnDeliveryNote, setShowNameOnDeliveryNote] = useState("name");
   const [deliveryAcknowledgement, setDeliveryAcknowledgement] = useState(false);
   const [showDashboardInfo, setShowDashboardInfo] = useState(false);
@@ -124,6 +125,302 @@ const AdminFunctions = () => {
     OMR: "1.92",
     CAD: "0.58"
   });
+  const [savingCurrencyRates, setSavingCurrencyRates] = useState(false);
+
+  const [showProfit, setShowProfit] = useState(true);
+  const [savingShowProfit, setSavingShowProfit] = useState(false);
+
+  const [savingShowDashboardInfo, setSavingShowDashboardInfo] = useState(false);
+
+  const [companyAddress, setCompanyAddress] = useState("");
+  const [savingCompanyAddress, setSavingCompanyAddress] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  // Fetch all users
+  const { data: users = [], isLoading: loadingUsers } = useQuery<User[]>({
+    queryKey: ["/api/users"],
+    queryFn: () => apiRequest<User[]>("GET", "/api/users"),
+  });
+  // Fetch all user restrictions
+  const { data: allRestrictions = [], isLoading: loadingRestrictions } = useQuery<UserRestriction[]>({
+    queryKey: ["/api/user-restrictions"],
+    queryFn: () => apiRequest<UserRestriction[]>("GET", "/api/user-restrictions"),
+  });
+
+  // Local state for editing
+  const [editRestrictions, setEditRestrictions] = useState<Record<number, Record<string, boolean>>>({});
+
+  // Initialize editRestrictions from backend data
+  useEffect(() => {
+    if (Array.isArray(users) && Array.isArray(allRestrictions)) {
+      const map: Record<number, Record<string, boolean>> = {};
+      users.forEach((user: User) => {
+        map[user.id] = {};
+        restrictionSections.forEach((section) => {
+          const found = allRestrictions.find((r: UserRestriction) => r.user_id === user.id && r.section === section.key);
+          map[user.id][section.key] = found ? found.allowed : true; // default true
+        });
+      });
+      setEditRestrictions(map);
+    }
+  }, [users, allRestrictions]);
+
+  // Save handler
+  const { mutate: saveRestrictions, isPending: saving } = useMutation({
+    mutationFn: async (userId: number) => {
+      const payload = restrictionSections.map(section => ({
+        section: section.key,
+        allowed: editRestrictions[userId][section.key],
+      }));
+      await apiRequest("PUT", `/api/user-restrictions/${userId}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-restrictions"] });
+    },
+  });
+
+  const { data: allBackDateOptions = [] } = useQuery({
+    queryKey: ["/api/user-backdate-options"],
+    queryFn: () => apiRequest("GET", "/api/user-backdate-options"),
+  });
+
+  useEffect(() => {
+    if (Array.isArray(users) && Array.isArray(allBackDateOptions)) {
+      const map: Record<number, { editing: boolean; deleting: boolean }> = {};
+      users.forEach((user: User) => {
+        const found = allBackDateOptions.find((opt: any) => opt.userId === user.id);
+        map[user.id] = {
+          editing: found ? found.editing : false,
+          deleting: found ? found.deleting : false,
+        };
+      });
+      setBackDateOptions(map);
+    }
+  }, [users, allBackDateOptions]);
+
+  const { mutate: saveBackDateOptions, isPending: savingBackDate } = useMutation({
+    mutationFn: async (userId: number) => {
+      const payload = {
+        editing: backDateOptions[userId]?.editing ?? false,
+        deleting: backDateOptions[userId]?.deleting ?? false,
+      };
+      await apiRequest("PUT", `/api/user-backdate-options/${userId}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-backdate-options"] });
+    },
+  });
+
+  useEffect(() => {
+    if (Array.isArray(users) && Array.isArray(allBackDateOptions)) {
+      const map: Record<number, boolean> = {};
+      users.forEach((user: any) => {
+        const found = allBackDateOptions.find((opt: any) => opt.userId === user.id);
+        map[user.id] = found ? found.current_editing : true;
+      });
+      setCurrentDateEditing(map);
+    }
+  }, [users, allBackDateOptions]);
+
+  const { mutate: saveCurrentDateEditing, isPending: savingCurrentDate } = useMutation({
+    mutationFn: async (userId: number) => {
+      const payload = {
+        current_editing: currentDateEditing[userId],
+      };
+      await apiRequest("PUT", `/api/user-backdate-options/${userId}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-backdate-options"] });
+    },
+  });
+
+  const [invoiceRestriction, setInvoiceRestriction] = useState<Record<number, boolean>>({});
+  const [savingInvoiceRestriction, setSavingInvoiceRestriction] = useState(false);
+
+  // Fetch all invoice restrictions ONCE on mount
+  useEffect(() => {
+    async function fetchInvoiceRestrictions() {
+      const res = await apiRequest("GET", "/api/user-invoice-restriction");
+      if (Array.isArray(res)) {
+        const map: Record<number, boolean> = {};
+        res.forEach((opt: any) => {
+          map[opt.userId] = !!opt.restricted;
+        });
+        setInvoiceRestriction(map);
+      }
+    }
+    fetchInvoiceRestrictions();
+  }, []); // Only on mount
+
+  // Save handler
+  const saveInvoiceRestriction = async (userId: number) => {
+    setSavingInvoiceRestriction(true);
+    await apiRequest("PUT", `/api/user-invoice-restriction/${userId}`, { restricted: invoiceRestriction[userId] });
+    setSavingInvoiceRestriction(false);
+  };
+
+  // Fetch all daily book type settings ONCE on mount
+  useEffect(() => {
+    async function fetchDailyBookTypes() {
+      const res = await apiRequest("GET", "/api/user-daily-book-type");
+      if (Array.isArray(res)) {
+        const map: Record<number, { showAll: boolean; showOnly: boolean }> = {};
+        res.forEach((opt: any) => {
+          map[opt.userId] = { showAll: !!opt.showAll, showOnly: !!opt.showOnly };
+        });
+        setDailyBookType(map);
+      }
+    }
+    fetchDailyBookTypes();
+  }, []); // Only on mount
+
+  // Save handler
+  const saveDailyBookType = async (userId: number) => {
+    setSavingDailyBookType(true);
+    await apiRequest("PUT", `/api/user-daily-book-type/${userId}`, dailyBookType[userId]);
+    setSavingDailyBookType(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then((settings) => {
+      setShowOutstandingBalance(!!settings.showOutstandingBalance);
+    });
+  }, []);
+
+  const saveShowOutstandingBalance = async () => {
+    setSavingOutstandingBalance(true);
+    await apiRequest("PUT", "/api/settings", { showOutstandingBalance });
+    setSavingOutstandingBalance(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then((settings) => {
+      setInvoiceFooter(settings.invoiceFooter || "");
+    });
+  }, []);
+
+  const saveInvoiceFooter = async () => {
+    setSavingInvoiceFooter(true);
+    await apiRequest("PUT", "/api/settings", { invoiceFooter });
+    setSavingInvoiceFooter(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then((settings) => {
+      setDeliveryNoteWithPrice(!!settings.deliveryNoteWithPrice);
+      setShowNameOnDeliveryNote(settings.deliveryNoteNameOrCode || "name");
+      setDeliveryAcknowledgement(!!settings.deliveryAcknowledgement);
+    });
+  }, []);
+
+  const saveDeliveryNoteWithPrice = async () => {
+    setSavingDeliveryNoteWithPrice(true);
+    await apiRequest("PUT", "/api/settings", { deliveryNoteWithPrice });
+    setSavingDeliveryNoteWithPrice(false);
+  };
+
+  const saveShowNameOnDeliveryNote = async () => {
+    await apiRequest("PUT", "/api/settings", { deliveryNoteNameOrCode: showNameOnDeliveryNote });
+  };
+
+  const saveDeliveryAcknowledgement = async () => {
+    await apiRequest("PUT", "/api/settings", { deliveryAcknowledgement });
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/email-config").then(config => setEmailConfig({
+      MAIL_EMAIL: config.MAIL_EMAIL || "",
+      MAIL_PASSWORD: config.MAIL_PASSWORD || "",
+      MAIL_DEFAULT_SENDER: config.MAIL_DEFAULT_SENDER || ""
+    }));
+  }, []);
+
+  const saveEmailConfig = async () => {
+    setSavingEmailConfig(true);
+    await apiRequest("PUT", "/api/email-config", emailConfig);
+    setSavingEmailConfig(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => setShowProfit(settings.showProfit !== false));
+  }, []);
+
+  const saveShowProfit = async () => {
+    setSavingShowProfit(true);
+    await apiRequest("PUT", "/api/settings", { showProfit });
+    setSavingShowProfit(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => {
+      setTaxDetails({
+        withTax: !!settings.withTax,
+        taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : "0"
+      });
+    });
+  }, []);
+
+  const saveTaxDetails = async () => {
+    setSavingTaxDetails(true);
+    await apiRequest("PUT", "/api/settings", {
+      withTax: taxDetails.withTax,
+      taxPercentage: taxDetails.taxPercentage
+    });
+    setSavingTaxDetails(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => {
+      setPorterageDetails({
+        withPorterage: !!settings.withPorterage,
+        porterageCharge: settings.porterageCharge ? String(settings.porterageCharge) : "0.00"
+      });
+    });
+  }, []);
+
+  const savePorterageDetails = async () => {
+    setSavingPorterageDetails(true);
+    await apiRequest("PUT", "/api/settings", {
+      withPorterage: porterageDetails.withPorterage,
+      porterageCharge: porterageDetails.porterageCharge
+    });
+    setSavingPorterageDetails(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => setShowDashboardInfo(!!settings.showDashboardInfo));
+  }, []);
+
+  const saveShowDashboardInfo = async () => {
+    setSavingShowDashboardInfo(true);
+    await apiRequest("PUT", "/api/settings", { showDashboardInfo });
+    setSavingShowDashboardInfo(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => {
+      if (settings.currencyRates) setCurrencyRates(settings.currencyRates);
+    });
+  }, []);
+
+  const saveCurrencyRates = async () => {
+    setSavingCurrencyRates(true);
+    await apiRequest("PUT", "/api/settings", { currencyRates });
+    setSavingCurrencyRates(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/company-details").then(details => {
+      setCompanyAddress(details.address || "");
+    });
+  }, []);
+
+  const saveCompanyAddress = async () => {
+    setSavingCompanyAddress(true);
+    await apiRequest("PUT", "/api/company-details", { address: companyAddress });
+    setSavingCompanyAddress(false);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -133,514 +430,390 @@ const AdminFunctions = () => {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Admin setup</h1>
           <div className="text-sm text-gray-500 mt-1">
-            TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+            {companyAddress}
           </div>
         </div>
 
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">MANAGE USERS</h2>
-        </div>
-
-        {/* User Work Time */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    (User) Work Time
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="text-sm text-gray-600 mb-4">
-                    Working Time (24 hours format)
-                  </div>
-                  {Object.entries(userWorkTime).map(([user, times]) => (
-                    <div key={user} className="mb-4">
-                      <div className="font-medium text-sm mb-2">• {user}</div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label className="text-xs">Start Time:</Label>
-                          <Input
-                            type="time"
-                            value={times.start}
-                            onChange={(e) => setUserWorkTime(prev => ({
-                              ...prev,
-                              [user]: { ...prev[user], start: e.target.value }
-                            }))}
-                            className="text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">End Time:</Label>
-                          <Input
-                            type="time"
-                            value={times.end}
-                            onChange={(e) => setUserWorkTime(prev => ({
-                              ...prev,
-                              [user]: { ...prev[user], end: e.target.value }
-                            }))}
-                            className="text-xs"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* User Restriction */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    User Restriction
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="text-xs mb-2">User Restriction</div>
-                  <div className="grid grid-cols-6 gap-1 text-xs mb-2">
-                    <div className="font-medium">USERS</div>
-                    <div className="text-center">DATA ENTRY</div>
-                    <div className="text-center">DAILY REPORTS</div>
-                    <div className="text-center">HISTORICAL REPORTS</div>
-                    <div className="text-center">PAYMENTS</div>
-                    <div className="text-center">ADMIN SET UP</div>
-                    <div className="text-center">OTHERS</div>
-                  </div>
-                  {Object.keys(userRestrictions).map((user) => (
-                    <div key={user} className="grid grid-cols-6 gap-1 mb-2 text-xs">
-                      <div className="font-medium">• {user}</div>
-                      {['dataEntry', 'dailyReports', 'historicalReports', 'payments', 'admin', 'others'].map((permission) => (
-                        <div key={permission} className="flex flex-col items-center">
-                          <div className="flex items-center gap-1">
-                            <input type="radio" name={`${user}-${permission}`} className="w-2 h-2" />
-                            <span className="text-xs">Show</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <input type="radio" name={`${user}-${permission}`} className="w-2 h-2" />
-                            <span className="text-xs">Hide</span>
-                          </div>
-                        </div>
+        {/* User Restriction */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  User Restriction
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
+                    <thead>
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        {restrictionSections.map(section => (
+                          <th key={section.key} className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">{section.label}</th>
+                        ))}
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(user => (
+                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                          {restrictionSections.map(section => (
+                            <td key={section.key} className="px-6 py-4 text-center">
+                              <label className="inline-flex items-center space-x-2">
+                                <input
+                                  type="checkbox"
+                                  checked={editRestrictions[user.id]?.[section.key] ?? true}
+                                  onChange={e => setEditRestrictions(prev => ({
+                                    ...prev,
+                                    [user.id]: {
+                                      ...prev[user.id],
+                                      [section.key]: e.target.checked,
+                                    },
+                                  }))}
+                                  className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                                />
+                                <span className="text-xs text-gray-700">{editRestrictions[user.id]?.[section.key] ? "Show" : "Hide"}</span>
+                              </label>
+                            </td>
+                          ))}
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
+                              disabled={saving}
+                              onClick={() => saveRestrictions(user.id)}
+                            >
+                              {saving ? "Saving..." : "Save"}
+                            </button>
+                          </td>
+                        </tr>
                       ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {/* Back Date Editing/Deleting */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Back Date Editing/Deleting
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
+                    <thead>
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Editing</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Deleting</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(user => (
+                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={backDateOptions[user.id]?.editing ?? false}
+                              onChange={e =>
+                                setBackDateOptions(prev => ({
+                                  ...prev,
+                                  [user.id]: {
+                                    ...prev[user.id],
+                                    editing: e.target.checked,
+                                  },
+                                }))
+                              }
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={backDateOptions[user.id]?.deleting ?? false}
+                              onChange={e =>
+                                setBackDateOptions(prev => ({
+                                  ...prev,
+                                  [user.id]: {
+                                    ...prev[user.id],
+                                    deleting: e.target.checked,
+                                  },
+                                }))
+                              }
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
+                              disabled={savingBackDate}
+                              onClick={() => saveBackDateOptions(user.id)}
+                            >
+                              {savingBackDate ? "Saving..." : "Save"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {/* Current Date Editing */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Current Date Editing
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
+                    <thead>
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Editing</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(user => (
+                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={currentDateEditing[user.id] ?? true}
+                              onChange={e => setCurrentDateEditing(prev => ({ ...prev, [user.id]: e.target.checked }))}
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
+                              disabled={savingCurrentDate}
+                              onClick={() => saveCurrentDateEditing(user.id)}
+                            >
+                              {savingCurrentDate ? "Saving..." : "Save"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {/* Invoice Restriction */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Invoice Restriction
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
+                    <thead>
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Restricted</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(user => (
+                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={invoiceRestriction[user.id] ?? false}
+                              onChange={e => setInvoiceRestriction(prev => ({ ...prev, [user.id]: e.target.checked }))}
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
+                              disabled={savingInvoiceRestriction}
+                              onClick={() => saveInvoiceRestriction(user.id)}
+                            >
+                              {savingInvoiceRestriction ? "Saving..." : "Save"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {/* Daily Book Type */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Daily Book Type
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="text-xs mb-2">Daily Book Type</div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
+                    <thead>
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Show all Invoice</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Show Only user's Invoice</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(user => (
+                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={dailyBookType[user.id]?.showAll ?? false}
+                              onChange={e => setDailyBookType(prev => ({ ...prev, [user.id]: { ...prev[user.id], showAll: e.target.checked } }))}
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={dailyBookType[user.id]?.showOnly ?? false}
+                              onChange={e => setDailyBookType(prev => ({ ...prev, [user.id]: { ...prev[user.id], showOnly: e.target.checked } }))}
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
+                              disabled={savingDailyBookType}
+                              onClick={() => saveDailyBookType(user.id)}
+                            >
+                              {savingDailyBookType ? "Saving..." : "Save"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Show Outstanding Bal in invoice
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="mb-4">
+                  <div className="text-sm font-medium mb-2">Show outstanding balance on invoice</div>
+                  <RadioGroup value={showOutstandingBalance ? "yes" : "no"} onValueChange={v => setShowOutstandingBalance(v === "yes")}> 
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="yes" id="yes-outstanding" />
+                      <Label htmlFor="yes-outstanding" className="text-sm">Yes</Label>
                     </div>
-                  ))}
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mt-2">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Back Date Editing/Deleting */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Back Date Editing/Deleting
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="text-xs mb-2">BackDate Edit/Delete Options (For previous Date)</div>
-                  <div className="grid grid-cols-4 gap-2 text-xs mb-2">
-                    <div className="font-medium">USERS</div>
-                    <div className="text-center">EDITING</div>
-                    <div className="text-center">DELETING</div>
-                  </div>
-                  {Object.keys(backDateOptions).map((user) => (
-                    <div key={user} className="grid grid-cols-4 gap-2 mb-2 text-xs items-center">
-                      <div className="font-medium">• {user}</div>
-                      <div className="flex justify-center">
-                        <input type="checkbox" className="w-3 h-3" />
-                        <span className="ml-1">Yes</span>
-                      </div>
-                      <div className="flex justify-center">
-                        <input type="checkbox" className="w-3 h-3" />
-                        <span className="ml-1">Yes</span>
-                      </div>
-                      <div className="flex justify-center">
-                        <input type="checkbox" className="w-3 h-3" />
-                        <span className="ml-1">No</span>
-                      </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="no" id="no-outstanding" />
+                      <Label htmlFor="no-outstanding" className="text-sm">No</Label>
                     </div>
-                  ))}
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mt-2">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-        </div>
+                  </RadioGroup>
+                </div>
+                <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveShowOutstandingBalance} disabled={savingOutstandingBalance}>
+                  {savingOutstandingBalance ? "Saving..." : "Save"}
+                </Button>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
 
-        {/* Invoice Type, Invoice Restriction, Current Date Editing */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Invoice Type */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Invoice Type
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Manage Invoice Type</div>
-                    <RadioGroup value={invoiceType} onValueChange={setInvoiceType}>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="basic" id="basic" />
-                        <Label htmlFor="basic" className="text-sm">Basic Invoice</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="full" id="full" />
-                        <Label htmlFor="full" className="text-sm">Full Invoice</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Stock Restriction</div>
-                    <RadioGroup value={stockRestriction} onValueChange={setStockRestriction}>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="sell" id="sell" />
-                        <Label htmlFor="sell" className="text-sm">Sell Any Stock</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="available" id="available" />
-                        <Label htmlFor="available" className="text-sm">Sell Available Stock</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Invoice Restriction */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Invoice Restriction
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Lock CASH Invoice(All CASH invoices of current date will be LOCKED)</div>
-                    <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mb-4">
-                      Lock CASH Invoice
-                    </Button>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Lock all Invoice(All invoice of current date will be LOCKED)</div>
-                    <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mb-4">
-                      Lock all
-                    </Button>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Auto Lock Cash Invoice</div>
-                    <div className="text-xs text-gray-600 mb-2">(Cash Invoice will be locked)</div>
-                    <div className="flex gap-2">
-                      <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                        Lock Cash Invoices
-                      </Button>
-                      <Button variant="outline" className="text-xs px-4 py-1">
-                        UnLock
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Current Date Editing */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Current Date Editing
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                    <div className="font-medium">USERS</div>
-                    <div className="text-center">EDITING</div>
-                  </div>
-                  {Object.keys(currentDateEditing).map((user) => (
-                    <div key={user} className="grid grid-cols-2 gap-2 mb-2 text-xs items-center">
-                      <div className="font-medium">• {user}</div>
-                      <div className="flex justify-center">
-                        <input type="checkbox" className="w-3 h-3" />
-                        <span className="ml-1">Yes</span>
-                        <input type="checkbox" className="w-3 h-3 ml-2" />
-                        <span className="ml-1">No</span>
-                      </div>
-                    </div>
-                  ))}
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mt-2">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-        </div>
-
-        {/* Daily Book Type, No.of Records per Invoice, Show Outstanding Bal in invoice */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Daily Book Type */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Daily Book Type
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="text-xs mb-2">Daily Book Type</div>
-                  <div className="grid grid-cols-3 gap-1 text-xs mb-2">
-                    <div className="font-medium">USERS</div>
-                    <div className="text-center">Show all Invoice</div>
-                    <div className="text-center">Show Only user's Invoice</div>
-                  </div>
-                  {Object.keys(dailyBookType).map((user) => (
-                    <div key={user} className="grid grid-cols-3 gap-1 mb-2 text-xs items-center">
-                      <div className="font-medium">• {user}</div>
-                      <div className="flex justify-center">
-                        <Checkbox />
-                        <span className="ml-1 text-xs">Yes</span>
-                      </div>
-                      <div className="flex justify-center">
-                        <Checkbox />
-                        <span className="ml-1 text-xs">Yes</span>
-                      </div>
-                    </div>
-                  ))}
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mt-2">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* No.of Records per Invoice */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    No.of Records per Invoice
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-xs text-gray-600 mb-2">No of Records per Invoice(Note: 0 for unlimited records.)</div>
-                    <div>
-                      <Label className="text-xs">No.Of Records per Invoice:</Label>
-                      <Input
-                        type="number"
-                        value={recordsPerInvoice}
-                        onChange={(e) => setRecordsPerInvoice(e.target.value)}
-                        className="text-xs w-20 mt-1"
-                      />
-                    </div>
-                  </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Show Outstanding Bal in invoice */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Show Outstanding Bal in invoice
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Show outstanding balance on invoice</div>
-                    <RadioGroup value={showOutstandingBalance ? "yes" : "no"} onValueChange={(value) => setShowOutstandingBalance(value === "yes")}>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="yes" id="yes-outstanding" />
-                        <Label htmlFor="yes-outstanding" className="text-sm">Yes</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="no" id="no-outstanding" />
-                        <Label htmlFor="no-outstanding" className="text-sm">No</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-        </div>
-
-        {/* Invoice Footer, Invoice Print Format, Records per page */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Invoice Footer */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Invoice Footer
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-xs text-gray-600 mb-2">Invoice Footer(Note: This statement will be display on all invoice print.)</div>
-                    <div>
-                      <Label className="text-xs">Invoice footer notes:</Label>
-                      <Textarea
-                        value={invoiceFooter}
-                        onChange={(e) => setInvoiceFooter(e.target.value)}
-                        className="text-xs mt-1"
-                        rows={3}
-                      />
-                    </div>
-                  </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Invoice Print Format */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Invoice Print Format
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Invoice Print Format</div>
-                    <RadioGroup value={invoicePrintFormat} onValueChange={setInvoicePrintFormat}>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="A4" id="a4" />
-                        <Label htmlFor="a4" className="text-sm">A4</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="A5" id="a5" />
-                        <Label htmlFor="a5" className="text-sm">A5</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Records per page */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Records per page
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Records per page</div>
-                    <select 
-                      value={recordsPerPage} 
-                      onChange={(e) => setRecordsPerPage(e.target.value)}
-                      className="w-full p-2 border rounded text-xs"
-                    >
-                      <option value="All">All</option>
-                      <option value="10">10</option>
-                      <option value="25">25</option>
-                      <option value="50">50</option>
-                      <option value="100">100</option>
-                    </select>
-                  </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-        </div>
+        {/* Invoice Footer */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Invoice Footer
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="mb-4">
+                  <div className="text-sm font-medium mb-2">Invoice Footer Text</div>
+                  <Textarea
+                    value={invoiceFooter}
+                    onChange={e => setInvoiceFooter(e.target.value)}
+                    rows={3}
+                    className="w-full text-sm"
+                  />
+                </div>
+                <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveInvoiceFooter} disabled={savingInvoiceFooter}>
+                  {savingInvoiceFooter ? "Saving..." : "Save"}
+                </Button>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
 
         {/* Delivery Note with Price, Delivery Note with Name or Code, Delivery acknowledgement */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
           {/* Delivery Note with Price */}
-          <Card className="shadow-sm border border-gray-200">
+          <Card className="shadow-sm border border-gray-200 mb-10">
             <Collapsible>
               <CollapsibleTrigger asChild>
                 <CardHeader className="cursor-pointer bg-blue-500 text-white">
@@ -653,8 +826,8 @@ const AdminFunctions = () => {
               <CollapsibleContent>
                 <CardContent className="p-4">
                   <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Delivery note with Price</div>
-                    <RadioGroup value={deliveryNoteWithPrice ? "yes" : "no"} onValueChange={(value) => setDeliveryNoteWithPrice(value === "yes")}>
+                    <div className="text-sm font-medium mb-2">Show price on delivery note</div>
+                    <RadioGroup value={deliveryNoteWithPrice ? "yes" : "no"} onValueChange={v => setDeliveryNoteWithPrice(v === "yes")}> 
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="yes" id="yes-delivery-price" />
                         <Label htmlFor="yes-delivery-price" className="text-sm">Yes</Label>
@@ -665,8 +838,8 @@ const AdminFunctions = () => {
                       </div>
                     </RadioGroup>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveDeliveryNoteWithPrice} disabled={savingDeliveryNoteWithPrice}>
+                    {savingDeliveryNoteWithPrice ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>
@@ -699,7 +872,7 @@ const AdminFunctions = () => {
                       </div>
                     </RadioGroup>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveShowNameOnDeliveryNote}>
                     Save
                   </Button>
                 </CardContent>
@@ -733,7 +906,7 @@ const AdminFunctions = () => {
                       </div>
                     </RadioGroup>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveDeliveryAcknowledgement}>
                     Save
                   </Button>
                 </CardContent>
@@ -763,30 +936,24 @@ const AdminFunctions = () => {
               <CollapsibleContent>
                 <CardContent className="p-4">
                   <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Change Email-Id and Password (Note: Email id should be of same domain)</div>
+                    <div className="text-sm font-medium mb-2">Change Email Credentials</div>
                     <div className="space-y-2">
                       <div>
-                        <Label className="text-xs">Email-Id:</Label>
-                        <Input
-                          type="email"
-                          value={emailConfig.emailId}
-                          onChange={(e) => setEmailConfig(prev => ({ ...prev, emailId: e.target.value }))}
-                          className="text-xs"
-                        />
+                        <Label className="text-xs">Email:</Label>
+                        <Input type="email" value={emailConfig.MAIL_EMAIL} onChange={e => setEmailConfig(prev => ({ ...prev, MAIL_EMAIL: e.target.value }))} className="text-xs" />
                       </div>
                       <div>
                         <Label className="text-xs">Password:</Label>
-                        <Input
-                          type="password"
-                          value={emailConfig.password}
-                          onChange={(e) => setEmailConfig(prev => ({ ...prev, password: e.target.value }))}
-                          className="text-xs"
-                        />
+                        <Input type="password" value={emailConfig.MAIL_PASSWORD} onChange={e => setEmailConfig(prev => ({ ...prev, MAIL_PASSWORD: e.target.value }))} className="text-xs" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Default Sender:</Label>
+                        <Input type="text" value={emailConfig.MAIL_DEFAULT_SENDER} onChange={e => setEmailConfig(prev => ({ ...prev, MAIL_DEFAULT_SENDER: e.target.value }))} className="text-xs" />
                       </div>
                     </div>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveEmailConfig} disabled={savingEmailConfig}>
+                    {savingEmailConfig ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>
@@ -807,96 +974,19 @@ const AdminFunctions = () => {
               <CollapsibleContent>
                 <CardContent className="p-4">
                   <div className="text-xs mb-2">Show/Hide Profit</div>
-                  {Object.keys(showHideProfit).map((user) => (
-                    <div key={user} className="flex items-center justify-between mb-2">
-                      <span className="text-xs">• {user}</span>
-                      <div className="flex items-center gap-2">
-                        <input type="radio" name={`profit-${user}`} className="w-3 h-3" />
-                        <span className="text-xs">Show</span>
-                        <input type="radio" name={`profit-${user}`} className="w-3 h-3" />
-                        <span className="text-xs">Hide</span>
-                      </div>
-                    </div>
-                  ))}
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mt-2">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Product Search Type */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Product Search Type
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Product Search Type</div>
-                    <RadioGroup value={productSearchType} onValueChange={setProductSearchType}>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="available" id="available-products" />
-                        <Label htmlFor="available-products" className="text-sm">Available Products</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="all" id="all-products" />
-                        <Label htmlFor="all-products" className="text-sm">All Products</Label>
-                      </div>
-                    </RadioGroup>
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs">Show</span>
+                    <Switch checked={showProfit} onCheckedChange={setShowProfit} />
+                    <span className="text-xs">Hide</span>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-        </div>
-
-        {/* Manage Search Days, Tax Details, Porterage Details */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Manage Search Days */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Manage Search Days
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">No of days to search for available products</div>
-                    <div>
-                      <Label className="text-xs">Search Days:</Label>
-                      <Input
-                        type="number"
-                        value={searchDays}
-                        onChange={(e) => setSearchDays(e.target.value)}
-                        className="text-xs w-20"
-                      />
-                    </div>
-                  </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1 mt-2" onClick={saveShowProfit} disabled={savingShowProfit}>
+                    {savingShowProfit ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>
             </Collapsible>
           </Card>
 
-          {/* Tax Details */}
           <Card className="shadow-sm border border-gray-200">
             <Collapsible>
               <CollapsibleTrigger asChild>
@@ -931,13 +1021,20 @@ const AdminFunctions = () => {
                       />
                     </div>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveTaxDetails} disabled={savingTaxDetails}>
+                    {savingTaxDetails ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>
             </Collapsible>
           </Card>
+
+        </div>
+
+        {/* Manage Search Days, Tax Details, Porterage Details */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          {/* Tax Details */}
+   
 
           {/* Porterage Details */}
           <Card className="shadow-sm border border-gray-200">
@@ -953,7 +1050,7 @@ const AdminFunctions = () => {
               <CollapsibleContent>
                 <CardContent className="p-4">
                   <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">porterage details</div>
+                    <div className="text-sm font-medium mb-2">Porterage details</div>
                     <RadioGroup value={porterageDetails.withPorterage ? "with" : "without"} onValueChange={(value) => setPorterageDetails(prev => ({ ...prev, withPorterage: value === "with" }))}>
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="with" id="with-porterage" />
@@ -975,18 +1072,16 @@ const AdminFunctions = () => {
                       />
                     </div>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={savePorterageDetails} disabled={savingPorterageDetails}>
+                    {savingPorterageDetails ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>
             </Collapsible>
           </Card>
-        </div>
 
-        {/* Show Dashboard Info, Branding, Currency Exchange */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Show Dashboard Info */}
+
+
           <Card className="shadow-sm border border-gray-200">
             <Collapsible>
               <CollapsibleTrigger asChild>
@@ -1001,7 +1096,7 @@ const AdminFunctions = () => {
                 <CardContent className="p-4">
                   <div className="mb-4">
                     <div className="text-sm font-medium mb-2">Show Dashboard Info</div>
-                    <RadioGroup value={showDashboardInfo ? "yes" : "no"} onValueChange={(value) => setShowDashboardInfo(value === "yes")}>
+                    <RadioGroup value={showDashboardInfo ? "yes" : "no"} onValueChange={(value) => setShowDashboardInfo(value === "yes")}> 
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="yes" id="yes-dashboard" />
                         <Label htmlFor="yes-dashboard" className="text-sm">Yes</Label>
@@ -1012,42 +1107,8 @@ const AdminFunctions = () => {
                       </div>
                     </RadioGroup>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
-                  </Button>
-                </CardContent>
-              </CollapsibleContent>
-            </Collapsible>
-          </Card>
-
-          {/* Branding */}
-          <Card className="shadow-sm border border-gray-200">
-            <Collapsible>
-              <CollapsibleTrigger asChild>
-                <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                  <CardTitle className="flex items-center justify-between text-sm">
-                    Branding
-                    <ChevronDown className="h-4 w-4" />
-                  </CardTitle>
-                </CardHeader>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <CardContent className="p-4">
-                  <div className="mb-4">
-                    <div className="text-sm font-medium mb-2">Branding of Email / Print</div>
-                    <RadioGroup value={brandingEmail ? "yes" : "no"} onValueChange={(value) => setBrandingEmail(value === "yes")}>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="yes" id="yes-branding" />
-                        <Label htmlFor="yes-branding" className="text-sm">Yes</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="no" id="no-branding" />
-                        <Label htmlFor="no-branding" className="text-sm">No</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveShowDashboardInfo} disabled={savingShowDashboardInfo}>
+                    {savingShowDashboardInfo ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>
@@ -1071,21 +1132,21 @@ const AdminFunctions = () => {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-xs">Currency Code</TableHead>
-                          <TableHead className="text-xs">Exchange Rate</TableHead>
+                          <TableHead>Currency</TableHead>
+                          <TableHead>Rate</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {Object.entries(currencyRates).map(([currency, rate]) => (
-                          <TableRow key={currency}>
-                            <TableCell className="text-xs">{currency}</TableCell>
-                            <TableCell className="text-xs">
+                        {Object.entries(currencyRates).map(([cur, rate]) => (
+                          <TableRow key={cur}>
+                            <TableCell>{cur}</TableCell>
+                            <TableCell>
                               <Input
                                 type="number"
                                 step="0.0001"
                                 value={rate}
-                                onChange={(e) => setCurrencyRates(prev => ({ ...prev, [currency]: e.target.value }))}
-                                className="text-xs w-20"
+                                onChange={e => setCurrencyRates(prev => ({ ...prev, [cur]: e.target.value }))}
+                                className="w-24 text-xs"
                               />
                             </TableCell>
                           </TableRow>
@@ -1093,13 +1154,20 @@ const AdminFunctions = () => {
                       </TableBody>
                     </Table>
                   </div>
-                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1">
-                    Save
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveCurrencyRates} disabled={savingCurrencyRates}>
+                    {savingCurrencyRates ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>
             </Collapsible>
           </Card>
+
+        </div>
+
+        {/* Show Dashboard Info, Branding, Currency Exchange */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          {/* Show Dashboard Info */}
+          
         </div>
       </main>
     </div>

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Package, FileText, Download, Copy, Printer, Search, Eye, Settings } from "lucide-react";
+import { CalendarIcon, Package, FileText, Download, Copy, Printer, Search, Eye, Settings, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -39,6 +39,11 @@ export default function DailyBookPurchase() {
     search: "",
   });
 
+  const [user, setUser] = useState<any>(null);
+  const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);
+  const [loadingUserType, setLoadingUserType] = useState(true);
+  const [filteredPurchaseData, setFilteredPurchaseData] = useState<PurchaseEntry[]>([]);
+
   // Fetch purchase data
   const {
     data: purchaseData = [],
@@ -56,6 +61,34 @@ export default function DailyBookPurchase() {
       return apiRequest("GET", `/api/reports/daily-book-purchase?${params.toString()}`);
     },
   });
+
+  useEffect(() => {
+    async function fetchUserAndType() {
+      setLoadingUserType(true);
+      try {
+        const userRes = await apiRequest("GET", "/api/auth/me");
+        setUser(userRes);
+        const typeRes = await apiRequest("GET", `/api/user-daily-book-type/${userRes.id}`);
+        setDailyBookType(typeRes.type || 'all');
+      } catch (e) {
+        setDailyBookType('all');
+      } finally {
+        setLoadingUserType(false);
+      }
+    }
+    fetchUserAndType();
+    // eslint-disable-next-line
+  }, []);
+
+  useEffect(() => {
+    if (loadingUserType) return;
+    if (dailyBookType === 'own' && user) {
+      // If your purchase data has a 'purchaser' or 'username' field, use that. Here, we use 'supplier' as placeholder.
+      setFilteredPurchaseData(purchaseData.filter((item) => item.supplier === user.username));
+    } else {
+      setFilteredPurchaseData(purchaseData);
+    }
+  }, [purchaseData, dailyBookType, user, loadingUserType]);
 
   const handleSearch = () => {
     setFilters({
@@ -141,6 +174,14 @@ export default function DailyBookPurchase() {
       description: (error as any)?.message || "Failed to fetch purchase data.",
       variant: "destructive",
     });
+  }
+
+  if (loadingUserType) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="animate-spin mr-2" /> Loading user settings...
+      </div>
+    );
   }
 
   return (
@@ -291,14 +332,14 @@ export default function DailyBookPurchase() {
                         Loading purchase data...
                       </TableCell>
                     </TableRow>
-                  ) : purchaseData.length === 0 ? (
+                  ) : filteredPurchaseData.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={5} className="text-center py-8">
                         No purchase data found for the selected date range.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    purchaseData.map((item) => (
+                    filteredPurchaseData.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>{item.date}</TableCell>
                         <TableCell>{item.supplier}</TableCell>
@@ -312,10 +353,10 @@ export default function DailyBookPurchase() {
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
-                    <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
+                    <TableCell className="font-bold">{filteredPurchaseData.length} Items</TableCell>
                     <TableCell className="text-center font-bold"></TableCell>
                     <TableCell className="text-center font-bold"></TableCell>
-                    <TableCell className="text-center font-bold">£{totalInvoiceAmount.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{filteredPurchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

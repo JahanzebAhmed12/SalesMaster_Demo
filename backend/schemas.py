@@ -229,6 +229,9 @@ class SystemSettingsSchema(BaseModel):
     timezone: str = Field(default="Europe/London")
     auto_date_switch: bool = Field(default=True)
     weekend_handling: str = Field(default="skip")
+    delivery_note_name_or_code: str = Field(default="name")
+    delivery_acknowledgement: bool = Field(default=False)
+    show_profit: bool = Field(default=True)
 
 class AttendanceSchema(BaseModel):
     employee_id: int
@@ -407,3 +410,14 @@ class CashCarryForwardSchema(BaseModel):
 
     class Config:
         orm_mode = True
+
+class UserRestrictionSchema(BaseModel):
+    user_id: int
+    section: str
+    allowed: bool
+
+    class Config:
+        orm_mode = True
+
+class UserRestrictionOutSchema(UserRestrictionSchema):
+    id: int

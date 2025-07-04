@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import logo from "@/public/printlogo.png";
+import { apiRequest } from "@/lib/queryClient";
 
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
   const url = `http://localhost:5000${endpoint}`;
@@ -127,6 +128,7 @@ export default function PurchaseInvoicePrintPage() {
   const [data, setData] = useState<PurchaseInvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
 
   useEffect(() => {
     if (!invoiceId) return;
@@ -140,6 +142,15 @@ export default function PurchaseInvoicePrintPage() {
         setLoading(false);
       });
   }, [invoiceId]);
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => {
+      setTaxDetails({
+        withTax: !!settings.withTax,
+        taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : '0',
+      });
+    });
+  }, []);
 
   if (loading) {
     return <div>Loading...</div>;

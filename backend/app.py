@@ -3,10 +3,10 @@ from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
-    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema
+    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema
 )
 from users import verify_password, create_admin_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -16,7 +16,7 @@ from calendar import monthrange
 from sqlalchemy import func, or_, extract, literal
 import calendar
 import time
-from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email, send_purchase_invoice_email, send_supplier_statement_email
+from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email, send_purchase_invoice_email, send_supplier_statement_email, load_email_config, save_email_config
 
 # Load environment variables
 load_dotenv()
@@ -214,21 +214,21 @@ def login():
         })
     return jsonify({'error': 'Invalid credentials'}), 401
 
-@app.route('/api/auth/me', methods=['GET'])
-def get_current_user():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401
+# @app.route('/api/auth/me', methods=['GET'])
+# def get_current_user():
+#     if 'user_id' not in session:
+#         return jsonify({'error': 'Not authenticated'}), 401
     
-    user = User.query.get(session['user_id'])
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
+#     user = User.query.get(session['user_id'])
+#     if not user:
+#         return jsonify({'error': 'User not found'}), 404
         
-    return jsonify({
-        'id': user.id,
-        'username': user.username,
-        'userType': user.user_type,
-        'status': user.status
-    })
+#     return jsonify({
+#         'id': user.id,
+#         'username': user.username,
+#         'userType': user.user_type,
+#         'status': user.status
+#     })
 
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
@@ -269,6 +269,19 @@ def create_sale():
             
             user_id = get_jwt_identity()
             business_date = get_business_date()
+            
+            # Check backdate editing permission
+            backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+            today = datetime.now().date()
+            # If editing not allowed and business_date is not today, block
+            if backdate_opt and not backdate_opt.editing and business_date != today:
+                db.session.rollback()
+                return jsonify({"error": "You do not have permission to create sales for previous dates."}), 403
+            
+            # Check current date editing permission
+            if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and business_date == today:
+                db.session.rollback()
+                return jsonify({"error": "You do not have permission to create sales for today."}), 403
             
             # Generate next invoice number with proper locking
             # Use a separate query to avoid conflicts
@@ -416,6 +429,17 @@ def update_sale(id):
         sale_data = SaleSchema(**data)
         sale = Sale.query.get_or_404(id)
         user_id = get_jwt_identity()
+        
+        # Check backdate editing permission
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        today = datetime.now().date()
+        # If editing not allowed and sale.date is not today, block
+        if backdate_opt and not backdate_opt.editing and sale.date.date() != today:
+            return jsonify({"error": "You do not have permission to edit sales for previous dates."}), 403
+        
+        # Check current date editing permission
+        if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale.date.date() == today:
+            return jsonify({"error": "You do not have permission to edit sales for today."}), 403
         
         # Store old status and items to check changes
         old_status = sale.status
@@ -665,7 +689,12 @@ def update_sale(id):
         if request.json.get('mailInvoice'):
             customer = Customer.query.get(sale.customer_id)
             if customer and customer.email:
-                send_invoice_email(customer.email, sale, customer)
+                try:
+                    send_invoice_email(mail, customer.email, sale, customer)
+                    print(f"Email sent successfully to {customer.email}")
+                except Exception as e:
+                    print(f"Failed to send email: {str(e)}")
+                    # Don't fail the sale update if email fails
         
         return jsonify(sale.to_dict())
     except Exception as e:
@@ -694,16 +723,28 @@ def get_purchases():
     return jsonify([purchase.to_dict() for purchase in purchases])
 
 @app.route('/api/purchases', methods=['POST'])
+@jwt_required()
 def create_purchase():
     data = request.get_json()
     try:
+        user_id = get_jwt_identity()
+        # Check backdate editing permission
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        business_date = get_business_date()
+        today = datetime.now().date()
+        if backdate_opt and not backdate_opt.editing and business_date != today:
+            return jsonify({'error': 'You do not have permission to create purchases for previous dates.'}), 403
+        
+        # Check current date editing permission
+        if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and business_date == today:
+            return jsonify({'error': 'You do not have permission to create purchases for today.'}), 403
+        
         purchase_data = PurchaseSchema(**data)
         # Get supplier name from supplier_id
         supplier = Supplier.query.get(purchase_data.supplier_id)
         if not supplier:
             return jsonify({'message': 'Supplier not found'}), 404
         # Use business date
-        business_date = get_business_date()
         purchase = Purchase(
             supplier_id=purchase_data.supplier_id,
             supplier_name=supplier.supplier_name,
@@ -1035,11 +1076,18 @@ def delete_non_product(id):
 # Customer routes
 @app.route('/api/customers', methods=['GET'])
 def get_customers():
-    try:
-        customers = Customer.query.all()
-        return jsonify([customer.to_dict() for customer in customers]), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    search = request.args.get('search', '').strip()
+    query = Customer.query
+    if search:
+        like = f"{search.lower()}%"
+        query = query.filter(
+            db.or_(
+                db.func.lower(Customer.customer_name).like(like),
+                db.func.lower(Customer.customer_code).like(like)
+            )
+        )
+    customers = query.all()
+    return jsonify([customer.to_dict() for customer in customers]), 200
 
 @app.route('/api/customers', methods=['POST'])
 def create_customer():
@@ -1194,37 +1242,116 @@ def get_dashboard_stats():
 # Chart data
 @app.route('/api/dashboard/charts', methods=['GET'])
 def get_chart_data():
-    try:
-        sales = Sale.query.all()
-        purchases = Purchase.query.all()
-        
-        # Last 7 days data
-        last_7_days = [(datetime.now().date() - timedelta(days=i)) for i in range(7)]
-        last_7_days.reverse()
-        
-        sales_by_day = [
-            sum(getattr(sale, 'total_amount', 0) for sale in sales if sale.date and sale.date.date() == day)
-            for day in last_7_days
-        ]
-        
-        purchases_by_day = [
-            sum(getattr(purchase, 'amount', 0) for purchase in purchases if purchase.date and purchase.date.date() == day)
-            for day in last_7_days
-        ]
-        
-        return jsonify({
-            'salesPurchase': {
-                'labels': [day.strftime('%a') for day in last_7_days],
-                'salesData': sales_by_day,
-                'purchaseData': purchases_by_day
-            },
-            'profitTrend': {
-                'labels': ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-                'data': [4000, 5500, 4800, 6200]  # Example data
-            }
-        })
-    except Exception as e:
-        return jsonify({'message': 'Failed to fetch chart data', 'error': str(e)}), 500
+    
+    range_param = request.args.get('range', '7days')
+    now = datetime.now()
+    if range_param == '7days':
+        days = 7
+        date_list = [(now.date() - timedelta(days=i)) for i in range(days)]
+        date_list.reverse()
+        label_fmt = '%a'
+    elif range_param == '30days':
+        days = 30
+        date_list = [(now.date() - timedelta(days=i)) for i in range(days)]
+        date_list.reverse()
+        label_fmt = '%d %b'
+    elif range_param == '3months':
+        # 3 months, group by week
+        weeks = 12
+        date_list = [(now.date() - timedelta(weeks=i)) for i in range(weeks)]
+        date_list.reverse()
+        label_fmt = 'Wk %W'
+    else:
+        return jsonify({'message': 'Invalid range parameter'}), 400
+
+    # Sales: group by day/week
+    if range_param == '3months':
+        sales = (
+            db.session.query(
+                func.strftime('%Y-%W', Sale.date).label('period'),
+                func.sum(Sale.total_amount).label('total')
+            )
+            .group_by('period')
+            .all()
+        )
+        sales_map = {period: total for period, total in sales}
+        purchases = (
+            db.session.query(
+                func.strftime('%Y-%W', PurchaseInvoice.date).label('period'),
+                func.sum(PurchaseInvoiceItem.total_price).label('total')
+            )
+            .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+            .group_by('period')
+            .all()
+        )
+        purchases_map = {period: total for period, total in purchases}
+        labels = [d.strftime(label_fmt) for d in date_list]
+        sales_by_period = [float(sales_map.get(d.strftime('%Y-%W'), 0)) for d in date_list]
+        purchases_by_period = [float(purchases_map.get(d.strftime('%Y-%W'), 0)) for d in date_list]
+        profit_by_period = [s - p for s, p in zip(sales_by_period, purchases_by_period)]
+    else:
+        sales = (
+            db.session.query(
+                func.date(Sale.date).label('day'),
+                func.sum(Sale.total_amount).label('total')
+            )
+            .filter(
+                func.date(Sale.date) >= date_list[0],
+                func.date(Sale.date) <= date_list[-1]
+            )
+            .group_by('day')
+            .all()
+        )
+        sales_map = {str(day): total for day, total in sales}
+        purchases = (
+            db.session.query(
+                func.date(PurchaseInvoice.date).label('day'),
+                func.sum(PurchaseInvoiceItem.total_price).label('total')
+            )
+            .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+            .filter(
+                func.date(PurchaseInvoice.date) >= date_list[0],
+                func.date(PurchaseInvoice.date) <= date_list[-1]
+            )
+            .group_by('day')
+            .all()
+        )
+        purchases_map = {str(day): total for day, total in purchases}
+        labels = [d.strftime(label_fmt) for d in date_list]
+        sales_by_period = [float(sales_map.get(str(d), 0)) for d in date_list]
+        purchases_by_period = [float(purchases_map.get(str(d), 0)) for d in date_list]
+        profit_by_period = [s - p for s, p in zip(sales_by_period, purchases_by_period)]
+
+    profit_range = request.args.get('profitRange', 'month')
+    if profit_range == 'month':
+        profit_labels = [f"{now.date().strftime('%b')} {i}" for i in range(1, now.day + 1)]
+        profit_data = profit_by_period
+    elif profit_range == 'lastmonth':
+        last_month = now.date() - timedelta(days=now.day)
+        profit_labels = [f"{last_month.strftime('%b')} {i}" for i in range(1, last_month.day + 1)]
+        profit_data = [0] * last_month.day
+    elif profit_range == 'quarter':
+        quarter_start = now.date() - timedelta(days=now.date().weekday())
+        profit_labels = [f"Wk {i}" for i in range(1, 14)]
+        profit_data = [0] * 13
+        for i in range(13):
+            week_start = quarter_start + timedelta(weeks=i)
+            week_end = week_start + timedelta(days=6)
+            week_sales = sum(sales_by_period[j] for j in range(len(date_list)) if week_start <= date_list[j] <= week_end)
+            week_purchases = sum(purchases_by_period[j] for j in range(len(date_list)) if week_start <= date_list[j] <= week_end)
+            profit_data[i] = week_sales - week_purchases
+
+    return jsonify({
+        'salesPurchase': {
+            'labels': labels,
+            'salesData': sales_by_period,
+            'purchaseData': purchases_by_period
+        },
+        'profitTrend': {
+            'labels': profit_labels,
+            'data': profit_data
+        }
+    })
 
 # System Settings routes
 @app.route('/api/settings', methods=['GET'])
@@ -5609,8 +5736,8 @@ def full_analysis():
         returns = returns.scalar() or 0
         net_sales = sales - returns
         # Purchases
-        purchase = db.session.query(func.sum(Purchase.amount)).filter(
-            Purchase.date >= m_start, Purchase.date < m_end
+        purchase = db.session.query(func.sum(PurchaseInvoice.amount)).filter(
+            PurchaseInvoice.date >= m_start, PurchaseInvoice.date < m_end
         )
         if search:
             purchase = purchase.join(Supplier).filter(Supplier.supplier_name.ilike(f'%{search}%'))
@@ -5668,6 +5795,27 @@ def get_invoice_data(invoice_number):
         customer = sale.customer.to_dict() if sale.customer else {}
         # Get sale items
         items = [item.to_dict() for item in sale.items]
+        # Build packingItems for packing list
+        packing_items = []
+        for item in sale.items:
+            if item.product:
+                weight = float(item.product.unit_weight or 0) * item.quantity
+                hs_code = item.product.hs_code or ""
+                product_name = item.product.description
+            elif item.non_product:
+                weight = float(item.non_product.unit_weight or 0) * item.quantity
+                hs_code = ""
+                product_name = item.non_product.description
+            else:
+                weight = 0
+                hs_code = ""
+                product_name = ""
+            packing_items.append({
+                "qty": item.quantity,
+                "weight": weight,
+                "product": product_name,
+                "hsCode": hs_code
+            })
         # Payment info (credit, balance, etc.)
         paid_amount = float(sale.paid_amount or 0)
         balance = float(sale.total_amount) - paid_amount
@@ -5681,7 +5829,8 @@ def get_invoice_data(invoice_number):
             'company': company_info,
             'customer': customer,
             'sale': sale.to_dict(),
-            'items': items,
+            'items': items,  # for invoice
+            'packingItems': packing_items,  # for packing list
             'paidAmount': paid_amount,
             'balance': balance,
             'notes': notes
@@ -6593,7 +6742,7 @@ def test_mail():
         data = request.get_json()
         test_email = data.get('email', 'test@example.com')
         
-        # Create test data
+        # Create test data - these need to be proper database objects
         test_customer = Customer(
             customer_name="Test Customer",
             email=test_email
@@ -6601,7 +6750,10 @@ def test_mail():
         
         test_sale = Sale(
             invoice_number="TEST001",
-            total_amount=100.00
+            total_amount=100.00,
+            date=datetime.now(),
+            customer_type='credit',
+            status='finalized'
         )
         
         # Try to send email
@@ -6612,6 +6764,7 @@ def test_mail():
             "message": f"Test email sent to {test_email}"
         })
     except Exception as e:
+        print(f"Test mail error: {str(e)}")
         return jsonify({
             "success": False,
             "message": f"Failed to send test email: {str(e)}"
@@ -6991,3 +7144,198 @@ def eec_report():
             'country': supplier.customer_country if supplier else ''
         })
     return jsonify(data)
+
+# Admin Functions Routes
+
+# User Restriction routes
+
+@app.route('/api/user-restrictions', methods=['GET'])
+@jwt_required()
+def get_all_user_restrictions():
+    restrictions = UserRestriction.query.all()
+    return jsonify([{
+        "id": r.id,
+        "user_id": r.user_id,
+        "section": r.section,
+        "allowed": r.allowed
+    } for r in restrictions])
+
+# Get restrictions for a specific user
+@app.route('/api/user-restrictions/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_user_restrictions(user_id):
+    restrictions = UserRestriction.query.filter_by(user_id=user_id).all()
+    return jsonify([{
+        "id": r.id,
+        "user_id": r.user_id,
+        "section": r.section,
+        "allowed": r.allowed
+    } for r in restrictions])
+
+# Update all restrictions for a user (bulk update)
+@app.route('/api/user-restrictions/<int:user_id>', methods=['PUT'])
+@jwt_required()
+def update_user_restrictions(user_id):
+    data = request.get_json()  # Expect: [{section: "data_entry", allowed: true}, ...]
+    if not isinstance(data, list):
+        return jsonify({"error": "Invalid data format"}), 400
+
+    # Remove old restrictions
+    UserRestriction.query.filter_by(user_id=user_id).delete()
+    # Add new ones
+    for item in data:
+        section = item.get("section")
+        allowed = item.get("allowed", True)
+        if section:
+            r = UserRestriction(user_id=user_id, section=section, allowed=allowed)
+            db.session.add(r)
+    db.session.commit()
+    return jsonify({"success": True})
+
+# (Optional) Add restrictions to /api/auth/me
+@app.route('/api/auth/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    restrictions = UserRestriction.query.filter_by(user_id=user_id).all()
+    restriction_dict = {r.section: r.allowed for r in restrictions}
+    # ...existing user serialization...
+    user_data = user.to_dict()
+    user_data["restrictions"] = restriction_dict
+    return jsonify(user_data)
+
+# ...User Backdate Options...
+
+@app.route('/api/user-backdate-options', methods=['GET'])
+def get_all_backdate_options():
+    options = UserBackDateOption.query.all()
+    return jsonify([
+        {**opt.to_dict(), 'current_editing': getattr(opt, 'current_editing', True)} for opt in options
+    ])
+
+@app.route('/api/user-backdate-options/<int:user_id>', methods=['GET'])
+def get_backdate_option(user_id):
+    opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+    if not opt:
+        return jsonify({'userId': user_id, 'editing': False, 'deleting': False, 'current_editing': True})
+    d = opt.to_dict()
+    d['current_editing'] = getattr(opt, 'current_editing', True)
+    return jsonify(d)
+
+@app.route('/api/user-backdate-options/<int:user_id>', methods=['PUT'])
+def update_backdate_option(user_id):
+    data = request.get_json()
+    opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+    if not opt:
+        opt = UserBackDateOption(user_id=user_id)
+        db.session.add(opt)
+    opt.editing = bool(data.get('editing', False))
+    opt.deleting = bool(data.get('deleting', False))
+    if 'current_editing' in data:
+        opt.current_editing = bool(data['current_editing'])
+    db.session.commit()
+    d = opt.to_dict()
+    d['current_editing'] = getattr(opt, 'current_editing', True)
+    return jsonify(d)
+
+
+    # Invoce Retrictions
+
+@app.route('/api/user-invoice-restriction', methods=['GET'])
+@jwt_required()
+def get_all_invoice_restrictions():
+    restrictions = UserInvoiceRestriction.query.all()
+    return jsonify([{
+        "userId": r.user_id,
+        "restricted": r.restricted
+    } for r in restrictions])
+
+@app.route('/api/user-invoice-restriction/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_invoice_restriction(user_id):
+    restriction = UserInvoiceRestriction.query.filter_by(user_id=user_id).first()
+    if not restriction:
+        return jsonify({'userId': user_id, 'restricted': False})
+    return jsonify({'userId': user_id, 'restricted': restriction.restricted})
+
+@app.route('/api/user-invoice-restriction/<int:user_id>', methods=['PUT'])  
+def update_invoice_restriction(user_id):
+    data = request.get_json()
+    restriction = UserInvoiceRestriction.query.filter_by(user_id=user_id).first()
+    if not restriction:
+        restriction = UserInvoiceRestriction(user_id=user_id)
+        db.session.add(restriction)
+    restriction.restricted = bool(data.get('restricted', False))
+    db.session.commit()
+    return jsonify({'userId': user_id, 'restricted': restriction.restricted})
+
+
+# Daily books
+
+@app.route('/api/user-daily-book-type', methods=['GET'])
+def get_all_daily_book_types():
+    options = UserDailyBookType.query.all()
+    return jsonify([
+        {'userId': opt.user_id, 'showAll': opt.show_all, 'showOnly': opt.show_only}
+        for opt in options
+    ])
+
+@app.route('/api/user-daily-book-type/<int:user_id>', methods=['PUT'])
+def update_daily_book_type(user_id):
+    data = request.get_json()
+    opt = UserDailyBookType.query.filter_by(user_id=user_id).first()
+    if not opt:
+        opt = UserDailyBookType(user_id=user_id)
+        db.session.add(opt)
+    opt.show_all = bool(data.get('showAll', False))
+    opt.show_only = bool(data.get('showOnly', False))
+    db.session.commit()
+    return jsonify({'userId': user_id, 'showAll': opt.show_all, 'showOnly': opt.show_only})
+
+@app.route('/api/user-daily-book-type/<int:user_id>', methods=['GET'])
+def get_daily_book_type(user_id):
+    entry = db.session.query(UserDailyBookType).filter_by(user_id=user_id).first()
+    if entry:
+        if getattr(entry, 'show_all', False):
+            return jsonify({"type": "all"})
+        elif getattr(entry, 'show_only', False):
+            return jsonify({"type": "own"})
+        else:
+            return jsonify({"type": "all"})
+    else:
+        return jsonify({"type": "all"})
+
+
+
+# Email Settings
+
+@app.route('/api/email-config', methods=['GET'])
+def get_email_config():
+    config = load_email_config()
+    if not config:
+        config = {
+            'MAIL_USERNAME': current_app.config.get('MAIL_EMAIL'),
+            'MAIL_PASSWORD': current_app.config.get('MAIL_PASSWORD'),
+            'MAIL_DEFAULT_SENDER': current_app.config.get('MAIL_DEFAULT_SENDER'),
+        }
+    return jsonify(config)
+
+@app.route('/api/email-config', methods=['PUT'])
+def update_email_config():
+    data = request.get_json()
+    config = load_email_config() or {}
+    config['MAIL_USERNAME'] = data.get('MAIL_EMAIL', '')
+    config['MAIL_PASSWORD'] = data.get('MAIL_PASSWORD', '')
+    config['MAIL_DEFAULT_SENDER'] = data.get('MAIL_DEFAULT_SENDER', '')
+    save_email_config(config)
+    
+    # Update Flask app config directly
+    current_app.config['MAIL_EMAIL'] = config['MAIL_EMAIL']
+    current_app.config['MAIL_PASSWORD'] = config['MAIL_PASSWORD']
+    current_app.config['MAIL_DEFAULT_SENDER'] = config['MAIL_DEFAULT_SENDER']
+    
+    # Reload mail config
+    global mail
+    mail = init_mail(current_app)
+    return jsonify({'success': True})

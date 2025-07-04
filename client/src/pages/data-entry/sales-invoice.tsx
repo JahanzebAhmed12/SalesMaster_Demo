@@ -33,6 +33,7 @@ interface BackendSalePayload {
     unit_price: number;
     total_price: number;
     notes: string | null;
+    created_at: string;
   }>;
 }
 
@@ -96,6 +97,12 @@ const [highlightedProduct, setHighlightedProduct] = useState(-1);
 const productInputRef = useRef<HTMLInputElement>(null);
 const productDropdownRef = useRef<HTMLDivElement>(null);
   
+// Add this state at the top of your component (with other useState hooks)
+const [printDeliveryNote, setPrintDeliveryNote] = useState(false);
+const [printPackingList, setPrintPackingList] = useState(false);
+  
+const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
+
   useEffect(()=>{
     // const queryParams = new URLSearchParams(locationStr.split('?')[1] || '');
     const params = new URLSearchParams(window.location.search);
@@ -103,13 +110,16 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
 
 
     const customerIdFromUrl = params.get('customerId');
+    const gateNumberFromUrl = params.get('gateNumber');
 
     console.log(customerIdFromUrl, "bbbbbbbbb")
     if(customerIdFromUrl){
       setCustomerId(customerIdFromUrl as any)
     }
+    if (gateNumberFromUrl) {
+      setGateNumber(gateNumberFromUrl);
+    }
     // const vehicleDetailsFromUrl = queryParams.get('vehicleDetails');
-    // const gateNumberFromUrl = queryParams.get('gateNumber');
     // const heldInvoiceIdFromUrl = queryParams.get('heldInvoiceId');
   
   }, [])
@@ -484,6 +494,7 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
           unit_price: item.unitPrice,
           total_price: item.totalPrice,
           notes: item.notes,
+          created_at: item.createdAt,
         })),
       };
       updateSaleMutation.mutate(updatedSalePayload);
@@ -540,6 +551,7 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
         unit_price: item.unitPrice,
         total_price: item.totalPrice,
         notes: item.notes,
+        created_at: item.createdAt,
       })),
       mailInvoice,
     };
@@ -548,15 +560,22 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
         if (printInvoice && response?.invoiceNumber) {
           window.open(`/print/invoice/${response.invoiceNumber}`, '_blank');
         }
+        if (printDeliveryNote && response?.invoiceNumber) {
+          window.open(`/print/delivery-note/${response.invoiceNumber}`, '_blank');
+        }
+        if (printPackingList && response?.invoiceNumber) {
+          window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
+        }
+        setLocation('/data-entry/sales-entry');
       }
     });
   };
 
   const calculateTotalSummary = () => {
     const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
-    // Assuming no VAT/Porterage for now
-    const vatAmount = 0; 
-    const porterage = 0; 
+    const vatRate = taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0;
+    const vatAmount = (subtotal * vatRate) / 100;
+    const porterage = 0;
     const totalAmount = subtotal + vatAmount + porterage;
     return { subtotal, vatAmount, porterage, totalAmount };
   };
@@ -711,6 +730,15 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
     toast({ title: "Invoice Held", description: "You can resume it later from Held Invoices." });
   };
 
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => {
+      setTaxDetails({
+        withTax: !!settings.withTax,
+        taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : '0',
+      });
+    });
+  }, []);
+
   if (isCreatingSale) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -842,6 +870,66 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
           <div className="flex items-center gap-4 mb-4">
             <Button onClick={handleHoldInvoice} variant="outline">Hold Invoice</Button>
           </div>
+
+          <div className="flex gap-2 mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (saleItems.length === 0) {
+                  toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
+                  return;
+                }
+                if (currentSale?.invoiceNumber) {
+                  window.open(`/print/invoice/${currentSale.invoiceNumber}`, '_blank');
+                } else {
+                  // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
+                  window.open(`/print/invoice/preview`, '_blank');
+                }
+              }}
+            >
+              Print Invoice
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (saleItems.length === 0) {
+                  toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
+                  return;
+                }
+                if (currentSale?.invoiceNumber) {
+                  window.open(`/print/delivery-note/${currentSale.invoiceNumber}`, '_blank');
+                } else {
+                  // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
+                  window.open(`/print/delivery-note/preview`, '_blank');
+                }
+              }}
+            >
+              Print Delivery Note
+            </Button>
+            {/* Checkbox for delivery note */}
+            <div className="flex items-center mt-2">
+              <input
+                type="checkbox"
+                id="printDeliveryNote"
+                checked={printDeliveryNote}
+                onChange={e => setPrintDeliveryNote(e.target.checked)}
+                className="mr-2"
+              />
+              <label htmlFor="printDeliveryNote" className="text-sm">Print Delivery Note also when saving</label>
+            </div>
+            <div className="flex items-center mt-2">
+              <input
+                type="checkbox"
+                id="printPackingList"
+                checked={printPackingList}
+                onChange={e => setPrintPackingList(e.target.checked)}
+                className="mr-2"
+              />
+              <label htmlFor="printPackingList" className="text-sm">Print Packing List also when saving</label>
+            </div>
+          </div>
         </div>
 
         {/* Products Table */}
@@ -852,7 +940,7 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="text-center">Current Stock</TableHead>
+                    <TableHead className="text-center">Time Added</TableHead>
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">Unit price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
@@ -866,18 +954,12 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
                     editingIndex === index ? (
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell className="text-center">
-                          {item.productId
-                            ? getCurrentStock(item.productId, 'regular')
-                            : item.nonProductId
-                              ? getCurrentStock(item.nonProductId, 'non')
-                              : '-'}
-                        </TableCell>
+                        <TableCell className="text-center">{item.createdAt ? new Date(item.createdAt).toLocaleTimeString() : '-'}</TableCell>
                         <TableCell className="text-center">
                           <Input
                             type="number"
                             value={editItem?.quantity ?? item.quantity}
-                            onChange={e => setEditItem({...item, quantity: parseInt(e.target.value) || 0})}
+                            onChange={e => setEditItem({...item, quantity: parseInt(e.target.value) || 0, createdAt: item.createdAt})}
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -885,7 +967,7 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
                             type="number"
                             step="0.01"
                             value={editItem?.unitPrice ?? item.unitPrice}
-                            onChange={e => setEditItem({...item, unitPrice: parseFloat(e.target.value) || 0})}
+                            onChange={e => setEditItem({...item, unitPrice: parseFloat(e.target.value) || 0, createdAt: item.createdAt})}
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -895,13 +977,13 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
                           <Input
                             placeholder="Add notes..."
                             value={editItem?.notes ?? item.notes ?? ""}
-                            onChange={e => setEditItem({...item, notes: e.target.value})}
+                            onChange={e => setEditItem({...item, notes: e.target.value, createdAt: item.createdAt})}
                           />
                         </TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" onClick={() => {
                             // Save changes
-                            const updatedItems = saleItems.map((it, i) => i === index ? {...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice)} : it);
+                            const updatedItems = saleItems.map((it, i) => i === index ? {...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt} : it);
                             setSaleItems(updatedItems);
                             setEditingIndex(null);
                             setEditItem(null);
@@ -915,13 +997,7 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
                     ) : (
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell className="text-center">
-                          {item.productId
-                            ? getCurrentStock(item.productId, 'regular')
-                            : item.nonProductId
-                              ? getCurrentStock(item.nonProductId, 'non')
-                              : '-'}
-                        </TableCell>
+                        <TableCell className="text-center">{item.createdAt ? new Date(item.createdAt).toLocaleTimeString() : '-'}</TableCell>
                         <TableCell className="text-center">{item.quantity}</TableCell>
                         <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
@@ -957,6 +1033,7 @@ const productDropdownRef = useRef<HTMLDivElement>(null);
                                   unit_price: item.unitPrice,
                                   total_price: item.totalPrice,
                                   notes: item.notes,
+                                  created_at: item.createdAt,
                                 })),
                               };
                               updateSaleMutation.mutate(updatedSalePayload);

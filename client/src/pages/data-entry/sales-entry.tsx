@@ -52,6 +52,7 @@ export default function SalesEntry() {
   const [showHeldInvoices, setShowHeldInvoices] = useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const [gateNumber, setGateNumber] = useState("");
 
   console.log(heldInvoices, "==============?")
 
@@ -133,7 +134,8 @@ console.log(heldInvoices, "see held invoices")
   const onSubmit = (data: SalesFormData) => {
     const queryParams = new URLSearchParams();
     queryParams.append("customerId", data.customerId);
-    handleGoToInvoice(data.customerId, []); // Pass the current saleItems array here if you have it
+    if (gateNumber) queryParams.append("gateNumber", gateNumber);
+    setLocation(`/data-entry/sales-invoice?${queryParams.toString()}`);
   };
 
   const handleResumeInvoice = (holdId: string) => {
@@ -277,7 +279,16 @@ console.log(heldInvoices, "see held invoices")
                     </p>
                   )}
                 </div>
-                <div></div>
+                <div>
+                  <Label htmlFor="gateNumber">Others/Gate</Label>
+                  <Input
+                    id="gateNumber"
+                    type="text"
+                    placeholder="Others/Gate (optional)"
+                    value={gateNumber}
+                    onChange={e => setGateNumber(e.target.value)}
+                  />
+                </div>
               </div>
               <Button 
                 type="submit" 

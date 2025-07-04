@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ export default function ProfitLoss() {
   const [searchTerm, setSearchTerm] = useState("");
   const [trigger, setTrigger] = useState(0); // for manual search
   const tableRef = useRef<HTMLDivElement>(null);
+  const [showProfit, setShowProfit] = useState(true);
 
   // Fetch profit/loss data from backend
   const { data: profitData = [], isLoading, isError } = useQuery({
@@ -63,6 +64,10 @@ export default function ProfitLoss() {
 
   // Calculate total profit/loss
   const totalProfit = profitData.reduce((sum: number, item: ProfitLossItem) => sum + (Number(item.totProfit) || 0), 0) || 0;
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => setShowProfit(settings.showProfit !== false));
+  }, []);
 
   // Export handlers
   const handlePrint = () => {
@@ -243,7 +248,7 @@ export default function ProfitLoss() {
             <div className="overflow-x-auto" ref={tableRef}>
               <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
                 Date Range: {format(fromDate, "yyyy-MM-dd")} to {format(toDate, "yyyy-MM-dd")}<br />
-                Total Profit: £{Number(totalProfit).toFixed(2)}
+                {showProfit && <>Total Profit: £{Number(totalProfit).toFixed(2)}</>}
               </div>
               {isLoading ? (
                 <div className="text-center py-8">Loading...</div>
@@ -258,11 +263,11 @@ export default function ProfitLoss() {
                       <TableHead className="text-center">Total Quantity</TableHead>
                       <TableHead className="text-center">AVG Purchase</TableHead>
                       <TableHead className="text-center">AVG Sales</TableHead>
-                      <TableHead className="text-center">AVG Profit</TableHead>
+                      {showProfit && <TableHead className="text-center">AVG Profit</TableHead>}
                       <TableHead className="text-center">TOT Purchase</TableHead>
                       <TableHead className="text-center">TOT Sales</TableHead>
-                      <TableHead className="text-center">TOT Profit</TableHead>
-                      <TableHead className="text-center">PERCENT Profit %</TableHead>
+                      {showProfit && <TableHead className="text-center">TOT Profit</TableHead>}
+                      {showProfit && <TableHead className="text-center">PERCENT Profit %</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -273,17 +278,11 @@ export default function ProfitLoss() {
                         <TableCell className="text-center">{item.totalQuantity}</TableCell>
                         <TableCell className="text-center">{Number(item.avgPurchase).toFixed(2)}</TableCell>
                         <TableCell className="text-center">{Number(item.avgSales).toFixed(2)}</TableCell>
-                        <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                          {Number(item.avgProfit).toFixed(2)}
-                        </TableCell>
+                        {showProfit && <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>{Number(item.avgProfit).toFixed(2)}</TableCell>}
                         <TableCell className="text-center">{Number(item.totPurchase).toFixed(2)}</TableCell>
                         <TableCell className="text-center">{Number(item.totSales).toFixed(2)}</TableCell>
-                        <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                          {Number(item.totProfit).toFixed(2)}
-                        </TableCell>
-                        <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>
-                          {Number(item.percentProfit).toFixed(2)} %
-                        </TableCell>
+                        {showProfit && <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>{Number(item.totProfit).toFixed(2)}</TableCell>}
+                        {showProfit && <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>{Number(item.percentProfit).toFixed(2)} %</TableCell>}
                       </TableRow>
                     ))}
                     {/* Total Row */}
@@ -293,11 +292,11 @@ export default function ProfitLoss() {
                       <TableCell className="text-center font-bold">{totals.totalQuantity.toFixed(2)}</TableCell>
                       <TableCell className="text-center font-bold"></TableCell>
                       <TableCell className="text-center font-bold"></TableCell>
-                      <TableCell className="text-center font-bold"></TableCell>
+                      {showProfit && <TableCell className="text-center font-bold"></TableCell>}
                       <TableCell className="text-center font-bold">£ {Number(totals.totPurchase).toFixed(2)}</TableCell>
                       <TableCell className="text-center font-bold">£ {Number(totals.totSales).toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">£ {Number(totals.totProfit).toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{Number(overallProfitPercent).toFixed(2)} %</TableCell>
+                      {showProfit && <TableCell className="text-center font-bold">£ {Number(totals.totProfit).toFixed(2)}</TableCell>}
+                      {showProfit && <TableCell className="text-center font-bold">{Number(overallProfitPercent).toFixed(2)} %</TableCell>}
                     </TableRow>
                   </TableBody>
                 </Table>

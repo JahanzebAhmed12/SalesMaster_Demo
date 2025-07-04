@@ -50,6 +50,7 @@ export default function Expenses() {
     vatAmount: 0
   });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
 
   // Fetch expense entries
   const { data: expenseEntries = [], isLoading, refetch } = useQuery<ExpenseEntry[]>({
@@ -98,6 +99,15 @@ export default function Expenses() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen, businessDateData?.business_date]);
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => {
+      setTaxDetails({
+        withTax: !!settings.withTax,
+        taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : '0',
+      });
+    });
+  }, []);
 
   // Create expense entry mutation
   const createExpenseMutation = useMutation({

@@ -700,3 +700,12 @@ export const insertBankingEntrySchema = bankingEntrySchema.omit({
 
 export type BankingEntry = z.infer<typeof bankingEntrySchema>;
 export type InsertBankingEntry = z.infer<typeof insertBankingEntrySchema>;
+
+export const userRestrictionSchema = z.object({
+  id: z.number().optional(),
+  user_id: z.number(),
+  section: z.string(),
+  allowed: z.boolean(),
+});
+
+export type UserRestriction = z.infer<typeof userRestrictionSchema>;

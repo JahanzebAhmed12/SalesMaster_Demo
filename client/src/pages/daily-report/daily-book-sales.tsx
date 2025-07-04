@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { User } from "shared/schema";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, BarChart3, FileText, Download, Copy, Printer, Search, Eye, Info } from "lucide-react";
+import { CalendarIcon, BarChart3, FileText, Download, Copy, Printer, Search, Eye, Info, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import React from 'react';
@@ -38,6 +38,9 @@ export default function DailyBookSales() {
   const [paymentType, setPaymentType] = useState("Cash");
   const [userFilter, setUserFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [user, setUser] = useState<any>(null);
+  const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);
+  const [loadingUserType, setLoadingUserType] = useState(true);
   
   // Fetch users for the salesman dropdown
   const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -72,6 +75,30 @@ export default function DailyBookSales() {
   const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
 
   const tableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    async function fetchUserAndType() {
+      setLoadingUserType(true);
+      try {
+        const userRes = await apiRequest("GET", "/api/auth/me");
+        setUser(userRes);
+        const typeRes = await apiRequest("GET", `/api/user-daily-book-type/${userRes.id}`);
+        setDailyBookType(typeRes.type || 'all');
+        if (typeRes.type === 'own') {
+          setUserFilter(userRes.username);
+        } else {
+          setUserFilter('all');
+        }
+      } catch (e) {
+        setDailyBookType('all');
+        setUserFilter('all');
+      } finally {
+        setLoadingUserType(false);
+      }
+    }
+    fetchUserAndType();
+    // eslint-disable-next-line
+  }, []);
 
   // Export handlers
   const handlePrint = () => {
@@ -150,6 +177,14 @@ export default function DailyBookSales() {
     navigator.clipboard.writeText(tsv);
     alert('Table copied to clipboard!');
   };
+
+  if (loadingUserType) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="animate-spin mr-2" /> Loading user settings...
+      </div>
+    );
+  }
 
   return (
     <PageLayout title="Daily Book" breadcrumb="Daily Report > Daily Book Sales">
@@ -235,7 +270,7 @@ export default function DailyBookSales() {
               </div>
               
               <div className="w-full">
-                <Select value={userFilter} onValueChange={setUserFilter}>
+                <Select value={userFilter} onValueChange={setUserFilter} disabled={dailyBookType === 'own'}>
                   <SelectTrigger>
                     <SelectValue placeholder="All Salesmen" />
                   </SelectTrigger>

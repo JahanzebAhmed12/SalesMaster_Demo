@@ -5,9 +5,12 @@ interface ProfitTrendChartProps {
     labels: string[];
     data: number[];
   };
+  showProfit?: boolean;
 }
 
-export default function ProfitTrendChart({ data }: ProfitTrendChartProps) {
+export default function ProfitTrendChart({ data, showProfit = true }: ProfitTrendChartProps) {
+  if (!showProfit) return null;
+
   const chartData = data.labels.map((label, index) => ({
     name: label,
     profit: data.data[index] || 0,
