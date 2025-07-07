@@ -63,17 +63,10 @@ function UsersContent() {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="bg-white border-b border-[hsl(210,16%,93%)] p-6">
-        <div className="flex justify-between items-center">
-          <h2 className="text-xl font-medium tropifruit-text">Users List</h2>
-          <div className="text-sm tropifruit-text-secondary">
-            TROPIFRUIT UK LTD, 3 Dolphin Way, Porfield, RM16 1NZ...
-          </div>
-        </div>
-      </div>
+      
 
-      <div className="p-6 flex-1 overflow-auto">
-        <div className="bg-white rounded-lg shadow-sm border border-[hsl(210,16%,93%)]">
+      <div className="p-6 flex-1 flex justify-center items-start">
+        <div className="bg-white rounded-lg shadow-sm border border-[hsl(210,16%,93%)] w-full max-w-5xl mx-auto">
           <div className="p-6 border-b border-[hsl(210,16%,93%)]">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-2">
@@ -202,8 +195,8 @@ function UsersContent() {
 
 export default function Users() {
   return (
-    <ProtectedRoute requireAdmin>
+    
       <UsersContent />
-    </ProtectedRoute>
+   
   );
 }

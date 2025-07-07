@@ -249,8 +249,8 @@ function UserAddContent() {
 
 export default function UserAdd() {
   return (
-    <ProtectedRoute requireAdmin>
+  
       <UserAddContent />
-    </ProtectedRoute>
+   
   );
 } 

@@ -41,7 +41,7 @@ export default function UserEdit() {
     },
     values: user ? {
       username: user.username,
-      password: user.password,
+      password: "",
       userType: user.userType,
       status: user.status,
     } : undefined,
