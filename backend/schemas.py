@@ -21,7 +21,7 @@ class SaleItemSchema(BaseModel):
 class SaleSchema(BaseModel):
     invoice_number: Optional[str] = None
     customer_id: int
-    customer_type: str = 'credit'
+    customer_type: str = 'account'
     payment_status: str = 'pending'
     subtotal: float
     porterage: float = 0
@@ -232,6 +232,8 @@ class SystemSettingsSchema(BaseModel):
     delivery_note_name_or_code: str = Field(default="name")
     delivery_acknowledgement: bool = Field(default=False)
     show_profit: bool = Field(default=True)
+    with_porterage: bool = Field(default=False)
+    porterage_charge: float = Field(default=0)
 
 class AttendanceSchema(BaseModel):
     employee_id: int
@@ -421,3 +423,16 @@ class UserRestrictionSchema(BaseModel):
 
 class UserRestrictionOutSchema(UserRestrictionSchema):
     id: int
+
+class BankingEntrySchema(BaseModel):
+    date: date
+    remarks: Optional[str] = None
+    payment_type: str = Field(alias='paymentType')
+    amount: float
+    paying_number: Optional[str] = Field(default=None, alias='payingNumber')
+    bag_number: Optional[str] = Field(default=None, alias='bagNumber')
+    cheque_number: Optional[str] = Field(default=None, alias='chequeNumber')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True

@@ -6,6 +6,14 @@ export const systemSettingsSchema = z.object({
   timezone: z.string(),
   autoDateSwitch: z.boolean(),
   weekendHandling: z.string(),
+  showOutstandingBalance: z.boolean().optional(),
+  invoiceFooter: z.string().optional(),
+  deliveryNoteWithPrice: z.boolean().optional(),
+  deliveryNoteNameOrCode: z.string().optional(),
+  deliveryAcknowledgement: z.boolean().optional(),
+  showProfit: z.boolean().optional(),
+  withPorterage: z.boolean().optional(),
+  porterageCharge: z.number().optional(),
   updatedAt: z.string().optional(),
 });
 export type SystemSettings = z.infer<typeof systemSettingsSchema>;
@@ -76,6 +84,7 @@ export const saleItemSchema = z.object({
   totalPrice: z.number(),
   productName: z.string().nullable(), // For frontend display
   notes: z.string().nullable(), // Notes for the product item
+  addedBy: z.string().nullable(), // Track who added this product
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -690,6 +699,9 @@ export const bankingEntrySchema = z.object({
   remarks: z.string(),
   paymentType: z.string(),
   amount: z.number(),
+  payingNumber: z.string().nullable().optional(),
+  bagNumber: z.string().nullable().optional(),
+  chequeNumber: z.string().nullable().optional(),
   createdAt: z.string().optional(),
 });
 

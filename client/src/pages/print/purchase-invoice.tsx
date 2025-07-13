@@ -70,6 +70,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
             <th style={{ border: "1px solid #888", padding: 4 }}>Quantity</th>
             <th style={{ border: "1px solid #888", padding: 4 }}>Unit Price</th>
             <th style={{ border: "1px solid #888", padding: 4 }}>Total</th>
+            <th style={{ border: "1px solid #888", padding: 4 }}>Remarks</th>
           </tr>
         </thead>
         <tbody>
@@ -79,6 +80,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.quantity}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.totalPrice?.toFixed(2) ?? "-"}</td>
+              <td style={{ border: "1px solid #888", padding: 4 }}>{item.remarks || "-"}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
@@ -86,6 +88,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{items.reduce((a, b) => a + (b.quantity || 0), 0)}</td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{items.reduce((a, b) => a + (b.totalPrice || 0), 0).toFixed(2)}</td>
+            <td style={{ border: "1px solid #888", padding: 4 }}></td>
           </tr>
         </tbody>
       </table>

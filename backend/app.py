@@ -3,7 +3,7 @@ from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
     SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema
@@ -16,6 +16,13 @@ from calendar import monthrange
 from sqlalchemy import func, or_, extract, literal
 import calendar
 import time
+import requests
+    # Generate PDF with a proper table
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import Table, TableStyle, SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from flask import render_template
 from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email, send_purchase_invoice_email, send_supplier_statement_email, load_email_config, save_email_config
 
 # Load environment variables
@@ -25,7 +32,8 @@ app = Flask(__name__)
 
 # Configure session
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')  # Change this in production
-
+META_TOKEN = os.getenv('META_TOKEN')
+PHONE_NUMBER_ID = os.getenv('PHONE_NUMBER_ID')
 # Configure CORS
 CORS(app, 
      resources={r"/api/*": {
@@ -307,7 +315,7 @@ def create_sale():
                 notes=sale_data.notes,
                 status=sale_data.status,
                 created_by=user_id,
-                date=business_date
+                date=datetime.now()
             )
             
             # Add sale to session
@@ -363,6 +371,7 @@ def create_sale():
             db.session.add_all(sale_items)
             
             # Process stock updates efficiently
+            stock_warnings = []
             for stock_update in stock_updates:
                 success, result = update_product_stock(
                     product_id=stock_update['product_id'],
@@ -374,7 +383,10 @@ def create_sale():
                     remarks=stock_update['remarks'],
                     user_id=user_id
                 )
-                if not success:
+                if not success and 'Insufficient stock' in str(result):
+                    # db.session.rollback()
+                    stock_warnings.append(str(result))
+                elif not success:
                     db.session.rollback()
                     return jsonify({"error": f"Stock update failed: {result}"}), 400
             
@@ -383,6 +395,9 @@ def create_sale():
             
             # Return the result
             result = new_sale.to_dict()
+            if stock_warnings:
+                result['stockWarnings'] = stock_warnings
+                
             # Mail invoice if requested
             if request.json.get('mailInvoice'):
                 customer = Customer.query.get(new_sale.customer_id)
@@ -414,11 +429,15 @@ def create_sale():
 @jwt_required()
 def get_sale_by_invoice(invoice_number):
     try:
-        sale = Sale.query.filter_by(invoice_number=invoice_number).first()
+        sale = Sale.query.options(db.joinedload(Sale.user)).filter_by(invoice_number=invoice_number).first()
         if not sale:
             return jsonify({"message": "Sale not found"}), 404
+        
         return jsonify(sale.to_dict()), 200
     except Exception as e:
+        print(f"[ERROR] Exception in get_sale_by_invoice: {str(e)}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/sales/<int:id>', methods=['PUT'])
@@ -427,7 +446,7 @@ def update_sale(id):
     data = request.get_json()
     try:
         sale_data = SaleSchema(**data)
-        sale = Sale.query.get_or_404(id)
+        sale = Sale.query.options(db.joinedload(Sale.user)).get_or_404(id)
         user_id = get_jwt_identity()
         
         # Check backdate editing permission
@@ -440,6 +459,9 @@ def update_sale(id):
         # Check current date editing permission
         if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale.date.date() == today:
             return jsonify({"error": "You do not have permission to edit sales for today."}), 403
+        
+        # Initialize stock warnings list
+        stock_warnings = []
         
         # Store old status and items to check changes
         old_status = sale.status
@@ -507,7 +529,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Insufficient stock for product ID {item_data.product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock update failed: {result}"}), 400
                 elif item_data.non_product_id:
                     # Non-product
                     success, result = update_product_stock(
@@ -521,7 +546,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Insufficient stock for non-product ID {item_data.non_product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock update failed: {result}"}), 400
         elif old_status == 'finalized' and new_status != 'finalized':
             # If status is changing from finalized to something else, we should restore stock
             # This handles cases where a finalized sale is cancelled or changed back to draft
@@ -539,7 +567,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Stock restoration warning for product ID {item_data.product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
                 elif item_data.non_product_id:
                     # Non-product - restore stock
                     success, result = update_product_stock(
@@ -553,7 +584,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Stock restoration warning for non-product ID {item_data.non_product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
         else:
             # For any other status changes (including when status remains the same), handle stock changes for added/removed items
             for item_tuple in added_items:
@@ -571,7 +605,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Insufficient stock for product ID {product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock update failed: {result}"}), 400
                 elif non_product_id:
                     # Non-product - reduce stock for new item
                     success, result = update_product_stock(
@@ -585,7 +622,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock update failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Insufficient stock for non-product ID {non_product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock update failed: {result}"}), 400
             
             for item_tuple in removed_items:
                 product_id, non_product_id, quantity = item_tuple
@@ -602,7 +642,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Stock restoration warning for product ID {product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
                 elif non_product_id:
                     # Non-product - restore stock for removed item
                     success, result = update_product_stock(
@@ -616,7 +659,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Stock restoration warning for non-product ID {non_product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
         
         db.session.commit()
         
@@ -638,7 +684,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        print(f"[DEBUG] Stock update failed: {result}")
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Insufficient stock for product ID {product_id} (fallback): {result}")
+                        else:
+                            print(f"[DEBUG] Stock update failed: {result}")
                 elif non_product_id:
                     # Non-product - reduce stock for new item
                     success, result = update_product_stock(
@@ -652,7 +701,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        print(f"[DEBUG] Stock update failed: {result}")
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Insufficient stock for non-product ID {non_product_id} (fallback): {result}")
+                        else:
+                            print(f"[DEBUG] Stock update failed: {result}")
             
             for item_tuple in removed_items:
                 product_id, non_product_id, quantity = item_tuple
@@ -669,7 +721,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        print(f"[DEBUG] Stock restoration failed: {result}")
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Stock restoration warning for product ID {product_id} (fallback): {result}")
+                        else:
+                            print(f"[DEBUG] Stock restoration failed: {result}")
                 elif non_product_id:
                     # Non-product - restore stock for removed item
                     success, result = update_product_stock(
@@ -683,7 +738,10 @@ def update_sale(id):
                         user_id=user_id
                     )
                     if not success:
-                        print(f"[DEBUG] Stock restoration failed: {result}")
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Stock restoration warning for non-product ID {non_product_id} (fallback): {result}")
+                        else:
+                            print(f"[DEBUG] Stock restoration failed: {result}")
         
         # Mail invoice if requested
         if request.json.get('mailInvoice'):
@@ -696,7 +754,11 @@ def update_sale(id):
                     print(f"Failed to send email: {str(e)}")
                     # Don't fail the sale update if email fails
         
-        return jsonify(sale.to_dict())
+        # Return sale data with stock warnings if any
+        data = sale.to_dict()
+        if stock_warnings:
+            data['stockWarnings'] = stock_warnings
+        return jsonify(data)
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
@@ -1375,6 +1437,10 @@ def update_settings():
             data['auto_date_switch'] = data.pop('autoDateSwitch')
         if 'weekendHandling' in data:
             data['weekend_handling'] = data.pop('weekendHandling')
+        if 'withPorterage' in data:
+            data['with_porterage'] = data.pop('withPorterage')
+        if 'porterageCharge' in data:
+            data['porterage_charge'] = data.pop('porterageCharge')
         # Print all incoming fields and types
         for k, v in data.items():
             print(f'[DEBUG] Field: {k}, Value: {v}, Type: {type(v)}')
@@ -2150,7 +2216,8 @@ def get_payment_history():
                 'invoiceDate': invoice_date,
                 'invoiceAmount': invoice_amount,
                 'remarks': payment.remarks,
-                'createdAt': payment.created_at.isoformat() if payment.created_at else None
+                'createdAt': payment.created_at.isoformat() if payment.created_at else None,
+                'saleId': payment.sale_id,  # <-- Added saleId for frontend invoice matching
             })
         
         return jsonify(payment_history), 200
@@ -2179,8 +2246,8 @@ def daily_book_sales():
     if payment_type and payment_type != 'All':
         if payment_type == 'Cash':
             query = query.filter(Sale.customer_type.ilike('cash'))
-        elif payment_type == 'Credit':
-            query = query.filter(Sale.customer_type.ilike('credit'))
+        elif payment_type == 'Account':
+            query = query.filter(Sale.customer_type.ilike('account'))
     if salesman and salesman != 'all':
         query = query.filter(User.username == salesman)
     if search:
@@ -2195,8 +2262,8 @@ def daily_book_sales():
     for idx, sale in enumerate(sales, 1):
         boxes = sum(item.quantity for item in sale.items)
         cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
-        # For credit sales, show the invoice amount as credit; for others, 0
-        credit_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'credit' else 0
+        # For account sales, show the invoice amount as account; for others, 0
+        account_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'account' else 0
         result.append({
             'id': sale.id,
             'slNo': idx,
@@ -2206,7 +2273,7 @@ def daily_book_sales():
             'invoiceNo': sale.invoice_number,
             'customerName': sale.customer.customer_name if sale.customer else '',
             'vat': float(sale.vat_amount),
-            'credit': credit_amount,
+            'account': account_amount,
             'cash': cash_paid,
         })
     return jsonify(result)
@@ -2253,10 +2320,10 @@ def customer_statement():
             'type': 'sale',
             'invoiceNo': sale.invoice_number,
             'description': 'Sale Invoice',
-            'creditInv': float(sale.total_amount) if sale.customer_type == 'credit' else 0,
+            'accountInv': float(sale.total_amount) if sale.customer_type == 'account' else 0,
             'cashInv': float(sale.total_amount) if sale.customer_type == 'cash' else 0,
             'paid': 0,
-            'creditAdj': 0,
+            'accountAdj': 0,
             'discountAdj': 0,
             'balance': float(sale.total_amount),
             'sale_id': sale.id
@@ -2267,10 +2334,10 @@ def customer_statement():
             'type': 'payment',
             'invoiceNo': payment.sale.invoice_number if payment.sale else '',
             'description': 'Payment Received',
-            'creditInv': 0,
+            'accountInv': 0,
             'cashInv': 0,
             'paid': float(payment.amount),
-            'creditAdj': 0,
+            'accountAdj': 0,
             'discountAdj': 0,
             'balance': -float(payment.amount),
             'sale_id': payment.sale_id
@@ -2287,10 +2354,10 @@ def customer_statement():
             'date': entry['date'].strftime("%Y-%m-%d"),
             'invoiceNo': entry['invoiceNo'],
             'description': entry['description'],
-            'creditInv': entry['creditInv'],
+            'accountInv': entry['accountInv'],
             'cashInv': entry['cashInv'],
             'paid': entry['paid'],
-            'creditAdj': entry['creditAdj'],
+            'accountAdj': entry['accountAdj'],
             'discountAdj': entry['discountAdj'],
             'balance': entry['balance'],
             'runningBalance': running_balance
@@ -2327,8 +2394,8 @@ def customer_history():
         Sale.date < to_dt,
         Sale.status == 'finalized'
     )
-    if filter_type == "Credit":
-        sales_query = sales_query.filter(Sale.customer_type.ilike('credit'))
+    if filter_type == "Account":
+        sales_query = sales_query.filter(Sale.customer_type.ilike('account'))
     elif filter_type == "Cast":
         sales_query = sales_query.filter(Sale.customer_type.ilike('cash'))
 
@@ -2339,7 +2406,7 @@ def customer_history():
     running_balance = 0
     sl_no = 1
     for sale in sales:
-        credit_inv = float(sale.total_amount) if sale.customer_type == 'credit' else 0
+        account_inv = float(sale.total_amount) if sale.customer_type == 'account' else 0
         cash_inv = float(sale.total_amount) if sale.customer_type == 'cash' else 0
         paid = float(sale.paid_amount or 0)
         balance = float(sale.total_amount) - paid
@@ -2349,7 +2416,7 @@ def customer_history():
             'slNo': sl_no,
             'date': sale.date.strftime("%Y-%m-%d"),
             'invoiceNo': sale.invoice_number,
-            'creditInv': credit_inv,
+            'accountInv': account_inv,
             'cashInv': cash_inv,
             'paid': paid,
             'balance': balance,
@@ -2454,7 +2521,8 @@ def create_purchase_invoice():
             product_name=item.get('productName'),
             quantity=item['quantity'],
             unit_price=item['unitPrice'],
-            total_price=item['totalPrice']
+            total_price=item['totalPrice'],
+            remarks=item.get('remarks', '')  # Accept remarks from item
         )
         db.session.add(invoice_item)
         
@@ -2926,29 +2994,29 @@ def sales_analysis_report():
                 purchases_by_date[d].append(item)
 
     rows = []
-    total_purchase = total_credit = total_cash = total_sales = 0
+    total_purchase = total_account = total_cash = total_sales = 0
     for idx, d in enumerate(date_list, 1):
         day_purchases = sum(float(item.total_price) for item in purchases_by_date[d])
-        day_credit_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'credit')
+        day_account_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'account')
         day_cash_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'cash')
-        day_total_sales = day_credit_sales + day_cash_sales
-        print(f"[DEBUG] {d}: purchase={day_purchases}, creditSales={day_credit_sales}, cashSales={day_cash_sales}, totalSales={day_total_sales}")
+        day_total_sales = day_account_sales + day_cash_sales
+        print(f"[DEBUG] {d}: purchase={day_purchases}, accountSales={day_account_sales}, cashSales={day_cash_sales}, totalSales={day_total_sales}")
         rows.append({
             'slNo': idx,
             'date': d.strftime('%d-%m-%Y'),
             'purchase': day_purchases,
-            'creditSales': day_credit_sales,
+            'accountSales': day_account_sales,
             'cashSales': day_cash_sales,
             'totalSales': day_total_sales
         })
         total_purchase += day_purchases
-        total_credit += day_credit_sales
+        total_account += day_account_sales
         total_cash += day_cash_sales
         total_sales += day_total_sales
 
     summary = {
         'totalPurchase': total_purchase,
-        'totalCredit': total_credit,
+        'totalAccount': total_account,
         'totalCash': total_cash,
         'totalSales': total_sales
     }
@@ -3209,6 +3277,39 @@ def get_low_stock_products():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/closing-stock', methods=['GET'])
+@jwt_required()
+def get_closing_stock_entries():
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({"error": "Missing date parameter"}), 400
+    date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    entries = ClosingStock.query.filter_by(date=date).all()
+    return jsonify([entry.to_dict() for entry in entries]), 200
+
+@app.route('/api/closing-stock', methods=['POST'])
+@jwt_required()
+def save_closing_stock_entries():
+    data = request.get_json()
+    date_str = data.get('date')
+    items = data.get('items', [])
+    if not date_str or not items:
+        return jsonify({"error": "Missing date or items"}), 400
+    date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    # Remove existing entries for this date
+    ClosingStock.query.filter_by(date=date).delete()
+    for item in items:
+        entry = ClosingStock(
+            product_id=item['productId'],
+            product_type=item['productType'],
+            date=date,
+            quantity=item['quantity']
+        )
+        db.session.add(entry)
+    db.session.commit()
+    return jsonify({"success": True}), 200
+
+
 
 @app.route('/api/stock/closing', methods=['GET'])
 def get_closing_stock():
@@ -3335,8 +3436,14 @@ def stock_check_report():
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
                 print(f"[DEBUG] Expected stock: {expected_stock}")
                 
-                # Get actual closing stock
-                actual_closing_stock = product.current_stock
+                # Get actual closing stock from manual entries
+                closing_stock_entry = ClosingStock.query.filter(
+                    ClosingStock.product_id == product.id,
+                    ClosingStock.product_type == 'regular',
+                    ClosingStock.date == to_dt.date()
+                ).first()
+                
+                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else product.current_stock
                 print(f"[DEBUG] Actual closing stock: {actual_closing_stock}")
                 
                 # Calculate difference
@@ -3404,8 +3511,14 @@ def stock_check_report():
                 # Calculate expected stock
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
                 
-                # Get actual closing stock
-                actual_closing_stock = product.current_stock
+                # Get actual closing stock from manual entries
+                closing_stock_entry = ClosingStock.query.filter(
+                    ClosingStock.product_id == product.id,
+                    ClosingStock.product_type == 'non',
+                    ClosingStock.date == to_dt.date()
+                ).first()
+                
+                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else product.current_stock
                 
                 # Calculate difference
                 difference = actual_closing_stock - expected_stock
@@ -3459,17 +3572,28 @@ def stock_check_report():
         return jsonify({"error": str(e)}), 500
 
 def get_opening_stock(product_id, product_type, from_date):
-    """Get stock level at the beginning of from_date"""
+    """Get stock level at the beginning of from_date, preferring previous day's manual closing stock if available"""
     try:
         print(f"[DEBUG] Getting opening stock for product {product_id} ({product_type}) before {from_date}")
-        
-        # Get the last stock movement before from_date
+
+        # 1. Check for previous day's manual closing stock entry
+        prev_date = (from_date - timedelta(days=1)).date()
+        closing_entry = ClosingStock.query.filter_by(
+            product_id=product_id,
+            product_type=product_type,
+            date=prev_date
+        ).first()
+        if closing_entry:
+            print(f"[DEBUG] Found previous day's manual closing stock: {closing_entry.quantity}")
+            return closing_entry.quantity
+
+        # 2. Fallback to last stock movement before from_date
         last_movement = StockMovement.query.filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.created_at < from_date
         ).order_by(StockMovement.created_at.desc()).first()
-        
+
         if last_movement:
             print(f"[DEBUG] Found last movement: {last_movement.new_stock}")
             return last_movement.new_stock
@@ -3480,7 +3604,7 @@ def get_opening_stock(product_id, product_type, from_date):
                 product = RegularProduct.query.get(product_id)
             else:
                 product = NonProduct.query.get(product_id)
-            
+
             if product and product.initial_stock:
                 print(f"[DEBUG] Found initial stock: {product.initial_stock}")
                 return product.initial_stock
@@ -6144,13 +6268,24 @@ def add_banking_entry():
     remarks = data.get('remarks', '')
     payment_type = data.get('paymentType', 'CASH')
     amount = data.get('amount', 0)
+    paying_number = data.get('payingNumber')
+    bag_number = data.get('bagNumber')
+    cheque_number = data.get('chequeNumber')
     # Use business date logic
     if date_str:
         date_obj = datetime.strptime(date_str, "%Y-%m-%d")
         business_date = get_business_date(date_obj)
     else:
         business_date = get_business_date()
-    entry = BankingEntry(date=business_date, remarks=remarks, payment_type=payment_type, amount=amount)
+    entry = BankingEntry(
+        date=business_date,
+        remarks=remarks,
+        payment_type=payment_type,
+        amount=amount,
+        paying_number=paying_number,
+        bag_number=bag_number,
+        cheque_number=cheque_number
+    )
     db.session.add(entry)
     db.session.commit()
     return entry.to_dict(), 201
@@ -7339,3 +7474,161 @@ def update_email_config():
     global mail
     mail = init_mail(current_app)
     return jsonify({'success': True})
+
+
+from flask_mail import Message
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+@app.route('/api/send/closing-stock', methods=['POST'])
+@jwt_required()
+def send_closing_stock_pdf():
+    data = request.get_json()
+    date_str = data.get('date')
+    email = data.get('email')
+    if not date_str or not email:
+        return jsonify({"error": "Missing date or email"}), 400
+
+    # Fetch closing stock entries for the date
+    closing_stock_entries = ClosingStock.query.filter_by(date=date_str).all()
+
+    date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    entries = ClosingStock.query.filter_by(date=date).all()
+    if not entries:
+        return jsonify({"error": "No closing stock entries for this date"}), 404
+
+    # Prepare data for the table and email
+    pdf_rows = [["Product Code", "Description", "Type", "Quantity"]]
+    email_entries = []
+    for entry in closing_stock_entries:
+        if entry.product_type == "regular":
+            product = RegularProduct.query.get(entry.product_id)
+        else:
+            product = NonProduct.query.get(entry.product_id)
+        code = product.product_code if product else ""
+        desc = product.description if product else ""
+        pdf_rows.append([code, desc, entry.product_type, str(entry.quantity)])
+        email_entries.append({
+            "product_code": code,
+            "description": desc,
+            "product_type": entry.product_type,
+            "quantity": entry.quantity
+        })
+
+
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    elements = [
+        Paragraph("<b>Closing Stock Report</b>", styles['Title']),
+        Spacer(1, 12),
+        Paragraph(f"Date: {date_str}", styles['Normal']),
+        Spacer(1, 18)
+    ]
+    table = Table(pdf_rows, colWidths=[100, 250, 60, 60])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+    ]))
+    elements.append(table)
+    doc.build(elements)
+    buffer.seek(0)
+
+    # Render HTML email body using template
+    html_body = render_template(
+        "closing_stock_email.html",
+        date=date_str,
+        entries=email_entries
+    )
+
+    # Send email with PDF attachment and HTML body
+    msg = Message(
+        subject=f"Closing Stock Report - {date_str}",
+        recipients=[email],
+        html=html_body
+    )
+    msg.attach(f"closing_stock_{date_str}.pdf", "application/pdf", buffer.read())
+    mail.send(msg)
+
+    return jsonify({"success": True}), 200
+
+@app.route('/api/whatsapp/status', methods=['GET'])
+@jwt_required()
+def whatsapp_status():
+    """Debug endpoint to check WhatsApp API configuration"""
+    status = {
+        'meta_token_set': bool(META_TOKEN),
+        'phone_number_id_set': bool(PHONE_NUMBER_ID),
+        'meta_token_length': len(META_TOKEN) if META_TOKEN else 0,
+        'phone_number_id': PHONE_NUMBER_ID
+    }
+    
+    if META_TOKEN and PHONE_NUMBER_ID:
+        try:
+            # Test the API connection
+            url = f'https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}'
+            headers = {'Authorization': f'Bearer {META_TOKEN}'}
+            resp = requests.get(url, headers=headers)
+            status['api_connection'] = resp.status_code == 200
+            status['api_response'] = resp.json() if resp.status_code == 200 else resp.text
+        except Exception as e:
+            status['api_connection'] = False
+            status['api_error'] = str(e)
+    
+    return jsonify(status)
+
+@app.route('/api/send/whatsapp-invoice', methods=['POST'])
+@jwt_required()
+def send_whatsapp_invoice():
+    data = request.json
+    print('[WHATSAPP] Incoming request data:', data, flush=True)
+    
+    # Check if required environment variables are set
+    if not META_TOKEN:
+        print('[WHATSAPP] ERROR: META_TOKEN environment variable not set', flush=True)
+        return jsonify({'error': 'WhatsApp configuration missing: META_TOKEN not set'}), 500
+    
+    if not PHONE_NUMBER_ID:
+        print('[WHATSAPP] ERROR: PHONE_NUMBER_ID environment variable not set', flush=True)
+        return jsonify({'error': 'WhatsApp configuration missing: PHONE_NUMBER_ID not set'}), 500
+    
+    phone = data['phoneNumber']  # E.164 format
+    invoice_url = data['invoiceUrl']  # Publicly accessible PDF
+    message = data.get('message', 'Your invoice is attached.')
+
+    url = f'https://graph.facebook.com/v22.0/{PHONE_NUMBER_ID}/messages'
+    headers = {
+        'Authorization': f'Bearer {META_TOKEN}',
+        'Content-Type': 'application/json'
+    }
+    # Send a template message for testing (test numbers can only receive templates)
+    payload = {
+        'messaging_product': 'whatsapp',
+        'to': phone.replace('+', ''),  # Remove + for API compatibility
+        'type': 'template',
+        'template': {
+            'name': 'hello_world',
+            'language': {
+                'code': 'en_US'
+            }
+        }
+    }
+    print('[WHATSAPP] Payload to Meta API:', payload, flush=True)
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload)
+        print('[WHATSAPP] Meta API response status:', resp.status_code, flush=True)
+        print('[WHATSAPP] Meta API response content:', resp.text, flush=True)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        print('[WHATSAPP] ERROR making request to Meta API:', str(e), flush=True)
+        return jsonify({'error': f'Failed to send WhatsApp message: {str(e)}'}), 500
+# ... existing code ...

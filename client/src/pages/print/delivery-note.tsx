@@ -29,6 +29,8 @@ function DeliveryNoteTemplate({ data }: { data: InvoiceData }) {
   const [deliveryNoteWithPrice, setDeliveryNoteWithPrice] = useState(false);
   const [showNameOnDeliveryNote, setShowNameOnDeliveryNote] = useState('name');
   const [deliveryAcknowledgement, setDeliveryAcknowledgement] = useState(false);
+  // const normalizedEndpoint = endpoint.replace(/^\/api/, '');
+  // const url = `http://localhost:5000${normalizedEndpoint}`;
   useEffect(() => {
     fetch('http://localhost:5000/api/settings')
       .then(res => res.json())

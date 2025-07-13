@@ -464,59 +464,7 @@ export default function ReturnFromCustomer() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Returns</CardTitle>
-              <RotateCcw className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary?.totalReturns || 0}</div>
-              <p className="text-xs text-muted-foreground">
-                Returns in selected period
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Quantity</CardTitle>
-              <AlertCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary?.totalQuantity || 0}</div>
-              <p className="text-xs text-muted-foreground">
-                Total quantity returned
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Value</CardTitle>
-              <FileText className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">£{(summary?.totalValue || 0).toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">
-                Total value of returns
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Credit Notes</CardTitle>
-              <CheckCircle className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">£{(summary?.totalCreditNotes || 0).toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">
-                Total credit notes issued
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Removed summary cards as per user request */}
 
         {/* Filters */}
         <Card>
@@ -600,6 +548,13 @@ export default function ReturnFromCustomer() {
                 <Button onClick={() => setIsAddingReturn(!isAddingReturn)}>
                   <Save className="h-4 w-4 mr-2" />
                   {isAddingReturn ? "Cancel" : "Add Return"}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => window.location.href = "/dashboard"}
+                >
+                  Close
                 </Button>
                 <Button variant="outline" size="sm" onClick={handlePDF}>
                   <FileText className="h-4 w-4 mr-1" /> PDF

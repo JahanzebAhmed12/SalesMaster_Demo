@@ -39,7 +39,7 @@ class Sale(db.Model):
     invoice_number = db.Column(db.String(50), nullable=False, unique=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
     date = db.Column(db.DateTime, default=datetime.utcnow)
-    customer_type = db.Column(db.String(20), default='credit')  # credit or cash
+    customer_type = db.Column(db.String(20), default='account')  # account or cash
     payment_status = db.Column(db.String(20), default='pending')  # pending, paid, partial
     subtotal = db.Column(db.Numeric(10, 2), nullable=False)
     porterage = db.Column(db.Numeric(10, 2), default=0)
@@ -81,7 +81,9 @@ class Sale(db.Model):
             'status': self.status,
             'items': [item.to_dict() for item in self.items],
             'createdAt': self.created_at.isoformat(),
-            'updatedAt': self.updated_at.isoformat()
+            'updatedAt': self.updated_at.isoformat(),
+            'createdBy': self.created_by,
+            'createdByUsername': self.user.username if self.user else None
         }
 
 class SaleItem(db.Model):
@@ -420,6 +422,9 @@ class SystemSettings(db.Model):
     delivery_note_name_or_code = db.Column(db.String(10), nullable=False, default='name')
     delivery_acknowledgement = db.Column(db.Boolean, nullable=False, default=False)
     show_profit = db.Column(db.Boolean, nullable=False, default=True)
+    # Porterage configuration
+    with_porterage = db.Column(db.Boolean, nullable=False, default=False)
+    porterage_charge = db.Column(db.Numeric(10, 2), nullable=False, default=0)
 
     def to_dict(self):
         return {
@@ -434,7 +439,9 @@ class SystemSettings(db.Model):
             'deliveryNoteWithPrice': self.delivery_note_with_price,
             'deliveryNoteNameOrCode': self.delivery_note_name_or_code,
             'deliveryAcknowledgement': self.delivery_acknowledgement,
-            'showProfit': self.show_profit
+            'showProfit': self.show_profit,
+            'withPorterage': self.with_porterage,
+            'porterageCharge': float(self.porterage_charge) if self.porterage_charge else 0
         }
 
 class Attendance(db.Model):
@@ -630,6 +637,7 @@ class PurchaseInvoiceItem(db.Model):
     quantity = db.Column(db.Integer, nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)
     total_price = db.Column(db.Numeric(10, 2), nullable=False)
+    remarks = db.Column(db.Text)
 
     def to_dict(self):
         return {
@@ -639,7 +647,8 @@ class PurchaseInvoiceItem(db.Model):
             'productName': self.product_name,
             'quantity': self.quantity,
             'unitPrice': float(self.unit_price),
-            'totalPrice': float(self.total_price)
+            'totalPrice': float(self.total_price),
+            'remarks': self.remarks
         }
 
 class SupplierPayment(db.Model):
@@ -945,6 +954,9 @@ class BankingEntry(db.Model):
     remarks = db.Column(db.String(255))
     payment_type = db.Column(db.String(20), nullable=False)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
+    paying_number = db.Column(db.String(50))  # New field
+    bag_number = db.Column(db.String(50))     # New field
+    cheque_number = db.Column(db.String(50))  # New field
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     def to_dict(self):
@@ -954,6 +966,9 @@ class BankingEntry(db.Model):
             'remarks': self.remarks,
             'paymentType': self.payment_type,
             'amount': float(self.amount),
+            'payingNumber': self.paying_number,
+            'bagNumber': self.bag_number,
+            'chequeNumber': self.cheque_number,
             'createdAt': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -996,3 +1011,24 @@ class UserDailyBookType(db.Model):
     show_only = db.Column(db.Boolean, default=False)
 
     user = db.relationship('User', backref='daily_book_type')
+
+class ClosingStock(db.Model):
+    __tablename__ = 'closing_stock'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, nullable=False)
+    product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
+    date = db.Column(db.Date, nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'productId': self.product_id,
+            'productType': self.product_type,
+            'date': self.date.isoformat(),
+            'quantity': self.quantity,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }

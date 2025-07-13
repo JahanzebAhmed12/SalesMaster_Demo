@@ -12,6 +12,8 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import PageLayout from "@/components/common/page-layout";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { subDays, format } from 'date-fns';
 
 export default function PurchaseInvoice() {
   const { toast } = useToast();
@@ -20,8 +22,11 @@ export default function PurchaseInvoice() {
   const [unitPrice, setUnitPrice] = useState(0);
   const [items, setItems] = useState<any[]>([]);
   const [remarks, setRemarks] = useState("");
+  const [productRemarks, setProductRemarks] = useState("");
   const [locationStr, setLocation] = useLocation();
   const [purchaseId, setPurchaseId] = useState<string | null>(null);
+  // Add state to track invoiceId from URL
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
 
   // Extract purchaseId from URL on component mount and URL changes
   useEffect(() => {
@@ -29,6 +34,13 @@ export default function PurchaseInvoice() {
     const id = params.get("purchaseId");
     console.log("PurchaseInvoice: Extracted purchaseId from URL:", id);
     setPurchaseId(id);
+  }, [locationStr]);
+
+  // Extract invoiceId from URL on mount and URL changes
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invId = params.get("invoiceId");
+    setInvoiceId(invId);
   }, [locationStr]);
 
   // Fetch purchase details
@@ -66,6 +78,7 @@ export default function PurchaseInvoice() {
         description: "Purchase invoice saved successfully!",
       });
       setLocation(`/data-entry/purchase-invoice?purchaseId=${purchaseId}&invoiceId=${invoice.id}`);
+      setInvoiceId(invoice.id);
     },
     onError: () => {
       toast({
@@ -73,6 +86,18 @@ export default function PurchaseInvoice() {
         description: "Failed to save purchase invoice",
         variant: "destructive",
       });
+    }
+  });
+
+  // Delete invoice mutation
+  const deleteInvoiceMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/purchase-invoices/${invoiceId}`),
+    onSuccess: () => {
+      toast({ title: "Deleted", description: "Invoice deleted" });
+      setLocation("/data-entry/purchase-entry");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete invoice", variant: "destructive" });
     }
   });
 
@@ -140,11 +165,13 @@ export default function PurchaseInvoice() {
       productName: product.description,
       quantity,
       unitPrice,
-      totalPrice
+      totalPrice,
+      remarks: productRemarks // Add remarks to item
     }]);
     setSelectedProductId("");
     setQuantity(1);
     setUnitPrice(0);
+    setProductRemarks(""); // Clear remarks after adding
   };
 
   // Save invoice
@@ -167,13 +194,41 @@ export default function PurchaseInvoice() {
 
   const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0);
 
+  // Handler for Supplier History navigation
+  const handleSupplierHistory = () => {
+    if (!purchase || !purchase.supplierId) {
+      toast({ title: 'No supplier', description: 'No supplier found for this purchase.' });
+      return;
+    }
+    const today = new Date();
+    const lastWeek = subDays(today, 7);
+    const searchParams = new URLSearchParams([
+      ['supplierId', String(purchase.supplierId)],
+      ['fromDate', format(lastWeek, 'yyyy-MM-dd')],
+      ['toDate', format(today, 'yyyy-MM-dd')],
+      ['autoSearch', 'true']
+    ]);
+    setLocation(`/historical-reports/supplier-history?${searchParams.toString()}`);
+  };
+
   return (
     <PageLayout title="Purchase Invoice" breadcrumb="Data Entry / Purchase Invoice">
       <div className="space-y-6">
         {/* Purchase Details Card */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row justify-between items-center">
             <CardTitle>Purchase Details</CardTitle>
+            {/* More Dropdown for Supplier History */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">More</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={handleSupplierHistory}>
+                  Supplier History
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -242,24 +297,14 @@ export default function PurchaseInvoice() {
             <CardTitle>Create Purchase Invoice</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Remarks */}
-            <div>
-              <Label htmlFor="remarks">Remarks</Label>
-              <Input
-                id="remarks"
-                placeholder="Enter invoice remarks (optional)"
-                value={remarks}
-                onChange={e => setRemarks(e.target.value)}
-                className="mt-1"
-              />
-            </div>
+          
 
             <Separator />
 
             {/* Add Product Section */}
             <div>
               <Label className="text-base font-medium">Add Products</Label>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
                 <div>
                   <Label htmlFor="product">Product</Label>
                   <Select value={selectedProductId} onValueChange={handleProductChange}>
@@ -324,6 +369,16 @@ export default function PurchaseInvoice() {
                     className="mt-1"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="productRemarks">Remarks</Label>
+                  <Input
+                    id="productRemarks"
+                    placeholder="Remarks (optional)"
+                    value={productRemarks}
+                    onChange={e => setProductRemarks(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
                 <div className="flex items-end">
                   <Button onClick={handleAddProduct} className="w-full">
                     Add Product
@@ -340,6 +395,7 @@ export default function PurchaseInvoice() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product Name</TableHead>
+                      <TableHead>Remarks</TableHead>
                       <TableHead className="text-right">Quantity</TableHead>
                       <TableHead className="text-right">Unit Price</TableHead>
                       <TableHead className="text-right">Total</TableHead>
@@ -349,13 +405,14 @@ export default function PurchaseInvoice() {
                     {items.map((item, idx) => (
                       <TableRow key={idx}>
                         <TableCell className="font-medium">{item.productName}</TableCell>
+                        <TableCell>{item.remarks || "-"}</TableCell>
                         <TableCell className="text-right">{item.quantity}</TableCell>
                         <TableCell className="text-right">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-right font-medium">£{item.totalPrice.toFixed(2)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
-                      <TableCell colSpan={3} className="text-right font-bold">
+                      <TableCell colSpan={4} className="text-right font-bold">
                         Total Amount:
                       </TableCell>
                       <TableCell className="text-right font-bold text-lg">
@@ -368,7 +425,30 @@ export default function PurchaseInvoice() {
             )}
 
             {/* Save Button */}
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-end pt-4 gap-2">
+              {invoiceId && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open(`/print/purchase-invoice/${invoiceId}`, "_blank")}
+                    className="px-8"
+                  >
+                    PDF
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to delete this invoice?")) {
+                        deleteInvoiceMutation.mutate();
+                      }
+                    }}
+                    className="px-8"
+                    disabled={deleteInvoiceMutation.isPending}
+                  >
+                    {deleteInvoiceMutation.isPending ? "Deleting..." : "Delete"}
+                  </Button>
+                </>
+              )}
               <Button 
                 onClick={handleSaveInvoice}
                 disabled={createInvoiceMutation.isPending || items.length === 0}

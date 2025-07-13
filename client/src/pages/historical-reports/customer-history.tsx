@@ -18,6 +18,8 @@ import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useLocation } from 'wouter';
+import { parseISO } from 'date-fns';
 
 interface CompanyDetails {
   id: number;
@@ -48,6 +50,9 @@ export default function CustomerHistory() {
   const [loading, setLoading] = useState(false);
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
   const tableRef = useRef<HTMLDivElement>(null);
+  const [wouterLocation] = useLocation();
+  const [autoFetched, setAutoFetched] = useState(false);
+  const [urlParams, setUrlParams] = useState<{customerId?: string, fromDate?: string, toDate?: string, autoSearch?: string} | null>(null);
 
   // Fetch company details
   const { data: companyDetails, isLoading: isLoadingCompany } = useQuery<CompanyDetails>({
@@ -57,7 +62,7 @@ export default function CustomerHistory() {
 
   // Calculate totals from history data
   const totals = useMemo(() => ({
-    creditInv: historyData.reduce((sum, row) => sum + (row.creditInv || 0), 0),
+    accountInv: historyData.reduce((sum, row) => sum + (row.accountInv || 0), 0),
     cashInv: historyData.reduce((sum, row) => sum + (row.cashInv || 0), 0),
     paid: historyData.reduce((sum, row) => sum + (row.paid || 0), 0),
     balance: historyData.reduce((sum, row) => sum + (row.balance || 0), 0),
@@ -149,6 +154,65 @@ export default function CustomerHistory() {
     queryKey: ["/api/customers"],
     queryFn: () => apiRequest("GET", "/api/customers"),
   });
+
+  // Parse URL params once
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const customerId = url.searchParams.get('customerId');
+    const fromDate = url.searchParams.get('fromDate');
+    const toDate = url.searchParams.get('toDate');
+    const autoSearch = url.searchParams.get('autoSearch');
+    console.log('[DEBUG] URL params:', { customerId, fromDate, toDate, autoSearch });
+    if (customerId && fromDate && toDate && autoSearch === 'true') {
+      setUrlParams({ customerId, fromDate, toDate, autoSearch });
+    }
+  }, [wouterLocation]);
+
+  // Set state from URL params when customers are loaded
+  useEffect(() => {
+    console.log('[DEBUG] Customers loaded:', customers);
+    if (
+      !autoFetched &&
+      urlParams &&
+      customers.length > 0 &&
+      customers.some(c => c.id.toString() === urlParams.customerId)
+    ) {
+      setSelectedCustomer(urlParams.customerId!);
+      setFromDate(parseISO(urlParams.fromDate!));
+      setToDate(parseISO(urlParams.toDate!));
+      setFilterType('All');
+      setAutoFetched(true);
+      console.log('[DEBUG] Auto-filling state and ready to fetch:', urlParams);
+    }
+  }, [urlParams, customers, autoFetched]);
+
+  // Trigger fetch when all state is set
+  useEffect(() => {
+    console.log('[DEBUG] State for fetch:', { autoFetched, selectedCustomer, fromDate, toDate, filterType });
+    if (
+      autoFetched &&
+      selectedCustomer &&
+      fromDate &&
+      toDate &&
+      filterType === 'All'
+    ) {
+      console.log('[DEBUG] Triggering fetch with:', { selectedCustomer, fromDate, toDate, filterType });
+      (async () => {
+        setLoading(true);
+        try {
+          const res = await apiRequest(
+            "GET",
+            `/api/reports/customer-history?customerId=${selectedCustomer}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=All`
+          );
+          setHistoryData(res);
+          console.log('[DEBUG] Fetched data:', res);
+        } catch (err) {
+          console.error('[DEBUG] Fetch error:', err);
+        }
+        setLoading(false);
+      })();
+    }
+  }, [autoFetched, selectedCustomer, fromDate, toDate, filterType]);
 
   // Reset date fields to today every time the page is opened
   useEffect(() => {
@@ -250,7 +314,7 @@ export default function CustomerHistory() {
       'Sl.No': row.slNo,
       'Date': row.date,
       'Invoice #': row.invoiceNo,
-      'Credit Inv.': row.creditInv,
+      'Account Inv.': row.accountInv,
       'Cash Inv.': row.cashInv,
       'Paid': row.paid,
       'Balance': row.balance,
@@ -301,13 +365,13 @@ export default function CustomerHistory() {
     // Add table
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Invoice #', 'Credit Inv.', 'Cash Inv.', 'Paid', 'Balance', 'Running Balance'
+        'Sl.No', 'Date', 'Invoice #', 'Account Inv.', 'Cash Inv.', 'Paid', 'Balance', 'Running Balance'
       ]],
       body: historyData.map((row: any) => [
         row.slNo,
         row.date,
         row.invoiceNo,
-        row.creditInv,
+        row.accountInv,
         row.cashInv,
         row.paid,
         row.balance,
@@ -320,12 +384,12 @@ export default function CustomerHistory() {
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tDate\tInvoice #\tCredit Inv.\tCash Inv.\tPaid\tBalance\tRunning Balance\n';
+    let text = 'Sl.No\tDate\tInvoice #\tAccount Inv.\tCash Inv.\tPaid\tBalance\tRunning Balance\n';
     text += historyData.map((row: any) => [
       row.slNo,
       row.date,
       row.invoiceNo,
-      row.creditInv,
+      row.accountInv,
       row.cashInv,
       row.paid,
       row.balance,
@@ -555,7 +619,7 @@ export default function CustomerHistory() {
                         className="w-4 h-4"
                       />
                     </TableHead>
-                    <TableHead className="text-center">Credit Inv.</TableHead>
+                    <TableHead className="text-center">Account Inv.</TableHead>
                     <TableHead className="text-center">Cash Inv.</TableHead>
                     <TableHead className="text-center">Paid</TableHead>
                     <TableHead className="text-center">Credit /Adj</TableHead>
@@ -586,13 +650,13 @@ export default function CustomerHistory() {
                             className="w-4 h-4"
                           />
                         </TableCell>
-                        <TableCell className="text-center">£{row.creditInv.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{row.cashInv.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{row.paid.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(row.accountInv ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(row.cashInv ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(row.paid ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center"></TableCell>
                         <TableCell className="text-center"></TableCell>
-                        <TableCell className="text-center font-medium">{row.balance.toFixed(2)}</TableCell>
-                        <TableCell className="text-center font-bold">{row.runningBalance.toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-medium">£{(row.balance ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-bold">£{(row.runningBalance ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center gap-2">
                             <Button size="sm" variant="outline" className="h-6 w-6 p-0 bg-cyan-500 text-white" onClick={() => window.open(`/print/invoice/${row.invoiceNo}`, '_blank')} title="Print Invoice">
@@ -632,7 +696,7 @@ export default function CustomerHistory() {
                         📧
                       </Button>
                     </TableCell>
-                    <TableCell className="text-center font-bold">£{totals.creditInv.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.accountInv.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.cashInv.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.paid.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£0.00</TableCell>

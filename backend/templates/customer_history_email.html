@@ -137,7 +137,7 @@
                 <th>Sl.No</th>
                 <th>Date</th>
                 <th>Invoice #</th>
-                <th>Credit Inv.</th>
+                <th>Account Inv.</th>
                 <th>Cash Inv.</th>
                 <th>Paid</th>
                 <th>Credit Adj.</th>
@@ -152,7 +152,7 @@
                 <td>{{ item.slNo }}</td>
                 <td class="date">{{ item.date }}</td>
                 <td>{{ item.invoiceNo }}</td>
-                <td class="amount">{{ "%.2f"|format(item.creditInv) }}</td>
+                <td class="amount">{{ "%.2f"|format(item.accountInv) }}</td>
                 <td class="amount">{{ "%.2f"|format(item.cashInv) }}</td>
                 <td class="amount">{{ "%.2f"|format(item.paid) }}</td>
                 <td class="amount">{{ "%.2f"|format(item.creditAdj) }}</td>

@@ -141,7 +141,7 @@ function InvoiceTemplate({ data }: { data: InvoiceData }) {
           ) : (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-                <span>CREDIT</span>
+                <span>ACCOUNT</span>
                 <span>
                   £{((sale?.total_amount ?? sale?.totalAmount ?? 0) - (sale?.paid_amount ?? sale?.paidAmount ?? 0)).toFixed(2)}
                 </span>

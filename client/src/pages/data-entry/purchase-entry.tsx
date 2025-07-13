@@ -18,11 +18,11 @@ import { useLocation } from "wouter";
 
 const purchaseSchema = z.object({
   invoiceDate: z.string().min(1, "Invoice date is required"),
-  deliveryNo: z.string().min(1, "Delivery number is required"),
-  supplierInvoice: z.string().min(1, "Supplier invoice is required"),
-  awb: z.string().min(1, "AWB is required"),
-  remarks: z.string().optional(),
   supplierId: z.string().min(1, "Supplier is required"),
+  deliveryNo: z.string().optional(),
+  supplierInvoice: z.string().optional(),
+  awb: z.string().optional(),
+  remarks: z.string().optional(),
 });
 
 type PurchaseFormData = z.infer<typeof purchaseSchema>;

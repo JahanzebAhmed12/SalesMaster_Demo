@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import { CalendarIcon, Users, Search, Info, Save, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Customer, Payment, InsertPayment } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
+import type { Sale } from "@shared/schema";
 
 export default function OnAccCustomer() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
@@ -22,13 +24,22 @@ export default function OnAccCustomer() {
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const [recordsPerPage, setRecordsPerPage] = useState("10");
-  const [newPayment, setNewPayment] = useState({
+  const [newPayment, setNewPayment] = useState<{
+    paymentDate: Date;
+    amount: number;
+    paymentMode: string;
+    remarks: string;
+    saleId: number | null;
+  }>({
     paymentDate: new Date(),
     amount: 0,
     paymentMode: "CASH",
-    remarks: ""
+    remarks: "",
+    saleId: null,
   });
-  const queryClient = useQueryClient();
+  const [customerInvoices, setCustomerInvoices] = useState<Sale[]>([]);
+  const [invoicePopoverOpen, setInvoicePopoverOpen] = useState(false);
+  const [invoiceQuery, setInvoiceQuery] = useState("");
 
   // Fetch customers
   const { data: customers = [], isLoading: loadingCustomers } = useQuery<Customer[]>({
@@ -56,7 +67,7 @@ export default function OnAccCustomer() {
         toDate: format(toDate, "yyyy-MM-dd")
       });
       const all = await apiRequest("GET", `/api/payments/history?${params}`);
-      return all.filter((p: Payment) => p.saleId == null);
+      return all; // <-- Remove filter, return all payments
     }
   });
 
@@ -67,7 +78,7 @@ export default function OnAccCustomer() {
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Payment added." });
-      setNewPayment({ paymentDate: new Date(), amount: 0, paymentMode: "CASH", remarks: "" });
+      setNewPayment({ paymentDate: new Date(), amount: 0, paymentMode: "CASH", remarks: "", saleId: null });
       refetchPayments();
     },
     onError: (e: any) => {
@@ -80,7 +91,7 @@ export default function OnAccCustomer() {
     if (!newPayment.amount || newPayment.amount <= 0) return toast({ title: "Enter a valid amount" });
     const payload: InsertPayment = {
       customerId: Number(selectedCustomer),
-      saleId: null,
+      saleId: newPayment.saleId, // <-- pass the selected invoice ID
       amount: newPayment.amount,
       paymentMode: newPayment.paymentMode,
       paymentDate: format(newPayment.paymentDate, "yyyy-MM-dd"),
@@ -116,6 +127,28 @@ export default function OnAccCustomer() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessDateData?.business_date]);
+
+  // Fetch invoices when customer changes
+  useEffect(() => {
+    if (!selectedCustomer) {
+      setCustomerInvoices([]);
+      return;
+    }
+    const fetchInvoices = async () => {
+      const fromDate = "2000-01-01";
+      const toDate = "2100-01-01";
+      const invoices = await apiRequest(
+        "GET",
+        `/api/customers/${selectedCustomer}/invoices?fromDate=${fromDate}&toDate=${toDate}`
+      );
+      setCustomerInvoices(invoices);
+    };
+    fetchInvoices();
+  }, [selectedCustomer]);
+
+  // Debug logs before rendering the payments table
+  console.log('customerInvoices', customerInvoices);
+  console.log('filteredPayments', filteredPayments);
 
   return (
     <PageLayout title="On A/c Customer Payments" breadcrumb="On A/c Customer">
@@ -224,6 +257,65 @@ export default function OnAccCustomer() {
                 <Label>Remarks</Label>
                 <Input value={newPayment.remarks} onChange={e => setNewPayment(np => ({ ...np, remarks: e.target.value }))} />
               </div>
+              {/* Remove the separate Input for invoice search. Use only the Select for searching and selecting invoices. */}
+              <div>
+                <Label>Invoice (optional)</Label>
+                <Popover open={invoicePopoverOpen} onOpenChange={setInvoicePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between"
+                      aria-expanded={invoicePopoverOpen}
+                    >
+                      {newPayment.saleId
+                        ? customerInvoices.find(inv => inv.id === newPayment.saleId)?.invoiceNumber
+                        : "Type to search and select invoice"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search invoice number..."
+                        value={invoiceQuery}
+                        onValueChange={setInvoiceQuery}
+                      />
+                      <CommandList>
+                        <CommandItem
+                          key="none"
+                          value="none"
+                          onSelect={() => {
+                            setNewPayment(np => ({ ...np, saleId: null }));
+                            setInvoicePopoverOpen(false);
+                            setInvoiceQuery("");
+                          }}
+                        >
+                          No Invoice
+                        </CommandItem>
+                        <CommandEmpty>No invoices found.</CommandEmpty>
+                        {customerInvoices
+                          .filter(inv =>
+                            invoiceQuery === "" ||
+                            inv.invoiceNumber.toLowerCase().includes(invoiceQuery.toLowerCase())
+                          )
+                          .map(inv => (
+                            <CommandItem
+                              key={inv.id}
+                              value={inv.invoiceNumber}
+                              onSelect={() => {
+                                setNewPayment(np => ({ ...np, saleId: inv.id }));
+                                setInvoicePopoverOpen(false);
+                                setInvoiceQuery("");
+                              }}
+                            >
+                              {inv.invoiceNumber}
+                            </CommandItem>
+                          ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <Button onClick={handleAddPayment} disabled={addPaymentMutation.isPending || !selectedCustomer} className="bg-green-600 hover:bg-green-700 flex gap-2">
                 {addPaymentMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} /> Save
               </Button>
@@ -264,6 +356,7 @@ export default function OnAccCustomer() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
+                      <TableHead>Invoice No</TableHead>
                       <TableHead>Amount ({currency})</TableHead>
                       <TableHead>Payment Mode</TableHead>
                       <TableHead>Remarks</TableHead>
@@ -273,6 +366,7 @@ export default function OnAccCustomer() {
                     {filteredPayments.slice(0, Number(recordsPerPage)).map((p, idx) => (
                       <TableRow key={p.id}>
                         <TableCell>{p.paymentDate}</TableCell>
+                        <TableCell>{p.saleId ? (customerInvoices.find(inv => Number(inv.id) === Number(p.saleId))?.invoiceNumber || p.saleId) : '-'}</TableCell>
                         <TableCell>{p.amount}</TableCell>
                         <TableCell>{p.paymentMode}</TableCell>
                         <TableCell>{p.remarks}</TableCell>

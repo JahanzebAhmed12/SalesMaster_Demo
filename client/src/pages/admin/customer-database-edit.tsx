@@ -14,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import type { InsertCustomer } from "@shared/schema";
 import { useParams } from "wouter";
 import React from "react";
+import PhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/style.css';
 
 // Helper to get next customer code
 function getNextCustomerCode(customers: any[]) {
@@ -246,9 +248,20 @@ export default function CustomerAdd() {
                     name="telephone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Telephone</FormLabel>
+                        <FormLabel>Telephone *</FormLabel>
                         <FormControl>
-                          <Input {...field} value={field.value || ""} />
+                          <PhoneInput
+                            country={'gb'}
+                            value={field.value || ''}
+                            onChange={value => field.onChange(value.startsWith('+') ? value : `+${value}`)}
+                            inputProps={{
+                              name: 'telephone',
+                              required: true,
+                              autoFocus: false,
+                            }}
+                            enableSearch
+                            inputStyle={{ width: '100%' }}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

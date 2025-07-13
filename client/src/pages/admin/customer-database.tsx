@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Edit, Trash2, Download, FileText, Printer } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import PhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/style.css';
 
 interface Customer {
   id: number;

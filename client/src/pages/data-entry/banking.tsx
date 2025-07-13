@@ -23,7 +23,10 @@ export default function Banking() {
     date: new Date(),
     remarks: "",
     paymentType: "CASH",
-    amount: 0
+    amount: 0,
+    payingNumber: "",
+    bagNumber: "",
+    chequeNumber: ""
   });
   const queryClient = useQueryClient();
 
@@ -61,7 +64,7 @@ export default function Banking() {
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Banking entry added." });
-      setNewEntry({ date: new Date(), remarks: "", paymentType: "CASH", amount: 0 });
+      setNewEntry({ date: new Date(), remarks: "", paymentType: "CASH", amount: 0, payingNumber: "", bagNumber: "", chequeNumber: "" });
       refetch();
     },
     onError: (e: any) => {
@@ -73,11 +76,20 @@ export default function Banking() {
     if (!newEntry.remarks || !newEntry.amount || newEntry.amount <= 0) {
       return toast({ title: "Enter remarks and a valid amount" });
     }
+    if (newEntry.paymentType === "CASH" && (!newEntry.payingNumber || !newEntry.bagNumber)) {
+      return toast({ title: "Paying number and Bag number are required for CASH payments" });
+    }
+    if (newEntry.paymentType === "CHEQUE" && !newEntry.chequeNumber) {
+      return toast({ title: "Cheque number is required for CHEQUE payments" });
+    }
     const payload: InsertBankingEntry = {
       date: format(newEntry.date, "yyyy-MM-dd"),
       remarks: newEntry.remarks,
       paymentType: newEntry.paymentType,
-      amount: newEntry.amount
+      amount: newEntry.amount,
+      payingNumber: newEntry.paymentType === "CASH" ? newEntry.payingNumber : undefined,
+      bagNumber: newEntry.paymentType === "CASH" ? newEntry.bagNumber : undefined,
+      chequeNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequeNumber : undefined
     };
     addEntryMutation.mutate(payload);
   };
@@ -209,7 +221,7 @@ export default function Banking() {
                 <Label>PAYMENT TYPE</Label>
                 <Select 
                   value={newEntry.paymentType} 
-                  onValueChange={(value) => setNewEntry({...newEntry, paymentType: value})}
+                  onValueChange={(value) => setNewEntry({...newEntry, paymentType: value, payingNumber: "", bagNumber: "", chequeNumber: ""})}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -223,6 +235,42 @@ export default function Banking() {
                   </SelectContent>
                 </Select>
               </div>
+              {newEntry.paymentType === "CASH" && (
+                <>
+                  <div>
+                    <Label>PAYING NUMBER<span className="text-red-500">*</span></Label>
+                    <Input
+                      value={newEntry.payingNumber}
+                      onChange={e => setNewEntry({...newEntry, payingNumber: e.target.value})}
+                      placeholder="Enter paying number"
+                      className="w-full"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label>BAG NUMBER<span className="text-red-500">*</span></Label>
+                    <Input
+                      value={newEntry.bagNumber}
+                      onChange={e => setNewEntry({...newEntry, bagNumber: e.target.value})}
+                      placeholder="Enter bag number"
+                      className="w-full"
+                      required
+                    />
+                  </div>
+                </>
+              )}
+              {newEntry.paymentType === "CHEQUE" && (
+                <div>
+                  <Label>CHEQUE NUMBER<span className="text-red-500">*</span></Label>
+                  <Input
+                    value={newEntry.chequeNumber}
+                    onChange={e => setNewEntry({...newEntry, chequeNumber: e.target.value})}
+                    placeholder="Enter cheque number"
+                    className="w-full"
+                    required
+                  />
+                </div>
+              )}
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Label>AMOUNT</Label>

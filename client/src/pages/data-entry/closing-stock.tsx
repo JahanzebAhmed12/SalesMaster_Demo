@@ -18,6 +18,7 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
+
 interface StockItem {
   id: number;
   productCode: string;
@@ -53,109 +54,113 @@ export default function ClosingStock() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [stockData, setStockData] = useState<{ [key: number]: number | undefined }>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [productFilter, setProductFilter] = useState("all");
+  const [addProductId, setAddProductId] = useState("");
+  const [addQuantity, setAddQuantity] = useState("");
+  const [editRowId, setEditRowId] = useState<number | null>(null);
+  const [editQuantity, setEditQuantity] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [adjustmentDialog, setAdjustmentDialog] = useState<{
-    open: boolean;
-    product: StockItem | null;
-    adjustment: Partial<StockAdjustment>;
-  }>({
-    open: false,
-    product: null,
-    adjustment: {}
-  });
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const [email, setEmail] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
-  // Fetch current stock
+  // Fetch all products
   const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
     queryKey: ["currentStock"],
-    queryFn: async () => {
-      return await apiRequest("GET", "/api/stock/current");
-    },
+    queryFn: async () => await apiRequest("GET", "/api/stock/current"),
   });
 
-  // Fetch closing stock for selected date
-  const { data: closingStock, isLoading: isLoadingClosing } = useQuery<ClosingStockData>({
-    queryKey: ["closingStock", selectedDate],
-    queryFn: async () => {
-      const response = await fetch(`/api/stock/closing?date=${selectedDate}`);
-      if (!response.ok) throw new Error("Failed to fetch closing stock");
-      return response.json();
-    },
+  // Fetch closing stock for selected date (manual entry)
+  const { data: closingStockEntries = [], isLoading: isLoadingClosing, refetch } = useQuery<any[]>({
+    queryKey: ["closingStockEntries", selectedDate],
+    queryFn: async () => await apiRequest("GET", `/api/closing-stock?date=${selectedDate}`),
     enabled: !!selectedDate,
   });
 
-  // Update stock data when closing stock is loaded, but only if user hasn't started editing
-  useEffect(() => {
-    if (
-      closingStock &&
-      Array.isArray(closingStock) &&
-      Object.keys(stockData).length === 0
-    ) {
-      const initialData: { [key: number]: number } = {};
-      closingStock.forEach((cs: any) => {
-        initialData[cs.id] = cs.closingStock;
-      });
-      setStockData(initialData);
+  // Add new closing stock entry
+  const handleAddEntry = async () => {
+    if (!addProductId || !addQuantity) {
+      toast({ title: "Error", description: "Select a product and enter quantity.", variant: "destructive" });
+      return;
     }
-  }, [closingStock, selectedDate]);
-
-  // Handle stock adjustment
-  const handleStockChange = (productId: number, value: string) => {
-    setStockData((prev) => ({
-      ...prev,
-      [productId]: value === "" ? undefined : parseInt(value, 10),
-    }));
+    try {
+      const items = [
+        ...closingStockEntries.filter((e: any) => e.productId !== parseInt(addProductId)),
+        {
+          productId: parseInt(addProductId),
+          productType: currentStock.find((p) => p.id === parseInt(addProductId))?.productType || "regular",
+          quantity: parseInt(addQuantity),
+        },
+      ];
+      await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
+      toast({ title: "Saved", description: "Closing stock entry saved." });
+      setAddProductId("");
+      setAddQuantity("");
+      refetch();
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save entry.", variant: "destructive" });
+    }
   };
 
-  // Save closing stock
-  const handleSave = async () => {
-    setIsSubmitting(true);
-    try {
-      const adjustments = Object.entries(stockData).map(([productId, quantity]) => {
-        const product = currentStock.find((item) => item.id === parseInt(productId));
-        return {
-          productId: parseInt(productId),
-          productType: product?.productType || "regular",
-          adjustmentType: "set",
-          quantity: quantity,
-          reason: "Closing stock adjustment",
-          adjustmentDate: selectedDate,
-        };
-      });
-
-      // Send each adjustment as a separate request
-      for (const adj of adjustments) {
-        await apiRequest("POST", "/api/stock/adjust", adj);
-        toast({
-          title: "Success",
-          description: `Closing stock for product ${adj.productId} saved successfully`,
-        });
-      }
-
-      // Refresh data
-      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
-      queryClient.invalidateQueries({ queryKey: ["closingStock"] });
-      toast({
-        title: "All Done",
-        description: "All closing stock adjustments have been saved.",
-      });
-    } catch (error) {
-      let errorMsg = "Unknown error";
-      if (error instanceof Error) {
-        errorMsg = error.message;
-      } else if (typeof error === "string") {
-        errorMsg = error;
-      }
-      toast({
-        title: "Error",
-        description: errorMsg,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
+  // Edit closing stock entry
+  const handleEditSave = async (entry: any) => {
+    if (!editQuantity) {
+      toast({ title: "Error", description: "Enter a valid quantity.", variant: "destructive" });
+      return;
     }
+    try {
+      const items = closingStockEntries.map((e: any) =>
+        e.productId === entry.productId
+          ? { ...e, quantity: parseInt(editQuantity) }
+          : e
+      );
+      await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
+      toast({ title: "Updated", description: "Closing stock entry updated." });
+      setEditRowId(null);
+      setEditQuantity("");
+      refetch();
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to update entry.", variant: "destructive" });
+    }
+  };
+
+  // Only allow products not already entered in the add row
+  const enteredProductIds = closingStockEntries.map((e: any) => e.productId);
+  const availableProducts = currentStock.filter((p) => !enteredProductIds.includes(p.id));
+
+  // Filter products based on search term - only show when user starts typing
+  const filteredProducts = searchTerm.trim() === "" 
+    ? [] 
+    : availableProducts.filter(product => 
+        product.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        product.productCode.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+
+  // Keyboard navigation for product dropdown (from sales invoice)
+  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showProductDropdown || filteredProducts.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev < filteredProducts.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev > 0 ? prev - 1 : filteredProducts.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedProduct >= 0 && highlightedProduct < filteredProducts.length) {
+        const p = filteredProducts[highlightedProduct];
+        setAddProductId(p.id.toString());
+        setSearchTerm(`${p.productCode} - ${p.description}`);
+        setShowProductDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowProductDropdown(false);
+    }
+  };
+
+  // Close dropdown on blur (with delay to allow click)
+  const handleProductBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    setTimeout(() => setShowProductDropdown(false), 100);
   };
 
   // Fetch company details for dynamic address
@@ -174,7 +179,7 @@ export default function ClosingStock() {
         title: "Success",
         description: "Stock adjusted successfully",
       });
-      setAdjustmentDialog({ open: false, product: null, adjustment: {} });
+      // setAdjustmentDialog({ open: false, product: null, adjustment: {} }); // This line was removed
     },
     onError: (error: any) => {
       toast({
@@ -185,51 +190,40 @@ export default function ClosingStock() {
     }
   });
 
-  // Filter stock data
-  const filteredData = currentStock.filter((item: StockItem) => {
-    const matchesSearch = item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.productCode.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = productFilter === "all" || 
-                         (productFilter === "available" && item.currentStock > 0) ||
-                         (productFilter === "low" && item.currentStock <= item.reorderLevel);
-    
-    return matchesSearch && matchesFilter;
-  });
-
   // For linter: explicitly type filteredData for export handlers
-  const filteredDataTyped: StockItem[] = filteredData;
+  // const filteredDataTyped: StockItem[] = filteredData; // This line was removed
 
-  const handleAdjustment = (product: StockItem) => {
-    setAdjustmentDialog({
-      open: true,
-      product,
-      adjustment: {
-        productId: product.id,
-        productType: product.productType,
-        adjustmentType: 'set',
-        quantity: product.currentStock,
-        reason: '',
-        adjustmentDate: selectedDate
-      }
-    });
-  };
+  // const handleAdjustment = (product: StockItem) => { // This function was removed
+  //   setAdjustmentDialog({
+  //     open: true,
+  //     product,
+  //     adjustment: {
+  //       productId: product.id,
+  //       productType: product.productType,
+  //       adjustmentType: 'set',
+  //       quantity: product.currentStock,
+  //       reason: '',
+  //       adjustmentDate: selectedDate
+  //     }
+  //   });
+  // };
 
-  const saveAdjustment = () => {
-    if (!adjustmentDialog.product || !adjustmentDialog.adjustment.reason) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
+  // const saveAdjustment = () => { // This function was removed
+  //   if (!adjustmentDialog.product || !adjustmentDialog.adjustment.reason) {
+  //     toast({
+  //       title: "Error",
+  //       description: "Please fill in all required fields",
+  //       variant: "destructive",
+  //     });
+  //     return;
+  //   }
 
-    adjustStockMutation.mutate(adjustmentDialog.adjustment as StockAdjustment);
-  };
+  //   adjustStockMutation.mutate(adjustmentDialog.adjustment as StockAdjustment);
+  // };
 
-  const totalItems = filteredData.length;
-  const totalQuantity = filteredData.reduce((sum: number, item: StockItem) => sum + item.currentStock, 0);
-  const lowStockItems = filteredData.filter((item: StockItem) => item.currentStock <= item.reorderLevel);
+  // const totalItems = filteredData.length; // This line was removed
+  // const totalQuantity = filteredData.reduce((sum: number, item: StockItem) => sum + item.currentStock, 0); // This line was removed
+  // const lowStockItems = filteredData.filter((item: StockItem) => item.currentStock <= item.reorderLevel); // This line was removed
 
   // Print handler
   const handlePrint = () => {
@@ -242,16 +236,16 @@ export default function ClosingStock() {
       html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
     });
     html += `</tr></thead><tbody>`;
-    filteredDataTyped.forEach((item) => {
-      html += '<tr>';
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description} (${item.productCode})</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.productType}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.currentStock}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.reorderLevel}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.unitOfSale || '-'}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.location || '-'}</td>`;
-      html += '</tr>';
-    });
+    // filteredDataTyped.forEach((item) => { // This line was removed
+    //   html += '<tr>';
+    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description} (${item.productCode})</td>`;
+    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.productType}</td>`;
+    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.currentStock}</td>`;
+    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.reorderLevel}</td>`;
+    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.unitOfSale || '-'}</td>`;
+    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.location || '-'}</td>`;
+    //   html += '</tr>';
+    // });
     html += '</tbody></table>';
     if (printWindow) {
       printWindow.document.write('<html><head><title>Print Table</title>');
@@ -273,13 +267,13 @@ export default function ClosingStock() {
     const wsData = [
       ['Current Stock'],
       ['Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'],
-      ...filteredDataTyped.map((item) => ([
-        `${item.description} (${item.productCode})`,
+      ...closingStockEntries.map((item: any) => ([ // Changed to closingStockEntries
+        `${item.productId}`, // Changed to item.productId
         item.productType,
-        item.currentStock,
-        item.reorderLevel,
-        item.unitOfSale || '-',
-        item.location || '-',
+        item.quantity,
+        // item.reorderLevel, // Removed as per new_code
+        // item.unitOfSale || '-', // Removed as per new_code
+        // item.location || '-', // Removed as per new_code
       ])),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -296,17 +290,57 @@ export default function ClosingStock() {
       head: [[
         'Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'
       ]],
-      body: filteredDataTyped.map((item) => [
-        `${item.description} (${item.productCode})`,
+      body: closingStockEntries.map((item: any) => [ // Changed to closingStockEntries
+        `${item.productId}`, // Changed to item.productId
         item.productType,
-        item.currentStock,
-        item.reorderLevel,
-        item.unitOfSale || '-',
-        item.location || '-',
+        item.quantity,
+        // item.reorderLevel, // Removed as per new_code
+        // item.unitOfSale || '-', // Removed as per new_code
+        // item.location || '-', // Removed as per new_code
       ]),
       startY: 22,
     });
     doc.save('closing-stock.pdf');
+  };
+
+  // Email send handler
+  const handleSendEmail = async () => {
+    if (!email) {
+      toast({ title: "Error", description: "Please enter an email address.", variant: "destructive" });
+      return;
+    }
+    setIsSending(true);
+    try {
+      const res = await apiRequest("POST", "/api/send/closing-stock", { date: selectedDate, email });
+      toast({ title: "Email Sent", description: `Closing stock PDF sent to ${email}` });
+      setEmail("");
+    } catch (error: any) {
+      toast({ title: "Error", description: error?.error || "Failed to send email.", variant: "destructive" });
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Copy handler
+  const handleCopy = () => {
+    try {
+      // Find the table element
+      const table = document.querySelector("#closing-stock-table");
+      if (!table) {
+        toast({ title: "Error", description: "Table not found.", variant: "destructive" });
+        return;
+      }
+      // Copy table text content
+      let text = "";
+      table.querySelectorAll("tr").forEach(row => {
+        let rowText = Array.from(row.querySelectorAll("th,td")).map(cell => cell.textContent).join("\t");
+        text += rowText + "\n";
+      });
+      navigator.clipboard.writeText(text);
+      toast({ title: "Copied!", description: "Closing stock table copied to clipboard." });
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to copy table.", variant: "destructive" });
+    }
   };
 
   if (isLoadingStock || isLoadingClosing) {
@@ -319,293 +353,163 @@ export default function ClosingStock() {
 
   return (
     <PageLayout title="Closing Stock" breadcrumb="Closing Stock">
-      <div className="space-y-6">
-        {/* Controls Section */}
-        <Card>
+      <div className="container mx-auto py-4">
+        {/* Single Card for Closing Stock Actions */}
+        <Card className="mb-4">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package size={20} />
-              Closing Stock Management
-              <span className="ml-auto text-sm text-gray-500 font-normal">
-                {companyDetails?.companyName || "Company Name"}, {companyDetails?.address1 || ""}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ""}
-              </span>
-            </CardTitle>
+            <CardTitle>Closing Stock</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div>
-                <Label htmlFor="stockDate">Date</Label>
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <Button onClick={handlePDF} className="bg-blue-600 text-white flex items-center gap-2"><i className="fa fa-file-pdf-o" /> PDF</Button>
+                <Button onClick={handleExcel} className="bg-gray-200 text-black flex items-center gap-2"><i className="fa fa-download" /> Excel</Button>
+                <Button onClick={handleCopy} className="bg-gray-200 text-black flex items-center gap-2"><i className="fa fa-copy" /> Copy</Button>
+                <Button onClick={handlePrint} className="bg-gray-200 text-black flex items-center gap-2"><i className="fa fa-print" /> Print</Button>
+              </div>
+              {/* Email Field and Button */}
+              <div className="flex gap-2 items-center">
                 <Input
-                  id="stockDate"
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full"
+                  id="email"
+                  type="email"
+                  placeholder="Enter email address"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  disabled={isSending}
+                  className="w-64"
                 />
-              </div>
-              <div>
-                <Label htmlFor="productFilter">Products</Label>
-                <Select value={productFilter} onValueChange={setProductFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Products</SelectItem>
-                    <SelectItem value="available">Available Products</SelectItem>
-                    <SelectItem value="low">Low Stock Items</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="md:col-span-2 flex items-end gap-2">
-                <Button className="flex items-center gap-2" onClick={handlePrint}>
-                  <Printer size={16} />
-                  Print
-                </Button>
-                <Button variant="outline" className="flex items-center gap-2" onClick={handlePDF}>
-                  <FileText size={16} />
-                  PDF
-                </Button>
-                <Button variant="outline" className="flex items-center gap-2" onClick={handleExcel}>
-                  <Download size={16} />
-                  Excel
+                <Button onClick={handleSendEmail} disabled={isSending || !email} className="bg-green-600 text-white">
+                  {isSending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Send PDF
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Stock Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">{totalItems}</div>
-              <div className="text-sm text-gray-600">Total Products</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">{totalQuantity}</div>
-              <div className="text-sm text-gray-600">Total Stock</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-orange-600">{lowStockItems.length}</div>
-              <div className="text-sm text-gray-600">Low Stock Items</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold text-green-600">
-                {filteredData.filter((item: StockItem) => item.currentStock > 0).length}
-              </div>
-              <div className="text-sm text-gray-600">In Stock</div>
-            </CardContent>
-          </Card>
+        {/* Date Picker */}
+        <div className="flex items-center gap-4 mb-4">
+          <Input
+            id="stockDate"
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="w-48"
+          />
         </div>
 
-        {/* Stock Table */}
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Current Stock</CardTitle>
-              <div className="flex items-center gap-2">
+        {/* Closing Stock Table */}
+        <Table id="closing-stock-table" className="w-full border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+          <TableHeader>
+            <TableRow className="bg-gray-100 border-b border-gray-300">
+              <TableHead className="font-bold text-gray-700 text-base py-3 px-4 border-r border-gray-300">Product</TableHead>
+              <TableHead className="font-bold text-gray-700 text-base py-3 px-4 border-r border-gray-300">Quantity</TableHead>
+              <TableHead className="font-bold text-gray-700 text-base py-3 px-4">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {/* Inline Add Row */}
+            <TableRow className="bg-blue-50 border-b border-gray-300">
+              <TableCell className="py-2 px-4 border-r border-gray-200">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                   <Input
-                    placeholder="Search products..."
+                    placeholder="Type to search products..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 w-64"
+                    onChange={e => {
+                      setSearchTerm(e.target.value);
+                      setShowProductDropdown(true);
+                      setAddProductId("");
+                    }}
+                    onFocus={() => setShowProductDropdown(!!searchTerm)}
+                    onBlur={handleProductBlur}
+                    onKeyDown={handleProductKeyDown}
+                    autoComplete="off"
+                    className="w-full border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
-                </div>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoadingStock ? (
-              <div className="text-center py-8">Loading stock data...</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-center">Current Stock</TableHead>
-                    <TableHead className="text-center">Reorder Level</TableHead>
-                    <TableHead>Unit</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredData.map((item: StockItem) => (
-                    <TableRow key={item.id} className="hover:bg-gray-50">
-                      <TableCell className="font-medium">
-                        <div>
-                          <div>{item.description}</div>
-                          <div className="text-sm text-gray-500">{item.productCode}</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          item.productType === 'regular' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {item.productType}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className={`font-semibold ${
-                          item.currentStock <= item.reorderLevel 
-                            ? 'text-red-600' 
-                            : item.currentStock === 0 
-                            ? 'text-gray-500' 
-                            : 'text-green-600'
-                        }`}>
-                          {item.currentStock}
-                        </div>
-                        {item.currentStock <= item.reorderLevel && (
-                          <AlertTriangle className="inline-block w-4 h-4 text-red-500 ml-1" />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">{item.reorderLevel}</TableCell>
-                      <TableCell>{item.unitOfSale || '-'}</TableCell>
-                      <TableCell>{item.location || '-'}</TableCell>
-                      <TableCell className="text-center">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleAdjustment(item)}
-                          className="flex items-center gap-1"
+                  {showProductDropdown && filteredProducts.length > 0 && (
+                    <div className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow">
+                      {filteredProducts.map((p, idx) => (
+                        <div
+                          key={p.id}
+                          className={`p-2 cursor-pointer flex items-center ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
+                          onMouseDown={() => {
+                            setAddProductId(p.id.toString());
+                            setSearchTerm(`${p.productCode} - ${p.description}`);
+                            setShowProductDropdown(false);
+                          }}
+                          onMouseEnter={() => setHighlightedProduct(idx)}
                         >
-                          <Plus size={14} />
-                          Adjust
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                          <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
+                          <span className="ml-2">{p.description}</span>
+                          <span className="ml-auto text-xs text-gray-500">Stock: {p.currentStock}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell className="py-2 px-4 border-r border-gray-200">
+                <Input
+                  type="number"
+                  placeholder="Quantity"
+                  value={addQuantity}
+                  onChange={(e) => setAddQuantity(e.target.value)}
+                  min="0"
+                />
+              </TableCell>
+              <TableCell className="py-2 px-4">
+                <Button onClick={() => { handleAddEntry(); setSearchTerm(""); }}>Save</Button>
+              </TableCell>
+            </TableRow>
+            {/* Existing Entries */}
+            {closingStockEntries.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center text-gray-500 py-4">No entries for this date.</TableCell>
+              </TableRow>
+            ) : (
+              closingStockEntries.map((entry: any, idx: number) => {
+                const product = currentStock.find((p) => p.id === entry.productId);
+                const isEditing = editRowId === entry.productId;
+                return isEditing ? (
+                  <TableRow key={entry.productId} className="border-b border-gray-200 bg-yellow-50">
+                    <TableCell className="py-2 px-4 font-medium border-r border-gray-200">{product ? `${product.description} (${product.productCode})` : entry.productId}</TableCell>
+                    <TableCell className="py-2 px-4 border-r border-gray-200">
+                                              <Input
+                          type="number"
+                          value={editQuantity}
+                          onChange={(e) => setEditQuantity(e.target.value)}
+                          className="w-24"
+                          min="0"
+                        />
+                    </TableCell>
+                    <TableCell className="py-2 px-4 flex gap-2">
+                      <Button onClick={() => handleEditSave(entry)} size="sm">Save</Button>
+                      <Button variant="outline" onClick={() => { setEditRowId(null); setEditQuantity(""); }} size="sm">Cancel</Button>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  <TableRow
+                    key={entry.productId}
+                    className={
+                      idx % 2 === 0
+                        ? "bg-white border-b border-gray-200 hover:bg-gray-50"
+                        : "bg-gray-50 border-b border-gray-200 hover:bg-gray-100"
+                    }
+                  >
+                    <TableCell className="py-2 px-4 font-medium border-r border-gray-200">{product ? `${product.description} (${product.productCode})` : entry.productId}</TableCell>
+                    <TableCell className="py-2 px-4 border-r border-gray-200 font-semibold">{entry.quantity}</TableCell>
+                    <TableCell className="py-2 px-4">
+                      <Button size="sm" variant="outline" onClick={() => { setEditRowId(entry.productId); setEditQuantity(entry.quantity.toString()); }}>
+                        Edit
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
-            
-            <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>{totalItems} Items</div>
-              <div className="flex items-center gap-4">
-                <span>Showing {filteredData.length} of {currentStock.length} entries</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Stock Adjustment Dialog */}
-        <Dialog open={adjustmentDialog.open} onOpenChange={(open) => 
-          setAdjustmentDialog(prev => ({ ...prev, open }))
-        }>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Adjust Stock</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              {adjustmentDialog.product && (
-                <>
-                  <div>
-                    <Label>Product</Label>
-                    <div className="text-sm text-gray-600">
-                      {adjustmentDialog.product.description} ({adjustmentDialog.product.productCode})
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label>Current Stock</Label>
-                    <div className="text-sm text-gray-600">
-                      {adjustmentDialog.product.currentStock} {adjustmentDialog.product.unitOfSale || 'units'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="adjustmentType">Adjustment Type</Label>
-                    <Select 
-                      value={adjustmentDialog.adjustment.adjustmentType} 
-                      onValueChange={(value) => setAdjustmentDialog(prev => ({
-                        ...prev,
-                        adjustment: { ...prev.adjustment, adjustmentType: value as any }
-                      }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="increase">Increase</SelectItem>
-                        <SelectItem value="decrease">Decrease</SelectItem>
-                        <SelectItem value="set">Set to</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="quantity">Quantity</Label>
-                    <Input
-                      id="quantity"
-                      type="number"
-                      value={adjustmentDialog.adjustment.quantity || ''}
-                      onChange={(e) => setAdjustmentDialog(prev => ({
-                        ...prev,
-                        adjustment: { ...prev.adjustment, quantity: parseInt(e.target.value) || 0 }
-                      }))}
-                      min="0"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="reason">Reason *</Label>
-                    <Input
-                      id="reason"
-                      value={adjustmentDialog.adjustment.reason || ''}
-                      onChange={(e) => setAdjustmentDialog(prev => ({
-                        ...prev,
-                        adjustment: { ...prev.adjustment, reason: e.target.value }
-                      }))}
-                      placeholder="e.g., Stock take, Damage, etc."
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="remarks">Remarks</Label>
-                    <Textarea
-                      id="remarks"
-                      value={adjustmentDialog.adjustment.remarks || ''}
-                      onChange={(e) => setAdjustmentDialog(prev => ({
-                        ...prev,
-                        adjustment: { ...prev.adjustment, remarks: e.target.value }
-                      }))}
-                      placeholder="Additional notes..."
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-2">
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setAdjustmentDialog({ open: false, product: null, adjustment: {} })}
-                    >
-                      Cancel
-                    </Button>
-                    <Button 
-                      onClick={saveAdjustment}
-                      disabled={adjustStockMutation.isPending}
-                    >
-                      {adjustStockMutation.isPending ? 'Saving...' : 'Save Adjustment'}
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-
-       
+          </TableBody>
+        </Table>
       </div>
     </PageLayout>
   );

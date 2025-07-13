@@ -10,7 +10,12 @@ import PaymentDetailsDrawer from "@/components/layout/payment-details-drawer";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
+import { Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { format, subDays } from 'date-fns';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 
 interface BackendSalePayload {
   invoice_number: string;
@@ -59,11 +64,19 @@ interface HeldInvoice {
   holdTime: string;
 }
 
+// Extend the Sale type to include createdBy and createdByUsername
+interface SaleWithUser extends Sale {
+  createdBy?: number;
+  createdByUsername?: string;
+}
+
 const SalesInvoice = () => {
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
   const [locationStr, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  // const navigate = useNavigate(); // Removed useNavigate
 
   // Use the latest location from useLocation
   
@@ -75,7 +88,7 @@ const SalesInvoice = () => {
 // Log at the top of the component
 
 // State for current sale and items
-const [currentSale, setCurrentSale] = useState<Sale | null>(null);
+const [currentSale, setCurrentSale] = useState<SaleWithUser | null>(null);
 const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
 const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
 const [selectedProductId, setSelectedProductId] = useState<string>("");
@@ -91,7 +104,7 @@ const [status, setStatus] = useState<string>("draft");
   
 // Stock search state
 const [productSearch, setProductSearch] = useState("");
-const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct)[]>([]);
+const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct & { productType: 'regular' | 'non' })[]>([]);
 const [showProductDropdown, setShowProductDropdown] = useState(false);
 const [highlightedProduct, setHighlightedProduct] = useState(-1);
 const productInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +115,116 @@ const [printDeliveryNote, setPrintDeliveryNote] = useState(false);
 const [printPackingList, setPrintPackingList] = useState(false);
   
 const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
+  const [porterageDetails, setPorterageDetails] = useState({ withPorterage: false, porterageCharge: '0.00' });
+  const [applyPorterage, setApplyPorterage] = useState(true); // Track if porterage should be applied to this invoice
+const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
+const [customerSearch, setCustomerSearch] = useState("");
+const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
+const [isSearching, setIsSearching] = useState(false);
+const [highlightedIndex, setHighlightedIndex] = useState(-1);
+const inputRef = useRef<HTMLInputElement>(null);
+const dropdownRef = useRef<HTMLDivElement>(null);
+
+const [showOutstanding, setShowOutstanding] = useState(false);
+const [outstandingData, setOutstandingData] = useState<any>(null);
+const [outstandingLoading, setOutstandingLoading] = useState(false);
+const [outstandingError, setOutstandingError] = useState<string | null>(null);
+
+const handleShowOutstanding = async () => {
+  if (!selectedCustomer) {
+    toast({ title: 'No customer selected', description: 'Please select a customer first.' });
+    return;
+  }
+  setOutstandingLoading(true);
+  setOutstandingError(null);
+  setShowOutstanding(true);
+  try {
+    // Fetch customer info
+    const customer = customers?.find(c => c.id === selectedCustomer.id) || selectedCustomer;
+    // Fetch outstanding invoices
+    const outstandingRes = await apiRequest("GET", `/api/customers/${customer.id}/outstanding_invoices`);
+    const outstanding = Array.isArray(outstandingRes)
+      ? outstandingRes.reduce((sum, inv) => sum + (inv.totalAmount - (inv.paidAmount || 0)), 0)
+      : 0;
+    // Fetch last payment
+    const payments = await apiRequest("GET", `/api/payments/history?customerId=${customer.id}`);
+    let lastPayment = null;
+    if (Array.isArray(payments) && payments.length > 0) {
+      const sorted = payments.slice().sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+      lastPayment = sorted[0];
+    }
+    setOutstandingData({
+      customer,
+      outstanding,
+      lastPayment,
+    });
+  } catch (err: any) {
+    setOutstandingError('Failed to fetch outstanding details.');
+  }
+  setOutstandingLoading(false);
+};
+
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number) {
+  let timeout: ReturnType<typeof setTimeout>;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
+const fetchCustomers = debounce(async (search: string) => {
+  setIsSearching(true);
+  try {
+    const params = new URLSearchParams();
+    if (search) params.append("search", search);
+    const data = await apiRequest("GET", `/api/customers?${params.toString()}`);
+    setCustomerOptions(data || []);
+  } catch (e) {
+    setCustomerOptions([]);
+  }
+  setIsSearching(false);
+}, 300);
+
+useEffect(() => {
+  if (isEditCustomerOpen) {
+    fetchCustomers(customerSearch);
+    setHighlightedIndex(-1);
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [customerSearch, isEditCustomerOpen]);
+
+function handleCustomerSelect(id: number) {
+  setCustomerId(id.toString());
+  setIsEditCustomerOpen(false);
+  setCustomerSearch("");
+  if (currentSale) {
+    const updatedSalePayload: BackendSalePayload = {
+      invoice_number: currentSale.invoiceNumber,
+      customer_id: id,
+      customer_type: currentSale.customerType,
+      payment_status: currentSale.paymentStatus,
+      subtotal: currentSale.subtotal,
+      porterage: currentSale.porterage,
+      vat_rate: currentSale.vatRate,
+      vat_amount: currentSale.vatAmount,
+      total_amount: currentSale.totalAmount,
+      vehicle_details: currentSale.vehicleDetails,
+      gate_number: currentSale.gateNumber,
+      notes: currentSale.notes,
+      status: currentSale.status,
+      items: saleItems.map(item => ({
+        product_id: item.productId,
+        non_product_id: item.nonProductId,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        total_price: item.totalPrice,
+        notes: item.notes,
+        created_at: item.createdAt,
+      })),
+    };
+    updateSaleMutation.mutate(updatedSalePayload);
+  }
+}
 
   useEffect(()=>{
     // const queryParams = new URLSearchParams(locationStr.split('?')[1] || '');
@@ -170,7 +293,22 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
 
   // Filter products by type and search (move after useQuery declarations)
   useEffect(() => {
-    let list = selectedProductType === "regular" ? regularProducts || [] : nonProducts || [];
+    let list: (RegularProduct | NonProduct & { productType: 'regular' | 'non' })[] = [];
+    if (selectedProductType === "regular") {
+      // Only show regular products with stock > 0
+      list = (regularProducts || [])
+        .filter((p: any) => {
+          const stock = currentStock.find(s => s.id === p.id && s.productType === 'regular');
+          return stock && stock.currentStock > 0;
+        })
+        .map(p => ({ ...p, productType: 'regular' as const }));
+    } else {
+      // Show all regular and all non-regular products, tag with type
+      list = [
+        ...(regularProducts || []).map(p => ({ ...p, productType: 'regular' as const })),
+        ...(nonProducts || []).map(p => ({ ...p, productType: 'non' as const }))
+      ];
+    }
     if (productSearch) {
       const term = productSearch.toLowerCase();
       list = list.filter(
@@ -181,7 +319,7 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
     }
     setProductOptions(list);
     setHighlightedProduct(-1);
-  }, [productSearch, selectedProductType, regularProducts, nonProducts]);
+  }, [productSearch, selectedProductType, regularProducts, nonProducts, currentStock]);
 
   // Get actual database stock (without frontend reduction)
   const getActualStock = (productId: number, type: 'regular' | 'non_product' | 'non') => {
@@ -297,7 +435,7 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
   const customerName = currentSale?.customerId 
     ? customers?.find(c => c.id === currentSale.customerId)?.customer_name || 'N/A'
     : selectedCustomer?.customer_name || 'N/A';
-  const customerType = currentSale?.customerType || "credit";
+  const customerType = currentSale?.customerType || "account";
   const paymentStatus = currentSale?.paymentStatus || "pending";
 
   // Mutation to create a new sale
@@ -311,6 +449,11 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
         .finally(() => clearTimeout(timeoutId));
     },
     onSuccess: (response) => {
+      console.log("=== CREATE SALE SUCCESS ===");
+      console.log("Response:", response);
+      console.log("createdBy:", response.createdBy);
+      console.log("createdByUsername:", response.createdByUsername);
+      
       queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -321,6 +464,7 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
         title: "Success",
         description: "New sale created successfully",
       });
+      return response; // Return the response for handleSaveInvoiceWithWhatsapp to use
     },
     onError: (error: any) => {
       setIsCreatingSale(false);
@@ -341,11 +485,12 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
         description: errorMessage,
         variant: "destructive",
       });
+      return null; // Return null on error
     },
   });
 
   // Mutation to update sale (add/remove items, finalize)
-  const updateSaleMutation = useMutation<Sale, Error, BackendSalePayload>({
+  const updateSaleMutation = useMutation<SaleWithUser, Error, BackendSalePayload>({
     mutationFn: (payload) => apiRequest("PUT", `/api/sales/${currentSale?.id}`, payload),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sales", data.invoiceNumber] });
@@ -418,10 +563,8 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
       return;
     }
 
-    // Check if we have enough stock (actual database stock)
     const actualStockLevel = getActualStock(parseInt(selectedProductId), selectedProductType);
     
-    // Calculate total quantity already in this invoice for this product
     const existingQuantity = saleItems
       .filter(item => {
         if (selectedProductType === 'regular') {
@@ -434,7 +577,8 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
     
     const totalRequestedQuantity = existingQuantity + itemQuantity;
     
-    if (totalRequestedQuantity > actualStockLevel) {
+    // Only block for regular products if not enough stock
+    if (selectedProductType === 'regular' && totalRequestedQuantity > actualStockLevel) {
       const availableStock = getCurrentStock(parseInt(selectedProductId), selectedProductType);
       toast({
         title: "Insufficient Stock",
@@ -443,10 +587,23 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
       });
       return;
     }
+    // For non_product, allow adding even if out of stock (stock can go negative)
+    // Backend: Negative stock is allowed for sales, so no backend change is needed unless you want to log/flag negative stock events.
 
-    const isRegular = selectedProductType === "regular";
-    const productList = isRegular ? regularProducts : nonProducts;
-    const product = productList?.find(p => p.id === parseInt(selectedProductId));
+    let product: RegularProduct | NonProduct | undefined;
+    let isRegular = false;
+    if (selectedProductType === "regular") {
+      product = regularProducts?.find(p => p.id === parseInt(selectedProductId));
+      isRegular = true;
+    } else {
+      product = regularProducts?.find(p => p.id === parseInt(selectedProductId));
+      if (product) {
+        isRegular = true;
+      } else {
+        product = nonProducts?.find(p => p.id === parseInt(selectedProductId));
+        isRegular = false;
+      }
+    }
     if (!product) {
       toast({
         title: "Error",
@@ -463,6 +620,7 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
       totalPrice: itemQuantity * itemUnitPrice,
       productName: product.description || null,
       notes: itemNotes || null,
+      addedBy: currentUser?.username || 'Unknown',
       id: 0,
       saleId: currentSale?.id || 0,
       createdAt: new Date().toISOString(),
@@ -510,6 +668,11 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
   // Save handler: create sale only when Save is clicked
   const [mailInvoice, setMailInvoice] = useState(false);
   const [printInvoice, setPrintInvoice] = useState(false);
+  const [sendToWhatsapp, setSendToWhatsapp] = useState(false);
+  const [whatsappLoading, setWhatsappLoading] = useState(false);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
+  const [whatsappSuccess, setWhatsappSuccess] = useState(false);
+
   const handleSaveInvoice = (mailInvoice = false, printInvoice = false) => {
     if (!customerId) {
       toast({
@@ -530,16 +693,16 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
     }
 
     setIsCreatingSale(true);
-    const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
     const payload: Partial<BackendSalePayload & { mailInvoice?: boolean }> = {
       customer_id: parseInt(customerId),
-      customer_type: "credit",
+              customer_type: "account",
       payment_status: "pending",
       subtotal,
-      total_amount: subtotal,
-      porterage: 0,
-      vat_rate: 0,
-      vat_amount: 0,
+      total_amount: totalAmount,
+      porterage: porterage,
+      vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
+      vat_amount: vatAmount,
       vehicle_details: vehicleDetails || null,
       gate_number: gateNumber || null,
       notes: notes || null,
@@ -566,16 +729,65 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
         if (printPackingList && response?.invoiceNumber) {
           window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
         }
+        
+        // Handle WhatsApp sending after successful save
+        if (sendToWhatsapp && selectedCustomer && selectedCustomer.telephone && response?.invoiceNumber) {
+          console.log('[WHATSAPP DEBUG] Invoice saved successfully, now sending to WhatsApp');
+          console.log('[WHATSAPP DEBUG] Invoice number:', response.invoiceNumber);
+          
+          setWhatsappLoading(true);
+          setWhatsappError(null);
+          setWhatsappSuccess(false);
+          
+          // Send to WhatsApp
+          const invoiceUrl = `${window.location.origin}/print/invoice/${response.invoiceNumber}`;
+          const payload = {
+            phoneNumber: selectedCustomer.telephone,
+            invoiceUrl,
+            message: `Your invoice from Tropifruit UK Ltd.`
+          };
+          console.log('[WHATSAPP] Sending invoice to:', selectedCustomer.telephone);
+          console.log('[WHATSAPP] Invoice URL:', invoiceUrl);
+          console.log('[WHATSAPP] API request payload:', payload);
+          
+          apiRequest("POST", "/api/send/whatsapp-invoice", payload)
+            .then(resp => {
+              console.log('[WHATSAPP] API response:', resp);
+              if (resp.messages) {
+                setWhatsappSuccess(true);
+              } else {
+                setWhatsappError('Failed to send WhatsApp message.');
+              }
+            })
+            .catch(err => {
+              console.error('[WHATSAPP] API error:', err);
+              setWhatsappError('Failed to send WhatsApp message.');
+            })
+            .finally(() => {
+              setWhatsappLoading(false);
+            });
+        }
+        
         setLocation('/data-entry/sales-entry');
       }
     });
+  };
+
+  const handleSaveInvoiceWithWhatsapp = async (mailInvoice = false, printInvoice = false) => {
+    console.log('[WHATSAPP DEBUG] handleSaveInvoiceWithWhatsapp called');
+    console.log('[WHATSAPP DEBUG] sendToWhatsapp:', sendToWhatsapp);
+    console.log('[WHATSAPP DEBUG] selectedCustomer:', selectedCustomer);
+    console.log('[WHATSAPP DEBUG] selectedCustomer.telephone:', selectedCustomer?.telephone);
+    
+    // Just call handleSaveInvoice - WhatsApp logic is now handled in the onSuccess callback
+    handleSaveInvoice(mailInvoice, printInvoice);
   };
 
   const calculateTotalSummary = () => {
     const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const vatRate = taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0;
     const vatAmount = (subtotal * vatRate) / 100;
-    const porterage = 0;
+    const porterage = (porterageDetails.withPorterage && applyPorterage) ? parseFloat(porterageDetails.porterageCharge) : 0;
     const totalAmount = subtotal + vatAmount + porterage;
     return { subtotal, vatAmount, porterage, totalAmount };
   };
@@ -592,6 +804,7 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
       setGateNumber("");
       setNotes("");
       setStatus("draft");
+      setApplyPorterage(true); // Reset porterage application
       setLocation("/data-entry/sales-entry");
     }
   };
@@ -727,7 +940,26 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
     setGateNumber("");
     setNotes("");
     setSaleItems([]);
+    setApplyPorterage(true); // Reset porterage application
     toast({ title: "Invoice Held", description: "You can resume it later from Held Invoices." });
+  };
+
+  // Handler for Customer History navigation
+  const handleCustomerHistory = () => {
+    if (!selectedCustomer) {
+      // Optionally show a toast or alert
+      return;
+    }
+    const today = new Date();
+    const lastWeek = subDays(today, 7);
+    // Pass params as query string
+    const searchParams = new URLSearchParams([
+      ['customerId', String(selectedCustomer.id)],
+      ['fromDate', format(lastWeek, 'yyyy-MM-dd')],
+      ['toDate', format(today, 'yyyy-MM-dd')],
+      ['autoSearch', 'true']
+    ]);
+    setLocation(`/historical-reports/customer-history?${searchParams.toString()}`);
   };
 
   useEffect(() => {
@@ -736,8 +968,16 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
         withTax: !!settings.withTax,
         taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : '0',
       });
+      setPorterageDetails({
+        withPorterage: !!settings.withPorterage,
+        porterageCharge: settings.porterageCharge ? String(settings.porterageCharge) : '0.00',
+      });
+      // Reset applyPorterage to true when settings are loaded
+      setApplyPorterage(true);
     });
   }, []);
+
+
 
   if (isCreatingSale) {
     return (
@@ -761,7 +1001,14 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
               <h1 className="text-2xl font-bold text-gray-900 mb-4">INVOICE</h1>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-4">
-                  <span>Date: {new Date(currentSale?.date || Date.now()).toLocaleString('en-GB')}</span>
+                  <span>Date: {new Date().toLocaleString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit', 
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                  })}</span>
                   {/* Print Invoice Button */}
                   {currentSale?.invoiceNumber && (
                     <>
@@ -789,10 +1036,72 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                   <span>Customer type: {customerType}</span>
                   <Badge className="bg-green-600 text-white">{paymentStatus}</Badge>
                 </div>
-                <div>
+                <div className="flex items-center">
                   <span>Customer Name: </span>
-                  <span className="font-semibold">{customerName}</span>
+                  <span className="font-semibold ml-1">{customerName}</span>
+                  <button
+                    type="button"
+                    className="ml-2 text-blue-600 hover:underline flex items-center"
+                    onClick={() => setIsEditCustomerOpen(true)}
+                    title="Edit Customer"
+                  >
+                    <Pencil size={16} className="mr-1" />
+                    Edit
+                  </button>
                 </div>
+                <Dialog open={isEditCustomerOpen} onOpenChange={setIsEditCustomerOpen}>
+                  <DialogContent>
+                    <DialogTitle>Select Customer</DialogTitle>
+                    <div className="relative">
+                      <input
+                        ref={inputRef}
+                        className="w-full border rounded p-2 mt-2"
+                        placeholder="Type customer code or name..."
+                        value={customerSearch}
+                        onChange={e => setCustomerSearch(e.target.value)}
+                        onFocus={() => setHighlightedIndex(-1)}
+                        onKeyDown={e => {
+                          if (!customerOptions.length) return;
+                          if (e.key === "ArrowDown") {
+                            e.preventDefault();
+                            setHighlightedIndex(prev => (prev < customerOptions.length - 1 ? prev + 1 : 0));
+                          } else if (e.key === "ArrowUp") {
+                            e.preventDefault();
+                            setHighlightedIndex(prev => (prev > 0 ? prev - 1 : customerOptions.length - 1));
+                          } else if (e.key === "Enter") {
+                            e.preventDefault();
+                            if (highlightedIndex >= 0 && highlightedIndex < customerOptions.length) {
+                              const c = customerOptions[highlightedIndex];
+                              handleCustomerSelect(c.id);
+                            }
+                          } else if (e.key === "Escape") {
+                            setIsEditCustomerOpen(false);
+                          }
+                        }}
+                        autoComplete="off"
+                      />
+                      {customerOptions.length > 0 && (
+                        <div ref={dropdownRef} className="absolute z-10 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow">
+                          {isSearching ? (
+                            <div className="p-2 text-gray-500">Searching...</div>
+                          ) : (
+                            customerOptions.map((c, idx) => (
+                              <div
+                                key={c.id}
+                                className={`p-2 cursor-pointer flex items-center ${highlightedIndex === idx ? "bg-blue-100" : ""}`}
+                                onMouseDown={() => handleCustomerSelect(c.id)}
+                                onMouseEnter={() => setHighlightedIndex(idx)}
+                              >
+                                <span className="font-mono text-xs text-gray-600">{c.customer_code}</span>
+                                <span className="ml-2">{c.customer_name}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </DialogContent>
+                </Dialog>
                 {(currentSale?.vehicleDetails || vehicleDetails) && (
                   <div>
                     <span>Vehicle Details: </span>
@@ -842,93 +1151,57 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
             <div className="flex gap-2">
               <Button variant="outline" size="sm">Pdf</Button>
               <Button variant="outline" size="sm">Excel</Button>
-              <Button variant="outline" size="sm">Copy</Button>
-              <Button variant="outline" size="sm">Cust_Outstanding</Button>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <Button className="bg-blue-600 hover:bg-blue-700">More</Button>
-              <Button 
-                className="bg-blue-600 hover:bg-blue-700"
-                onClick={() => setIsPaymentDrawerOpen(true)}
+              <Button variant="outline" size="sm" onClick={handleShowOutstanding}>Cust_Outstanding</Button>
+              <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (saleItems.length === 0) {
+                    toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
+                    return;
+                  }
+                  if (currentSale?.invoiceNumber) {
+                    window.open(`/print/invoice/${currentSale.invoiceNumber}`, '_blank');
+                  } else {
+                    // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
+                    window.open(`/print/invoice/preview`, '_blank');
+                  }
+                }}
               >
-                Payment details
+                Print Invoice
               </Button>
-              <Button variant="outline" size="sm">Options ℹ</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (saleItems.length === 0) {
+                    toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
+                    return;
+                  }
+                  if (currentSale?.invoiceNumber) {
+                    window.open(`/print/delivery-note/${currentSale.invoiceNumber}`, '_blank');
+                  } else {
+                    // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
+                    window.open(`/print/delivery-note/preview`, '_blank');
+                  }
+                }}
+              >
+                Print Delivery Note
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">More</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={handleCustomerHistory}>
+                    Customer History
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          </div>
-
-          {/* Search */}
-          <div className="flex justify-end mb-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm">Search:</span>
-              <Input className="w-48" />
-            </div>
-          </div>
-
-          {/* Add Hold/Resume UI at the top of the page */}
-          <div className="flex items-center gap-4 mb-4">
-            <Button onClick={handleHoldInvoice} variant="outline">Hold Invoice</Button>
-          </div>
-
-          <div className="flex gap-2 mb-4">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (saleItems.length === 0) {
-                  toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
-                  return;
-                }
-                if (currentSale?.invoiceNumber) {
-                  window.open(`/print/invoice/${currentSale.invoiceNumber}`, '_blank');
-                } else {
-                  // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
-                  window.open(`/print/invoice/preview`, '_blank');
-                }
-              }}
-            >
-              Print Invoice
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (saleItems.length === 0) {
-                  toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
-                  return;
-                }
-                if (currentSale?.invoiceNumber) {
-                  window.open(`/print/delivery-note/${currentSale.invoiceNumber}`, '_blank');
-                } else {
-                  // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
-                  window.open(`/print/delivery-note/preview`, '_blank');
-                }
-              }}
-            >
-              Print Delivery Note
-            </Button>
-            {/* Checkbox for delivery note */}
-            <div className="flex items-center mt-2">
-              <input
-                type="checkbox"
-                id="printDeliveryNote"
-                checked={printDeliveryNote}
-                onChange={e => setPrintDeliveryNote(e.target.checked)}
-                className="mr-2"
-              />
-              <label htmlFor="printDeliveryNote" className="text-sm">Print Delivery Note also when saving</label>
-            </div>
-            <div className="flex items-center mt-2">
-              <input
-                type="checkbox"
-                id="printPackingList"
-                checked={printPackingList}
-                onChange={e => setPrintPackingList(e.target.checked)}
-                className="mr-2"
-              />
-              <label htmlFor="printPackingList" className="text-sm">Print Packing List also when saving</label>
-            </div>
+            {/* Removed More, Payment details, Options, and Search bar as requested */}
           </div>
         </div>
 
@@ -940,12 +1213,14 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="text-center">Time Added</TableHead>
+                    <TableHead className="text-center"></TableHead>
+
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">Unit price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
-                    <TableHead className="text-center">Notes</TableHead>
                     <TableHead className="text-center">Action</TableHead>
+                    <TableHead className="text-center">Added By</TableHead>
+                    <TableHead className="text-center">Time Added</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -953,8 +1228,11 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                   {saleItems.map((item, index) => (
                     editingIndex === index ? (
                       <TableRow key={index}>
+
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell className="text-center">{item.createdAt ? new Date(item.createdAt).toLocaleTimeString() : '-'}</TableCell>
+                        <TableCell></TableCell>
+
+                        <TableCell className="text-center">{item.notes}</TableCell>
                         <TableCell className="text-center">
                           <Input
                             type="number"
@@ -973,13 +1251,6 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                         <TableCell className="text-center">
                           £{((editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice)).toFixed(2)}
                         </TableCell>
-                        <TableCell>
-                          <Input
-                            placeholder="Add notes..."
-                            value={editItem?.notes ?? item.notes ?? ""}
-                            onChange={e => setEditItem({...item, notes: e.target.value, createdAt: item.createdAt})}
-                          />
-                        </TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" onClick={() => {
                             // Save changes
@@ -993,17 +1264,18 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                             setEditItem(null);
                           }}>Cancel</Button>
                         </TableCell>
+                        <TableCell className="text-center">
+                          {item.addedBy || "-"}
+                        </TableCell>
+                        <TableCell className="text-center">{item.createdAt ? new Date(item.createdAt).toLocaleTimeString() : '-'}</TableCell>
                       </TableRow>
                     ) : (
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell className="text-center">{item.createdAt ? new Date(item.createdAt).toLocaleTimeString() : '-'}</TableCell>
+                        <TableCell></TableCell>
                         <TableCell className="text-center">{item.quantity}</TableCell>
                         <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">
-                          {item.notes || 'N/A'}
-                        </TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" variant="outline" onClick={() => {
                             setEditingIndex(index);
@@ -1046,12 +1318,16 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                             Remove
                           </Button>
                         </TableCell>
+                        <TableCell className="text-center">
+                          {item.addedBy || "-"}
+                        </TableCell>
+                        <TableCell className="text-center">{item.createdAt ? new Date(item.createdAt).toLocaleTimeString() : '-'}</TableCell>
                       </TableRow>
                     )
                   ))}
                   {/* New item entry row */}
                   <TableRow style={{ overflow: "visible" }}>
-                    <TableCell colSpan={2} style={{ overflow: "visible", position: "relative" }}>
+                    <TableCell style={{ overflow: "visible", position: "relative" }}>
                       <div className="relative">
                         <Input
                           ref={productInputRef}
@@ -1083,7 +1359,7 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                               >
                                 <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
                                 <span className="ml-2">{p.description}</span>
-                                <span className="ml-auto text-xs text-gray-500">Stock: {getCurrentStock(p.id, selectedProductType)}</span>
+                                <span className="ml-auto text-xs text-gray-500">Stock: {getCurrentStock(p.id, (p as RegularProduct & { productType: 'regular' | 'non' }).productType)}</span>
                               </div>
                             ))}
                           </div>
@@ -1093,6 +1369,15 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                           <div className="text-xs text-gray-600 mt-1">Current Stock: {getCurrentStock(Number(selectedProductId), selectedProductType)}</div>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        className="text-center"
+                        placeholder="Add notes (optional)"
+                        value={itemNotes}
+                        onChange={(e) => setItemNotes(e.target.value)}
+                        style={{ minWidth: 120 }}
+                      />
                     </TableCell>
                     <TableCell>
                       <Input 
@@ -1114,14 +1399,6 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                     <TableCell className="text-center">
                       £{(itemQuantity * itemUnitPrice).toFixed(2)}
                     </TableCell>
-                    <TableCell>
-                      <Input 
-                        className="text-center" 
-                        placeholder="Add notes..."
-                        value={itemNotes}
-                        onChange={(e) => setItemNotes(e.target.value)}
-                      />
-                    </TableCell>
                     <TableCell className="text-center">
                       <Button 
                         size="sm" 
@@ -1133,6 +1410,8 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                         Add
                       </Button>
                     </TableCell>
+                    <TableCell />
+                    <TableCell />
                   </TableRow>
                 </TableBody>
               </Table>
@@ -1158,38 +1437,8 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                 </div>
                 <Button variant="outline" size="sm">▶</Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Total Summary */}
-        <div className="mt-6 flex justify-end">
-          <Card className="w-96">
-            <CardContent className="p-4">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Sub Total:</span>
-                  <span>£{subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Porterage:</span>
-                  <span>£{porterage.toFixed(2)} ✕</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>VAT @ %:</span>
-                  <span>£{vatAmount.toFixed(2)} ✕</span>
-                </div>
-                <div className="flex justify-between font-semibold border-t pt-2">
-                  <span>Total Amt:</span>
-                  <span>£{totalAmount.toFixed(2)}</span>
-                </div>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <Button variant="outline" size="sm" className="w-full" onClick={() => handleSaveInvoice(mailInvoice, printInvoice)} disabled={!!currentSale}>
-                  Save Invoice
-                </Button>
-              </div>
-              <div className="flex items-center gap-4 mt-2">
+              {/* Add checkboxes below navigation, left side, vertically */}
+              <div className="flex flex-col gap-2 mt-4">
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -1206,6 +1455,141 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
                   />
                   Print invoice automatically
                 </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={printDeliveryNote}
+                    onChange={e => setPrintDeliveryNote(e.target.checked)}
+                  />
+                  Print Delivery Note also when saving
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={printPackingList}
+                    onChange={e => setPrintPackingList(e.target.checked)}
+                  />
+                  Print Packing List also when saving
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={sendToWhatsapp}
+                    onChange={e => setSendToWhatsapp(e.target.checked)}
+                  />
+                  Send invoice to WhatsApp
+                </label>
+                {whatsappLoading && <div className="text-blue-600 text-xs">Sending to WhatsApp...</div>}
+                {whatsappSuccess && <div className="text-green-600 text-xs">Invoice sent to WhatsApp!</div>}
+                {whatsappError && <div className="text-red-600 text-xs">{whatsappError}</div>}
+                
+                {/* Save button for new invoices */}
+                <Button variant="outline" size="sm" className="self-start" onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)} disabled={!!currentSale}>
+                  Save Invoice
+                </Button>
+                
+                {/* Send to WhatsApp button for existing invoices */}
+                {currentSale && sendToWhatsapp && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="self-start bg-green-100 hover:bg-green-200" 
+                    onClick={async () => {
+                      if (selectedCustomer && selectedCustomer.telephone) {
+                        setWhatsappLoading(true);
+                        setWhatsappError(null);
+                        setWhatsappSuccess(false);
+                        try {
+                          const invoiceUrl = `${window.location.origin}/print/invoice/${currentSale.invoiceNumber}`;
+                          const payload = {
+                            phoneNumber: selectedCustomer.telephone,
+                            invoiceUrl,
+                            message: `Your invoice from Tropifruit UK Ltd.`
+                          };
+                          console.log('[WHATSAPP] Sending existing invoice to:', selectedCustomer.telephone);
+                          console.log('[WHATSAPP] Invoice URL:', invoiceUrl);
+                          console.log('[WHATSAPP] API request payload:', payload);
+                          const resp = await apiRequest("POST", "/api/send/whatsapp-invoice", payload);
+                          console.log('[WHATSAPP] API response:', resp);
+                          if (resp.messages) {
+                            setWhatsappSuccess(true);
+                          } else {
+                            setWhatsappError('Failed to send WhatsApp message.');
+                          }
+                        } catch (err: any) {
+                          console.error('[WHATSAPP] API error:', err);
+                          setWhatsappError('Failed to send WhatsApp message.');
+                        }
+                        setWhatsappLoading(false);
+                      } else {
+                        toast({ title: 'No customer phone', description: 'Customer phone number not found.' });
+                      }
+                    }}
+                    disabled={whatsappLoading}
+                  >
+                    {whatsappLoading ? 'Sending...' : 'Send to WhatsApp'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Total Summary */}
+        <div className="mt-6 flex justify-end">
+          <Card className="w-96">
+            <CardContent className="p-4">
+              <div className="space-y-2 text-sm">
+                {porterageDetails.withPorterage && applyPorterage && (
+                  <div className="flex justify-between items-center">
+                    <span>Porterage:</span>
+                    <div className="flex items-center gap-2">
+                      <span>£{porterage.toFixed(2)}</span>
+                      <button
+                        onClick={() => {
+                          setApplyPorterage(false);
+                          toast({ title: "Porterage Removed", description: "Porterage has been removed from this invoice." });
+                        }}
+                        className="text-red-500 hover:text-red-700 text-sm"
+                        title="Remove porterage"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {porterageDetails.withPorterage && !applyPorterage && (
+                  <div className="flex justify-between items-center text-gray-500">
+                    <span>Porterage:</span>
+                    <div className="flex items-center gap-2">
+                      <span>£0.00</span>
+                      <button
+                        onClick={() => {
+                          setApplyPorterage(true);
+                          toast({ title: "Porterage Re-enabled", description: "Porterage has been re-enabled for this invoice." });
+                        }}
+                        className="text-blue-500 hover:text-blue-700 text-sm"
+                        title="Re-enable porterage"
+                      >
+                        ↻
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span>Sub Total:</span>
+                  <span>£{subtotal.toFixed(2)}</span>
+                </div>
+                {taxDetails.withTax && (
+                  <div className="flex justify-between">
+                    <span>VAT ({taxDetails.taxPercentage}%):</span>
+                    <span>£{vatAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold border-t pt-2">
+                  <span>Total Amt:</span>
+                  <span>£{totalAmount.toFixed(2)}</span>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1216,6 +1600,23 @@ const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0
         open={isPaymentDrawerOpen}
         onOpenChange={setIsPaymentDrawerOpen}
       />
+      <Dialog open={showOutstanding} onOpenChange={setShowOutstanding}>
+        <DialogContent className="max-w-xl bg-blue-100">
+          <DialogTitle className="text-center font-bold text-lg bg-white rounded-t p-2 mb-4">CUSTOMER QUERY DETAILS</DialogTitle>
+          {outstandingLoading ? (
+            <div className="text-center py-8">Loading...</div>
+          ) : outstandingError ? (
+            <div className="text-center text-red-500 py-8">{outstandingError}</div>
+          ) : outstandingData ? (
+            <div className="space-y-2 text-base">
+              <div><span className="text-gray-700">Selected Customer :</span> <span className="font-bold">{outstandingData.customer.customer_name}</span></div>
+              <div><span className="text-gray-700">Last Payment received :</span> {outstandingData.lastPayment ? <span className="font-bold">£ {outstandingData.lastPayment.amount} <span className="text-xs text-gray-600">on ({format(new Date(outstandingData.lastPayment.paymentDate), 'dd/MM/yyyy')})</span></span> : <span className="text-gray-500">No payment found</span>}</div>
+              <div><span className="text-gray-700">Credit Limit :</span> <span className="font-bold">{outstandingData.customer.credit_limit ? `£ ${Number(outstandingData.customer.credit_limit).toLocaleString()}` : <span className="text-blue-700">Pls set credit limit in Customer Table</span>}</span></div>
+              <div className="bg-white rounded p-2"><span className="text-gray-700">Outstanding Payment :</span> <span className="font-bold text-blue-900 text-lg">£ {Number(outstandingData.outstanding).toLocaleString()}</span></div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

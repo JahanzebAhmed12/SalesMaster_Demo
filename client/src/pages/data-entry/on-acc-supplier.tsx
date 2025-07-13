@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import { CalendarIcon, Truck, Search, Info, Save, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -22,11 +23,15 @@ export default function OnAccSupplier() {
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const [recordsPerPage, setRecordsPerPage] = useState("10");
+  const [supplierInvoices, setSupplierInvoices] = useState<any[]>([]);
+  const [invoicePopoverOpen, setInvoicePopoverOpen] = useState(false);
+  const [invoiceQuery, setInvoiceQuery] = useState("");
   const [newPayment, setNewPayment] = useState({
     paymentDate: new Date(),
     amount: 0,
     paymentMode: "CASH",
-    remarks: ""
+    remarks: "",
+    purchaseInvoiceId: null as number | null,
   });
   const queryClient = useQueryClient();
 
@@ -69,7 +74,7 @@ export default function OnAccSupplier() {
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Payment added." });
-      setNewPayment({ paymentDate: new Date(), amount: 0, paymentMode: "CASH", remarks: "" });
+      setNewPayment({ paymentDate: new Date(), amount: 0, paymentMode: "CASH", remarks: "", purchaseInvoiceId: null });
       refetchPayments();
     },
     onError: (e: any) => {
@@ -82,7 +87,7 @@ export default function OnAccSupplier() {
     if (!newPayment.amount || newPayment.amount <= 0) return toast({ title: "Enter a valid amount" });
     const payload: InsertSupplierPayment = {
       supplierId: Number(selectedSupplier),
-      purchaseInvoiceId: null,
+      purchaseInvoiceId: newPayment.purchaseInvoiceId,
       amount: newPayment.amount,
       paymentMode: newPayment.paymentMode,
       paymentDate: format(newPayment.paymentDate, "yyyy-MM-dd"),
@@ -118,6 +123,24 @@ export default function OnAccSupplier() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessDateData?.business_date]);
+
+  // Fetch purchase invoices when supplier changes
+  useEffect(() => {
+    if (!selectedSupplier) {
+      setSupplierInvoices([]);
+      return;
+    }
+    const fetchInvoices = async () => {
+      const fromDate = "2000-01-01";
+      const toDate = "2100-01-01";
+      const invoices = await apiRequest(
+        "GET",
+        `/api/suppliers/${selectedSupplier}/outstanding_invoices?fromDate=${fromDate}&toDate=${toDate}`
+      );
+      setSupplierInvoices(invoices);
+    };
+    fetchInvoices();
+  }, [selectedSupplier]);
 
   return (
     <PageLayout title="On A/c Supplier Payments" breadcrumb="On A/c Supplier">
@@ -225,6 +248,64 @@ export default function OnAccSupplier() {
                 <Label>Remarks</Label>
                 <Input value={newPayment.remarks} onChange={e => setNewPayment(np => ({ ...np, remarks: e.target.value }))} />
               </div>
+              <div>
+                <Label>Invoice (optional)</Label>
+                <Popover open={invoicePopoverOpen} onOpenChange={setInvoicePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className="w-full justify-between"
+                      aria-expanded={invoicePopoverOpen}
+                    >
+                      {newPayment.purchaseInvoiceId
+                        ? supplierInvoices.find(inv => inv.id === newPayment.purchaseInvoiceId)?.invoiceNumber
+                        : "Type to search and select invoice"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[300px] p-0">
+                    <Command>
+                      <CommandInput
+                        placeholder="Search invoice number..."
+                        value={invoiceQuery}
+                        onValueChange={setInvoiceQuery}
+                      />
+                      <CommandList>
+                        <CommandItem
+                          key="none"
+                          value="none"
+                          onSelect={() => {
+                            setNewPayment(np => ({ ...np, purchaseInvoiceId: null }));
+                            setInvoicePopoverOpen(false);
+                            setInvoiceQuery("");
+                          }}
+                        >
+                          No Invoice
+                        </CommandItem>
+                        <CommandEmpty>No invoices found.</CommandEmpty>
+                        {supplierInvoices
+                          .filter(inv =>
+                            invoiceQuery === "" ||
+                            inv.invoiceNumber.toLowerCase().includes(invoiceQuery.toLowerCase())
+                          )
+                          .map(inv => (
+                            <CommandItem
+                              key={inv.id}
+                              value={inv.invoiceNumber}
+                              onSelect={() => {
+                                setNewPayment(np => ({ ...np, purchaseInvoiceId: inv.id }));
+                                setInvoicePopoverOpen(false);
+                                setInvoiceQuery("");
+                              }}
+                            >
+                              {inv.invoiceNumber}
+                            </CommandItem>
+                          ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <Button onClick={handleAddPayment} disabled={addPaymentMutation.isPending || !selectedSupplier} className="bg-green-600 hover:bg-green-700 flex gap-2">
                 {addPaymentMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} /> Save
               </Button>
@@ -268,6 +349,7 @@ export default function OnAccSupplier() {
                       <TableHead>Amount ({currency})</TableHead>
                       <TableHead>Payment Mode</TableHead>
                       <TableHead>Remarks</TableHead>
+                      <TableHead>Invoice No</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -277,6 +359,7 @@ export default function OnAccSupplier() {
                         <TableCell>{p.amount}</TableCell>
                         <TableCell>{p.paymentMode}</TableCell>
                         <TableCell>{p.remarks}</TableCell>
+                        <TableCell>{p.purchaseInvoiceId ? (supplierInvoices.find(inv => Number(inv.id) === Number(p.purchaseInvoiceId))?.invoiceNumber || p.purchaseInvoiceId) : '-'}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

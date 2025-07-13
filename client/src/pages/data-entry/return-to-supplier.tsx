@@ -598,32 +598,7 @@ export default function ReturnToSupplier() {
         </Card>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">{supplierReturns.length}</div>
-              <div className="text-sm text-gray-500">Total Returns</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">{totalQuantity}</div>
-              <div className="text-sm text-gray-500">Total Quantity</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">£{totalValue.toFixed(2)}</div>
-              <div className="text-sm text-gray-500">Total Value</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="text-2xl font-bold">{statusCounts.pending || 0}</div>
-              <div className="text-sm text-gray-500">Pending</div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Removed summary cards as per user request */}
 
         {/* Returns Table */}
         <Card>
@@ -659,6 +634,13 @@ export default function ReturnToSupplier() {
                       Add Return
                     </Button>
                   </DialogTrigger>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => window.location.href = "/dashboard"}
+                  >
+                    Close
+                  </Button>
                   <DialogContent className="max-w-2xl" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
                     <DialogHeader>
                       <DialogTitle>

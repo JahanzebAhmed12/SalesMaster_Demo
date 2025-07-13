@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Closing Stock Report</title>
+  <style>
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #888; padding: 8px; text-align: left; }
+    th { background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h2>Closing Stock Report for {{ date }}</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Product Code</th>
+        <th>Description</th>
+        <th>Type</th>
+        <th>Quantity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      <tr>
+        <td>{{ entry.product_code }}</td>
+        <td>{{ entry.description }}</td>
+        <td>{{ entry.product_type }}</td>
+        <td>{{ entry.quantity }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html> 

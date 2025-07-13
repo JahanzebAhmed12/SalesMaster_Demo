@@ -19,6 +19,8 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from 'wouter';
+import { parseISO, subDays } from 'date-fns';
 
 interface StatementData {
   id: number;
@@ -64,6 +66,9 @@ export default function SupplierHistory() {
   const [loading, setLoading] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string | number | null>>(new Set());
+  const [wouterLocation] = useLocation();
+  const [autoFetched, setAutoFetched] = useState(false);
+  const [urlParams, setUrlParams] = useState<{supplierId?: string, fromDate?: string, toDate?: string, autoSearch?: string} | null>(null);
 
   // Fetch suppliers for dropdown
   const { data: suppliers = [], isLoading: isLoadingSuppliers, error: suppliersError } = useQuery<Supplier[]>({
@@ -76,6 +81,59 @@ export default function SupplierHistory() {
     queryKey: ["/api/company-details"],
     queryFn: () => apiRequest("GET", "/api/company-details"),
   });
+
+  // Parse URL params once
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const supplierId = url.searchParams.get('supplierId');
+    const fromDate = url.searchParams.get('fromDate');
+    const toDate = url.searchParams.get('toDate');
+    const autoSearch = url.searchParams.get('autoSearch');
+    if (supplierId && fromDate && toDate && autoSearch === 'true') {
+      setUrlParams({ supplierId, fromDate, toDate, autoSearch });
+    }
+  }, [wouterLocation]);
+
+  // Set state from URL params when suppliers are loaded
+  useEffect(() => {
+    if (
+      !autoFetched &&
+      urlParams &&
+      suppliers.length > 0 &&
+      suppliers.some(s => s.id.toString() === urlParams.supplierId)
+    ) {
+      setSelectedSupplier(urlParams.supplierId!);
+      setFromDate(parseISO(urlParams.fromDate!));
+      setToDate(parseISO(urlParams.toDate!));
+      setStatementType('All');
+      setAutoFetched(true);
+    }
+  }, [urlParams, suppliers, autoFetched]);
+
+  // Trigger fetch when all state is set
+  useEffect(() => {
+    if (
+      autoFetched &&
+      selectedSupplier &&
+      fromDate &&
+      toDate &&
+      statementType === 'All'
+    ) {
+      (async () => {
+        setLoading(true);
+        try {
+          const res = await apiRequest(
+            "GET",
+            `/api/reports/supplier-statement?supplierId=${selectedSupplier}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=All`
+          );
+          setStatementData(res);
+        } catch (err) {
+          // handle error
+        }
+        setLoading(false);
+      })();
+    }
+  }, [autoFetched, selectedSupplier, fromDate, toDate, statementType]);
 
   // Calculate totals
   const totals = useMemo(() => ({
