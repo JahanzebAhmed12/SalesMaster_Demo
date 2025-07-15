@@ -1017,7 +1017,7 @@ function handleCustomerSelect(id: number) {
                         target="_blank"
                         rel="noopener noreferrer"
                       >
-                        <Button size="sm" variant="outline" className="ml-2">Print Invoice</Button>
+                        <Button size="sm" variant="outline" className="ml-2">Print Ticket</Button>
                       </a>
                       <a
                         href={`/print/dot-matrix-invoice/${currentSale.invoiceNumber}`}
@@ -1117,8 +1117,23 @@ function handleCustomerSelect(id: number) {
               </div>
             </div>
             
-            <div className="text-right text-sm text-gray-600">
-              <div>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...</div>
+            <div className="flex flex-col items-end">
+              <div className="text-right text-sm text-gray-600 mb-2">
+                <div>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...</div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">Options</Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={handleCustomerHistory}>
+                      Customer History
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
 
@@ -1152,54 +1167,8 @@ function handleCustomerSelect(id: number) {
               <Button variant="outline" size="sm">Pdf</Button>
               <Button variant="outline" size="sm">Excel</Button>
               <Button variant="outline" size="sm" onClick={handleShowOutstanding}>Cust_Outstanding</Button>
-              <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
               
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (saleItems.length === 0) {
-                    toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
-                    return;
-                  }
-                  if (currentSale?.invoiceNumber) {
-                    window.open(`/print/invoice/${currentSale.invoiceNumber}`, '_blank');
-                  } else {
-                    // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
-                    window.open(`/print/invoice/preview`, '_blank');
-                  }
-                }}
-              >
-                Print Invoice
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  if (saleItems.length === 0) {
-                    toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
-                    return;
-                  }
-                  if (currentSale?.invoiceNumber) {
-                    window.open(`/print/delivery-note/${currentSale.invoiceNumber}`, '_blank');
-                  } else {
-                    // For unsaved invoice, open a preview page with current data (implement preview logic if needed)
-                    window.open(`/print/delivery-note/preview`, '_blank');
-                  }
-                }}
-              >
-                Print Delivery Note
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">More</Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem onClick={handleCustomerHistory}>
-                    Customer History
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              
             </div>
             {/* Removed More, Payment details, Options, and Search bar as requested */}
           </div>
@@ -1439,13 +1408,30 @@ function handleCustomerSelect(id: number) {
               </div>
               {/* Add checkboxes below navigation, left side, vertically */}
               <div className="flex flex-col gap-2 mt-4">
+              <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={printPackingList}
+                    onChange={e => setPrintPackingList(e.target.checked)}
+                  />
+                  Picking Note
+                </label>
+                
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={sendToWhatsapp}
+                    onChange={e => setSendToWhatsapp(e.target.checked)}
+                  />
+                  Whatsapp Ticket
+                </label>
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={mailInvoice}
                     onChange={e => setMailInvoice(e.target.checked)}
                   />
-                  Mail invoice to customer
+                  Email Ticket
                 </label>
                 <label className="flex items-center gap-2">
                   <input
@@ -1453,40 +1439,38 @@ function handleCustomerSelect(id: number) {
                     checked={printInvoice}
                     onChange={e => setPrintInvoice(e.target.checked)}
                   />
-                  Print invoice automatically
+                  Print Ticket
                 </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={printDeliveryNote}
-                    onChange={e => setPrintDeliveryNote(e.target.checked)}
-                  />
-                  Print Delivery Note also when saving
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={printPackingList}
-                    onChange={e => setPrintPackingList(e.target.checked)}
-                  />
-                  Print Packing List also when saving
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={sendToWhatsapp}
-                    onChange={e => setSendToWhatsapp(e.target.checked)}
-                  />
-                  Send invoice to WhatsApp
-                </label>
+         
+                
                 {whatsappLoading && <div className="text-blue-600 text-xs">Sending to WhatsApp...</div>}
                 {whatsappSuccess && <div className="text-green-600 text-xs">Invoice sent to WhatsApp!</div>}
                 {whatsappError && <div className="text-red-600 text-xs">{whatsappError}</div>}
                 
                 {/* Save button for new invoices */}
-                <Button variant="outline" size="sm" className="self-start" onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)} disabled={!!currentSale}>
-                  Save Invoice
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)} disabled={!!currentSale}>
+                    Save Ticket
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (saleItems.length === 0) {
+                        toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
+                        return;
+                      }
+                      if (currentSale?.invoiceNumber) {
+                        window.open(`/print/invoice/${currentSale.invoiceNumber}`, '_blank');
+                      } else {
+                        window.open(`/print/invoice/preview`, '_blank');
+                      }
+                    }}
+                    disabled={saleItems.length === 0}
+                  >
+                    Print Ticket
+                  </Button>
+                </div>
                 
                 {/* Send to WhatsApp button for existing invoices */}
                 {currentSale && sendToWhatsapp && (
