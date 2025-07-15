@@ -28,7 +28,7 @@ interface SalesEntry {
   invoiceNo: string;
   customerName: string;
   vat: number;
-  credit: number;
+  amount: number;
   cash: number;
 }
 
@@ -49,7 +49,7 @@ export default function DailyBookSales() {
   });
 
   // Fetch sales data from backend
-  const { data: salesData = [], isLoading: isLoadingSales } = useQuery<SalesEntry[]>({
+  const { data: rawSalesData = [], isLoading: isLoadingSales } = useQuery<any[]>({
     queryKey: [
       "daily-book-sales",
       fromDate,
@@ -69,9 +69,15 @@ export default function DailyBookSales() {
       ),
   });
 
+  // Map 'account' to 'amount' for compatibility
+  const salesData: SalesEntry[] = rawSalesData.map((item: any) => ({
+    ...item,
+    amount: item.amount !== undefined ? item.amount : item.account !== undefined ? item.account : 0,
+  }));
+
   const totalBoxes = useMemo(() => salesData.reduce((sum, item) => sum + item.boxes, 0), [salesData]);
   const totalVAT = useMemo(() => salesData.reduce((sum, item) => sum + item.vat, 0), [salesData]);
-  const totalCredit = useMemo(() => salesData.reduce((sum, item) => sum + item.credit, 0), [salesData]);
+  const totalAmount = useMemo(() => salesData.reduce((sum, item) => sum + item.amount, 0), [salesData]);
   const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
 
   const tableRef = useRef<HTMLDivElement>(null);
@@ -129,7 +135,7 @@ export default function DailyBookSales() {
       'Invoice No': item.invoiceNo,
       'Customer Name': item.customerName,
       'VAT': item.vat,
-      'Credit': item.credit,
+      'Amount': item.amount,
       'Cash': item.cash
     })));
     const wb = XLSX.utils.book_new();
@@ -142,7 +148,7 @@ export default function DailyBookSales() {
     doc.text('Daily Book Sales', 14, 16);
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Credit', 'Cash'
+        'Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Amount', 'Cash'
       ]],
       body: salesData.map((item: SalesEntry) => [
         item.slNo,
@@ -152,7 +158,7 @@ export default function DailyBookSales() {
         item.invoiceNo,
         item.customerName,
         item.vat,
-        item.credit,
+        item.amount,
         item.cash
       ]),
       startY: 22,
@@ -161,7 +167,7 @@ export default function DailyBookSales() {
   };
 
   const handleCopy = () => {
-    const header = ['Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Credit', 'Cash'];
+    const header = ['Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Amount', 'Cash'];
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
       item.date,
@@ -170,7 +176,7 @@ export default function DailyBookSales() {
       item.invoiceNo,
       item.customerName,
       item.vat,
-      item.credit,
+      item.amount,
       item.cash
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
@@ -338,7 +344,7 @@ export default function DailyBookSales() {
             <div className="w-full overflow-x-auto" ref={tableRef}>
               <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
                 Date Range: {fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to {toDate ? format(toDate, 'yyyy-MM-dd') : '-'}<br />
-                Total Boxes: {totalBoxes} | Total VAT: £{totalVAT.toFixed(2)} | Total Credit: £{totalCredit.toFixed(2)} | Total Cash: £{totalCash.toFixed(2)}
+                Total Boxes: {totalBoxes} | Total VAT: £{totalVAT.toFixed(2)} | Total Amount: £{totalAmount.toFixed(2)} | Total Cash: £{totalCash.toFixed(2)}
               </div>
               <Table className="min-w-[900px]">
                 <TableHeader>
@@ -353,7 +359,7 @@ export default function DailyBookSales() {
                     <TableHead className="min-w-[120px]">Invoice No</TableHead>
                     <TableHead className="min-w-[150px]">Customer Name</TableHead>
                     <TableHead className="min-w-[80px]">VAT</TableHead>
-                    <TableHead className="min-w-[100px]">Credit</TableHead>
+                    <TableHead className="min-w-[100px]">Amount</TableHead>
                     <TableHead className="min-w-[100px]">Cash</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -377,9 +383,9 @@ export default function DailyBookSales() {
                         <TableCell className="text-blue-600">
                           {sale.customerName}
                         </TableCell>
-                        <TableCell className="text-right">£{sale.vat.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">£{sale.credit.toFixed(2)}</TableCell>
-                        <TableCell className="text-right">£{sale.cash.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{Number(sale.vat ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{Number(sale.amount ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{Number(sale.cash ?? 0).toFixed(2)}</TableCell>
                         <TableCell>
                           <Button
                             size="sm"
@@ -403,7 +409,7 @@ export default function DailyBookSales() {
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-right font-bold">£{totalVAT.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold">£{totalCredit.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>

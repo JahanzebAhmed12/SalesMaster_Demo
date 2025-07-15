@@ -6,7 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 // Public API request function (no authentication required)
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
   // const normalizedEndpoint = endpoint.replace(/^\/api/, '');
-  // const url = `http://localhost:5000${normalizedEndpoint}`;
+  // const url = `/api:5000${normalizedEndpoint}`;
 
   const url = `http://localhost:5000${endpoint}`;
   

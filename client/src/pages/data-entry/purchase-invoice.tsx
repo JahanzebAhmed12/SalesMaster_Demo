@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -27,6 +27,12 @@ export default function PurchaseInvoice() {
   const [purchaseId, setPurchaseId] = useState<string | null>(null);
   // Add state to track invoiceId from URL
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [productSearch, setProductSearch] = useState("");
+  const [productOptions, setProductOptions] = useState<any[]>([]);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const productInputRef = useRef<HTMLInputElement>(null);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
 
   // Extract purchaseId from URL on component mount and URL changes
   useEffect(() => {
@@ -69,6 +75,67 @@ export default function PurchaseInvoice() {
   const regularProducts = productsData?.regularProducts || [];
   const nonProducts = productsData?.nonProducts || [];
 
+  // Filter products by search
+  useEffect(() => {
+    let list = [
+      ...regularProducts.map((p: any) => ({ ...p, productType: 'regular' })),
+      ...nonProducts.map((p: any) => ({ ...p, productType: 'non' }))
+    ];
+    if (productSearch) {
+      const term = productSearch.toLowerCase();
+      list = list.filter(
+        (p: any) =>
+          p.productCode?.toLowerCase().includes(term) ||
+          p.description?.toLowerCase().includes(term)
+      );
+    }
+    setProductOptions(list);
+    setHighlightedProduct(-1);
+  }, [productSearch, regularProducts, nonProducts]);
+
+  // Keyboard navigation for product dropdown
+  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showProductDropdown || productOptions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev < productOptions.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev > 0 ? prev - 1 : productOptions.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedProduct >= 0 && highlightedProduct < productOptions.length) {
+        const p = productOptions[highlightedProduct];
+        setSelectedProductId(`${p.productType}-${p.id}`);
+        setProductSearch(`${p.productCode} - ${p.description}`);
+        setUnitPrice(Number(p.sellingPrice));
+        setShowProductDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowProductDropdown(false);
+    }
+  };
+
+  // Close dropdown on blur (with delay to allow click)
+  const handleProductBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    setTimeout(() => setShowProductDropdown(false), 100);
+  };
+
+  // When productId changes, update productSearch and unit price
+  useEffect(() => {
+    if (!selectedProductId) return;
+    let list = [
+      ...regularProducts.map((p: any) => ({ ...p, productType: 'regular' })),
+      ...nonProducts.map((p: any) => ({ ...p, productType: 'non' }))
+    ];
+    const [type, id] = selectedProductId.split('-');
+    const p = list.find((x: any) => x.id.toString() === id && x.productType === type);
+    if (p) {
+      setProductSearch(`${p.productCode} - ${p.description}`);
+      setUnitPrice(Number(p.sellingPrice));
+    }
+  }, [selectedProductId, regularProducts, nonProducts]);
+
   // Save invoice mutation
   const createInvoiceMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/purchase-invoices", data),
@@ -100,33 +167,6 @@ export default function PurchaseInvoice() {
       toast({ title: "Error", description: "Failed to delete invoice", variant: "destructive" });
     }
   });
-
-  // When product changes, set unit price
-  const handleProductChange = (value: string) => {
-    setSelectedProductId(value);
-    
-    // Check if it's a regular product (starts with 'regular-') or non-product
-    let product = null;
-    
-    if (value.startsWith('regular-')) {
-      const productId = value.replace('regular-', '');
-      product = regularProducts.find((p: any) => String(p.id) === productId);
-    } else if (value.startsWith('non-')) {
-      const productId = value.replace('non-', '');
-      product = nonProducts.find((p: any) => String(p.id) === productId);
-    }
-    
-    if (product) {
-      console.log('Selected product:', product);
-      console.log('Product sellingPrice:', product.sellingPrice, 'Type:', typeof product.sellingPrice);
-      // Convert to number and ensure it's not multiplied incorrectly
-      const price = Number(product.sellingPrice);
-      console.log('Converted price:', price);
-      setUnitPrice(price);
-    } else {
-      setUnitPrice(0);
-    }
-  };
 
   // Add product to invoice
   const handleAddProduct = () => {
@@ -189,6 +229,11 @@ export default function PurchaseInvoice() {
       purchaseId: purchaseId,
       remarks,
       items
+    }, {
+      onSuccess: () => {
+        // After saving, auto-navigate to purchase entry page
+        setLocation("/data-entry/purchase-entry");
+      }
     });
   };
 
@@ -307,42 +352,43 @@ export default function PurchaseInvoice() {
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
                 <div>
                   <Label htmlFor="product">Product</Label>
-                  <Select value={selectedProductId} onValueChange={handleProductChange}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select Product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regularProducts.length > 0 && (
-                        <>
-                          <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-50">
-                            Regular Products
+                  {/* Replace dropdown with search input and dropdown */}
+                  <div className="relative">
+                    <Input
+                      ref={productInputRef}
+                      placeholder="Type to search products..."
+                      value={productSearch}
+                      onChange={e => {
+                        setProductSearch(e.target.value);
+                        setShowProductDropdown(true);
+                        setSelectedProductId("");
+                      }}
+                      onFocus={() => setShowProductDropdown(!!productSearch)}
+                      onBlur={handleProductBlur}
+                      onKeyDown={handleProductKeyDown}
+                      autoComplete="off"
+                    />
+                    {showProductDropdown && productOptions.length > 0 && (
+                      <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow">
+                        {productOptions.map((p, idx) => (
+                          <div
+                            key={p.productType + '-' + p.id}
+                            className={`p-2 cursor-pointer flex items-center ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
+                            onMouseDown={() => {
+                              setSelectedProductId(`${p.productType}-${p.id}`);
+                              setProductSearch(`${p.productCode} - ${p.description}`);
+                              setUnitPrice(Number(p.sellingPrice));
+                              setShowProductDropdown(false);
+                            }}
+                            onMouseEnter={() => setHighlightedProduct(idx)}
+                          >
+                            <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
+                            <span className="ml-2">{p.description}</span>
                           </div>
-                          {regularProducts.map((p: any) => (
-                            <SelectItem key={`regular-${p.id}`} value={`regular-${p.id}`}>
-                              {p.description}
-                            </SelectItem>
-                          ))}
-                        </>
-                      )}
-                      {nonProducts.length > 0 && (
-                        <>
-                          <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-50">
-                            Non Products
-                          </div>
-                          {nonProducts.map((p: any) => (
-                            <SelectItem key={`non-${p.id}`} value={`non-${p.id}`}>
-                              {p.description}
-                            </SelectItem>
-                          ))}
-                        </>
-                      )}
-                      {regularProducts.length === 0 && nonProducts.length === 0 && (
-                        <SelectItem value="no-products" disabled>
-                          No products available
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="quantity">Quantity</Label>
@@ -425,9 +471,10 @@ export default function PurchaseInvoice() {
             )}
 
             {/* Save Button */}
-            <div className="flex justify-end pt-4 gap-2">
-              {invoiceId && (
-                <>
+            <div className="flex justify-between pt-4 gap-2">
+              {/* PDF Button on the left bottom */}
+              <div>
+                {invoiceId && (
                   <Button
                     variant="outline"
                     onClick={() => window.open(`/print/purchase-invoice/${invoiceId}`, "_blank")}
@@ -435,6 +482,10 @@ export default function PurchaseInvoice() {
                   >
                     PDF
                   </Button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {invoiceId && (
                   <Button
                     variant="destructive"
                     onClick={() => {
@@ -447,15 +498,15 @@ export default function PurchaseInvoice() {
                   >
                     {deleteInvoiceMutation.isPending ? "Deleting..." : "Delete"}
                   </Button>
-                </>
-              )}
-              <Button 
-                onClick={handleSaveInvoice}
-                disabled={createInvoiceMutation.isPending || items.length === 0}
-                className="px-8"
-              >
-                {createInvoiceMutation.isPending ? "Saving..." : "Save Purchase Invoice"}
-              </Button>
+                )}
+                <Button 
+                  onClick={handleSaveInvoice}
+                  disabled={createInvoiceMutation.isPending || items.length === 0}
+                  className="px-8"
+                >
+                  {createInvoiceMutation.isPending ? "Saving..." : "Save Purchase Invoice"}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

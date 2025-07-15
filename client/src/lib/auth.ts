@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 const API_URL = "http://localhost:5000";
-
+//const API_URL = "/api";
 interface User {
   id: number;
   username: string;

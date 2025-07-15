@@ -1433,15 +1433,7 @@ function handleCustomerSelect(id: number) {
                   />
                   Email Ticket
                 </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={printInvoice}
-                    onChange={e => setPrintInvoice(e.target.checked)}
-                  />
-                  Print Ticket
-                </label>
-         
+                {/* Print Ticket checkbox removed */}
                 
                 {whatsappLoading && <div className="text-blue-600 text-xs">Sending to WhatsApp...</div>}
                 {whatsappSuccess && <div className="text-green-600 text-xs">Invoice sent to WhatsApp!</div>}
@@ -1456,15 +1448,16 @@ function handleCustomerSelect(id: number) {
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      if (!customerId) {
+                        toast({ title: 'Validation Error', description: 'Please select a customer first.', variant: 'destructive' });
+                        return;
+                      }
                       if (saleItems.length === 0) {
                         toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
                         return;
                       }
-                      if (currentSale?.invoiceNumber) {
-                        window.open(`/print/invoice/${currentSale.invoiceNumber}`, '_blank');
-                      } else {
-                        window.open(`/print/invoice/preview`, '_blank');
-                      }
+                      // Save and print invoice (previously only printed)
+                      handleSaveInvoiceWithWhatsapp(mailInvoice, true);
                     }}
                     disabled={saleItems.length === 0}
                   >

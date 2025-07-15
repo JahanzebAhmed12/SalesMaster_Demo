@@ -356,7 +356,7 @@ def create_sale():
                         stock_updates.append({
                             'product_id': item_data.product_id,
                             'product_type': 'regular',
-                            'quantity_change': -item_data.quantity,
+                            'quantity_change': -item_data.quantity if item_data.quantity > 0 else abs(item_data.quantity),
                             'remarks': f"Sale invoice: {next_invoice}"
                         })
                     elif item_data.non_product_id:
@@ -7630,5 +7630,4 @@ def send_whatsapp_invoice():
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         print('[WHATSAPP] ERROR making request to Meta API:', str(e), flush=True)
-        return jsonify({'error': f'Failed to send WhatsApp message: {str(e)}'}), 500
-# ... existing code ...
+        return jsonify({'error': f'Failed to send WhatsApp message: {str(e)}'}), 500# ... existing code ...
