@@ -554,10 +554,10 @@ function handleCustomerSelect(id: number) {
   };
 
   const handleAddItem = () => {
-    if (!selectedProductId || itemQuantity <= 0 || itemUnitPrice <= 0) {
+    if (!selectedProductId || itemUnitPrice <= 0) {
       toast({
         title: "Validation Error",
-        description: "Please select a product, and enter valid quantity and unit price.",
+        description: "Please select a product, and enter valid unit price.",
         variant: "destructive",
       });
       return;

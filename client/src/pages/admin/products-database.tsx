@@ -143,6 +143,7 @@ export default function Products() {
       queryClient.invalidateQueries({ queryKey: ["products"] });
       setActiveView("view");
       toast({ title: "Success", description: "Product created successfully." });
+      window.location.reload()
     },
     onError: (error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });

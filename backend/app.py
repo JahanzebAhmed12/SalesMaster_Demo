@@ -363,7 +363,7 @@ def create_sale():
                         stock_updates.append({
                             'product_id': item_data.non_product_id,
                             'product_type': 'non',
-                            'quantity_change': -item_data.quantity,
+                            'quantity_change': -item_data.quantity if item_data.quantity > 0 else abs(item_data.quantity),
                             'remarks': f"Sale invoice: {next_invoice}"
                         })
             
