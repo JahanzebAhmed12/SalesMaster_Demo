@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
-import { Plus, Clock } from "lucide-react";
+import { Plus, Clock, Trash2 } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Customer } from "@shared/schema";
 import React from "react";
@@ -145,6 +145,12 @@ console.log(heldInvoices, "see held invoices")
     setLocation(`/data-entry/sales-invoice?heldInvoiceId=${holdId}`);
   };
 
+  const handleDeleteHeldInvoice = (holdId: string) => {
+    const updated = heldInvoices.filter(inv => inv.holdId !== holdId);
+    setHeldInvoices(updated);
+    localStorage.setItem('heldInvoices', JSON.stringify(updated));
+  };
+
   // Fetch customers (needed for customer name display in held invoices)
   const { data: customers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -192,6 +198,7 @@ console.log(heldInvoices, "see held invoices")
                     <TableHead>Items</TableHead>
                     <TableHead>Held Time</TableHead>
                     <TableHead>Action</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -207,6 +214,11 @@ console.log(heldInvoices, "see held invoices")
                           className="bg-blue-600 hover:bg-blue-700"
                         >
                           Resume
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="ghost" onClick={() => handleDeleteHeldInvoice(invoice.holdId)} title="Delete Held Invoice">
+                          <Trash2 size={16} />
                         </Button>
                       </TableCell>
                     </TableRow>
