@@ -554,10 +554,10 @@ function handleCustomerSelect(id: number) {
   };
 
   const handleAddItem = () => {
-    if (!selectedProductId || itemQuantity <= 0 || itemUnitPrice <= 0) {
+    if (!selectedProductId || itemUnitPrice <= 0) {
       toast({
         title: "Validation Error",
-        description: "Please select a product, and enter valid quantity and unit price.",
+        description: "Please select a product, and enter valid unit price.",
         variant: "destructive",
       });
       return;
@@ -977,6 +977,52 @@ function handleCustomerSelect(id: number) {
     });
   }, []);
 
+  // --- AUTO-HOLD INVOICE ON NAVIGATION OR TAB CLOSE OR UNMOUNT ---
+  useEffect(() => {
+    // Helper to check if invoice should be held
+    function shouldAutoHold() {
+      // Only auto-hold if there are products and invoice is not saved (no currentSale)
+      return saleItems.length > 0 && !currentSale;
+    }
+
+    // Function to hold the invoice
+    function autoHoldInvoice() {
+      if (!shouldAutoHold()) return;
+      const holdId = Date.now().toString();
+      const invoiceData = {
+        customerId,
+        vehicleDetails,
+        gateNumber,
+        notes,
+        saleItems,
+        holdId,
+        holdTime: new Date().toISOString(),
+      };
+      // Save to localStorage (append to heldInvoices)
+      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
+      held.push(invoiceData);
+      localStorage.setItem('heldInvoices', JSON.stringify(held));
+      // Optionally clear current draft
+      localStorage.removeItem('currentInvoiceDraft');
+    }
+
+    // Handle browser/tab close
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (shouldAutoHold()) {
+        autoHoldInvoice();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Cleanup: auto-hold on unmount (navigation away)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Auto-hold on component unmount (SPA navigation)
+      if (shouldAutoHold()) {
+        autoHoldInvoice();
+      }
+    };
+  }, [saleItems, currentSale, customerId, vehicleDetails, gateNumber, notes]);
 
 
   if (isCreatingSale) {
