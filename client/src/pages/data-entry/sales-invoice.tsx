@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useRef as useRefReact } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,7 @@ interface SaleWithUser extends Sale {
 }
 
 const SalesInvoice = () => {
+  const skipAutoHoldRef = useRef(false);
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
   const [locationStr, setLocation] = useLocation();
   const { toast } = useToast();
@@ -267,6 +268,23 @@ function handleCustomerSelect(id: number) {
     }
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invoiceNumber = params.get("invoiceNumber");
+    if (invoiceNumber) {
+      apiRequest("GET", `/api/sales/${invoiceNumber}`)
+        .then((data) => {
+          setCurrentSale(data);
+          setSaleItems(data.items || []);
+          setCustomerId(data.customerId?.toString() || "");
+          setVehicleDetails(data.vehicleDetails || "");
+          setGateNumber(data.gateNumber || "");
+          setNotes(data.notes || "");
+          // Set other fields as needed
+        });
+    }
+  }, []);
+
   // Fetch current stock
   const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
     queryKey: ["currentStock"],
@@ -449,6 +467,14 @@ function handleCustomerSelect(id: number) {
         .finally(() => clearTimeout(timeoutId));
     },
     onSuccess: (response) => {
+      // Clear held invoice draft after successful save
+      localStorage.removeItem('currentInvoiceDraft');
+      // Optionally, also remove from heldInvoices if present
+      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
+      if (held.length > 0 && response?.invoiceNumber) {
+        const updated = held.filter((inv: any) => inv.invoiceNumber !== response.invoiceNumber);
+        localStorage.setItem('heldInvoices', JSON.stringify(updated));
+      }
       console.log("=== CREATE SALE SUCCESS ===");
       console.log("Response:", response);
       console.log("createdBy:", response.createdBy);
@@ -493,6 +519,14 @@ function handleCustomerSelect(id: number) {
   const updateSaleMutation = useMutation<SaleWithUser, Error, BackendSalePayload>({
     mutationFn: (payload) => apiRequest("PUT", `/api/sales/${currentSale?.id}`, payload),
     onSuccess: (data) => {
+      // Clear held invoice draft after successful update
+      localStorage.removeItem('currentInvoiceDraft');
+      // Optionally, also remove from heldInvoices if present
+      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
+      if (held.length > 0 && data?.invoiceNumber) {
+        const updated = held.filter((inv: any) => inv.invoiceNumber !== data.invoiceNumber);
+        localStorage.setItem('heldInvoices', JSON.stringify(updated));
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/sales", data.invoiceNumber] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
       queryClient.invalidateQueries({ queryKey: ["currentStock"] });
@@ -693,6 +727,7 @@ function handleCustomerSelect(id: number) {
     }
 
     setIsCreatingSale(true);
+    skipAutoHoldRef.current = true; // Prevent auto-hold on navigation
     const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
     const payload: Partial<BackendSalePayload & { mailInvoice?: boolean }> = {
       customer_id: parseInt(customerId),
@@ -982,7 +1017,7 @@ function handleCustomerSelect(id: number) {
     // Helper to check if invoice should be held
     function shouldAutoHold() {
       // Only auto-hold if there are products and invoice is not saved (no currentSale)
-      return saleItems.length > 0 && !currentSale;
+      return saleItems.length > 0 && !currentSale && !skipAutoHoldRef.current;
     }
 
     // Function to hold the invoice
@@ -1487,9 +1522,44 @@ function handleCustomerSelect(id: number) {
                 
                 {/* Save button for new invoices */}
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)} disabled={!!currentSale}>
-                    Save Ticket
-                  </Button>
+                  {/* Show Save for new, Update for edit */}
+                  {!currentSale && (
+                    <Button variant="outline" size="sm" onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)}>
+                      Save Ticket
+                    </Button>
+                  )}
+                  {currentSale && (
+                    <Button variant="outline" size="sm" onClick={() => {
+                      // Build update payload and call updateSaleMutation
+                      const updatedSalePayload = {
+                        invoice_number: currentSale.invoiceNumber,
+                        customer_id: parseInt(customerId),
+                        customer_type: currentSale.customerType,
+                        payment_status: currentSale.paymentStatus,
+                        subtotal: saleItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                        porterage: currentSale.porterage,
+                        vat_rate: currentSale.vatRate,
+                        vat_amount: currentSale.vatAmount,
+                        total_amount: saleItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                        vehicle_details: vehicleDetails || null,
+                        gate_number: gateNumber || null,
+                        notes: notes || null,
+                        status: currentSale.status,
+                        items: saleItems.map(item => ({
+                          product_id: item.productId,
+                          non_product_id: item.nonProductId,
+                          quantity: item.quantity,
+                          unit_price: item.unitPrice,
+                          total_price: item.totalPrice,
+                          notes: item.notes,
+                          created_at: item.createdAt,
+                        })),
+                      };
+                      updateSaleMutation.mutate(updatedSalePayload);
+                    }}>
+                      Update Ticket
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"

@@ -33,9 +33,11 @@ interface SalesEntry {
 }
 
 export default function DailyBookSales() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
-  const [paymentType, setPaymentType] = useState("Cash");
+  // Set default state to today and all filters
+  const today = new Date();
+  const [fromDate, setFromDate] = useState<Date>(today);
+  const [toDate, setToDate] = useState<Date>(today);
+  const [paymentType, setPaymentType] = useState("All");
   const [userFilter, setUserFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [user, setUser] = useState<any>(null);
@@ -134,7 +136,6 @@ export default function DailyBookSales() {
       'Boxes': item.boxes,
       'Invoice No': item.invoiceNo,
       'Customer Name': item.customerName,
-      'VAT': item.vat,
       'Amount': item.amount,
       'Cash': item.cash
     })));
@@ -145,10 +146,13 @@ export default function DailyBookSales() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
+    doc.setFontSize(14);
     doc.text('Daily Book Sales', 14, 16);
+    doc.setFontSize(10);
+    // Table first
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Amount', 'Cash'
+        'Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'Amount', 'Cash'
       ]],
       body: salesData.map((item: SalesEntry) => [
         item.slNo,
@@ -157,17 +161,44 @@ export default function DailyBookSales() {
         item.boxes,
         item.invoiceNo,
         item.customerName,
-        item.vat,
         item.amount,
         item.cash
       ]),
       startY: 22,
     });
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || 22;
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, 18, 'F');
+    doc.setTextColor(40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Date Range:`, 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to ${toDate ? format(toDate, 'yyyy-MM-dd') : '-'}`, 46, finalY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total Boxes:`, 90, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${totalBoxes}`, 115, finalY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total VAT:`, 140, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`£${totalVAT.toFixed(2)}`, 165, finalY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total Amount:`, 16, finalY + 22);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`£${totalAmount.toFixed(2)}`, 46, finalY + 22);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total Cash:`, 90, finalY + 22);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`£${totalCash.toFixed(2)}`, 115, finalY + 22);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
     doc.save('daily-book-sales.pdf');
   };
 
   const handleCopy = () => {
-    const header = ['Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'VAT', 'Amount', 'Cash'];
+    const header = ['Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'Amount', 'Cash'];
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
       item.date,
@@ -175,7 +206,6 @@ export default function DailyBookSales() {
       item.boxes,
       item.invoiceNo,
       item.customerName,
-      item.vat,
       item.amount,
       item.cash
     ]);
@@ -342,25 +372,19 @@ export default function DailyBookSales() {
           </CardHeader>
           <CardContent>
             <div className="w-full overflow-x-auto" ref={tableRef}>
-              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
-                Date Range: {fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to {toDate ? format(toDate, 'yyyy-MM-dd') : '-'}<br />
-                Total Boxes: {totalBoxes} | Total VAT: £{totalVAT.toFixed(2)} | Total Amount: £{totalAmount.toFixed(2)} | Total Cash: £{totalCash.toFixed(2)}
-              </div>
               <Table className="min-w-[900px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12 min-w-[48px]">
                       <input type="checkbox" className="rounded" />
                     </TableHead>
-                    <TableHead className="min-w-[60px]">Sl.No</TableHead>
                     <TableHead className="min-w-[100px]">Date</TableHead>
                     <TableHead className="min-w-[120px]">Salesman</TableHead>
                     <TableHead className="min-w-[80px]"># Boxes</TableHead>
                     <TableHead className="min-w-[120px]">Invoice No</TableHead>
                     <TableHead className="min-w-[150px]">Customer Name</TableHead>
-                    <TableHead className="min-w-[80px]">VAT</TableHead>
-                    <TableHead className="min-w-[100px]">Amount</TableHead>
-                    <TableHead className="min-w-[100px]">Cash</TableHead>
+                    <TableHead className="min-w-[100px] text-right">Amount</TableHead>
+                    <TableHead className="min-w-[100px] text-right">Cash</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -375,15 +399,17 @@ export default function DailyBookSales() {
                         <TableCell>
                           <input type="checkbox" className="rounded" />
                         </TableCell>
-                        <TableCell>{sale.slNo}</TableCell>
                         <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
                         <TableCell>{sale.salesman}</TableCell>
                         <TableCell className="text-center">{sale.boxes}</TableCell>
-                        <TableCell>{sale.invoiceNo}</TableCell>
+                        <TableCell>{/* Invoice No as link */}
+                          <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
+                            {sale.invoiceNo}
+                          </Button>
+                        </TableCell>
                         <TableCell className="text-blue-600">
                           {sale.customerName}
                         </TableCell>
-                        <TableCell className="text-right">£{Number(sale.vat ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">£{Number(sale.amount ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">£{Number(sale.cash ?? 0).toFixed(2)}</TableCell>
                         <TableCell>
@@ -402,18 +428,29 @@ export default function DailyBookSales() {
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
-                    <TableCell></TableCell>
                     <TableCell className="font-bold">{salesData.length} Items</TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-center font-bold">{totalBoxes}</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
-                    <TableCell className="text-right font-bold">£{totalVAT.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
+              {/* Summary moved below table, styled for print and screen */}
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2">
+                <div className="flex items-center font-semibold mr-2">Date Range:</div>
+                <div className="mr-6">{fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to {toDate ? format(toDate, 'yyyy-MM-dd') : '-'}</div>
+                <div className="flex items-center font-semibold mr-2">Total Boxes:</div>
+                <div className="mr-6">{totalBoxes}</div>
+                <div className="flex items-center font-semibold mr-2">Total VAT:</div>
+                <div className="mr-6">£{totalVAT.toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Total Amount:</div>
+                <div className="mr-6">£{totalAmount.toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Total Cash:</div>
+                <div>£{totalCash.toFixed(2)}</div>
+              </div>
             </div>
             
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">

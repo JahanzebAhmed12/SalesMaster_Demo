@@ -3390,6 +3390,9 @@ def stock_check_report():
         from_dt = datetime.strptime(from_date, "%Y-%m-%d")
         to_dt = datetime.strptime(to_date, "%Y-%m-%d")
         
+        from_dt = from_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
         print(f"[DEBUG] Parsed dates - from_dt: {from_dt}, to_dt: {to_dt}")
         
         # Get all products (regular and non)
@@ -7630,4 +7633,4 @@ def send_whatsapp_invoice():
         return jsonify(resp.json()), resp.status_code
     except Exception as e:
         print('[WHATSAPP] ERROR making request to Meta API:', str(e), flush=True)
-        return jsonify({'error': f'Failed to send WhatsApp message: {str(e)}'}), 500# ... existing code ...
+        return jsonify({'error': f'Failed to send WhatsApp message: {str(e)}'}), 500

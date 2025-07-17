@@ -65,6 +65,11 @@ export default function ProfitLoss() {
   // Calculate total profit/loss
   const totalProfit = profitData.reduce((sum: number, item: ProfitLossItem) => sum + (Number(item.totProfit) || 0), 0) || 0;
 
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   useEffect(() => {
     apiRequest("GET", "/api/settings").then(settings => setShowProfit(settings.showProfit !== false));
   }, []);
@@ -108,7 +113,12 @@ export default function ProfitLoss() {
   const handlePDF = () => {
     if (!profitData) return;
     const doc = new jsPDF();
-    doc.text('Profit/Loss Report', 14, 14);
+    // Add company name at the top
+    const companyName = companyDetails?.companyName || 'Company Name';
+    doc.setFontSize(16);
+    doc.text(companyName, 14, 12);
+    doc.setFontSize(14);
+    doc.text('Profit/Loss Report', 14, 22);
     autoTable(doc, {
       head: [[
         'Sl No',
@@ -134,8 +144,46 @@ export default function ProfitLoss() {
         item.totProfit,
         item.percentProfit
       ]),
-      startY: 24
+      startY: 32
     });
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || 32;
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, showProfit ? 24 : 16, 'F');
+    doc.setTextColor(40);
+    // Left column
+    doc.setFont('helvetica', 'bold');
+    doc.text('Date Range:', 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 50, finalY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total Quantity:', 16, finalY + 20);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${Number(totals.totalQuantity).toFixed(2)}`, 50, finalY + 20);
+    if (showProfit) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Total Profit:', 16, finalY + 26);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`£${Number(totals.totProfit).toFixed(2)}`, 50, finalY + 26);
+    }
+    // Right column (move Total Purchase to second row)
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total Sales:', 115, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`£${Number(totals.totSales).toFixed(2)}`, 160, finalY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total Purchase:', 115, finalY + 20);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`£${Number(totals.totPurchase).toFixed(2)}`, 160, finalY + 20);
+    if (showProfit) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Percent Profit:', 115, finalY + 26);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`${Number(overallProfitPercent).toFixed(2)} %`, 160, finalY + 26);
+    }
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
     doc.save('profit-loss-report.pdf');
   };
 
@@ -246,9 +294,9 @@ export default function ProfitLoss() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto" ref={tableRef}>
-              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
-                Date Range: {format(fromDate, "yyyy-MM-dd")} to {format(toDate, "yyyy-MM-dd")}<br />
-                {showProfit && <>Total Profit: £{Number(totalProfit).toFixed(2)}</>}
+              {/* Company name heading for print */}
+              <div className="text-xl font-bold text-center mb-2 print:block hidden">
+                {companyDetails?.companyName || 'Company Name'}
               </div>
               {isLoading ? (
                 <div className="text-center py-8">Loading...</div>
@@ -301,6 +349,21 @@ export default function ProfitLoss() {
                   </TableBody>
                 </Table>
               )}
+              {/* Summary below table, styled for print and screen */}
+              <div className="flex flex-wrap items-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2">
+                <div className="flex items-center font-semibold mr-2">Date Range:</div>
+                <div className="mr-6">{format(fromDate, 'yyyy-MM-dd')} to {format(toDate, 'yyyy-MM-dd')}</div>
+                <div className="flex items-center font-semibold mr-2">Total Quantity:</div>
+                <div className="mr-6">{totals.totalQuantity.toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Total Purchase:</div>
+                <div className="mr-6">£{Number(totals.totPurchase).toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Total Sales:</div>
+                <div className="mr-6">£{Number(totals.totSales).toFixed(2)}</div>
+                {showProfit && <><div className="flex items-center font-semibold mr-2">Total Profit:</div>
+                <div className="mr-6">£{Number(totals.totProfit).toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Percent Profit:</div>
+                <div>{Number(overallProfitPercent).toFixed(2)} %</div></>}
+              </div>
               <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
                 <div>Showing {profitData.length} entries</div>
                 <div className="flex items-center gap-4">

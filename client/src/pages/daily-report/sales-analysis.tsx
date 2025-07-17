@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,14 +15,14 @@ interface SalesData {
   slNo: number;
   date: string;
   purchase: number;
-  creditSales: number;
+  accountSales: number;
   cashSales: number;
   totalSales: number;
 }
 
 interface SalesSummary {
   totalPurchase: number;
-  totalCredit: number;
+  totalAccount: number;
   totalCash: number;
   totalSales: number;
 }
@@ -33,8 +33,9 @@ interface SalesAnalysisResponse {
 }
 
 export default function SalesAnalysis() {
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const today = new Date();
+  const [fromDate, setFromDate] = useState<Date>(today);
+  const [toDate, setToDate] = useState<Date>(today);
   const [searchTerm, setSearchTerm] = useState("");
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -43,16 +44,25 @@ export default function SalesAnalysis() {
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
-  const { data, isLoading, isError } = useQuery<SalesAnalysisResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<SalesAnalysisResponse | undefined>({
     queryKey: ["/api/reports/sales-analysis", fromDate, toDate, searchTerm],
     queryFn: () =>
-      apiRequest("GET", `/api/reports/sales-analysis?fromDate=${fromDate}&toDate=${toDate}&search=${encodeURIComponent(searchTerm)}`),
+      apiRequest(
+        "GET",
+        `/api/reports/sales-analysis?fromDate=${fromDate.toISOString().slice(0, 10)}&toDate=${toDate.toISOString().slice(0, 10)}&search=${encodeURIComponent(searchTerm)}`
+      ),
     enabled: !!fromDate && !!toDate,
   });
 
   const handleSearch = () => {
-    // Query will automatically refetch due to dependency on fromDate, toDate, searchTerm
+    refetch();
   };
+
+  // Auto-search on mount
+  useEffect(() => {
+    handleSearch();
+    // eslint-disable-next-line
+  }, []);
 
   const handleExport = (format: string) => {
     console.log(`Exporting to ${format}`);
@@ -80,12 +90,12 @@ export default function SalesAnalysis() {
       'Sl.No': row.slNo,
       'Date': row.date,
       'Purchase': row.purchase,
-      'Credit Sales': row.creditSales,
+      'Account Sales': row.accountSales,
       'Cash Sales': row.cashSales,
       'Total Sales': row.totalSales
     })));
     // Add totals row
-    XLSX.utils.sheet_add_aoa(ws, [[null, 'Total:', data.summary.totalPurchase, data.summary.totalCredit, data.summary.totalCash, data.summary.totalSales]], { origin: -1 });
+    XLSX.utils.sheet_add_aoa(ws, [[null, 'Total:', data.summary.totalPurchase, data.summary.totalAccount, data.summary.totalCash, data.summary.totalSales]], { origin: -1 });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sales Analysis');
     XLSX.writeFile(wb, 'sales-analysis.xlsx');
@@ -100,7 +110,7 @@ export default function SalesAnalysis() {
         'Sl.No',
         'Date',
         'Purchase',
-        'Credit Sales',
+        'Account Sales',
         'Cash Sales',
         'Total Sales'
       ]],
@@ -109,11 +119,11 @@ export default function SalesAnalysis() {
           row.slNo,
           row.date,
           row.purchase,
-          row.creditSales,
+          row.accountSales,
           row.cashSales,
           row.totalSales
         ]),
-        [null, 'Total:', data.summary.totalPurchase, data.summary.totalCredit, data.summary.totalCash, data.summary.totalSales]
+        [null, 'Total:', data.summary.totalPurchase, data.summary.totalAccount, data.summary.totalCash, data.summary.totalSales]
       ],
       startY: 24
     });
@@ -122,23 +132,23 @@ export default function SalesAnalysis() {
 
   const handleCopy = () => {
     if (!data?.sales) return;
-    let text = 'Sl.No\tDate\tPurchase\tCredit Sales\tCash Sales\tTotal Sales\n';
+    let text = 'Sl.No\tDate\tPurchase\tAccount Sales\tCash Sales\tTotal Sales\n';
     text += data.sales.map((row: SalesData) => [
       row.slNo,
       row.date,
       row.purchase,
-      row.creditSales,
+      row.accountSales,
       row.cashSales,
       row.totalSales
     ].join('\t')).join('\n');
-    text += `\n\tTotal:\t${data.summary.totalPurchase}\t${data.summary.totalCredit}\t${data.summary.totalCash}\t${data.summary.totalSales}`;
+    text += `\n\tTotal:\t${data.summary.totalPurchase}\t${data.summary.totalAccount}\t${data.summary.totalCash}\t${data.summary.totalSales}`;
     navigator.clipboard.writeText(text);
   };
 
   const salesRows = data?.sales || [];
   const totals = data?.summary || {
     totalPurchase: 0,
-    totalCredit: 0,
+    totalAccount: 0,
     totalCash: 0,
     totalSales: 0,
   };
@@ -166,8 +176,8 @@ export default function SalesAnalysis() {
             <Input
               id="fromDate"
               type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+              value={fromDate.toISOString().slice(0, 10)}
+              onChange={(e) => setFromDate(new Date(e.target.value))}
               className="w-40"
             />
           </div>
@@ -176,8 +186,8 @@ export default function SalesAnalysis() {
             <Input
               id="toDate"
               type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
+              value={toDate.toISOString().slice(0, 10)}
+              onChange={(e) => setToDate(new Date(e.target.value))}
               className="w-40"
             />
           </div>
@@ -211,7 +221,7 @@ export default function SalesAnalysis() {
                     <th className="text-left p-3 border-r">Sl.No</th>
                     <th className="text-left p-3 border-r">Date</th>
                     <th className="text-left p-3 border-r">Purchase</th>
-                    <th className="text-left p-3 border-r">Credit Sales</th>
+                    <th className="text-left p-3 border-r">Account Sales</th>
                     <th className="text-left p-3 border-r">Cash Sales</th>
                     <th className="text-left p-3">Total Sales</th>
                   </tr>
@@ -221,19 +231,19 @@ export default function SalesAnalysis() {
                     <tr key={index} className="border-b hover:bg-gray-50">
                       <td className="p-3 border-r">{row.slNo}</td>
                       <td className="p-3 border-r">{row.date}</td>
-                      <td className="p-3 border-r text-right">{row.purchase.toLocaleString()}</td>
-                      <td className="p-3 border-r text-right">{row.creditSales.toLocaleString()}</td>
-                      <td className="p-3 border-r text-right">{row.cashSales.toLocaleString()}</td>
-                      <td className="p-3 text-right">{row.totalSales.toLocaleString()}</td>
+                      <td className="p-3 border-r text-right">{typeof row.purchase === 'number' ? row.purchase.toLocaleString() : row.purchase || ''}</td>
+                      <td className="p-3 border-r text-right">{typeof row.accountSales === 'number' ? row.accountSales.toLocaleString() : row.accountSales || ''}</td>
+                      <td className="p-3 border-r text-right">{typeof row.cashSales === 'number' ? row.cashSales.toLocaleString() : row.cashSales || ''}</td>
+                      <td className="p-3 text-right">{typeof row.totalSales === 'number' ? row.totalSales.toLocaleString() : row.totalSales || ''}</td>
                     </tr>
                   ))}
                   <tr className="border-b bg-gray-100 font-semibold">
                     <td className="p-3 border-r"></td>
                     <td className="p-3 border-r">Total:</td>
-                    <td className="p-3 border-r text-right">{totals.totalPurchase.toLocaleString()}</td>
-                    <td className="p-3 border-r text-right">{totals.totalCredit.toLocaleString()}</td>
-                    <td className="p-3 border-r text-right">{totals.totalCash.toLocaleString()}</td>
-                    <td className="p-3 text-right">{totals.totalSales.toLocaleString()}</td>
+                    <td className="p-3 border-r text-right">{typeof totals.totalPurchase === 'number' ? totals.totalPurchase.toLocaleString() : totals.totalPurchase || ''}</td>
+                    <td className="p-3 border-r text-right">{typeof totals.totalAccount === 'number' ? totals.totalAccount.toLocaleString() : totals.totalAccount || ''}</td>
+                    <td className="p-3 border-r text-right">{typeof totals.totalCash === 'number' ? totals.totalCash.toLocaleString() : totals.totalCash || ''}</td>
+                    <td className="p-3 text-right">{typeof totals.totalSales === 'number' ? totals.totalSales.toLocaleString() : totals.totalSales || ''}</td>
                   </tr>
                 </tbody>
               </table>

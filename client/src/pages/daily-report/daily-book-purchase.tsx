@@ -151,6 +151,22 @@ export default function DailyBookPurchase() {
       ]),
       startY: 22,
     });
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || 22;
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, 12, 'F');
+    doc.setTextColor(40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Date Range:`, 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${filters.fromDate || '-'} to ${filters.toDate || '-'}`, 46, finalY + 14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Total Invoice Amount:`, 90, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`£${totalInvoiceAmount.toFixed(2)}`, 140, finalY + 14);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
     doc.save('daily-book-purchase.pdf');
   };
 
@@ -264,18 +280,7 @@ export default function DailyBookPurchase() {
                 </Button>
               </div>
               
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <Eye size={16} />
-                  Full View
-                </Button>
-                <Button className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white">
-                  Newstock Full
-                </Button>
-                <Button className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white">
-                  Sage
-                </Button>
-              </div>
+              <div></div>
             </div>
           </CardContent>
         </Card>
@@ -311,10 +316,6 @@ export default function DailyBookPurchase() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto" ref={tableRef}>
-              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
-                Date Range: {filters.fromDate || '-'} to {filters.toDate || '-'}<br />
-                Total Invoice Amount: £{totalInvoiceAmount.toFixed(2)}
-              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -360,6 +361,13 @@ export default function DailyBookPurchase() {
                   </TableRow>
                 </TableBody>
               </Table>
+            </div>
+            {/* Summary below table, styled for print and screen */}
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2">
+              <div className="flex items-center font-semibold mr-2">Date Range:</div>
+              <div className="mr-6">{filters.fromDate || '-'} to {filters.toDate || '-'}</div>
+              <div className="flex items-center font-semibold mr-2">Total Invoice Amount:</div>
+              <div>£{totalInvoiceAmount.toFixed(2)}</div>
             </div>
           </CardContent>
         </Card>

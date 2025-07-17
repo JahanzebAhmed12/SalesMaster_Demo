@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,13 +52,20 @@ export default function ProductPurchaseReport() {
   } = useQuery<PurchaseItem[]>({
     queryKey: ["/api/reports/product-purchase", filters],
     queryFn: () => {
+      const fromDateStr = filters.fromDate ? `${filters.fromDate} 00:00:00` : '';
+      const toDateStr = filters.toDate ? `${filters.toDate} 23:59:59` : '';
       const params = new URLSearchParams();
-      if (filters.fromDate) params.append("fromDate", filters.fromDate);
-      if (filters.toDate) params.append("toDate", filters.toDate);
+      if (fromDateStr) params.append("fromDate", fromDateStr);
+      if (toDateStr) params.append("toDate", toDateStr);
       if (filters.showAll) params.append("showAll", filters.showAll);
       if (filters.search) params.append("search", filters.search);
       return apiRequest("GET", `/api/reports/product-purchase?${params.toString()}`);
     },
+  });
+
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
   const handleSearch = () => {
@@ -82,16 +89,14 @@ export default function ProductPurchaseReport() {
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;} .summary-print{margin:24px 0 24px 0;padding:12px 24px;font-weight:500;text-align:center;}</style>');
       printWindow.document.write('</head><body>');
+      printWindow.document.write(`<div style='text-align:center;font-size:20px;font-weight:bold;margin-bottom:8px;'>${companyDetails?.companyName || 'Company Name'}</div>`);
       printWindow.document.write(printContents);
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
+      setTimeout(() => printWindow.print(), 500);
     }
   };
 
@@ -110,7 +115,14 @@ export default function ProductPurchaseReport() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    doc.text('Product Purchase Report', 14, 16);
+    // Company name centered
+    const companyName = companyDetails?.companyName || 'Company Name';
+    doc.setFontSize(16);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const textWidth = doc.getTextWidth(companyName);
+    doc.text(companyName, (pageWidth - textWidth) / 2, 16);
+    doc.setFontSize(14);
+    doc.text('Product Purchase Report', (pageWidth - doc.getTextWidth('Product Purchase Report')) / 2, 26);
     autoTable(doc, {
       head: [[
         'Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'
@@ -122,8 +134,14 @@ export default function ProductPurchaseReport() {
         item.avgPrice,
         item.total
       ]),
-      startY: 22,
+      startY: 36,
     });
+    // Add summary below table, centered
+    const finalY = (doc as any).lastAutoTable.finalY || 36;
+    doc.setFontSize(12);
+    const summaryText = `Date Range: ${filters.fromDate || '-'} to ${filters.toDate || '-'}   |   Total Quantity: ${totalQuantity}   |   Total Amount: £${totalAmount.toFixed(2)}`;
+    const summaryWidth = doc.getTextWidth(summaryText);
+    doc.text(summaryText, (pageWidth - summaryWidth) / 2, finalY + 14);
     doc.save('product-purchase-report.pdf');
   };
 
@@ -140,6 +158,14 @@ export default function ProductPurchaseReport() {
     navigator.clipboard.writeText(tsv);
     alert('Table copied to clipboard!');
   };
+
+  // Auto search when both dates are selected
+  useEffect(() => {
+    if (fromDate && toDate) {
+      handleSearch();
+    }
+    // eslint-disable-next-line
+  }, [fromDate, toDate]);
 
   if (isError) {
     toast({
@@ -246,14 +272,6 @@ export default function ProductPurchaseReport() {
                   {isLoading ? "Searching..." : "Search"}
                 </Button>
                 <Button
-                  className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
-                  style={{ minWidth: 70 }}
-                  onClick={handlePrint}
-                >
-                  <Printer size={16} />
-                  Print
-                </Button>
-                <Button
                   className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white"
                   style={{ minWidth: 160 }}
                 >
@@ -278,15 +296,14 @@ export default function ProductPurchaseReport() {
                 <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                   <Copy size={14} /> Copy
                 </Button>
+                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                  <Printer size={14} /> Print
+                </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto" ref={tableRef}>
-              <div style={{ margin: '24px 0 24px 0', padding: '12px 24px', fontWeight: 500, background: '#f8fafc', borderRadius: 8 }}>
-                Date Range: {filters.fromDate || '-'} to {filters.toDate || '-'}<br />
-                Total Quantity: {totalQuantity} | Total Amount: £{totalAmount.toFixed(2)}
-              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -332,6 +349,12 @@ export default function ProductPurchaseReport() {
                   </TableRow>
                 </TableBody>
               </Table>
+              {/* Summary below table, styled for print and screen */}
+              <div className="summary-print flex flex-wrap items-center justify-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2 text-center">
+                <div>Date Range: {filters.fromDate || '-'} to {filters.toDate || '-'}</div>
+                <div>Total Quantity: {totalQuantity}</div>
+                <div>Total Amount: £{totalAmount.toFixed(2)}</div>
+              </div>
             </div>
             
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
