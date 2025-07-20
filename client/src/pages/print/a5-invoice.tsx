@@ -5,6 +5,8 @@ import logo from '@/public/printlogo.png';
 
 // Public API request function (no authentication required)
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
+  // const normalizedEndpoint = endpoint.replace(/^\/api/, '');
+  // const url = `/api:5000${normalizedEndpoint}`;
   const url = `http://localhost:5000${endpoint}`;
   
   const response = await fetch(url, {
