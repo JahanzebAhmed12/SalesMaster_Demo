@@ -425,6 +425,8 @@ class SystemSettings(db.Model):
     # Porterage configuration
     with_porterage = db.Column(db.Boolean, nullable=False, default=False)
     porterage_charge = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    # Invoice print format
+    invoice_print_format = db.Column(db.String(20), nullable=False, default='A4')
 
     def to_dict(self):
         return {
@@ -441,7 +443,8 @@ class SystemSettings(db.Model):
             'deliveryAcknowledgement': self.delivery_acknowledgement,
             'showProfit': self.show_profit,
             'withPorterage': self.with_porterage,
-            'porterageCharge': float(self.porterage_charge) if self.porterage_charge else 0
+            'porterageCharge': float(self.porterage_charge) if self.porterage_charge else 0,
+            'invoicePrintFormat': self.invoice_print_format
         }
 
 class Attendance(db.Model):
@@ -955,9 +958,12 @@ class BankingEntry(db.Model):
     payment_type = db.Column(db.String(20), nullable=False)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     paying_number = db.Column(db.String(50))  # New field
-    bag_number = db.Column(db.String(50))     # New field
+    bag_number = db.Column(db.String(50))     # New field - kept for backward compatibility
     cheque_number = db.Column(db.String(50))  # New field
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relationship to bag numbers
+    bag_numbers = db.relationship('BankingBagNumber', backref='banking_entry', cascade='all, delete-orphan')
 
     def to_dict(self):
         return {
@@ -967,8 +973,24 @@ class BankingEntry(db.Model):
             'paymentType': self.payment_type,
             'amount': float(self.amount),
             'payingNumber': self.paying_number,
-            'bagNumber': self.bag_number,
+            'bagNumber': self.bag_number,  # Keep for backward compatibility
+            'bagNumbers': [bag.bag_number for bag in self.bag_numbers],  # New field for multiple bag numbers
             'chequeNumber': self.cheque_number,
+            'createdAt': self.created_at.isoformat() if self.created_at else None
+        }
+
+class BankingBagNumber(db.Model):
+    __tablename__ = 'banking_bag_numbers'
+    id = db.Column(db.Integer, primary_key=True)
+    banking_entry_id = db.Column(db.Integer, db.ForeignKey('banking_entries.id'), nullable=False)
+    bag_number = db.Column(db.String(50), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'bankingEntryId': self.banking_entry_id,
+            'bagNumber': self.bag_number,
             'createdAt': self.created_at.isoformat() if self.created_at else None
         }
 

@@ -13,12 +13,14 @@ import PageLayout from '@/components/common/page-layout';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useLocation } from "wouter";
 
 interface SalesReportData {
   id: number;
   slNo: number;
   sageCode: string;
   productDescription: string;
+  product_code: string;
   quantity: number;
   avgPrice: number;
   total: number;
@@ -36,11 +38,9 @@ export default function ProductSalesReport() {
   const { data: salesData = [], isLoading } = useQuery({
     queryKey: ['product-sales-report', formattedFromDate, formattedToDate],
     queryFn: async () => {
-      const fromDateStr = formattedFromDate ? `${formattedFromDate} 00:00:00` : '';
-      const toDateStr = formattedToDate ? `${formattedToDate} 23:59:59` : '';
       const queryParams = new URLSearchParams({
-        fromDate: fromDateStr,
-        toDate: toDateStr
+        fromDate: formattedFromDate || '',
+        toDate: formattedToDate || ''
       }).toString();
       const response = await apiRequest(
         'GET',
@@ -61,6 +61,7 @@ export default function ProductSalesReport() {
   const totalAmount = salesData.reduce((sum: number, item: SalesReportData) => sum + item.total, 0);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const [, navigate] = useLocation();
 
   // Set default dates to today for both fromDate and toDate
   useEffect(() => {
@@ -248,6 +249,7 @@ export default function ProductSalesReport() {
                 <Button 
                   variant="outline" 
                   className="flex items-center justify-center gap-2"
+                  onClick={() => navigate('/daily-report/compare-with-purchase')}
                 >
                   <BarChart3 className="h-4 w-4" />
                   <span className="truncate">Compare with Purchase</span>
@@ -300,7 +302,12 @@ export default function ProductSalesReport() {
                     salesData.map((item: SalesReportData) => (
                       <TableRow key={item.id}>
                         <TableCell className="px-6">
-                          <div className="break-words">{item.productDescription}</div>
+                          <button
+                            className="text-blue-600 underline cursor-pointer"
+                            onClick={() => navigate(`/product-sales-history/${item.id}`)}
+                          >
+                            {item.productDescription}
+                          </button>
                         </TableCell>
                         <TableCell className="text-right px-4">{item.quantity}</TableCell>
                         <TableCell className="text-right px-4">${item.avgPrice.toFixed(2)}</TableCell>

@@ -106,6 +106,7 @@ const AdminFunctions = () => {
   const [invoiceFooter, setInvoiceFooter] = useState("");
   const [savingInvoiceFooter, setSavingInvoiceFooter] = useState(false);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
+  const [savingInvoicePrintFormat, setSavingInvoicePrintFormat] = useState(false);
   const [deliveryNoteWithPrice, setDeliveryNoteWithPrice] = useState(false);
   const [savingDeliveryNoteWithPrice, setSavingDeliveryNoteWithPrice] = useState(false);
   const [showNameOnDeliveryNote, setShowNameOnDeliveryNote] = useState("name");
@@ -297,6 +298,7 @@ const AdminFunctions = () => {
   useEffect(() => {
     apiRequest("GET", "/api/settings").then((settings) => {
       setInvoiceFooter(settings.invoiceFooter || "");
+      setInvoicePrintFormat(settings.invoicePrintFormat || "A4");
     });
   }, []);
 
@@ -304,6 +306,12 @@ const AdminFunctions = () => {
     setSavingInvoiceFooter(true);
     await apiRequest("PUT", "/api/settings", { invoiceFooter });
     setSavingInvoiceFooter(false);
+  };
+
+  const saveInvoicePrintFormat = async () => {
+    setSavingInvoicePrintFormat(true);
+    await apiRequest("PUT", "/api/settings", { invoicePrintFormat });
+    setSavingInvoicePrintFormat(false);
   };
 
   useEffect(() => {
@@ -804,6 +812,44 @@ const AdminFunctions = () => {
                 </div>
                 <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveInvoiceFooter} disabled={savingInvoiceFooter}>
                   {savingInvoiceFooter ? "Saving..." : "Save"}
+                </Button>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {/* Invoice Print Format */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Invoice Print Format
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="mb-4">
+                  <div className="text-sm font-medium mb-2">Select Invoice Print Format</div>
+                  <RadioGroup value={invoicePrintFormat} onValueChange={setInvoicePrintFormat}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="A4" id="a4-format" />
+                      <Label htmlFor="a4-format" className="text-sm">A4</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="A5" id="a5-format" />
+                      <Label htmlFor="a5-format" className="text-sm">A5</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="DOTMATRIX" id="dotmatrix-format" />
+                      <Label htmlFor="dotmatrix-format" className="text-sm">Dot Matrix</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+                <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveInvoicePrintFormat} disabled={savingInvoicePrintFormat}>
+                  {savingInvoicePrintFormat ? "Saving..." : "Save"}
                 </Button>
               </CardContent>
             </CollapsibleContent>

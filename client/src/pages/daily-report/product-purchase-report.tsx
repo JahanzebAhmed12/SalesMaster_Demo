@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ interface PurchaseItem {
 
 export default function ProductPurchaseReport() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [showAll, setShowAll] = useState("All");
@@ -159,6 +161,10 @@ export default function ProductPurchaseReport() {
     alert('Table copied to clipboard!');
   };
 
+  const handleProductClick = (productId: number) => {
+    setLocation(`/daily-report/product-purchase-history/${productId}`);
+  };
+
   // Auto search when both dates are selected
   useEffect(() => {
     if (fromDate && toDate) {
@@ -273,7 +279,9 @@ export default function ProductPurchaseReport() {
                 </Button>
                 <Button
                   className="bg-cyan-500 hover:bg-cyan-600 flex items-center gap-2 text-white"
-                  style={{ minWidth: 160 }}
+                  style={{ minWidth: 160 }} onClick={() => {
+                    setLocation(`/daily-report/compare-with-purchase`);
+                  }}
                 >
                   Compare with Purchase
                 </Button>
@@ -331,7 +339,14 @@ export default function ProductPurchaseReport() {
                     purchaseData.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>{item.slNo}</TableCell>
-                        <TableCell>{item.productDescription}</TableCell>
+                        <TableCell>
+                          <button
+                            onClick={() => handleProductClick(item.id)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer text-left"
+                          >
+                            {item.productDescription}
+                          </button>
+                        </TableCell>
                         <TableCell className="text-center">{item.quantity}</TableCell>
                         <TableCell className="text-center">£{item.avgPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.total.toFixed(2)}</TableCell>

@@ -234,6 +234,7 @@ class SystemSettingsSchema(BaseModel):
     show_profit: bool = Field(default=True)
     with_porterage: bool = Field(default=False)
     porterage_charge: float = Field(default=0)
+    invoice_print_format: str = Field(default="A4")
 
 class AttendanceSchema(BaseModel):
     employee_id: int

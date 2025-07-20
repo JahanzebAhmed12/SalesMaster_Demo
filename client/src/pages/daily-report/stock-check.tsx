@@ -398,9 +398,6 @@ export default function StockCheck() {
                         <TableCell>
                           <div>
                             {item.productDescription}
-                            <div className="text-xs text-gray-500">
-                              {item.productType === 'regular' ? 'Regular Product' : 'Non-Product'}
-                            </div>
                           </div>
                         </TableCell>
                         <TableCell className="text-center">{item.os}</TableCell>

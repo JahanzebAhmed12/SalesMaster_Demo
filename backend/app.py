@@ -1,4 +1,3 @@
-from flask import Flask, request, jsonify, session, current_app, send_file
 from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
@@ -8,6 +7,8 @@ from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
     SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema
 )
+from models import Company, Supplier, PurchaseInvoice, PurchaseInvoiceItem, Purchase
+from flask import Flask, request, jsonify, session, current_app, send_file
 from users import verify_password, create_admin_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
@@ -1441,6 +1442,8 @@ def update_settings():
             data['with_porterage'] = data.pop('withPorterage')
         if 'porterageCharge' in data:
             data['porterage_charge'] = data.pop('porterageCharge')
+        if 'invoicePrintFormat' in data:
+            data['invoice_print_format'] = data.pop('invoicePrintFormat')
         # Print all incoming fields and types
         for k, v in data.items():
             print(f'[DEBUG] Field: {k}, Value: {v}, Type: {type(v)}')
@@ -2105,6 +2108,9 @@ def create_payment():
                 if payment_data.payment_mode.lower() == "cash" and sale.customer_type != "cash":
                     print(f"[DEBUG] Updating sale {sale.id} customer_type from {sale.customer_type} to cash due to full cash payment.")
                     sale.customer_type = "cash"
+                elif payment_data.payment_mode.lower() in ["bank", "bank transfer"] and sale.customer_type != "bank":
+                    print(f"[DEBUG] Updating sale {sale.id} customer_type from {sale.customer_type} to bank due to full bank payment.")
+                    sale.customer_type = "bank"
             else:
                 sale.payment_status = "partial"
                 sale.paid_amount = new_paid
@@ -2264,6 +2270,8 @@ def daily_book_sales():
         cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
         # For account sales, show the invoice amount as account; for others, 0
         account_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'account' else 0
+        bank_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() in ['bank', 'bank transfer'])
+        bank_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank' else 0
         result.append({
             'id': sale.id,
             'slNo': idx,
@@ -2272,10 +2280,234 @@ def daily_book_sales():
             'boxes': boxes,
             'invoiceNo': sale.invoice_number,
             'customerName': sale.customer.customer_name if sale.customer else '',
+            'customerId': sale.customer_id,
             'vat': float(sale.vat_amount),
-            'account': account_amount,
+            'amount': account_amount,
             'cash': cash_paid,
+            'bank': bank_paid,
+            'bankAmount': bank_amount
         })
+    return jsonify(result)
+
+@app.route('/api/reports/daily-sales-full-view', methods=['GET'])
+@jwt_required()
+def daily_sales_full_view():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    search = request.args.get('search', '')
+    
+    query = Sale.query.join(Customer).join(User, Sale.created_by == User.id)
+    
+    # Filter by date range
+    if from_date and to_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Sale.date >= from_dt, Sale.date < to_dt)
+    elif from_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        query = query.filter(Sale.date >= from_dt)
+    elif to_date:
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Sale.date < to_dt)
+    
+    # Filter by search
+    if search:
+        query = query.filter(
+            (Sale.invoice_number.ilike(f'%{search}%')) |
+            (Customer.customer_name.ilike(f'%{search}%'))
+        )
+    
+    # Only show finalized sales
+    query = query.filter(Sale.status == 'finalized')
+    sales = query.order_by(Sale.date.desc()).all()
+    
+    result = []
+    for sale in sales:
+        # Add invoice header row
+        result.append({
+            'date': sale.date.strftime('%Y-%m-%d'),
+            'invoiceNo': sale.invoice_number,
+            'customerName': sale.customer.customer_name if sale.customer else '',
+            'productName': '',
+            'quantity': 0,
+            'unitPrice': 0,
+            'total': 0,
+            'isInvoiceHeader': True
+        })
+        
+        # Add product rows for this invoice
+        invoice_total = 0
+        for item in sale.items:
+            # Get product name
+            product_name = ''
+            if item.product_id:
+                product = RegularProduct.query.get(item.product_id)
+                if product:
+                    product_name = product.description
+            elif item.non_product_id:
+                product = NonProduct.query.get(item.non_product_id)
+                if product:
+                    product_name = product.description
+            invoice_total += float(item.total_price) if item.total_price else 0
+
+            # Check if this row matches search (if search is provided)
+            matches_search = True
+            if search:
+                matches_search = (
+                    sale.invoice_number.lower().includes(search.lower()) or
+                    (sale.customer.customer_name if sale.customer else '').lower().includes(search.lower()) or
+                    product_name.lower().includes(search.lower())
+                )
+            
+            if matches_search:
+                result.append({
+                    'date': sale.date.strftime('%Y-%m-%d'),
+                    'invoiceNo': sale.invoice_number,
+                    'customerName': sale.customer.customer_name if sale.customer else '',
+                    'productName': product_name,
+                    'quantity': item.quantity,
+                    'unitPrice': float(item.unit_price) if item.unit_price else 0,
+                    'total': float(item.total_price) if item.total_price else 0,
+                    'isInvoiceHeader': False,
+                    'isInvoiceTotal' : False
+                })
+        result.append({
+        'date': '',
+        'invoiceNo': '',
+        'customerName': '',
+        'productName': 'Total',
+        'quantity': '',
+        'unitPrice': '',
+        'total': invoice_total,
+        'isInvoiceHeader': False,
+        'isInvoiceTotal': True
+    })
+    
+    return jsonify(result)
+
+@app.route('/api/reports/product-sales-history', methods=['GET'])
+@jwt_required()
+def product_sales_history():
+    product_id = request.args.get('productId', type=int)
+    customer_id = request.args.get('customerId', type=int)
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    if not product_id or not from_date or not to_date:
+        return jsonify({'error': 'Missing required parameters'}), 400
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+    # Find all sale items for this product (and customer if provided) in the date range
+    query = SaleItem.query.join(Sale).filter(
+        Sale.status == 'finalized',
+        Sale.date >= from_dt,
+        Sale.date < to_dt,
+        ((SaleItem.product_id == product_id) | (SaleItem.non_product_id == product_id))
+    )
+    if customer_id:
+        query = query.filter(Sale.customer_id == customer_id)
+    items = query.all()
+    result = []
+    for item in items:
+        sale = item.sale
+        customer = sale.customer
+        # Get product name
+        if item.product_id:
+            product = RegularProduct.query.get(item.product_id)
+            product_name = product.description if product else ''
+        elif item.non_product_id:
+            product = NonProduct.query.get(item.non_product_id)
+            product_name = product.description if product else ''
+        else:
+            product_name = ''
+        result.append({
+            'invoiceNo': sale.invoice_number,
+            'date': sale.date.strftime('%Y-%m-%d') if sale.date else '',
+            'customerName': customer.customer_name if customer else '',
+            'productDescription': product_name,
+            'quantity': item.quantity,
+            'unitPrice': float(item.unit_price),
+            'total': float(item.total_price)
+        })
+    return jsonify(result)
+
+@app.route('/api/reports/product-purchase-full-view', methods=['GET'])
+@jwt_required()
+def product_purchase_full_view():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    search = request.args.get('search', '')
+
+    query = Purchase.query.join(Supplier)
+    if from_date and to_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Purchase.date >= from_dt, Purchase.date < to_dt)
+    elif from_date:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        query = query.filter(Purchase.date >= from_dt)
+    elif to_date:
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Purchase.date < to_dt)
+    if search:
+        query = query.filter(
+            (Supplier.supplier_name.ilike(f'%{search}%')) |
+            (Purchase.id.ilike(f'%{search}%'))
+        )
+    purchases = query.order_by(Purchase.date.desc()).all()
+    result = []
+    for purchase in purchases:
+        # Get all invoices for this purchase
+        invoices = PurchaseInvoice.query.filter_by(purchase_id=purchase.id).all()
+        for invoice in invoices:
+            # Header row for each supplier/invoice
+            result.append({
+                'date': invoice.date.strftime('%Y-%m-%d') if invoice.date else '',
+                'supplier': purchase.supplier.supplier_name if purchase.supplier else '',
+                'invNo': invoice.id,
+                'awb': '',  # Add AWB if you have it
+                'product': '',
+                'quantity': 0,
+                'unitPrice': 0,
+                'sellingPrice': 0,
+                'total': 0,
+                'isHeader': True,
+                'isTotal': False
+            })
+            total_qty = 0
+            total_amt = 0
+            for item in invoice.items:
+                qty = item.quantity or 0
+                price = float(item.unit_price) if item.unit_price else 0
+                total = float(item.total_price) if item.total_price else 0
+                total_qty += qty
+                total_amt += total
+                result.append({
+                    'date': '',
+                    'supplier': '',
+                    'invNo': invoice.id,
+                    'awb': '',  # Add AWB if you have it
+                    'product': item.product_name if hasattr(item, 'product_name') else '',
+                    'quantity': qty,
+                    'unitPrice': price,
+                    'sellingPrice': 0,  # Add if you have it
+                    'total': total,
+                    'isHeader': False,
+                    'isTotal': False
+                })
+            # Total row for this invoice
+            result.append({
+                'date': '',
+                'supplier': '',
+                'invNo': '',
+                'awb': '',
+                'product': f'{total_qty} Items',
+                'quantity': total_qty,
+                'unitPrice': '',
+                'sellingPrice': '',
+                'total': total_amt,
+                'isHeader': False,
+                'isTotal': True
+            })
     return jsonify(result)
 
 @app.route('/api/reports/customer-statement', methods=['GET'])
@@ -2451,10 +2683,27 @@ def product_sales_report():
 
     # Filter by date range
     if from_date:
-        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        # Handle both date-only and datetime formats
+        try:
+            from_dt = datetime.strptime(from_date, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            try:
+                from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            except ValueError:
+                # If still fails, try to extract just the date part
+                from_dt = datetime.strptime(from_date.split()[0], "%Y-%m-%d")
         query = query.filter(Sale.date >= from_dt)
     if to_date:
-        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        # Handle both date-only and datetime formats
+        try:
+            to_dt = datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            try:
+                to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            except ValueError:
+                # If still fails, try to extract just the date part
+                to_dt = datetime.strptime(to_date.split()[0], "%Y-%m-%d")
+        to_dt = to_dt + timedelta(days=1)
         query = query.filter(Sale.date < to_dt)
     # Only finalized sales
     query = query.filter(Sale.status == 'finalized')
@@ -2483,8 +2732,9 @@ def product_sales_report():
     # Format for frontend
     sales_data = []
     for idx, row in enumerate(results, 1):
+        product_id = row.product_id  if row.product_id else row.non_product_id
         sales_data.append({
-            'id': idx,
+            'id': product_id,
             'slNo': idx,
             'sageCode': row.sage_code,
             'productDescription': row.product_description,
@@ -2554,7 +2804,6 @@ def get_purchase_invoice(invoice_id):
 
 @app.route('/api/purchase-invoices/<int:invoice_id>/print', methods=['GET'])
 def print_purchase_invoice(invoice_id):
-    from models import Company, Supplier, PurchaseInvoice, PurchaseInvoiceItem, Purchase
     invoice = PurchaseInvoice.query.get_or_404(invoice_id)
     purchase = Purchase.query.get(invoice.purchase_id)
     supplier = Supplier.query.get(purchase.supplier_id)
@@ -2925,7 +3174,7 @@ def product_purchase_report():
     purchase_data = []
     for idx, row in enumerate(results, 1):
         purchase_data.append({
-            'id': idx,
+            'id': row.product_id,  # Use actual product_id instead of serial number
             'slNo': idx,
             'productDescription': row.product_description,
             'quantity': int(row.quantity) if row.quantity else 0,
@@ -2934,6 +3183,148 @@ def product_purchase_report():
         })
     
     return jsonify(purchase_data)
+
+@app.route('/api/reports/product-purchase-history', methods=['GET'])
+@jwt_required()
+def product_purchase_history():
+    product_id = request.args.get('productId')
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    
+    if not product_id or not from_date or not to_date:
+        return jsonify({'error': 'productId, fromDate and toDate are required'}), 400
+
+    try:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+    except ValueError:
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    # Query purchase invoice items for the specific product
+    query = (
+        db.session.query(
+            PurchaseInvoiceItem.invoice_id,
+            PurchaseInvoiceItem.product_name,
+            PurchaseInvoiceItem.quantity,
+            PurchaseInvoiceItem.unit_price,
+            PurchaseInvoiceItem.total_price,
+            PurchaseInvoice.date,
+            PurchaseInvoice.id.label('invoice_number'),
+            Supplier.supplier_name
+        )
+        .join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)
+        .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+        .join(Supplier, Purchase.supplier_id == Supplier.id)
+        .filter(
+            PurchaseInvoiceItem.product_id == product_id,
+            PurchaseInvoice.date >= from_dt,
+            PurchaseInvoice.date < to_dt
+        )
+        .order_by(PurchaseInvoice.date.desc())
+    )
+
+    results = query.all()
+    
+    # Format for frontend
+    purchase_history = []
+    for row in results:
+        purchase_history.append({
+            'invoiceNo': row.invoice_number,
+            'date': row.date.strftime('%d-%m-%Y') if row.date else '',
+            'supplierName': row.supplier_name,
+            'productDescription': row.product_name,
+            'quantity': int(row.quantity) if row.quantity else 0,
+            'unitPrice': float(row.unit_price) if row.unit_price else 0,
+            'total': float(row.total_price) if row.total_price else 0
+        })
+    
+    return jsonify(purchase_history)
+
+@app.route('/api/reports/compare-with-purchase', methods=['GET'])
+@jwt_required()
+def compare_with_purchase():
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    
+    if not from_date or not to_date:
+        return jsonify({'error': 'fromDate and toDate are required'}), 400
+
+    try:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+    except ValueError:
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    # Get all products with sales or purchase in the date range
+    product_ids = set()
+    # Sales
+    sales_products = db.session.query(SaleItem.product_id).join(Sale, SaleItem.sale_id == Sale.id).filter(
+        Sale.date >= from_dt,
+        Sale.date < to_dt,
+        Sale.status == 'finalized'
+    ).distinct().all()
+    product_ids.update([pid[0] for pid in sales_products])
+    # Purchases
+    purchase_products = db.session.query(PurchaseInvoiceItem.product_id).join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id).filter(
+        PurchaseInvoice.date >= from_dt,
+        PurchaseInvoice.date < to_dt
+    ).distinct().all()
+    product_ids.update([pid[0] for pid in purchase_products])
+
+    compare_data = []
+    for product_id in product_ids:
+        product = RegularProduct.query.get(product_id)
+        if not product:
+            continue
+        # Sales data
+        sales_query = (
+            db.session.query(
+                func.sum(SaleItem.quantity).label('total_quantity'),
+                func.avg(SaleItem.unit_price).label('avg_sale_price')
+            )
+            .join(Sale, SaleItem.sale_id == Sale.id)
+            .filter(
+                SaleItem.product_id == product_id,
+                Sale.date >= from_dt,
+                Sale.date < to_dt,
+                Sale.status == 'finalized'
+            )
+        )
+        sales_result = sales_query.first()
+        # Purchase data
+        purchase_query = (
+            db.session.query(
+                func.sum(PurchaseInvoiceItem.quantity).label('total_purchase_quantity'),
+                func.avg(PurchaseInvoiceItem.unit_price).label('avg_purchase_price')
+            )
+            .join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)
+            .filter(
+                PurchaseInvoiceItem.product_id == product_id,
+                PurchaseInvoice.date >= from_dt,
+                PurchaseInvoice.date < to_dt
+            )
+        )
+        purchase_result = purchase_query.first()
+        total_quantity = int(sales_result.total_quantity) if sales_result.total_quantity else 0
+        avg_sale_today = float(sales_result.avg_sale_price) if sales_result.avg_sale_price else 0
+        avg_purchase_today = float(purchase_result.avg_purchase_price) if purchase_result.avg_purchase_price else 0
+        avg_outstanding_stock = float(purchase_result.avg_purchase_price) if purchase_result.avg_purchase_price else 0
+        avg_purchase_price = float(purchase_result.avg_purchase_price) if purchase_result.avg_purchase_price else 0
+        status = '✓'
+        if avg_sale_today > 0 and avg_purchase_today > 0:
+            if avg_sale_today < avg_purchase_today * 0.9:
+                status = '✕'
+        compare_data.append({
+            'productId': product.id,
+            'productDescription': product.description,
+            'totalQuantity': total_quantity,
+            'avgSaleToday': avg_sale_today,
+            'avgPurchaseToday': avg_purchase_today,
+            'avgOutstandingStock': avg_outstanding_stock,
+            'avgPurchasePrice': avg_purchase_price,
+            'status': status
+        })
+    return jsonify(compare_data)
 
 @app.route('/api/reports/sales-analysis', methods=['GET'])
 @jwt_required()
@@ -3389,9 +3780,6 @@ def stock_check_report():
         
         from_dt = datetime.strptime(from_date, "%Y-%m-%d")
         to_dt = datetime.strptime(to_date, "%Y-%m-%d")
-        
-        from_dt = from_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
         
         print(f"[DEBUG] Parsed dates - from_dt: {from_dt}, to_dt: {to_dt}")
         
@@ -6272,7 +6660,8 @@ def add_banking_entry():
     payment_type = data.get('paymentType', 'CASH')
     amount = data.get('amount', 0)
     paying_number = data.get('payingNumber')
-    bag_number = data.get('bagNumber')
+    bag_number = data.get('bagNumber')  # Keep for backward compatibility
+    bag_numbers = data.get('bagNumbers', [])  # New field for multiple bag numbers
     cheque_number = data.get('chequeNumber')
     # Use business date logic
     if date_str:
@@ -6286,10 +6675,21 @@ def add_banking_entry():
         payment_type=payment_type,
         amount=amount,
         paying_number=paying_number,
-        bag_number=bag_number,
+        bag_number=bag_number,  # Keep for backward compatibility
         cheque_number=cheque_number
     )
     db.session.add(entry)
+    db.session.flush()  # Get the ID of the entry
+    
+    # Add multiple bag numbers
+    for bag_num in bag_numbers:
+        if bag_num and bag_num.strip():  # Only add non-empty bag numbers
+            bag_entry = BankingBagNumber(
+                banking_entry_id=entry.id,
+                bag_number=bag_num.strip()
+            )
+            db.session.add(bag_entry)
+    
     db.session.commit()
     return entry.to_dict(), 201
 
@@ -7634,3 +8034,19 @@ def send_whatsapp_invoice():
     except Exception as e:
         print('[WHATSAPP] ERROR making request to Meta API:', str(e), flush=True)
         return jsonify({'error': f'Failed to send WhatsApp message: {str(e)}'}), 500
+
+
+@app.route('/api/sales/<string:invoice_number>/send', methods=['POST'])
+@jwt_required()
+def send_sale_invoice_email(invoice_number):
+    try:
+        sale = Sale.query.filter_by(invoice_number=invoice_number).first()
+        if not sale:
+            return jsonify({'error': 'Sale not found'}), 404
+        customer = sale.customer
+        if not customer or not customer.email:
+            return jsonify({'error': 'Customer email not found'}), 400
+        send_invoice_email(mail, customer.email, sale, customer)
+        return jsonify({'success': True, 'message': f'Invoice email sent to {customer.email}'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Failed to send invoice email: {str(e)}'}), 500

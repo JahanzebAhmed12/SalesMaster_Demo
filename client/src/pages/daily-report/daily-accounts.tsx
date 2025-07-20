@@ -145,7 +145,9 @@ export default function DailyAccounts() {
   const actualBalance = data?.actualBalance || 0;
   const shortfall = data?.shortfall || 0;
 
-  const totalReceivablesCash = receivablesCash.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
+  const totalReceivablesCash = receivablesCash
+    .filter((item: any) => item.item !== "TOTAL CASH")
+    .reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
   const totalReceivablesOthers = receivablesOthers.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
   const totalPayablesCash = payablesCash.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
   const totalPayablesOthers = payablesOthers.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);

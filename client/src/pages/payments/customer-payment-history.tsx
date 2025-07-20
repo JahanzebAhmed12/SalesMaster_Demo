@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer } from "@shared/schema";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 interface PaymentHistoryData {
   id: number;
@@ -27,9 +30,9 @@ interface PaymentHistoryData {
 }
 
 export default function CustomerPaymentHistory() {
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
+  const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
+  const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
+  const [toDate, setToDate] = useState<Date | undefined>(new Date());
   const [selectedFilter, setSelectedFilter] = useState<string>("All");
 
   // Fetch customers for the dropdown
@@ -63,7 +66,86 @@ export default function CustomerPaymentHistory() {
     refetch();
   };
 
+  useEffect(() => {
+    // Auto search on mount with default values
+    handleSubmit();
+    // eslint-disable-next-line
+  }, []);
+
   const totalAmount = paymentHistory?.reduce((sum, payment) => sum + payment.amount, 0) || 0;
+
+  // Export handlers
+  const handlePrint = () => {
+    const printContents = document.getElementById('customer-payment-table')?.innerHTML;
+    if (!printContents) return;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}@media print{body{margin:0;}}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write('<div style="font-size:20px;font-weight:bold;text-align:center;margin-bottom:8px;">TROPIFRUIT UK LTD</div>');
+      printWindow.document.write('<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Customer Payment History</div>');
+      // Remove serial number and payment id columns from print
+      let tableHtml = printContents
+        .replace(/<th[^>]*>\s*Sl\.No\.?\s*<\/th>/gi, '')
+        .replace(/<th[^>]*>\s*Payment Id\s*<\/th>/gi, '')
+        .replace(/<td[^>]*>\s*\d+\s*<\/td>/gi, '') // Remove serial number cells
+        .replace(/<td[^>]*>\s*\d+\s*<\/td>/gi, ''); // Remove payment id cells (if needed)
+      printWindow.document.write(tableHtml);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('TROPIFRUIT UK LTD', 14, 16);
+    doc.setFontSize(13);
+    doc.text('Customer Payment History', 14, 24);
+    autoTable(doc, {
+      head: [[
+        //'Sl.No',
+        'Payment Date', 'Payment mode', /*'Payment Id',*/ 'Recd Amt', 'Inv No.', 'Inv Dt.', 'Customer', 'Invoice Amt', 'Allocated', 'Remarks'
+      ]],
+      body: (Array.isArray(paymentHistory) ? paymentHistory : []).map((payment) => [
+        // skip serial number and payment id
+        payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
+        payment.paymentMode,
+        // payment.id, // removed
+        `£${Number(payment.amount).toFixed(2)}`,
+        payment.invoiceNumber || '-',
+        payment.invoiceDate ? format(new Date(payment.invoiceDate), 'dd/MM/yyyy') : '-',
+        payment.customerName,
+        payment.invoiceAmount ? `£${Number(payment.invoiceAmount).toFixed(2)}` : '-',
+        `£${Number(payment.amount).toFixed(2)}`,
+        payment.remarks || '-'
+      ]),
+      startY: 30,
+    });
+    doc.save('customer-payment-history.pdf');
+  };
+
+  const handleExcel = () => {
+    const ws = XLSX.utils.json_to_sheet((paymentHistory || []).map((payment) => ({
+      //'Sl.No': idx + 1,
+      'Payment Date': payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
+      'Payment mode': payment.paymentMode,
+      // 'Payment Id': payment.id,
+      'Recd Amt': payment.amount,
+      'Inv No.': payment.invoiceNumber || '-',
+      'Inv Dt.': payment.invoiceDate ? format(new Date(payment.invoiceDate), 'dd/MM/yyyy') : '-',
+      'Customer': payment.customerName,
+      'Invoice Amt': payment.invoiceAmount || '',
+      'Allocated': payment.amount,
+      'Remarks': payment.remarks || '-'
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Customer Payment History');
+    XLSX.writeFile(wb, 'customer-payment-history.xlsx');
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -71,11 +153,12 @@ export default function CustomerPaymentHistory() {
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex justify-between items-center">
-            <h1 className="text-xl font-semibold text-gray-900">Customer Payment History</h1>
+            <h1 className="text-xl font-semibold text-gray-900">TROPIFRUIT UK LTD</h1>
             <div className="text-sm text-gray-500">
-              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ, ...
+              3 Dolphin Way, Purfleet, RM19 1NZ, ...
             </div>
           </div>
+          <div className="text-lg font-bold text-center mt-2">Customer Payment History</div>
         </div>
       </div>
 
@@ -180,15 +263,20 @@ export default function CustomerPaymentHistory() {
         {/* Table Section */}
         <Card>
           <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handlePrint}>Print</Button>
+                <Button variant="outline" onClick={handlePDF}>PDF</Button>
+                <Button variant="outline" onClick={handleExcel}>Excel</Button>
+              </div>
+            </div>
             {/* Responsive Table Container */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" id="customer-payment-table">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-blue-50">
-                    <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
                     <TableHead className="text-center min-w-[120px]">Payment Date</TableHead>
                     <TableHead className="text-center min-w-[120px]">Payment mode</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Payment Id</TableHead>
                     <TableHead className="text-center min-w-[100px]">Recd Amt</TableHead>
                     <TableHead className="text-center min-w-[80px]">Inv No.</TableHead>
                     <TableHead className="text-center min-w-[80px]">Inv Dt.</TableHead>
@@ -206,14 +294,12 @@ export default function CustomerPaymentHistory() {
                       </TableCell>
                     </TableRow>
                   ) : paymentHistory && paymentHistory.length > 0 ? (
-                    paymentHistory.map((payment, index) => (
+                    paymentHistory.map((payment) => (
                       <TableRow key={payment.id}>
-                        <TableCell className="text-center">{index + 1}</TableCell>
                         <TableCell className="text-center">
-                          {format(new Date(payment.paymentDate), "dd/MM/yyyy")}
+                          {payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : ''}
                         </TableCell>
                         <TableCell className="text-center">{payment.paymentMode}</TableCell>
-                        <TableCell className="text-center">{payment.id}</TableCell>
                         <TableCell className="text-center">£{payment.amount.toFixed(2)}</TableCell>
                         <TableCell className="text-center">
                           {payment.invoiceNumber || '-'}
@@ -243,7 +329,6 @@ export default function CustomerPaymentHistory() {
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
-                    <TableCell className="text-center">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>

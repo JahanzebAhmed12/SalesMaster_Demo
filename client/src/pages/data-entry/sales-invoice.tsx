@@ -118,6 +118,9 @@ const [printPackingList, setPrintPackingList] = useState(false);
 const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
   const [porterageDetails, setPorterageDetails] = useState({ withPorterage: false, porterageCharge: '0.00' });
   const [applyPorterage, setApplyPorterage] = useState(true); // Track if porterage should be applied to this invoice
+  const [isEditingPorterage, setIsEditingPorterage] = useState(false);
+  const [customPorterage, setCustomPorterage] = useState<string>(porterageDetails.porterageCharge);
+  const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
 const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
 const [customerSearch, setCustomerSearch] = useState("");
 const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
@@ -756,7 +759,12 @@ function handleCustomerSelect(id: number) {
     createSaleMutation.mutate(payload, {
       onSuccess: (response) => {
         if (printInvoice && response?.invoiceNumber) {
-          window.open(`/print/invoice/${response.invoiceNumber}`, '_blank');
+          const printUrl = invoicePrintFormat === 'DOTMATRIX' 
+            ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
+            : invoicePrintFormat === 'A5'
+            ? `/print/a5-invoice/${response.invoiceNumber}`
+            : `/print/invoice/${response.invoiceNumber}`;
+          window.open(printUrl, '_blank');
         }
         if (printDeliveryNote && response?.invoiceNumber) {
           window.open(`/print/delivery-note/${response.invoiceNumber}`, '_blank');
@@ -775,7 +783,12 @@ function handleCustomerSelect(id: number) {
           setWhatsappSuccess(false);
           
           // Send to WhatsApp
-          const invoiceUrl = `${window.location.origin}/print/invoice/${response.invoiceNumber}`;
+          const printUrl = invoicePrintFormat === 'DOTMATRIX' 
+            ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
+            : invoicePrintFormat === 'A5'
+            ? `/print/a5-invoice/${response.invoiceNumber}`
+            : `/print/invoice/${response.invoiceNumber}`;
+          const invoiceUrl = `${window.location.origin}${printUrl}`;
           const payload = {
             phoneNumber: selectedCustomer.telephone,
             invoiceUrl,
@@ -832,6 +845,7 @@ function handleCustomerSelect(id: number) {
   // Add this handler for closing/clearing unsaved invoice
   const handleCloseInvoice = () => {
     if (window.confirm("Are you sure you want to discard this unsaved invoice?")) {
+      skipAutoHoldRef.current = true; // Prevent auto-hold on close
       setCurrentSale(null);
       setSaleItems([]);
       setCustomerId("");
@@ -1007,6 +1021,7 @@ function handleCustomerSelect(id: number) {
         withPorterage: !!settings.withPorterage,
         porterageCharge: settings.porterageCharge ? String(settings.porterageCharge) : '0.00',
       });
+      setInvoicePrintFormat(settings.invoicePrintFormat || "A4");
       // Reset applyPorterage to true when settings are loaded
       setApplyPorterage(true);
     });
@@ -1092,22 +1107,19 @@ function handleCustomerSelect(id: number) {
                   })}</span>
                   {/* Print Invoice Button */}
                   {currentSale?.invoiceNumber && (
-                    <>
-                      <a
-                        href={`/print/invoice/${currentSale.invoiceNumber}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Button size="sm" variant="outline" className="ml-2">Print Ticket</Button>
-                      </a>
-                      <a
-                        href={`/print/dot-matrix-invoice/${currentSale.invoiceNumber}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Button size="sm" variant="outline" className="ml-2">Dot Matrix Print</Button>
-                      </a>
-                    </>
+                    <a
+                      href={invoicePrintFormat === 'DOTMATRIX' 
+                        ? `/print/dot-matrix-invoice/${currentSale.invoiceNumber}`
+                        : invoicePrintFormat === 'A5'
+                        ? `/print/a5-invoice/${currentSale.invoiceNumber}`
+                        : `/print/invoice/${currentSale.invoiceNumber}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button size="sm" variant="outline" className="ml-2">
+                        Print {invoicePrintFormat === 'DOTMATRIX' ? 'Dot Matrix' : invoicePrintFormat === 'A5' ? 'A5' : 'A4'}
+                      </Button>
+                    </a>
                   )}
                 </div>
                 <div className="flex items-center gap-4">
@@ -1204,16 +1216,6 @@ function handleCustomerSelect(id: number) {
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">Options</Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent>
-                    <DropdownMenuItem onClick={handleCustomerHistory}>
-                      Customer History
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -1248,8 +1250,8 @@ function handleCustomerSelect(id: number) {
               <Button variant="outline" size="sm">Pdf</Button>
               <Button variant="outline" size="sm">Excel</Button>
               <Button variant="outline" size="sm" onClick={handleShowOutstanding}>Cust_Outstanding</Button>
-              
-              
+              <Button variant="outline" size="sm" onClick={handleCustomerHistory}>Customer History</Button>
+              <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Close Ticket</Button>
             </div>
             {/* Removed More, Payment details, Options, and Search bar as requested */}
           </div>
@@ -1637,17 +1639,56 @@ function handleCustomerSelect(id: number) {
                   <div className="flex justify-between items-center">
                     <span>Porterage:</span>
                     <div className="flex items-center gap-2">
-                      <span>£{porterage.toFixed(2)}</span>
-                      <button
-                        onClick={() => {
-                          setApplyPorterage(false);
-                          toast({ title: "Porterage Removed", description: "Porterage has been removed from this invoice." });
-                        }}
-                        className="text-red-500 hover:text-red-700 text-sm"
-                        title="Remove porterage"
-                      >
-                        ✕
-                      </button>
+                      {isEditingPorterage ? (
+                        <>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={customPorterage}
+                            onChange={e => setCustomPorterage(e.target.value)}
+                            className="border rounded px-2 py-1 w-20 text-right"
+                            onBlur={() => {
+                              setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
+                              setIsEditingPorterage(false);
+                            }}
+                            autoFocus
+                          />
+                          <button
+                            className="text-green-600 hover:text-green-800 text-sm"
+                            onClick={() => {
+                              setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
+                              setIsEditingPorterage(false);
+                            }}
+                            title="Save porterage"
+                          >
+                            ✓
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <span>£{porterage.toFixed(2)}</span>
+                          <button
+                            onClick={() => {
+                              setCustomPorterage(porterageDetails.porterageCharge);
+                              setIsEditingPorterage(true);
+                            }}
+                            className="text-blue-500 hover:text-blue-700 text-sm"
+                            title="Edit porterage"
+                          >
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => {
+                              setApplyPorterage(false);
+                              toast({ title: "Porterage Removed", description: "Porterage has been removed from this invoice." });
+                            }}
+                            className="text-red-500 hover:text-red-700 text-sm"
+                            title="Remove porterage"
+                          >
+                            ✕
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}

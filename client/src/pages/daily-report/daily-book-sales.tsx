@@ -11,13 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, BarChart3, FileText, Download, Copy, Printer, Search, Eye, Info, Loader2 } from "lucide-react";
+import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useLocation } from "wouter";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote } from "lucide-react";
+import classNames from 'classnames';
 
 interface SalesEntry {
   id: number;
@@ -27,9 +31,11 @@ interface SalesEntry {
   boxes: number;
   invoiceNo: string;
   customerName: string;
+  customerId: number;
   vat: number;
   amount: number;
   cash: number;
+  bank?: number;
 }
 
 export default function DailyBookSales() {
@@ -43,6 +49,8 @@ export default function DailyBookSales() {
   const [user, setUser] = useState<any>(null);
   const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);
   const [loadingUserType, setLoadingUserType] = useState(true);
+  const [selectedSales, setSelectedSales] = useState<Set<number>>(new Set());
+  const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
   
   // Fetch users for the salesman dropdown
   const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -51,7 +59,7 @@ export default function DailyBookSales() {
   });
 
   // Fetch sales data from backend
-  const { data: rawSalesData = [], isLoading: isLoadingSales } = useQuery<any[]>({
+  const { data: rawSalesData = [], isLoading: isLoadingSales, refetch: refetchSales } = useQuery<any[]>({
     queryKey: [
       "daily-book-sales",
       fromDate,
@@ -81,8 +89,10 @@ export default function DailyBookSales() {
   const totalVAT = useMemo(() => salesData.reduce((sum, item) => sum + item.vat, 0), [salesData]);
   const totalAmount = useMemo(() => salesData.reduce((sum, item) => sum + item.amount, 0), [salesData]);
   const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
+  const totalBank = useMemo(() => salesData.reduce((sum, item) => sum + (item.bank || 0), 0), [salesData]);
 
   const tableRef = useRef<HTMLDivElement>(null);
+  const [, navigate] = useLocation();
 
   useEffect(() => {
     async function fetchUserAndType() {
@@ -132,12 +142,12 @@ export default function DailyBookSales() {
     const ws = XLSX.utils.json_to_sheet(salesData.map((item: SalesEntry) => ({
       'Sl.No': item.slNo,
       'Date': item.date,
-      'Salesman': item.salesman,
       'Boxes': item.boxes,
       'Invoice No': item.invoiceNo,
       'Customer Name': item.customerName,
-      'Amount': item.amount,
-      'Cash': item.cash
+      'Account': item.amount,
+      'Cash': item.cash,
+      'Bank Transfer': item.bank || 0
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Daily Book Sales');
@@ -152,17 +162,17 @@ export default function DailyBookSales() {
     // Table first
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'Amount', 'Cash'
+        'Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer'
       ]],
       body: salesData.map((item: SalesEntry) => [
         item.slNo,
         item.date,
-        item.salesman,
         item.boxes,
         item.invoiceNo,
         item.customerName,
         item.amount,
-        item.cash
+        item.cash,
+        item.bank || 0
       ]),
       startY: 22,
     });
@@ -198,20 +208,135 @@ export default function DailyBookSales() {
   };
 
   const handleCopy = () => {
-    const header = ['Sl.No', 'Date', 'Salesman', 'Boxes', 'Invoice No', 'Customer Name', 'Amount', 'Cash'];
+    const header = ['Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer'];
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
       item.date,
-      item.salesman,
       item.boxes,
       item.invoiceNo,
       item.customerName,
       item.amount,
-      item.cash
+      item.cash,
+      0 // Placeholder for bank transfer
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
     navigator.clipboard.writeText(tsv);
     alert('Table copied to clipboard!');
+  };
+
+  // Handle checkbox selection
+  const handleCheckboxChange = (saleId: number, checked: boolean) => {
+    setSelectedSales(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(saleId);
+      } else {
+        newSet.delete(saleId);
+      }
+      return newSet;
+    });
+  };
+
+  // Handle select all checkbox
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedSales(new Set(salesData.map(sale => sale.id)));
+    } else {
+      setSelectedSales(new Set());
+    }
+  };
+
+  // Update selected sales to cash payment
+  const handleUpdateToCash = async () => {
+    if (selectedSales.size === 0) {
+      alert('Please select at least one sale to update.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to cash payment?`)) {
+      return;
+    }
+
+    setIsUpdatingPayments(true);
+    try {
+      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      
+      // Process each selected sale
+      for (const sale of selectedSalesData) {
+        if (sale.amount > 0) { // Only process sales with account amounts
+          const paymentData = {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: sale.amount,
+            paymentMode: 'cash',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Updated from account to cash via daily book sales`
+          };
+
+          await apiRequest('POST', '/api/payments', paymentData);
+        }
+      }
+
+      alert(`Successfully updated ${selectedSales.size} sales to cash payment.`);
+      setSelectedSales(new Set()); // Clear selection
+      refetchSales(); // Refresh the data
+    } catch (error) {
+      console.error('Error updating payments:', error);
+      alert('Error updating payments. Please try again.');
+    } finally {
+      setIsUpdatingPayments(false);
+    }
+  };
+
+  // Helper for WhatsApp and Email
+  const sendInvoiceEmail = async (sale: SalesEntry) => {
+    try {
+      // Call backend endpoint to send invoice email for this sale
+      await apiRequest('POST', `/api/sales/${sale.invoiceNo}/send`, {
+        customerId: sale.customerId
+      });
+      alert('Invoice email sent!');
+    } catch (e) {
+      alert('Failed to send invoice email.');
+    }
+  };
+  const sendWhatsApp = async (sale: SalesEntry) => {
+    // You need to get the phone number and invoice URL (assume invoice PDF is at `/print/invoice/:invoiceNo`)
+    const phone = prompt('Enter WhatsApp number (E.164 format, e.g. +441234567890):');
+    if (!phone) return;
+    const invoiceUrl = `${window.location.origin}/print/invoice/${sale.invoiceNo}`;
+    try {
+      await apiRequest('POST', '/api/send/whatsapp-invoice', {
+        phoneNumber: phone,
+        invoiceUrl,
+        message: 'Your invoice is attached.'
+      });
+      alert('WhatsApp message sent!');
+    } catch (e) {
+      alert('Failed to send WhatsApp message.');
+    }
+  };
+  const pay = async (sale: SalesEntry, mode: 'cash' | 'bank') => {
+    try {
+      await apiRequest('POST', '/api/payments', {
+        customer_id: sale.customerId,
+        sale_id: sale.id,
+        amount: sale.amount,
+        payment_mode: mode,
+        payment_date: format(new Date(), 'yyyy-MM-dd'),
+        remarks: `Paid via daily book sales (${mode})`
+      });
+      alert(`Payment (${mode}) successful!`);
+      refetchSales();
+    } catch (e) {
+      alert('Payment failed.');
+    }
+    if (mode === 'cash') {
+      window.open(`/print/invoice/${sale.invoiceNo}?showCashPaid=1&backdate=${sale.date}`,'_blank');
+    }
+    if (mode === 'bank') {
+      window.open(`/print/invoice/${sale.invoiceNo}?showBankPaid=1&backdate=${sale.date}`,'_blank');
+    }
   };
 
   if (loadingUserType) {
@@ -227,12 +352,10 @@ export default function DailyBookSales() {
       <div className="space-y-6">
         {/* Header Section */}
         <Card>
-          <CardHeader className="pb-4">
-            <div className="flex flex-wrap justify-between items-center gap-2">
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 size={20} />
-                Daily Book
-              </CardTitle>
+          <CardHeader className="pb-3 sm:pb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-lg sm:text-xl">Daily Book Sales</CardTitle>
+            <div className="flex gap-2 items-center">
+            
               <div className="text-sm text-gray-500">
                 TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
               </div>
@@ -332,7 +455,10 @@ export default function DailyBookSales() {
               </div>
               
               <div className="flex gap-2 w-full md:w-auto">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full md:w-auto">
+                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full md:w-auto"
+                variant="default"
+                onClick={() => navigate("/daily-report/daily-sales-full-view")}>
+                  
                   <Eye size={16} />
                   Full View
                 </Button>
@@ -359,48 +485,74 @@ export default function DailyBookSales() {
                   <Printer size={14} /> Print
                 </Button>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                <Input
-                  placeholder="Search:"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-48"
-                />
+              <div className="flex items-center gap-2">
+                {selectedSales.size > 0 && (
+                  <Button
+                    onClick={handleUpdateToCash}
+                    disabled={isUpdatingPayments}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    {isUpdatingPayments ? (
+                      <>
+                        <Loader2 className="animate-spin h-4 w-4 mr-2" />
+                        Updating...
+                      </>
+                    ) : (
+                      `Paid (Cash) - ${selectedSales.size}`
+                    )}
+                  </Button>
+                )}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                  <Input
+                    placeholder="Search:"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 w-48"
+                  />
+                </div>
               </div>
             </div>
           </CardHeader>
           <CardContent>
             <div className="w-full overflow-x-auto" ref={tableRef}>
-              <Table className="min-w-[900px]">
+              <Table className="min-w-[800px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12 min-w-[48px]">
-                      <input type="checkbox" className="rounded" />
+                      <input 
+                        type="checkbox" 
+                        className="rounded"
+                        checked={selectedSales.size === salesData.length && salesData.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
                     </TableHead>
-                    <TableHead className="min-w-[100px]">Date</TableHead>
-                    <TableHead className="min-w-[120px]">Salesman</TableHead>
+                    <TableHead className="min-w-[120px]">Date</TableHead>
                     <TableHead className="min-w-[80px]"># Boxes</TableHead>
-                    <TableHead className="min-w-[120px]">Invoice No</TableHead>
-                    <TableHead className="min-w-[150px]">Customer Name</TableHead>
-                    <TableHead className="min-w-[100px] text-right">Amount</TableHead>
-                    <TableHead className="min-w-[100px] text-right">Cash</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="min-w-[140px]">Invoice No</TableHead>
+                    <TableHead className="min-w-[180px]">Customer Name</TableHead>
+                    <TableHead className="min-w-[130px] text-right">Accounts</TableHead>
+                    <TableHead className="min-w-[120px] text-right">Cash</TableHead>
+                    <TableHead className="min-w-[120px] text-right">Bank Transfer</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoadingSales ? (
                     <TableRow>
-                      <TableCell colSpan={10}>Loading...</TableCell>
+                      <TableCell colSpan={8}>Loading...</TableCell>
                     </TableRow>
                   ) : (
                     salesData.map((sale) => (
                       <TableRow key={sale.id}>
                         <TableCell>
-                          <input type="checkbox" className="rounded" />
+                          <input 
+                            type="checkbox" 
+                            className="rounded"
+                            checked={selectedSales.has(sale.id)}
+                            onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
+                          />
                         </TableCell>
                         <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
-                        <TableCell>{sale.salesman}</TableCell>
                         <TableCell className="text-center">{sale.boxes}</TableCell>
                         <TableCell>{/* Invoice No as link */}
                           <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
@@ -408,19 +560,37 @@ export default function DailyBookSales() {
                           </Button>
                         </TableCell>
                         <TableCell className="text-blue-600">
-                          {sale.customerName}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer">
+                                {sale.customerName}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start">
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}>
+                                <Printer className="mr-2 h-5 w-5" /> Print Ticket
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => window.open(`/print/packing-list/${sale.invoiceNo}`, '_blank')}>
+                                <Package className="mr-2 h-5 w-5" /> Print Pickingticket
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => sendInvoiceEmail(sale)}>
+                                <Mail className="mr-2 h-5 w-5" /> Email
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => sendWhatsApp(sale)}>
+                                <MessageCircle className="mr-2 h-5 w-5" /> WhatsApp
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'cash')}>
+                                <Banknote className="mr-2 h-5 w-5" /> Pay (Cash)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'bank')}>
+                                <CreditCard className="mr-2 h-5 w-5" /> Pay (Bank)
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                         <TableCell className="text-right">£{Number(sale.amount ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">£{Number(sale.cash ?? 0).toFixed(2)}</TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}
-                          >
-                            Print Invoice
-                          </Button>
-                        </TableCell>
+                        <TableCell className="text-right">£{Number(sale.bank ?? 0).toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -429,12 +599,13 @@ export default function DailyBookSales() {
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
                     <TableCell className="font-bold">{salesData.length} Items</TableCell>
-                    <TableCell></TableCell>
                     <TableCell className="text-center font-bold">{totalBoxes}</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">£{totalBank.toFixed(2)}</TableCell>
+                    <TableCell></TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

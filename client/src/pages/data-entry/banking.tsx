@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Banknote, Save, Loader2 } from "lucide-react";
+import { CalendarIcon, Banknote, Save, Loader2, Plus, X } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +25,7 @@ export default function Banking() {
     paymentType: "CASH",
     amount: 0,
     payingNumber: "",
-    bagNumber: "",
+    bagNumbers: [""], // Array of bag numbers
     chequeNumber: ""
   });
   const queryClient = useQueryClient();
@@ -59,12 +59,20 @@ export default function Banking() {
 
   // Add new banking entry
   const addEntryMutation = useMutation({
-    mutationFn: async (data: InsertBankingEntry) => {
+    mutationFn: async (data: InsertBankingEntry & { bagNumbers?: string[] }) => {
       return apiRequest("POST", "/api/banking", data);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Banking entry added." });
-      setNewEntry({ date: new Date(), remarks: "", paymentType: "CASH", amount: 0, payingNumber: "", bagNumber: "", chequeNumber: "" });
+      setNewEntry({ 
+        date: new Date(), 
+        remarks: "", 
+        paymentType: "CASH", 
+        amount: 0, 
+        payingNumber: "", 
+        bagNumbers: [""], // Reset to single empty bag number
+        chequeNumber: "" 
+      });
       refetch();
     },
     onError: (e: any) => {
@@ -76,22 +84,48 @@ export default function Banking() {
     if (!newEntry.remarks || !newEntry.amount || newEntry.amount <= 0) {
       return toast({ title: "Enter remarks and a valid amount" });
     }
-    if (newEntry.paymentType === "CASH" && (!newEntry.payingNumber || !newEntry.bagNumber)) {
-      return toast({ title: "Paying number and Bag number are required for CASH payments" });
+    if (newEntry.paymentType === "CASH" && (!newEntry.payingNumber || newEntry.bagNumbers.every(bag => !bag.trim()))) {
+      return toast({ title: "Paying number and at least one Bag number are required for CASH payments" });
     }
     if (newEntry.paymentType === "CHEQUE" && !newEntry.chequeNumber) {
       return toast({ title: "Cheque number is required for CHEQUE payments" });
     }
-    const payload: InsertBankingEntry = {
+    const payload: InsertBankingEntry & { bagNumbers?: string[] } = {
       date: format(newEntry.date, "yyyy-MM-dd"),
       remarks: newEntry.remarks,
       paymentType: newEntry.paymentType,
       amount: newEntry.amount,
       payingNumber: newEntry.paymentType === "CASH" ? newEntry.payingNumber : undefined,
-      bagNumber: newEntry.paymentType === "CASH" ? newEntry.bagNumber : undefined,
+      bagNumbers: newEntry.paymentType === "CASH" ? newEntry.bagNumbers.filter(bag => bag.trim()) : undefined,
       chequeNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequeNumber : undefined
     };
     addEntryMutation.mutate(payload);
+  };
+
+  // Add new bag number field
+  const addBagNumber = () => {
+    setNewEntry(prev => ({
+      ...prev,
+      bagNumbers: [...prev.bagNumbers, ""]
+    }));
+  };
+
+  // Remove bag number field
+  const removeBagNumber = (index: number) => {
+    if (newEntry.bagNumbers.length > 1) {
+      setNewEntry(prev => ({
+        ...prev,
+        bagNumbers: prev.bagNumbers.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  // Update bag number
+  const updateBagNumber = (index: number, value: string) => {
+    setNewEntry(prev => ({
+      ...prev,
+      bagNumbers: prev.bagNumbers.map((bag, i) => i === index ? value : bag)
+    }));
   };
 
   // Fetch company details
@@ -221,7 +255,13 @@ export default function Banking() {
                 <Label>PAYMENT TYPE</Label>
                 <Select 
                   value={newEntry.paymentType} 
-                  onValueChange={(value) => setNewEntry({...newEntry, paymentType: value, payingNumber: "", bagNumber: "", chequeNumber: ""})}
+                  onValueChange={(value) => setNewEntry({
+                    ...newEntry, 
+                    paymentType: value, 
+                    payingNumber: "", 
+                    bagNumbers: [""], // Reset bag numbers when payment type changes
+                    chequeNumber: ""
+                  })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -248,14 +288,42 @@ export default function Banking() {
                     />
                   </div>
                   <div>
-                    <Label>BAG NUMBER<span className="text-red-500">*</span></Label>
-                    <Input
-                      value={newEntry.bagNumber}
-                      onChange={e => setNewEntry({...newEntry, bagNumber: e.target.value})}
-                      placeholder="Enter bag number"
-                      className="w-full"
-                      required
-                    />
+                    <Label>BAG NUMBERS<span className="text-red-500">*</span></Label>
+                    <div className="space-y-2">
+                      {newEntry.bagNumbers.map((bagNumber, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            value={bagNumber}
+                            onChange={e => updateBagNumber(index, e.target.value)}
+                            placeholder={`Bag ${index + 1}`}
+                            className="w-32"
+                            required
+                          />
+                          {newEntry.bagNumbers.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => removeBagNumber(index)}
+                              className="px-2"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {index === newEntry.bagNumbers.length - 1 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={addBagNumber}
+                              className="px-2"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}
@@ -308,6 +376,11 @@ export default function Banking() {
                       <span>{entry.remarks}</span>
                       <span>{entry.paymentType}</span>
                       <span className="font-semibold">£{Number(entry.amount).toFixed(2)}</span>
+                      {entry.bagNumbers && entry.bagNumbers.length > 0 && (
+                        <span className="text-sm text-gray-600">
+                          Bags: {entry.bagNumbers.join(", ")}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -36,6 +36,11 @@ import ProfitLoss from "@/pages/daily-report/profit-loss";
 import StockTemplate from "@/pages/daily-report/stock-template";
 import DailyAccounts from "@/pages/daily-report/daily-accounts";
 import SalesAnalysis from "@/pages/daily-report/sales-analysis";
+import DailySalesFullView from "@/pages/daily-report/daily-sales-full-view";
+import ProductPurchaseFullView from "@/pages/daily-report/product-purchase-full-view";
+import ProductSalesHistoryPage from './pages/daily-report/product-sales-history';
+import ProductPurchaseHistoryPage from './pages/daily-report/product-purchase-history';
+import CompareWithPurchasePage from './pages/daily-report/compare-with-purchase';
 
 // Historical Reports Pages
 import CustomerHistory from "@/pages/historical-reports/customer-history";
@@ -81,6 +86,7 @@ import UserAdd from "./pages/admin/user-database-add";
 import ClosingTime from "@/pages/closing-time";
 import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
 import InvoicePrintPage from "@/pages/print/invoice";
+import A5InvoicePrintPage from "@/pages/print/a5-invoice";
 import DotMatrixInvoicePrintPage from "@/pages/print/dot-matrix-invoice";
 import PurchaseInvoicePrintPage from "@/pages/print/purchase-invoice";
 import DeliveryNotePrintPage from "./pages/print/delivery-note";
@@ -220,6 +226,19 @@ function Router() {
           <SalesAnalysis />
         </ProtectedRoute>
       </Route>
+      <Route path="/daily-report/daily-sales-full-view">
+        <ProtectedRoute requiredSection="daily_reports" title="Daily Sales Full View" breadcrumb="Daily Report > Daily Sales Full View">
+          <DailySalesFullView />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/daily-report/product-purchase-full-view">
+        <ProtectedRoute requiredSection="daily_reports" title="Product Purchase Full View" breadcrumb="Daily Report > Product Purchase Full View">
+          <ProductPurchaseFullView />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/product-sales-history/:productId" component={ProductSalesHistoryPage} />
+      <Route path="/daily-report/product-purchase-history/:productId" component={ProductPurchaseHistoryPage} />
+      <Route path="/daily-report/compare-with-purchase" component={CompareWithPurchasePage} />
      
       <Route path="/daily-report/daily-accounts">
         <ProtectedRoute requiredSection="daily_reports" title="Daily Accounts" breadcrumb="Daily Report > Daily Accounts">
@@ -431,6 +450,8 @@ function Router() {
       
       {/* Print Invoice Route (public) */}
       <Route path="/print/invoice/:invoiceNumber" component={InvoicePrintPage} />
+      {/* A5 Print Invoice Route (public) */}
+      <Route path="/print/a5-invoice/:invoiceNumber" component={A5InvoicePrintPage} />
       {/* Dot Matrix Print Invoice Route (public) */}
       <Route path="/print/dot-matrix-invoice/:invoiceNumber" component={DotMatrixInvoicePrintPage} />
       <Route path="/print/purchase-invoice/:invoiceId" component={PurchaseInvoicePrintPage} />

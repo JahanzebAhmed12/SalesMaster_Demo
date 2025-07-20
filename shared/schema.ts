@@ -14,6 +14,7 @@ export const systemSettingsSchema = z.object({
   showProfit: z.boolean().optional(),
   withPorterage: z.boolean().optional(),
   porterageCharge: z.number().optional(),
+  invoicePrintFormat: z.string().optional(),
   updatedAt: z.string().optional(),
 });
 export type SystemSettings = z.infer<typeof systemSettingsSchema>;
@@ -700,7 +701,8 @@ export const bankingEntrySchema = z.object({
   paymentType: z.string(),
   amount: z.number(),
   payingNumber: z.string().nullable().optional(),
-  bagNumber: z.string().nullable().optional(),
+  bagNumber: z.string().nullable().optional(), // Keep for backward compatibility
+  bagNumbers: z.array(z.string()).optional(), // New field for multiple bag numbers
   chequeNumber: z.string().nullable().optional(),
   createdAt: z.string().optional(),
 });

@@ -12,6 +12,9 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Supplier } from "@shared/schema";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 interface SupplierPaymentHistoryData {
   slNo: number;
@@ -29,7 +32,7 @@ interface SupplierPaymentHistoryData {
 
 export default function SupPaymentHistory() {
   const { toast } = useToast();
-  const [selectedSupplier, setSelectedSupplier] = useState<string>("");
+  const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
   const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
   const [toDate, setToDate] = useState<Date | undefined>(new Date());
   const [paymentMode, setPaymentMode] = useState<string>("All");
@@ -79,6 +82,117 @@ export default function SupPaymentHistory() {
   const totalPaid = paymentHistory.reduce((acc, item) => acc + item.paidAmt, 0);
   const totalInvoiceAmount = paymentHistory.reduce((acc, item) => acc + item.invoiceAmt, 0);
   const totalAllocated = paymentHistory.reduce((acc, item) => acc + item.allocated, 0);
+
+  // Export handlers
+  const handlePrint = () => {
+    const printContents = document.getElementById('supplier-payment-table')?.innerHTML;
+    if (!printContents) return;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Print</title>');
+      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}@media print{body{margin:0;}}</style>');
+      printWindow.document.write('</head><body>');
+      printWindow.document.write('<div style="font-size:20px;font-weight:bold;text-align:center;margin-bottom:8px;">TROPIFRUIT UK LTD</div>');
+      printWindow.document.write('<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Supplier Payment History</div>');
+      // Remove serial number and payment id columns from print
+      let tableHtml = printContents
+        .replace(/<th[^>]*>\s*Sl\.No\.?\s*<\/th>/gi, '')
+        .replace(/<th[^>]*>\s*Payment ID\s*<\/th>/gi, '')
+        .replace(/<td[^>]*>\s*\d+\s*<\/td>/gi, '') // Remove serial number cells
+        .replace(/<td[^>]*>\s*\w+\s*<\/td>/gi, ''); // Remove payment id cells (if needed)
+      printWindow.document.write(tableHtml);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handlePDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    const companyName = 'TROPIFRUIT UK LTD';
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const textWidth = doc.getTextWidth(companyName);
+    doc.text(companyName, (pageWidth - textWidth) / 2, 16);
+    doc.setFontSize(14);
+    doc.text('Supplier Payment History', 14, 26);
+    autoTable(doc, {
+      head: [[
+        //'Sl.No',
+        'Payment date', 'Payment mode', /*'Payment ID',*/ 'Paid Amt', 'INV #', 'INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'
+      ]],
+      body: paymentHistory.map((item) => [
+        // skip serial number and payment id
+        item.paymentDate ? format(new Date(item.paymentDate), 'dd-MM-yyyy') : '',
+        item.paymentMode,
+        // item.paymentId, // removed
+        `£${Number(item.paidAmt).toFixed(2)}`,
+        item.invNo,
+        item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
+        item.supplier,
+        item.invoiceAmt ? `£${Number(item.invoiceAmt).toFixed(2)}` : '-',
+        item.allocated ? `£${Number(item.allocated).toFixed(2)}` : '-',
+        item.remarks || '-'
+      ]),
+      startY: 32,
+      columnStyles: {
+        0: { cellWidth: 28 }, // Payment date
+        1: { cellWidth: 28 }, // Payment mode
+        2: { cellWidth: 28 }, // Paid Amt
+        3: { cellWidth: 22 }, // INV #
+        4: { cellWidth: 28 }, // INV Date
+        5: { cellWidth: 40 }, // Supplier
+        6: { cellWidth: 28 }, // Invoice Amt
+        7: { cellWidth: 28 }, // Allocated
+        8: { cellWidth: 40 }, // Remarks
+      },
+    });
+    // Add summary below table, centered
+    const finalY = (doc as any).lastAutoTable.finalY || 32;
+    doc.setFontSize(12);
+    const summaryText = `Total Paid: £${totalPaid.toFixed(2)}   |   Total Invoice: £${totalInvoiceAmount.toFixed(2)}   |   Total Allocated: £${totalAllocated.toFixed(2)}`;
+    const summaryWidth = doc.getTextWidth(summaryText);
+    doc.text(summaryText, (pageWidth - summaryWidth) / 2, finalY + 14);
+    doc.save('supplier-payment-history.pdf');
+  };
+
+  const handleExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(paymentHistory.map((item) => ({
+      //'Sl.No': item.slNo,
+      'Payment date': item.paymentDate ? format(new Date(item.paymentDate), 'dd-MM-yyyy') : '',
+      'Payment mode': item.paymentMode,
+      // 'Payment ID': item.paymentId,
+      'Paid Amt': item.paidAmt,
+      'INV #': item.invNo,
+      'INV Date': item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
+      'Supplier': item.supplier,
+      'Invoice Amt': item.invoiceAmt,
+      'Allocated': item.allocated,
+      'Remarks': item.remarks || '-',
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Supplier Payment History');
+    XLSX.writeFile(wb, 'supplier-payment-history.xlsx');
+  };
+
+  const handleCopy = () => {
+    const header = ['Payment date', 'Payment mode', 'Paid Amt', 'INV #', 'INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'];
+    const rows = paymentHistory.map((item) => [
+      item.paymentDate ? format(new Date(item.paymentDate), 'dd-MM-yyyy') : '',
+      item.paymentMode,
+      `£${Number(item.paidAmt).toFixed(2)}`,
+      item.invNo,
+      item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
+      item.supplier,
+      item.invoiceAmt ? `£${Number(item.invoiceAmt).toFixed(2)}` : '-',
+      item.allocated ? `£${Number(item.allocated).toFixed(2)}` : '-',
+      item.remarks || '-',
+    ]);
+    const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
+    navigator.clipboard.writeText(tsv);
+    alert('Table copied to clipboard!');
+  };
 
   if (isError) {
     toast({
@@ -198,9 +312,6 @@ export default function SupPaymentHistory() {
                 <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSubmit}>
                   Submit
                 </Button>
-                <Button className="bg-blue-600 hover:bg-blue-700">
-                  📄 Payment Brief
-                </Button>
               </div>
             </div>
           </CardContent>
@@ -209,15 +320,21 @@ export default function SupPaymentHistory() {
         {/* Table Section */}
         <Card>
           <CardContent className="p-6">
+           <div className="flex items-center justify-between mb-4">
+             <div className="flex gap-2">
+               <Button variant="outline" onClick={handlePrint}>Print</Button>
+               <Button variant="outline" onClick={handlePDF}>PDF</Button>
+               <Button variant="outline" onClick={handleExcel}>Excel</Button>
+               <Button variant="outline" onClick={handleCopy}>Copy</Button>
+             </div>
+           </div>
             {/* Responsive Table Container */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" id="supplier-payment-table">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-blue-50">
-                    <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
                     <TableHead className="text-center min-w-[120px]">Payment date</TableHead>
                     <TableHead className="text-center min-w-[120px]">Payment mode</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Payment ID</TableHead>
                     <TableHead className="text-center min-w-[100px]">Paid Amt</TableHead>
                     <TableHead className="text-center min-w-[80px]">INV #</TableHead>
                     <TableHead className="text-center min-w-[80px]">INV Date</TableHead>
@@ -230,19 +347,17 @@ export default function SupPaymentHistory() {
                 <TableBody>
                   {historyLoading ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8">Loading...</TableCell>
+                      <TableCell colSpan={9} className="text-center py-8">Loading...</TableCell>
                     </TableRow>
                   ) : paymentHistory.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8">No data found.</TableCell>
+                      <TableCell colSpan={9} className="text-center py-8">No data found.</TableCell>
                     </TableRow>
                   ) : (
                     paymentHistory.map(item => (
                       <TableRow key={item.slNo}>
-                        <TableCell className="text-center">{item.slNo}</TableCell>
-                        <TableCell className="text-center">{format(new Date(item.paymentDate), "dd-MM-yyyy")}</TableCell>
+                        <TableCell className="text-center">{item.paymentDate ? format(new Date(item.paymentDate), "dd-MM-yyyy") : ""}</TableCell>
                         <TableCell className="text-center">{item.paymentMode}</TableCell>
-                        <TableCell className="text-center">{item.paymentId}</TableCell>
                         <TableCell className="text-center">£{item.paidAmt.toFixed(2)}</TableCell>
                         <TableCell className="text-center">{item.invNo}</TableCell>
                         <TableCell className="text-center">{item.invDate ? format(new Date(item.invDate), "dd-MM-yyyy") : ""}</TableCell>
@@ -254,7 +369,7 @@ export default function SupPaymentHistory() {
                     ))
                   )}
                   <TableRow className="bg-blue-100 font-semibold">
-                    <TableCell colSpan={4} className="text-center">TOTAL</TableCell>
+                    <TableCell colSpan={2} className="text-center">TOTAL</TableCell>
                     <TableCell className="text-center">£{totalPaid.toFixed(2)}</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>

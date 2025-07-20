@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useLocation } from "wouter";
 
 interface PurchaseEntry {
   id: number;
@@ -43,6 +44,7 @@ export default function DailyBookPurchase() {
   const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);
   const [loadingUserType, setLoadingUserType] = useState(true);
   const [filteredPurchaseData, setFilteredPurchaseData] = useState<PurchaseEntry[]>([]);
+  const [, navigate] = useLocation();
 
   // Fetch purchase data
   const {
@@ -277,6 +279,15 @@ export default function DailyBookPurchase() {
                   disabled={isLoading}
                 >
                   {isLoading ? "Searching..." : "Search"}
+                </Button>
+              </div>
+              <div>
+                <Button
+                  className="hidden md:inline-flex ml-2"
+                  variant="default"
+                  onClick={() => navigate("/daily-report/product-purchase-full-view")}
+                >
+                  Full View
                 </Button>
               </div>
               
