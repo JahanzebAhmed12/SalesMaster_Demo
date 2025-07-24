@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileText, Printer, Search } from 'lucide-react';
+import { CalendarIcon, FileText, Printer, Search, Mail } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,8 @@ export default function DailySalesFullView() {
   const [fromDate, setFromDate] = useState<Date>(today);
   const [toDate, setToDate] = useState<Date>(today);
   const [search, setSearch] = useState('');
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Fetch all sales for the selected date range
@@ -105,6 +107,97 @@ export default function DailySalesFullView() {
       startY: 32,
     });
     doc.save('daily-sales-full-view.pdf');
+  };
+
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    
+    // Add company header if available
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.setFontSize(10);
+      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
+      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
+      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+    }
+    
+    // Add title
+    doc.setFontSize(14);
+    doc.text('Daily Sales Full View', 14, companyDetails ? 42 : 15);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}`, 14, companyDetails ? 48 : 21);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Date', 'Invoice No', 'Customer Name', 'Product Name', 'Quantity', 'Unit Price', 'Total']],
+      body: (Array.isArray(data) ? data : []).filter(row => !row.isInvoiceHeader && !row.isInvoiceTotal).map(row => [
+        row.date,
+        row.invoiceNo,
+        row.customerName,
+        row.productName,
+        row.quantity,
+        Number(row.unitPrice).toFixed(2),
+        Number(row.total).toFixed(2)
+      ]),
+      startY: companyDetails ? 52 : 25,
+    });
+    
+    return doc.output('blob');
+  };
+
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      alert('Please enter at least one email address');
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      alert(`Invalid email addresses: ${invalidEmails.join(', ')}`);
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+        
+        // Send email with PDF attachment
+        const emailData = {
+          to: emailList,
+          subject: `Daily Sales Full View Report - ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}`,
+          body: `Please find attached the Daily Sales Full View report for the period from ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}.`,
+          attachment: {
+            filename: `daily-sales-full-view-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
+            content: base64PDF,
+            contentType: 'application/pdf'
+          }
+        };
+        
+        await apiRequest('POST', '/api/send-email', emailData);
+        alert(`PDF report sent successfully to ${emailList.length} email(s)`);
+        setEmails(''); // Clear email field after successful send
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      alert('Failed to send email. Please try again.');
+    } finally {
+      setIsEmailSending(false);
+    }
   };
 
   const displayData = Array.isArray(data) ? data : [];
@@ -183,6 +276,23 @@ export default function DailySalesFullView() {
               <Button variant="outline" onClick={handlePDF} className="flex items-center gap-2">
                 <FileText size={16} /> PDF
               </Button>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Enter emails (comma separated)"
+                  value={emails}
+                  onChange={(e) => setEmails(e.target.value)}
+                  className="w-64"
+                  disabled={isEmailSending}
+                />
+                <Button 
+                  variant="outline" 
+                  onClick={handleEmailPDF} 
+                  className="flex items-center gap-2"
+                  disabled={isEmailSending}
+                >
+                  <Mail size={16} /> {isEmailSending ? 'Sending...' : 'Email PDF'}
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
