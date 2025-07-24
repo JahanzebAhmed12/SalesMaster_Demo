@@ -1,227 +1,111 @@
-// import PageLayout from "@/components/common/page-layout";
-// import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-// import { Settings, Users, Database, Shield, Bell, Palette } from "lucide-react";
-
-// export default function AdminSetup() {
-//   return (
-//     <PageLayout title="Admin Setup" breadcrumb="Admin Setup">
-//       <div className="space-y-6">
-//         <Card>
-//           <CardHeader>
-//             <CardTitle className="flex items-center gap-2">
-//               <Settings size={20} />
-//               System Administration
-//             </CardTitle>
-//           </CardHeader>
-//           <CardContent>
-//             <div className="text-center py-8">
-//               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-//                 <Settings className="text-gray-400 text-2xl" />
-//               </div>
-//               <h3 className="text-lg font-semibold text-gray-900 mb-2">Admin Setup</h3>
-//               <p className="text-gray-500 mb-8">Configure system settings, manage users, and customize your POS system.</p>
-//             </div>
-//           </CardContent>
-//         </Card>
-
-//         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-//           <Card className="hover:shadow-md transition-shadow cursor-pointer">
-//             <CardContent className="p-6">
-//               <div className="flex items-center gap-4">
-//                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-//                   <Users className="text-blue-600" size={24} />
-//                 </div>
-//                 <div>
-//                   <h4 className="font-semibold text-gray-900">User Management</h4>
-//                   <p className="text-sm text-gray-500">Manage user accounts and permissions</p>
-//                 </div>
-//               </div>
-//             </CardContent>
-//           </Card>
-
-//           <Card className="hover:shadow-md transition-shadow cursor-pointer">
-//             <CardContent className="p-6">
-//               <div className="flex items-center gap-4">
-//                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-//                   <Database className="text-green-600" size={24} />
-//                 </div>
-//                 <div>
-//                   <h4 className="font-semibold text-gray-900">Data Management</h4>
-//                   <p className="text-sm text-gray-500">Backup, restore, and data settings</p>
-//                 </div>
-//               </div>
-//             </CardContent>
-//           </Card>
-
-//           <Card className="hover:shadow-md transition-shadow cursor-pointer">
-//             <CardContent className="p-6">
-//               <div className="flex items-center gap-4">
-//                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-//                   <Shield className="text-orange-600" size={24} />
-//                 </div>
-//                 <div>
-//                   <h4 className="font-semibold text-gray-900">Security Settings</h4>
-//                   <p className="text-sm text-gray-500">Configure security and access controls</p>
-//                 </div>
-//               </div>
-//             </CardContent>
-//           </Card>
-
-//           <Card className="hover:shadow-md transition-shadow cursor-pointer">
-//             <CardContent className="p-6">
-//               <div className="flex items-center gap-4">
-//                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-//                   <Bell className="text-purple-600" size={24} />
-//                 </div>
-//                 <div>
-//                   <h4 className="font-semibold text-gray-900">Notifications</h4>
-//                   <p className="text-sm text-gray-500">Set up alerts and notifications</p>
-//                 </div>
-//               </div>
-//             </CardContent>
-//           </Card>
-
-//           <Card className="hover:shadow-md transition-shadow cursor-pointer">
-//             <CardContent className="p-6">
-//               <div className="flex items-center gap-4">
-//                 <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center">
-//                   <Palette className="text-pink-600" size={24} />
-//                 </div>
-//                 <div>
-//                   <h4 className="font-semibold text-gray-900">Customization</h4>
-//                   <p className="text-sm text-gray-500">Customize appearance and branding</p>
-//                 </div>
-//               </div>
-//             </CardContent>
-//           </Card>
-
-//           <Card className="hover:shadow-md transition-shadow cursor-pointer">
-//             <CardContent className="p-6">
-//               <div className="flex items-center gap-4">
-//                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-//                   <Settings className="text-gray-600" size={24} />
-//                 </div>
-//                 <div>
-//                   <h4 className="font-semibold text-gray-900">System Settings</h4>
-//                   <p className="text-sm text-gray-500">General system configuration</p>
-//                 </div>
-//               </div>
-//             </CardContent>
-//           </Card>
-//         </div>
-//       </div>
-//     </PageLayout>
-//   );
-// }
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, Save, RotateCcw } from "lucide-react";
+import { AlertTriangle, Calendar, ArrowRight, RefreshCw } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { SystemSettings } from "@shared/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
-export default function AdminSetup() {
+interface BusinessDate {
+  currentDate: string;
+  nextDate: string;
+  isNextDay: boolean;
+}
+
+export default function ClosingTime() {
   const { toast } = useToast();
-  const [closingTime, setClosingTime] = useState("23:59");
-  const [timezone, setTimezone] = useState("Europe/London");
-  const [autoDateSwitch, setAutoDateSwitch] = useState(true);
-  const [weekendHandling, setWeekendHandling] = useState("skip");
+  const [currentBusinessDate, setCurrentBusinessDate] = useState<string>("");
+  const [nextBusinessDate, setNextBusinessDate] = useState<string>("");
 
-  const { data: settings, isLoading } = useQuery<SystemSettings>({
-    queryKey: ['/api/settings'],
-    queryFn: () => apiRequest<SystemSettings>('GET', '/api/settings'),
+  // Get current business date from backend
+  const { data: businessDate, isLoading, refetch } = useQuery<BusinessDate>({
+    queryKey: ['/api/business-date'],
+    queryFn: () => apiRequest<BusinessDate>('GET', '/api/business-date'),
+    refetchInterval: 30000, // Refetch every 30 seconds
   });
 
-  useEffect(() => {
-    if (settings) {
-      setClosingTime(settings.closingTime);
-      setTimezone(settings.timezone);
-      setAutoDateSwitch(settings.autoDateSwitch);
-      setWeekendHandling(settings.weekendHandling);
-    }
-  }, [settings]);
-
-  const updateSettingsMutation = useMutation({
-    mutationFn: async (data: Partial<SystemSettings>) => {
-      const response = await apiRequest('PUT', '/api/settings', data);
-      return data;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
-      if (data.closingTime) setClosingTime(data.closingTime);
-      if (data.timezone) setTimezone(data.timezone);
-      if (typeof data.autoDateSwitch === 'boolean') setAutoDateSwitch(data.autoDateSwitch);
-      if (data.weekendHandling) setWeekendHandling(data.weekendHandling);
+  // Switch to next business date mutation
+  const switchDateMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/business-date/switch'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/business-date'] });
       toast({
-        title: "Settings Updated",
-        description: "System configuration has been saved successfully.",
+        title: "Date Switched Successfully",
+        description: "System has been switched to the next business date. All new entries will use the new date.",
       });
+      refetch();
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to update system settings.",
+        description: "Failed to switch business date. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  const handleSave = () => {
-    updateSettingsMutation.mutate({
-      closingTime,
-      timezone,
-      autoDateSwitch,
-      weekendHandling,
-    });
+  // Reset business date mutation
+  const resetDateMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/business-date/reset'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/business-date'] });
+      toast({
+        title: "Date Reset Successfully",
+        description: "Business date has been reset to current system date.",
+      });
+      refetch();
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reset business date. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  useEffect(() => {
+    if (businessDate) {
+      setCurrentBusinessDate(businessDate.currentDate);
+      setNextBusinessDate(businessDate.nextDate);
+    }
+  }, [businessDate]);
+
+  const handleDateSwitch = () => {
+    switchDateMutation.mutate();
   };
 
-  const handleReset = () => {
-    setClosingTime("23:59");
-    setTimezone("Europe/London");
-    setAutoDateSwitch(true);
-    setWeekendHandling("skip");
+  const handleDateReset = () => {
+    resetDateMutation.mutate();
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-GB', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
   };
 
   const getCurrentTime = () => {
-    return new Date().toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
+    return new Date().toLocaleTimeString('en-GB', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      second: '2-digit'
     });
-  };
-
-  const getNextBusinessDate = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toLocaleDateString('en-GB', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-  };
-
-  const getTimeUntilSwitch = () => {
-    const now = new Date();
-    const [hours, minutes] = closingTime.split(':').map(Number);
-    const closingToday = new Date();
-    closingToday.setHours(hours, minutes, 0, 0);
-    
-    if (now > closingToday) {
-      closingToday.setDate(closingToday.getDate() + 1);
-    }
-    
-    const diff = closingToday.getTime() - now.getTime();
-    const hoursLeft = Math.floor(diff / (1000 * 60 * 60));
-    const minutesLeft = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    return `${hoursLeft}h ${minutesLeft}m`;
   };
 
   if (isLoading) {
@@ -240,121 +124,232 @@ export default function AdminSetup() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Closing Time Configuration</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Business Date Management
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Important:</strong> After the closing time, all new entries will be recorded with the next business date.
-              This ensures accurate date tracking across different shifts and operations.
+              <strong>Important:</strong> Switching the business date will affect all new data entries. 
+              All sales, purchases, and other transactions will use the new business date.
             </AlertDescription>
           </Alert>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="closingTime">Daily Closing Time</Label>
-              <Input
-                id="closingTime"
-                type="time"
-                value={closingTime}
-                onChange={(e) => setClosingTime(e.target.value)}
-              />
-              <p className="text-xs text-gray-500">Time when system switches to next business date</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="timezone">Time Zone</Label>
-              <Select value={timezone} onValueChange={setTimezone}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select timezone" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Europe/London">GMT (London)</SelectItem>
-                  <SelectItem value="Europe/Paris">CET (Paris)</SelectItem>
-                  <SelectItem value="America/New_York">EST (New York)</SelectItem>
-                  <SelectItem value="Asia/Dubai">GST (Dubai)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="autoDateSwitch"
-                checked={autoDateSwitch}
-                onCheckedChange={(checked) => setAutoDateSwitch(checked === true)}
-              />
-              <Label htmlFor="autoDateSwitch">
-                Automatically switch to next business date after closing time
-              </Label>
-            </div>
-            <p className="text-xs text-gray-500 ml-6">
-              When enabled, all entries after closing time will use the next business date
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="weekendHandling">Weekend Handling</Label>
-            <Select value={weekendHandling} onValueChange={setWeekendHandling}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select weekend handling" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="skip">Skip to next Monday</SelectItem>
-                <SelectItem value="saturday">Include Saturday</SelectItem>
-                <SelectItem value="both">Include Saturday & Sunday</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-gray-500">How to handle date switching on weekends</p>
-          </div>
-
+          {/* Current System Status */}
           <Card className="bg-blue-50 border-blue-200">
             <CardHeader>
-              <CardTitle className="text-sm text-blue-800">Current System Status</CardTitle>
+              <CardTitle className="text-lg text-blue-800">Current System Status</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-blue-600">Current System Date:</p>
-                  <p className="font-medium text-blue-900">
-                    {new Date().toLocaleDateString('en-GB', { 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <p className="text-sm text-blue-600 font-medium">Current System Time</p>
+                  <p className="text-2xl font-bold text-blue-900">{getCurrentTime()}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm text-blue-600 font-medium">System Date</p>
+                  <p className="text-lg font-semibold text-blue-900">
+                    {new Date().toLocaleDateString('en-GB', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
                     })}
                   </p>
-                </div>
-                <div>
-                  <p className="text-blue-600">Current Time:</p>
-                  <p className="font-medium text-blue-900">{getCurrentTime()}</p>
-                </div>
-                <div>
-                  <p className="text-blue-600">Next Business Date:</p>
-                  <p className="font-medium text-blue-900">{getNextBusinessDate()}</p>
-                </div>
-                <div>
-                  <p className="text-blue-600">Time Until Switch:</p>
-                  <p className="font-medium text-blue-900">{getTimeUntilSwitch()}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <div className="flex justify-end space-x-3">
-            <Button variant="outline" onClick={handleReset}>
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Reset to Default
-            </Button>
-            <Button 
-              onClick={handleSave}
-              disabled={updateSettingsMutation.isPending}
-            >
-              <Save className="w-4 h-4 mr-2" />
-              Save Configuration
-            </Button>
+          {/* Business Date Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Current Business Date */}
+            <Card className="border-2 border-green-200 bg-green-50">
+              <CardHeader>
+                <CardTitle className="text-green-800 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Current Business Date
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-4">
+                  <p className="text-2xl font-bold text-green-900 mb-2">
+                    {currentBusinessDate ? formatDate(currentBusinessDate) : "Loading..."}
+                  </p>
+                  <p className="text-sm text-green-700">
+                    All current entries are using this date
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Next Business Date */}
+            <Card className="border-2 border-orange-200 bg-orange-50">
+              <CardHeader>
+                <CardTitle className="text-orange-800 flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Next Business Date
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-4">
+                  <p className="text-2xl font-bold text-orange-900 mb-2">
+                    {nextBusinessDate ? formatDate(nextBusinessDate) : "Loading..."}
+                  </p>
+                  <p className="text-sm text-orange-700">
+                    Switch to this date for new entries
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-center gap-4 py-6">
+            {/* Reset Button */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="outline"
+                  size="lg" 
+                  className="border-blue-600 text-blue-600 hover:bg-blue-50 px-8 py-3"
+                  disabled={resetDateMutation.isPending}
+                >
+                  {resetDateMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-5 h-5 mr-2" />
+                      Reset to Current Date
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <RefreshCw className="h-5 w-5 text-blue-600" />
+                    Reset Business Date
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-3">
+                    <p>
+                      This will reset the business date to today's system date and clear any manual overrides.
+                    </p>
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                      <p><strong>Current System Date:</strong> {new Date().toLocaleDateString('en-GB', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}</p>
+                    </div>
+                    <p className="text-sm text-blue-600">
+                      This will make the business date match today's actual date.
+                    </p>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleDateReset}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    Reset to Current Date
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Switch Button */}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  size="lg" 
+                  className="bg-orange-600 hover:bg-orange-700 text-white px-8 py-3"
+                  disabled={switchDateMutation.isPending}
+                >
+                  {switchDateMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
+                      Switching...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRight className="w-5 h-5 mr-2" />
+                      Switch to Next Business Date
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-orange-600" />
+                    Confirm Date Switch
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-3">
+                    <p>
+                      Are you sure you want to switch the business date?
+                    </p>
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                      <p><strong>From:</strong> {currentBusinessDate ? formatDate(currentBusinessDate) : "Loading..."}</p>
+                      <p><strong>To:</strong> {nextBusinessDate ? formatDate(nextBusinessDate) : "Loading..."}</p>
+                    </div>
+                    <p className="text-sm text-red-600">
+                      <strong>Warning:</strong> This action will affect all new data entries. 
+                      All sales, purchases, expenses, and other transactions will use the new business date.
+                    </p>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleDateSwitch}
+                    className="bg-orange-600 hover:bg-orange-700"
+                  >
+                    Yes, Switch Date
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+
+          {/* Information Card */}
+          <Card className="bg-gray-50 border-gray-200">
+            <CardHeader>
+              <CardTitle className="text-sm text-gray-800">How Business Date Works</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-sm text-gray-600">
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>The business date determines which date is used for all new transactions and entries.</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>Switching the date will immediately affect all data entry pages including sales, purchases, expenses, etc.</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>Use this feature at the end of each business day to move to the next day.</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>The system includes weekends - switching will move to the very next calendar day.</p>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
+                  <p>Use "Reset to Current Date" if you need to sync the business date with today's actual date.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </CardContent>
       </Card>
     </div>

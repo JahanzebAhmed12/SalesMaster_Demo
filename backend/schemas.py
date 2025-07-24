@@ -32,6 +32,7 @@ class SaleSchema(BaseModel):
     gate_number: Optional[str] = None
     notes: Optional[str] = None
     status: str = 'draft'
+    date: Optional[str] = None  # Business date
     items: List[SaleItemSchema]
 
     class Config:
@@ -433,6 +434,44 @@ class BankingEntrySchema(BaseModel):
     paying_number: Optional[str] = Field(default=None, alias='payingNumber')
     bag_number: Optional[str] = Field(default=None, alias='bagNumber')
     cheque_number: Optional[str] = Field(default=None, alias='chequeNumber')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class EmployeeDocumentSchema(BaseModel):
+    documentName: str = Field(alias='documentName')
+    startDate: Optional[date] = Field(default=None, alias='startDate')
+    endDate: Optional[date] = Field(default=None, alias='endDate')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class EmployeeSchema(BaseModel):
+    fullName: str = Field(alias='fullName')
+    title: Optional[str] = None
+    homeAddress: Optional[str] = Field(default=None, alias='homeAddress')
+    homePhoneNumber: Optional[str] = Field(default=None, alias='homePhoneNumber')
+    mobileNumber: Optional[str] = Field(default=None, alias='mobileNumber')
+    dateOfBirth: Optional[date] = Field(default=None, alias='dateOfBirth')
+    maritalStatus: Optional[str] = Field(default=None, alias='maritalStatus')
+    nationalInsuranceNumber: Optional[str] = Field(default=None, alias='nationalInsuranceNumber')
+    startDate: Optional[date] = Field(default=None, alias='startDate')
+    department: Optional[str] = None
+    position: Optional[str] = None
+    salary: Optional[float] = None
+    probationPeriod: Optional[str] = Field(default=None, alias='probationPeriod')
+    lineManager: Optional[str] = Field(default=None, alias='lineManager')
+    term: Optional[str] = None  # permanent or contract
+    status: Optional[str] = None  # P/T or F/T
+    bankName: Optional[str] = Field(default=None, alias='bankName')
+    branchName: Optional[str] = Field(default=None, alias='branchName')
+    branchAddress: Optional[str] = Field(default=None, alias='branchAddress')
+    accountNumber: Optional[str] = Field(default=None, alias='accountNumber')
+    sortCode: Optional[str] = Field(default=None, alias='sortCode')
+    documents: Optional[List[EmployeeDocumentSchema]] = Field(default=[], alias='documents')
+    isActive: str = Field(default="yes", alias='isActive')
 
     class Config:
         from_attributes = True

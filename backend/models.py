@@ -611,6 +611,7 @@ class Company(db.Model):
 class PurchaseInvoice(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     purchase_id = db.Column(db.Integer, db.ForeignKey('purchase.id'), nullable=False)
+    supplier_id = db.Column(db.Integer, nullable=True)  # NEW: Link to Supplier
     date = db.Column(db.DateTime, default=datetime.utcnow)
     remarks = db.Column(db.String(255))
     paid_amount = db.Column(db.Numeric(10, 2), default=0)
@@ -623,6 +624,7 @@ class PurchaseInvoice(db.Model):
         return {
             'id': self.id,
             'purchaseId': self.purchase_id,
+            'supplierId': self.supplier_id,  # NEW
             'date': self.date.isoformat() if self.date else None,
             'remarks': self.remarks,
             'paidAmount': float(self.paid_amount),
@@ -1051,6 +1053,105 @@ class ClosingStock(db.Model):
             'productType': self.product_type,
             'date': self.date.isoformat(),
             'quantity': self.quantity,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class EmployeeDocument(db.Model):
+    __tablename__ = 'employee_documents'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
+    document_name = db.Column(db.String(200), nullable=False)
+    start_date = db.Column(db.Date)
+    end_date = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'documentName': self.document_name,
+            'startDate': self.start_date.isoformat() if self.start_date else None,
+            'endDate': self.end_date.isoformat() if self.end_date else None,
+        }
+
+class BusinessDate(db.Model):
+    __tablename__ = 'business_date'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    current_date = db.Column(db.Date, nullable=False)
+    is_manual_override = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'currentDate': self.current_date.isoformat() if self.current_date else None,
+            'isManualOverride': self.is_manual_override,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }
+
+class Employee(db.Model):
+    __tablename__ = 'employees'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    full_name = db.Column(db.String(200), nullable=False)
+    title = db.Column(db.String(50))
+    home_address = db.Column(db.Text)
+    home_phone_number = db.Column(db.String(20))
+    mobile_number = db.Column(db.String(20))
+    date_of_birth = db.Column(db.Date)
+    marital_status = db.Column(db.String(20))
+    national_insurance_number = db.Column(db.String(20))
+    start_date = db.Column(db.Date)
+    department = db.Column(db.String(100))
+    position = db.Column(db.String(100))
+    salary = db.Column(db.Numeric(10, 2))
+    probation_period = db.Column(db.String(50))
+    line_manager = db.Column(db.String(200))
+    term = db.Column(db.String(20))  # permanent or contract
+    status = db.Column(db.String(10))  # P/T or F/T
+    bank_name = db.Column(db.String(100))
+    branch_name = db.Column(db.String(100))
+    branch_address = db.Column(db.Text)
+    account_number = db.Column(db.String(20))
+    sort_code = db.Column(db.String(10))
+    is_active = db.Column(db.String(3), default='yes')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    documents = db.relationship('EmployeeDocument', backref='employee', cascade='all, delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'fullName': self.full_name,
+            'title': self.title,
+            'homeAddress': self.home_address,
+            'homePhoneNumber': self.home_phone_number,
+            'mobileNumber': self.mobile_number,
+            'dateOfBirth': self.date_of_birth.isoformat() if self.date_of_birth else None,
+            'maritalStatus': self.marital_status,
+            'nationalInsuranceNumber': self.national_insurance_number,
+            'startDate': self.start_date.isoformat() if self.start_date else None,
+            'department': self.department,
+            'position': self.position,
+            'salary': float(self.salary) if self.salary else None,
+            'probationPeriod': self.probation_period,
+            'lineManager': self.line_manager,
+            'term': self.term,
+            'status': self.status,
+            'bankName': self.bank_name,
+            'branchName': self.branch_name,
+            'branchAddress': self.branch_address,
+            'accountNumber': self.account_number,
+            'sortCode': self.sort_code,
+            'documents': [doc.to_dict() for doc in self.documents],
+            'isActive': self.is_active,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }

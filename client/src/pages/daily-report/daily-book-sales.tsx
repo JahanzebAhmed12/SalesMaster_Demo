@@ -36,6 +36,7 @@ interface SalesEntry {
   amount: number;
   cash: number;
   bank?: number;
+  credit?: number;
 }
 
 export default function DailyBookSales() {
@@ -83,6 +84,7 @@ export default function DailyBookSales() {
   const salesData: SalesEntry[] = rawSalesData.map((item: any) => ({
     ...item,
     amount: item.amount !== undefined ? item.amount : item.account !== undefined ? item.account : 0,
+    credit: item.credit !== undefined ? item.credit : 0,
   }));
 
   const totalBoxes = useMemo(() => salesData.reduce((sum, item) => sum + item.boxes, 0), [salesData]);
@@ -90,6 +92,7 @@ export default function DailyBookSales() {
   const totalAmount = useMemo(() => salesData.reduce((sum, item) => sum + item.amount, 0), [salesData]);
   const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
   const totalBank = useMemo(() => salesData.reduce((sum, item) => sum + (item.bank || 0), 0), [salesData]);
+  const totalCredit = useMemo(() => salesData.reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -147,7 +150,8 @@ export default function DailyBookSales() {
       'Customer Name': item.customerName,
       'Account': item.amount,
       'Cash': item.cash,
-      'Bank Transfer': item.bank || 0
+      'Bank Transfer': item.bank || 0,
+      'Credit': item.credit || 0
     })));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Daily Book Sales');
@@ -162,7 +166,7 @@ export default function DailyBookSales() {
     // Table first
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer'
+        'Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer', 'Credit'
       ]],
       body: salesData.map((item: SalesEntry) => [
         item.slNo,
@@ -172,7 +176,8 @@ export default function DailyBookSales() {
         item.customerName,
         item.amount,
         item.cash,
-        item.bank || 0
+        item.bank || 0,
+        item.credit || 0
       ]),
       startY: 22,
     });
@@ -208,7 +213,7 @@ export default function DailyBookSales() {
   };
 
   const handleCopy = () => {
-    const header = ['Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer'];
+    const header = ['Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer', 'Credit'];
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
       item.date,
@@ -217,7 +222,8 @@ export default function DailyBookSales() {
       item.customerName,
       item.amount,
       item.cash,
-      0 // Placeholder for bank transfer
+      0, // Placeholder for bank transfer
+      item.credit || 0
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
     navigator.clipboard.writeText(tsv);
@@ -278,6 +284,48 @@ export default function DailyBookSales() {
       }
 
       alert(`Successfully updated ${selectedSales.size} sales to cash payment.`);
+      setSelectedSales(new Set()); // Clear selection
+      refetchSales(); // Refresh the data
+    } catch (error) {
+      console.error('Error updating payments:', error);
+      alert('Error updating payments. Please try again.');
+    } finally {
+      setIsUpdatingPayments(false);
+    }
+  };
+
+  // Update selected sales to card payment
+  const handleUpdateToCard = async () => {
+    if (selectedSales.size === 0) {
+      alert('Please select at least one sale to update.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to card payment?`)) {
+      return;
+    }
+
+    setIsUpdatingPayments(true);
+    try {
+      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      
+      // Process each selected sale
+      for (const sale of selectedSalesData) {
+        if (sale.amount > 0) { // Only process sales with account amounts
+          const paymentData = {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: sale.amount,
+            paymentMode: 'bank',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Updated from account to card via daily book sales`
+          };
+
+          await apiRequest('POST', '/api/payments', paymentData);
+        }
+      }
+
+      alert(`Successfully updated ${selectedSales.size} sales to card payment.`);
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
@@ -486,22 +534,23 @@ export default function DailyBookSales() {
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                {selectedSales.size > 0 && (
+                {/* Action bar above table */}
+                <div className="flex items-center gap-2">
                   <Button
-                    onClick={handleUpdateToCash}
-                    disabled={isUpdatingPayments}
                     className="bg-green-600 hover:bg-green-700 text-white"
+                    onClick={handleUpdateToCash}
+                    disabled={selectedSales.size === 0}
                   >
-                    {isUpdatingPayments ? (
-                      <>
-                        <Loader2 className="animate-spin h-4 w-4 mr-2" />
-                        Updating...
-                      </>
-                    ) : (
-                      `Paid (Cash) - ${selectedSales.size}`
-                    )}
+                    Paid (Cash) - {selectedSales.size}
                   </Button>
-                )}
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    onClick={handleUpdateToCard}
+                    disabled={selectedSales.size === 0}
+                  >
+                    Pay Card - {selectedSales.size}
+                  </Button>
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                   <Input
@@ -533,13 +582,14 @@ export default function DailyBookSales() {
                     <TableHead className="min-w-[180px]">Customer Name</TableHead>
                     <TableHead className="min-w-[130px] text-right">Accounts</TableHead>
                     <TableHead className="min-w-[120px] text-right">Cash</TableHead>
-                    <TableHead className="min-w-[120px] text-right">Bank Transfer</TableHead>
+                    <TableHead className="min-w-[120px] text-right">Card Payment</TableHead>
+                    <TableHead className="min-w-[120px] text-right">Credit</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoadingSales ? (
                     <TableRow>
-                      <TableCell colSpan={8}>Loading...</TableCell>
+                      <TableCell colSpan={10}>Loading...</TableCell>
                     </TableRow>
                   ) : (
                     salesData.map((sale) => (
@@ -591,6 +641,7 @@ export default function DailyBookSales() {
                         <TableCell className="text-right">£{Number(sale.amount ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">£{Number(sale.cash ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">£{Number(sale.bank ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-right text-red-600">{sale.credit?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00"}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -605,7 +656,7 @@ export default function DailyBookSales() {
                     <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalBank.toFixed(2)}</TableCell>
-                    <TableCell></TableCell>
+                    <TableCell className="text-right font-bold text-red-600">£{totalCredit.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -621,6 +672,10 @@ export default function DailyBookSales() {
                 <div className="mr-6">£{totalAmount.toFixed(2)}</div>
                 <div className="flex items-center font-semibold mr-2">Total Cash:</div>
                 <div>£{totalCash.toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Total Bank:</div>
+                <div>£{totalBank.toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Total Credit:</div>
+                <div>£{totalCredit.toFixed(2)}</div>
               </div>
             </div>
             

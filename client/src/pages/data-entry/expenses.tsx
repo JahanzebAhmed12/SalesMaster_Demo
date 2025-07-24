@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
+import BusinessDateDisplay from "@/components/common/business-date-display";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { useQuery as useTanstackQuery } from '@tanstack/react-query';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 interface NewExpense {
   date: Date;
@@ -35,11 +37,13 @@ interface NewExpense {
 
 export default function Expenses() {
   const { toast } = useToast();
+  const { currentDate: businessDate } = useBusinessDate();
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
+  
   const [newExpense, setNewExpense] = useState<NewExpense>({
-    date: new Date(),
+    date: businessDate ? new Date(businessDate) : new Date(),
     supplierId: null,
     expenseId: null,
     description: "",
@@ -276,6 +280,9 @@ export default function Expenses() {
   return (
     <PageLayout title="Expenses" breadcrumb="Expenses">
       <div className="space-y-6">
+        {/* Business Date Display */}
+        <BusinessDateDisplay />
+        
         {/* Header Section */}
         <Card>
           <CardHeader className="pb-4">

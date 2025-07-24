@@ -12,6 +12,16 @@ import { useToast } from "@/hooks/use-toast";
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
 
+// Helper function to format multiple emails for display
+const formatEmails = (emailString: string) => {
+  if (!emailString) return "-";
+  const emails = emailString.split(',').map(email => email.trim()).filter(email => email);
+  if (emails.length <= 2) {
+    return emails.join(', ');
+  }
+  return `${emails[0]}, ${emails[1]} (+${emails.length - 2} more)`;
+};
+
 interface Customer {
   id: number;
   customer_code: string;
@@ -104,7 +114,7 @@ export default function Customers() {
             c.customer_city || "",
             c.customer_country || "",
             c.customer_currency,
-            c.email || "",
+            c.email ? c.email.replace(/,/g, ';') : "",
             c.telephone || "",
             c.is_active === "yes" ? "Active" : "Inactive",
           ].join(","),
@@ -336,7 +346,9 @@ export default function Customers() {
                           <td className="p-3 border-r">{customer.customer_city || "-"}</td>
                           <td className="p-3 border-r">{customer.customer_country || "-"}</td>
                           <td className="p-3 border-r">{customer.customer_currency}</td>
-                          <td className="p-3 border-r">{customer.email || "-"}</td>
+                          <td className="p-3 border-r" title={customer.email || ""}>
+                            {formatEmails(customer.email || "")}
+                          </td>
                           <td className="p-3 border-r">{customer.telephone || "-"}</td>
                           <td className="p-3 border-r">
                             <Button 

@@ -23,8 +23,8 @@ interface PurchaseEntry {
   slNo: number;
   date: string;
   supplier: string;
+  supplierId: number; // Add this line
   invNo: number;
-  delNo: number;
   invoiceAmt: number;
 }
 
@@ -129,7 +129,6 @@ export default function DailyBookPurchase() {
       'Date': item.date,
       'Supplier': item.supplier,
       'Inv.No': item.invNo,
-      'Del.No': item.delNo,
       'Invoice Amt': item.invoiceAmt
     })));
     const wb = XLSX.utils.book_new();
@@ -142,13 +141,12 @@ export default function DailyBookPurchase() {
     doc.text('Daily Book Purchase', 14, 16);
     autoTable(doc, {
       head: [[
-        'Date', 'Supplier', 'Inv.No', 'Del.No', 'Invoice Amt'
+        'Date', 'Supplier', 'Inv.No', 'Invoice Amt'
       ]],
       body: purchaseData.map((item: PurchaseEntry) => [
         item.date,
         item.supplier,
         item.invNo,
-        item.delNo,
         item.invoiceAmt
       ]),
       startY: 22,
@@ -173,12 +171,11 @@ export default function DailyBookPurchase() {
   };
 
   const handleCopy = () => {
-    const header = ['Date', 'Supplier', 'Inv.No', 'Del.No', 'Invoice Amt'];
+    const header = ['Date', 'Supplier', 'Inv.No', 'Invoice Amt'];
     const rows = purchaseData.map((item: PurchaseEntry) => [
       item.date,
       item.supplier,
       item.invNo,
-      item.delNo,
       item.invoiceAmt
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
@@ -333,7 +330,6 @@ export default function DailyBookPurchase() {
                     <TableHead>Date</TableHead>
                     <TableHead>Supplier</TableHead>
                     <TableHead className="text-center">Inv.No</TableHead>
-                    <TableHead className="text-center">Del.No</TableHead>
                     <TableHead className="text-center">Invoice Amt</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -351,22 +347,31 @@ export default function DailyBookPurchase() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredPurchaseData.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.date}</TableCell>
-                        <TableCell>{item.supplier}</TableCell>
-                        <TableCell className="text-center">{item.invNo}</TableCell>
-                        <TableCell className="text-center">{item.delNo}</TableCell>
-                        <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
-                      </TableRow>
-                    ))
+                    filteredPurchaseData.map((item) => {
+                      console.log('Purchase item:', item); // Debug supplierId presence
+                      return (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.date}</TableCell>
+                          <TableCell>
+                            {item.supplierId ? (
+                              <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => navigate(`/daily-report/supplier-purchase-history/${item.supplierId}`)}>
+                                {item.supplier}
+                              </Button>
+                            ) : (
+                              <span>{item.supplier}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">{item.invNo}</TableCell>
+                          <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
+                        </TableRow>
+                      );
+                    })
                   )}
                   
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
                     <TableCell className="font-bold">{filteredPurchaseData.length} Items</TableCell>
-                    <TableCell className="text-center font-bold"></TableCell>
                     <TableCell className="text-center font-bold"></TableCell>
                     <TableCell className="text-center font-bold">£{filteredPurchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
                   </TableRow>

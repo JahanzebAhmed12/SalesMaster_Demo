@@ -11,6 +11,7 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
 import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -31,6 +32,7 @@ interface BackendSalePayload {
   gate_number: string | null;
   notes: string | null;
   status: string;
+  date?: string; // Business date
   items: Array<{
     product_id: number | null;
     non_product_id: number | null;
@@ -77,170 +79,171 @@ const SalesInvoice = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
+  const { currentDate: businessDate } = useBusinessDate();
   // const navigate = useNavigate(); // Removed useNavigate
 
   // Use the latest location from useLocation
-  
-  
 
 
-  
 
-// Log at the top of the component
 
-// State for current sale and items
-const [currentSale, setCurrentSale] = useState<SaleWithUser | null>(null);
-const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
-const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
-const [selectedProductId, setSelectedProductId] = useState<string>("");
-const [itemQuantity, setItemQuantity] = useState<number>(1);
-const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
-const [itemNotes, setItemNotes] = useState<string>("");
-const [isCreatingSale, setIsCreatingSale] = useState(false);
-const [customerId, setCustomerId] = useState<string>("");
-const [vehicleDetails, setVehicleDetails] = useState<string>("");
-const [gateNumber, setGateNumber] = useState<string>("");
-const [notes, setNotes] = useState<string>("");
-const [status, setStatus] = useState<string>("draft");
-  
-// Stock search state
-const [productSearch, setProductSearch] = useState("");
-const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct & { productType: 'regular' | 'non' })[]>([]);
-const [showProductDropdown, setShowProductDropdown] = useState(false);
-const [highlightedProduct, setHighlightedProduct] = useState(-1);
-const productInputRef = useRef<HTMLInputElement>(null);
-const productDropdownRef = useRef<HTMLDivElement>(null);
-  
-// Add this state at the top of your component (with other useState hooks)
-const [printDeliveryNote, setPrintDeliveryNote] = useState(false);
-const [printPackingList, setPrintPackingList] = useState(false);
-  
-const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
+
+
+  // Log at the top of the component
+
+  // State for current sale and items
+  const [currentSale, setCurrentSale] = useState<SaleWithUser | null>(null);
+  const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
+  const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
+  const [selectedProductId, setSelectedProductId] = useState<string>("");
+  const [itemQuantity, setItemQuantity] = useState<number>(1);
+  const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
+  const [itemNotes, setItemNotes] = useState<string>("");
+  const [isCreatingSale, setIsCreatingSale] = useState(false);
+  const [customerId, setCustomerId] = useState<string>("");
+  const [vehicleDetails, setVehicleDetails] = useState<string>("");
+  const [gateNumber, setGateNumber] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
+  const [status, setStatus] = useState<string>("draft");
+
+  // Stock search state
+  const [productSearch, setProductSearch] = useState("");
+  const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct & { productType: 'regular' | 'non' })[]>([]);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const productInputRef = useRef<HTMLInputElement>(null);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Add this state at the top of your component (with other useState hooks)
+  const [printDeliveryNote, setPrintDeliveryNote] = useState(false);
+  const [printPackingList, setPrintPackingList] = useState(false);
+
+  const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
   const [porterageDetails, setPorterageDetails] = useState({ withPorterage: false, porterageCharge: '0.00' });
   const [applyPorterage, setApplyPorterage] = useState(true); // Track if porterage should be applied to this invoice
   const [isEditingPorterage, setIsEditingPorterage] = useState(false);
   const [customPorterage, setCustomPorterage] = useState<string>(porterageDetails.porterageCharge);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
-const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
-const [customerSearch, setCustomerSearch] = useState("");
-const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
-const [isSearching, setIsSearching] = useState(false);
-const [highlightedIndex, setHighlightedIndex] = useState(-1);
-const inputRef = useRef<HTMLInputElement>(null);
-const dropdownRef = useRef<HTMLDivElement>(null);
+  const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-const [showOutstanding, setShowOutstanding] = useState(false);
-const [outstandingData, setOutstandingData] = useState<any>(null);
-const [outstandingLoading, setOutstandingLoading] = useState(false);
-const [outstandingError, setOutstandingError] = useState<string | null>(null);
+  const [showOutstanding, setShowOutstanding] = useState(false);
+  const [outstandingData, setOutstandingData] = useState<any>(null);
+  const [outstandingLoading, setOutstandingLoading] = useState(false);
+  const [outstandingError, setOutstandingError] = useState<string | null>(null);
 
-const handleShowOutstanding = async () => {
-  if (!selectedCustomer) {
-    toast({ title: 'No customer selected', description: 'Please select a customer first.' });
-    return;
-  }
-  setOutstandingLoading(true);
-  setOutstandingError(null);
-  setShowOutstanding(true);
-  try {
-    // Fetch customer info
-    const customer = customers?.find(c => c.id === selectedCustomer.id) || selectedCustomer;
-    // Fetch outstanding invoices
-    const outstandingRes = await apiRequest("GET", `/api/customers/${customer.id}/outstanding_invoices`);
-    const outstanding = Array.isArray(outstandingRes)
-      ? outstandingRes.reduce((sum, inv) => sum + (inv.totalAmount - (inv.paidAmount || 0)), 0)
-      : 0;
-    // Fetch last payment
-    const payments = await apiRequest("GET", `/api/payments/history?customerId=${customer.id}`);
-    let lastPayment = null;
-    if (Array.isArray(payments) && payments.length > 0) {
-      const sorted = payments.slice().sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
-      lastPayment = sorted[0];
+  const handleShowOutstanding = async () => {
+    if (!selectedCustomer) {
+      toast({ title: 'No customer selected', description: 'Please select a customer first.' });
+      return;
     }
-    setOutstandingData({
-      customer,
-      outstanding,
-      lastPayment,
-    });
-  } catch (err: any) {
-    setOutstandingError('Failed to fetch outstanding details.');
-  }
-  setOutstandingLoading(false);
-};
-
-function debounce<T extends (...args: any[]) => void>(func: T, wait: number) {
-  let timeout: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
+    setOutstandingLoading(true);
+    setOutstandingError(null);
+    setShowOutstanding(true);
+    try {
+      // Fetch customer info
+      const customer = customers?.find(c => c.id === selectedCustomer.id) || selectedCustomer;
+      // Fetch outstanding invoices
+      const outstandingRes = await apiRequest("GET", `/api/customers/${customer.id}/outstanding_invoices`);
+      const outstanding = Array.isArray(outstandingRes)
+        ? outstandingRes.reduce((sum, inv) => sum + (inv.totalAmount - (inv.paidAmount || 0)), 0)
+        : 0;
+      // Fetch last payment
+      const payments = await apiRequest("GET", `/api/payments/history?customerId=${customer.id}`);
+      let lastPayment = null;
+      if (Array.isArray(payments) && payments.length > 0) {
+        const sorted = payments.slice().sort((a, b) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+        lastPayment = sorted[0];
+      }
+      setOutstandingData({
+        customer,
+        outstanding,
+        lastPayment,
+      });
+    } catch (err: any) {
+      setOutstandingError('Failed to fetch outstanding details.');
+    }
+    setOutstandingLoading(false);
   };
-}
 
-const fetchCustomers = debounce(async (search: string) => {
-  setIsSearching(true);
-  try {
-    const params = new URLSearchParams();
-    if (search) params.append("search", search);
-    const data = await apiRequest("GET", `/api/customers?${params.toString()}`);
-    setCustomerOptions(data || []);
-  } catch (e) {
-    setCustomerOptions([]);
-  }
-  setIsSearching(false);
-}, 300);
-
-useEffect(() => {
-  if (isEditCustomerOpen) {
-    fetchCustomers(customerSearch);
-    setHighlightedIndex(-1);
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [customerSearch, isEditCustomerOpen]);
-
-function handleCustomerSelect(id: number) {
-  setCustomerId(id.toString());
-  setIsEditCustomerOpen(false);
-  setCustomerSearch("");
-  if (currentSale) {
-    const updatedSalePayload: BackendSalePayload = {
-      invoice_number: currentSale.invoiceNumber,
-      customer_id: id,
-      customer_type: currentSale.customerType,
-      payment_status: currentSale.paymentStatus,
-      subtotal: currentSale.subtotal,
-      porterage: currentSale.porterage,
-      vat_rate: currentSale.vatRate,
-      vat_amount: currentSale.vatAmount,
-      total_amount: currentSale.totalAmount,
-      vehicle_details: currentSale.vehicleDetails,
-      gate_number: currentSale.gateNumber,
-      notes: currentSale.notes,
-      status: currentSale.status,
-      items: saleItems.map(item => ({
-        product_id: item.productId,
-        non_product_id: item.nonProductId,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total_price: item.totalPrice,
-        notes: item.notes,
-        created_at: item.createdAt,
-      })),
+  function debounce<T extends (...args: any[]) => void>(func: T, wait: number) {
+    let timeout: ReturnType<typeof setTimeout>;
+    return (...args: Parameters<T>) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => func(...args), wait);
     };
-    updateSaleMutation.mutate(updatedSalePayload);
   }
-}
 
-  useEffect(()=>{
+  const fetchCustomers = debounce(async (search: string) => {
+    setIsSearching(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append("search", search);
+      const data = await apiRequest("GET", `/api/customers?${params.toString()}`);
+      setCustomerOptions(data || []);
+    } catch (e) {
+      setCustomerOptions([]);
+    }
+    setIsSearching(false);
+  }, 300);
+
+  useEffect(() => {
+    if (isEditCustomerOpen) {
+      fetchCustomers(customerSearch);
+      setHighlightedIndex(-1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerSearch, isEditCustomerOpen]);
+
+  function handleCustomerSelect(id: number) {
+    setCustomerId(id.toString());
+    setIsEditCustomerOpen(false);
+    setCustomerSearch("");
+    if (currentSale) {
+      const updatedSalePayload: BackendSalePayload = {
+        invoice_number: currentSale.invoiceNumber,
+        customer_id: id,
+        customer_type: currentSale.customerType,
+        payment_status: currentSale.paymentStatus,
+        subtotal: currentSale.subtotal,
+        porterage: currentSale.porterage,
+        vat_rate: currentSale.vatRate,
+        vat_amount: currentSale.vatAmount,
+        total_amount: currentSale.totalAmount,
+        vehicle_details: currentSale.vehicleDetails,
+        gate_number: currentSale.gateNumber,
+        notes: currentSale.notes,
+        status: currentSale.status,
+        items: saleItems.map(item => ({
+          product_id: item.productId,
+          non_product_id: item.nonProductId,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          total_price: item.totalPrice,
+          notes: item.notes,
+          created_at: item.createdAt,
+        })),
+      };
+      updateSaleMutation.mutate(updatedSalePayload);
+    }
+  }
+
+  useEffect(() => {
     // const queryParams = new URLSearchParams(locationStr.split('?')[1] || '');
     const params = new URLSearchParams(window.location.search);
-      console.log(params)
+    console.log(params)
 
 
     const customerIdFromUrl = params.get('customerId');
     const gateNumberFromUrl = params.get('gateNumber');
 
     console.log(customerIdFromUrl, "bbbbbbbbb")
-    if(customerIdFromUrl){
+    if (customerIdFromUrl) {
       setCustomerId(customerIdFromUrl as any)
     }
     if (gateNumberFromUrl) {
@@ -248,7 +251,7 @@ function handleCustomerSelect(id: number) {
     }
     // const vehicleDetailsFromUrl = queryParams.get('vehicleDetails');
     // const heldInvoiceIdFromUrl = queryParams.get('heldInvoiceId');
-  
+
   }, [])
 
   // Restore draft saleItems if present and not a held invoice
@@ -358,7 +361,7 @@ function handleCustomerSelect(id: number) {
       (s) => s.id === productId && s.productType === stockType
     );
     if (!item) return 0;
-    
+
     // Only apply real-time reduction for new invoices (draft)
     // For saved invoices, show actual database stock to prevent double reduction
     if (!currentSale) {
@@ -372,7 +375,7 @@ function handleCustomerSelect(id: number) {
           }
         })
         .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
-      
+
       // Calculate reserved quantity from all held invoices
       const heldInvoicesReservedQuantity = (heldInvoices as HeldInvoice[])
         .filter((heldInvoice: HeldInvoice) => {
@@ -388,10 +391,10 @@ function handleCustomerSelect(id: number) {
           }
         })
         .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
-      
+
       // Total reserved quantity = current invoice + all held invoices
       const totalReservedQuantity = currentInvoiceReservedQuantity + heldInvoicesReservedQuantity;
-      
+
       return Math.max(0, item.currentStock - totalReservedQuantity);
     } else {
       // For saved invoices, return actual database stock
@@ -414,7 +417,7 @@ function handleCustomerSelect(id: number) {
         const p = productOptions[highlightedProduct];
         setSelectedProductId(p.id.toString());
         setProductSearch(`${p.productCode} - ${p.description}`);
-        setItemUnitPrice(p.sellingPrice);
+        // Remove auto-fill price - let user enter manually
         setShowProductDropdown(false);
       }
     } else if (e.key === "Escape") {
@@ -427,14 +430,14 @@ function handleCustomerSelect(id: number) {
     setTimeout(() => setShowProductDropdown(false), 100);
   };
 
-  // When productId changes, update productSearch and unit price
+  // When productId changes, update productSearch only (no auto-fill price)
   useEffect(() => {
     if (!selectedProductId) return;
     const list = selectedProductType === "regular" ? regularProducts || [] : nonProducts || [];
     const p = list.find((x: any) => x.id.toString() === selectedProductId);
     if (p) {
       setProductSearch(`${p.productCode} - ${p.description}`);
-      setItemUnitPrice(p.sellingPrice);
+      // Remove auto-fill price - let user enter manually
     }
   }, [selectedProductId, selectedProductType, regularProducts, nonProducts]);
 
@@ -453,7 +456,7 @@ function handleCustomerSelect(id: number) {
 
   // Get customer details for display
   const selectedCustomer = customers?.find(c => c.id === parseInt(customerId));
-  const customerName = currentSale?.customerId 
+  const customerName = currentSale?.customerId
     ? customers?.find(c => c.id === currentSale.customerId)?.customer_name || 'N/A'
     : selectedCustomer?.customer_name || 'N/A';
   const customerType = currentSale?.customerType || "account";
@@ -465,7 +468,7 @@ function handleCustomerSelect(id: number) {
       // Add timeout to prevent hanging requests
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      
+
       return apiRequest("POST", "/api/sales", data, { signal: controller.signal })
         .finally(() => clearTimeout(timeoutId));
     },
@@ -482,7 +485,7 @@ function handleCustomerSelect(id: number) {
       console.log("Response:", response);
       console.log("createdBy:", response.createdBy);
       console.log("createdByUsername:", response.createdByUsername);
-      
+
       queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
@@ -498,7 +501,7 @@ function handleCustomerSelect(id: number) {
     onError: (error: any) => {
       setIsCreatingSale(false);
       let errorMessage = "Failed to create new sale";
-      
+
       if (error.name === 'AbortError') {
         errorMessage = "Request timed out. Please try again.";
       } else if (error?.error) {
@@ -508,7 +511,7 @@ function handleCustomerSelect(id: number) {
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       toast({
         title: "Error",
         description: errorMessage,
@@ -591,17 +594,17 @@ function handleCustomerSelect(id: number) {
   };
 
   const handleAddItem = () => {
-    if (!selectedProductId || itemUnitPrice <= 0) {
+    if (!selectedProductId) {
       toast({
         title: "Validation Error",
-        description: "Please select a product, and enter valid unit price.",
+        description: "Please select a product.",
         variant: "destructive",
       });
       return;
     }
 
     const actualStockLevel = getActualStock(parseInt(selectedProductId), selectedProductType);
-    
+
     const existingQuantity = saleItems
       .filter(item => {
         if (selectedProductType === 'regular') {
@@ -611,9 +614,9 @@ function handleCustomerSelect(id: number) {
         }
       })
       .reduce((sum, item) => sum + item.quantity, 0);
-    
+
     const totalRequestedQuantity = existingQuantity + itemQuantity;
-    
+
     // Only block for regular products if not enough stock
     if (selectedProductType === 'regular' && totalRequestedQuantity > actualStockLevel) {
       const availableStock = getCurrentStock(parseInt(selectedProductId), selectedProductType);
@@ -665,7 +668,7 @@ function handleCustomerSelect(id: number) {
     };
     const updatedItems = [...saleItems, newItem];
     setSaleItems(updatedItems);
-    
+
     // Only update backend if invoice is already saved
     if (currentSale) {
       const updatedSalePayload: BackendSalePayload = {
@@ -719,7 +722,7 @@ function handleCustomerSelect(id: number) {
       });
       return;
     }
-    
+
     if (saleItems.length === 0) {
       toast({
         title: "Validation Error",
@@ -729,12 +732,12 @@ function handleCustomerSelect(id: number) {
       return;
     }
 
-    setIsCreatingSale(true);
     skipAutoHoldRef.current = true; // Prevent auto-hold on navigation
+    setIsCreatingSale(true);
     const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
     const payload: Partial<BackendSalePayload & { mailInvoice?: boolean }> = {
       customer_id: parseInt(customerId),
-              customer_type: "account",
+      customer_type: "account",
       payment_status: "pending",
       subtotal,
       total_amount: totalAmount,
@@ -745,6 +748,7 @@ function handleCustomerSelect(id: number) {
       gate_number: gateNumber || null,
       notes: notes || null,
       status: "finalized",
+      date: businessDate, // Add business date to payload
       items: saleItems.map(item => ({
         product_id: item.productId,
         non_product_id: item.nonProductId,
@@ -759,11 +763,11 @@ function handleCustomerSelect(id: number) {
     createSaleMutation.mutate(payload, {
       onSuccess: (response) => {
         if (printInvoice && response?.invoiceNumber) {
-          const printUrl = invoicePrintFormat === 'DOTMATRIX' 
+          const printUrl = invoicePrintFormat === 'DOTMATRIX'
             ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
             : invoicePrintFormat === 'A5'
-            ? `/print/a5-invoice/${response.invoiceNumber}`
-            : `/print/invoice/${response.invoiceNumber}`;
+              ? `/print/a5-invoice/${response.invoiceNumber}`
+              : `/print/invoice/${response.invoiceNumber}`;
           window.open(printUrl, '_blank');
         }
         if (printDeliveryNote && response?.invoiceNumber) {
@@ -772,22 +776,22 @@ function handleCustomerSelect(id: number) {
         if (printPackingList && response?.invoiceNumber) {
           window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
         }
-        
+
         // Handle WhatsApp sending after successful save
         if (sendToWhatsapp && selectedCustomer && selectedCustomer.telephone && response?.invoiceNumber) {
           console.log('[WHATSAPP DEBUG] Invoice saved successfully, now sending to WhatsApp');
           console.log('[WHATSAPP DEBUG] Invoice number:', response.invoiceNumber);
-          
+
           setWhatsappLoading(true);
           setWhatsappError(null);
           setWhatsappSuccess(false);
-          
+
           // Send to WhatsApp
-          const printUrl = invoicePrintFormat === 'DOTMATRIX' 
+          const printUrl = invoicePrintFormat === 'DOTMATRIX'
             ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
             : invoicePrintFormat === 'A5'
-            ? `/print/a5-invoice/${response.invoiceNumber}`
-            : `/print/invoice/${response.invoiceNumber}`;
+              ? `/print/a5-invoice/${response.invoiceNumber}`
+              : `/print/invoice/${response.invoiceNumber}`;
           const invoiceUrl = `${window.location.origin}${printUrl}`;
           const payload = {
             phoneNumber: selectedCustomer.telephone,
@@ -797,7 +801,7 @@ function handleCustomerSelect(id: number) {
           console.log('[WHATSAPP] Sending invoice to:', selectedCustomer.telephone);
           console.log('[WHATSAPP] Invoice URL:', invoiceUrl);
           console.log('[WHATSAPP] API request payload:', payload);
-          
+
           apiRequest("POST", "/api/send/whatsapp-invoice", payload)
             .then(resp => {
               console.log('[WHATSAPP] API response:', resp);
@@ -815,7 +819,7 @@ function handleCustomerSelect(id: number) {
               setWhatsappLoading(false);
             });
         }
-        
+
         setLocation('/data-entry/sales-entry');
       }
     });
@@ -826,7 +830,7 @@ function handleCustomerSelect(id: number) {
     console.log('[WHATSAPP DEBUG] sendToWhatsapp:', sendToWhatsapp);
     console.log('[WHATSAPP DEBUG] selectedCustomer:', selectedCustomer);
     console.log('[WHATSAPP DEBUG] selectedCustomer.telephone:', selectedCustomer?.telephone);
-    
+
     // Just call handleSaveInvoice - WhatsApp logic is now handled in the onSuccess callback
     handleSaveInvoice(mailInvoice, printInvoice);
   };
@@ -991,6 +995,7 @@ function handleCustomerSelect(id: number) {
     setSaleItems([]);
     setApplyPorterage(true); // Reset porterage application
     toast({ title: "Invoice Held", description: "You can resume it later from Held Invoices." });
+    setLocation('/data-entry/sales-entry');
   };
 
   // Handler for Customer History navigation
@@ -1099,7 +1104,7 @@ function handleCustomerSelect(id: number) {
                 <div className="flex items-center gap-4">
                   <span>Date: {new Date().toLocaleString('en-GB', {
                     day: '2-digit',
-                    month: '2-digit', 
+                    month: '2-digit',
                     year: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit',
@@ -1108,11 +1113,11 @@ function handleCustomerSelect(id: number) {
                   {/* Print Invoice Button */}
                   {currentSale?.invoiceNumber && (
                     <a
-                      href={invoicePrintFormat === 'DOTMATRIX' 
+                      href={invoicePrintFormat === 'DOTMATRIX'
                         ? `/print/dot-matrix-invoice/${currentSale.invoiceNumber}`
                         : invoicePrintFormat === 'A5'
-                        ? `/print/a5-invoice/${currentSale.invoiceNumber}`
-                        : `/print/invoice/${currentSale.invoiceNumber}`}
+                          ? `/print/a5-invoice/${currentSale.invoiceNumber}`
+                          : `/print/invoice/${currentSale.invoiceNumber}`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -1209,7 +1214,7 @@ function handleCustomerSelect(id: number) {
                 )}
               </div>
             </div>
-            
+
             <div className="flex flex-col items-end">
               <div className="text-right text-sm text-gray-600 mb-2">
                 <div>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...</div>
@@ -1223,20 +1228,20 @@ function handleCustomerSelect(id: number) {
           {/* Product Type Selection */}
           <div className="flex items-center gap-4 mb-6">
             <div className="flex items-center gap-2">
-              <input 
-                type="radio" 
-                id="regular" 
-                name="productType" 
+              <input
+                type="radio"
+                id="regular"
+                name="productType"
                 checked={selectedProductType === "regular"}
                 onChange={() => setSelectedProductType("regular")}
               />
               <label htmlFor="regular" className="text-sm">Regular Products</label>
             </div>
             <div className="flex items-center gap-2">
-              <input 
-                type="radio" 
-                id="non_product" 
-                name="productType" 
+              <input
+                type="radio"
+                id="non_product"
+                name="productType"
                 checked={selectedProductType === "non_product"}
                 onChange={() => setSelectedProductType("non_product")}
               />
@@ -1251,7 +1256,7 @@ function handleCustomerSelect(id: number) {
               <Button variant="outline" size="sm">Excel</Button>
               <Button variant="outline" size="sm" onClick={handleShowOutstanding}>Cust_Outstanding</Button>
               <Button variant="outline" size="sm" onClick={handleCustomerHistory}>Customer History</Button>
-              <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Close Ticket</Button>
+              <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Cancel Ticket</Button>
             </div>
             {/* Removed More, Payment details, Options, and Search bar as requested */}
           </div>
@@ -1289,7 +1294,7 @@ function handleCustomerSelect(id: number) {
                           <Input
                             type="number"
                             value={editItem?.quantity ?? item.quantity}
-                            onChange={e => setEditItem({...item, quantity: parseInt(e.target.value) || 0, createdAt: item.createdAt})}
+                            onChange={e => setEditItem({ ...item, quantity: parseInt(e.target.value) || 0, createdAt: item.createdAt })}
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -1297,7 +1302,7 @@ function handleCustomerSelect(id: number) {
                             type="number"
                             step="0.01"
                             value={editItem?.unitPrice ?? item.unitPrice}
-                            onChange={e => setEditItem({...item, unitPrice: parseFloat(e.target.value) || 0, createdAt: item.createdAt})}
+                            onChange={e => setEditItem({ ...item, unitPrice: parseFloat(e.target.value) || 0, createdAt: item.createdAt })}
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -1306,7 +1311,7 @@ function handleCustomerSelect(id: number) {
                         <TableCell className="text-center">
                           <Button size="sm" onClick={() => {
                             // Save changes
-                            const updatedItems = saleItems.map((it, i) => i === index ? {...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt} : it);
+                            const updatedItems = saleItems.map((it, i) => i === index ? { ...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt } : it);
                             setSaleItems(updatedItems);
                             setEditingIndex(null);
                             setEditItem(null);
@@ -1365,7 +1370,7 @@ function handleCustomerSelect(id: number) {
                             } else {
                               setSaleItems(updatedItems);
                             }
-                            toast({title: "Item Removed", description: "Sale item has been removed."});
+                            toast({ title: "Item Removed", description: "Sale item has been removed." });
                           }}>
                             Remove
                           </Button>
@@ -1404,7 +1409,7 @@ function handleCustomerSelect(id: number) {
                                 onMouseDown={() => {
                                   setSelectedProductId(p.id.toString());
                                   setProductSearch(`${p.productCode} - ${p.description}`);
-                                  setItemUnitPrice(p.sellingPrice);
+                                  // Remove auto-fill price - let user enter manually
                                   setShowProductDropdown(false);
                                 }}
                                 onMouseEnter={() => setHighlightedProduct(idx)}
@@ -1432,17 +1437,17 @@ function handleCustomerSelect(id: number) {
                       />
                     </TableCell>
                     <TableCell>
-                      <Input 
-                        className="text-center" 
-                        type="number" 
+                      <Input
+                        className="text-center"
+                        type="number"
                         value={itemQuantity}
                         onChange={(e) => setItemQuantity(parseInt(e.target.value) || 0)}
                       />
                     </TableCell>
                     <TableCell>
-                      <Input 
-                        className="text-center" 
-                        type="number" 
+                      <Input
+                        className="text-center"
+                        type="number"
                         step="0.01"
                         value={itemUnitPrice}
                         onChange={(e) => setItemUnitPrice(parseFloat(e.target.value) || 0)}
@@ -1452,8 +1457,8 @@ function handleCustomerSelect(id: number) {
                       £{(itemQuantity * itemUnitPrice).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         className="bg-green-600 hover:bg-green-700"
                         onClick={() => {
                           handleAddItem();
@@ -1491,7 +1496,7 @@ function handleCustomerSelect(id: number) {
               </div>
               {/* Add checkboxes below navigation, left side, vertically */}
               <div className="flex flex-col gap-2 mt-4">
-              <label className="flex items-center gap-2">
+                <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={printPackingList}
@@ -1499,7 +1504,7 @@ function handleCustomerSelect(id: number) {
                   />
                   Picking Note
                 </label>
-                
+
                 <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -1517,11 +1522,11 @@ function handleCustomerSelect(id: number) {
                   Email Ticket
                 </label>
                 {/* Print Ticket checkbox removed */}
-                
+
                 {whatsappLoading && <div className="text-blue-600 text-xs">Sending to WhatsApp...</div>}
                 {whatsappSuccess && <div className="text-green-600 text-xs">Invoice sent to WhatsApp!</div>}
                 {whatsappError && <div className="text-red-600 text-xs">{whatsappError}</div>}
-                
+
                 {/* Save button for new invoices */}
                 <div className="flex gap-2">
                   {/* Show Save for new, Update for edit */}
@@ -1532,6 +1537,7 @@ function handleCustomerSelect(id: number) {
                   )}
                   {currentSale && (
                     <Button variant="outline" size="sm" onClick={() => {
+                      skipAutoHoldRef.current = true; // Prevent auto-hold on navigation after update
                       // Build update payload and call updateSaleMutation
                       const updatedSalePayload = {
                         invoice_number: currentSale.invoiceNumber,
@@ -1558,6 +1564,7 @@ function handleCustomerSelect(id: number) {
                         })),
                       };
                       updateSaleMutation.mutate(updatedSalePayload);
+                      setLocation('/data-entry/sales-entry');
                     }}>
                       Update Ticket
                     </Button>
@@ -1582,13 +1589,13 @@ function handleCustomerSelect(id: number) {
                     Print Ticket
                   </Button>
                 </div>
-                
+
                 {/* Send to WhatsApp button for existing invoices */}
                 {currentSale && sendToWhatsapp && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="self-start bg-green-100 hover:bg-green-200" 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="self-start bg-green-100 hover:bg-green-200"
                     onClick={async () => {
                       if (selectedCustomer && selectedCustomer.telephone) {
                         setWhatsappLoading(true);
@@ -1730,7 +1737,7 @@ function handleCustomerSelect(id: number) {
         </div>
       </div>
 
-      <PaymentDetailsDrawer 
+      <PaymentDetailsDrawer
         open={isPaymentDrawerOpen}
         onOpenChange={setIsPaymentDrawerOpen}
       />

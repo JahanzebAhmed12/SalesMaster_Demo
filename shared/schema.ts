@@ -51,7 +51,7 @@ export const customerSchema = z.object({
   address: z.string().nullable(),
   telephone: z.string().nullable(),
   fax: z.string().nullable(),
-  email: z.string().email().nullable(),
+  email: z.string().nullable(),
   customer_city: z.string().nullable(),
   customer_country: z.string().nullable(),
   customer_currency: z.string(),
@@ -237,7 +237,7 @@ export const insertSupplierSchema = supplierSchema.omit({
 export const purchaseSchema = z.object({
   id: z.number(),
   invoiceNumber: z.string(),
-  supplierId: z.number(),
+  supplierId: z.number().nullable(),
   supplierName: z.string().nullable(),
   amount: z.number(),
   vehicleDetails: z.string().nullable(),
@@ -253,6 +253,8 @@ export const insertPurchaseSchema = purchaseSchema.omit({
   supplierName: true,
   createdAt: true,
   updatedAt: true
+}).extend({
+  supplierId: z.number().nullable(),
 });
 
 // Expense Schema
@@ -723,3 +725,59 @@ export const userRestrictionSchema = z.object({
 });
 
 export type UserRestriction = z.infer<typeof userRestrictionSchema>;
+
+// Employee Document Schema
+export const employeeDocumentSchema = z.object({
+  id: z.number().optional(),
+  documentName: z.string().min(1, "Document name is required"),
+  startDate: z.string().optional().nullable(), // ISO date string
+  endDate: z.string().optional().nullable(), // ISO date string
+});
+
+export const insertEmployeeDocumentSchema = employeeDocumentSchema.omit({
+  id: true,
+});
+
+export type EmployeeDocument = z.infer<typeof employeeDocumentSchema>;
+export type InsertEmployeeDocument = z.infer<typeof insertEmployeeDocumentSchema>;
+
+// Employee Schema
+export const employeeSchema = z.object({
+  id: z.number(),
+  fullName: z.string().min(1, "Full name is required"),
+  title: z.string().optional().nullable(),
+  homeAddress: z.string().optional().nullable(),
+  homePhoneNumber: z.string().optional().nullable(),
+  mobileNumber: z.string().optional().nullable(),
+  dateOfBirth: z.string().optional().nullable(), // ISO date string
+  maritalStatus: z.string().optional().nullable(),
+  nationalInsuranceNumber: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(), // ISO date string
+  department: z.string().optional().nullable(),
+  position: z.string().optional().nullable(),
+  salary: z.number().optional().nullable(),
+  probationPeriod: z.string().optional().nullable(),
+  lineManager: z.string().optional().nullable(),
+  term: z.string().optional().nullable(), // permanent or contract
+  status: z.string().optional().nullable(), // P/T or F/T
+  bankName: z.string().optional().nullable(),
+  branchName: z.string().optional().nullable(),
+  branchAddress: z.string().optional().nullable(),
+  accountNumber: z.string().optional().nullable(),
+  sortCode: z.string().optional().nullable(),
+  documents: z.array(employeeDocumentSchema).optional().default([]),
+  isActive: z.string().default("yes"),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const insertEmployeeSchema = employeeSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+}).extend({
+  documents: z.array(insertEmployeeDocumentSchema).optional().default([]),
+});
+
+export type Employee = z.infer<typeof employeeSchema>;
+export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;

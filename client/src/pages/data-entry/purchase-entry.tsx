@@ -13,8 +13,10 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
+import BusinessDateDisplay from "@/components/common/business-date-display";
 import { Plus } from "lucide-react";
 import { useLocation } from "wouter";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 const purchaseSchema = z.object({
   invoiceDate: z.string().min(1, "Invoice date is required"),
@@ -31,11 +33,12 @@ export default function PurchaseEntry() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const { currentDate: businessDate } = useBusinessDate();
   
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseSchema),
     defaultValues: {
-      invoiceDate: new Date().toISOString().split('T')[0],
+      invoiceDate: businessDate || new Date().toISOString().split('T')[0],
       deliveryNo: "",
       supplierInvoice: "",
       awb: "",
@@ -98,6 +101,9 @@ export default function PurchaseEntry() {
   return (
     <PageLayout title="Purchase Entry" breadcrumb="Purchase Entry">
       <div className="space-y-6">
+        {/* Business Date Display */}
+        <BusinessDateDisplay />
+        
         {/* Form Section */}
         <Card>
           <CardHeader>

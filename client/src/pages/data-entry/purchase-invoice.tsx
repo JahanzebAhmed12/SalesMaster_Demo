@@ -227,6 +227,7 @@ export default function PurchaseInvoice() {
 
     createInvoiceMutation.mutate({
       purchaseId: purchaseId,
+      supplierId: purchase?.supplierId, // <-- Add this line
       remarks,
       items
     }, {

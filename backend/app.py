@@ -2,10 +2,10 @@ from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
-    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema
+    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema
 )
 from models import Company, Supplier, PurchaseInvoice, PurchaseInvoiceItem, Purchase
 from flask import Flask, request, jsonify, session, current_app, send_file
@@ -174,12 +174,36 @@ def get_closing_time():
     return time(23, 59)  # Default closing time
 
 def get_business_date(now=None):
+    """Get current business date - either from manual override or calculated"""
+    # Check if there's a manual business date override
+    business_date_record = BusinessDate.query.first()
+    if business_date_record and business_date_record.is_manual_override:
+        return business_date_record.current_date
+    
+    # Otherwise use current date (no time-based logic)
     now = now or datetime.now()
-    closing_time = get_closing_time()
-    closing_datetime = now.replace(hour=closing_time.hour, minute=closing_time.minute, second=0, microsecond=0)
-    if now.time() > closing_time:
-        return (now + timedelta(days=1)).date()
     return now.date()
+
+def get_next_business_date(current_date):
+    """Calculate next business date (including weekends)"""
+    if isinstance(current_date, datetime):
+        current_date = current_date.date()
+    
+    # Simply add one day - include weekends
+    next_date = current_date + timedelta(days=1)
+    return next_date
+
+def set_business_date(new_date, is_manual=True):
+    """Set the business date manually"""
+    business_date_record = BusinessDate.query.first()
+    if not business_date_record:
+        business_date_record = BusinessDate()
+        db.session.add(business_date_record)
+    
+    business_date_record.current_date = new_date
+    business_date_record.is_manual_override = is_manual
+    db.session.commit()
+    return business_date_record
 
 # Health check endpoint
 @app.route('/api/health', methods=['GET'])
@@ -300,6 +324,16 @@ def create_sale():
             max_invoice = max_invoice_result or 0
             next_invoice = str(int(max_invoice) + 1)
             
+            # Use business date if provided, otherwise use current business date
+            sale_date = None
+            if hasattr(sale_data, 'date') and sale_data.date:
+                try:
+                    sale_date = datetime.strptime(sale_data.date, '%Y-%m-%d').date()
+                except:
+                    sale_date = get_business_date()
+            else:
+                sale_date = get_business_date()
+            
             # Create sale with all data at once
             new_sale = Sale(
                 invoice_number=next_invoice,
@@ -316,7 +350,7 @@ def create_sale():
                 notes=sale_data.notes,
                 status=sale_data.status,
                 created_by=user_id,
-                date=datetime.now()
+                date=datetime.combine(sale_date, datetime.now().time())
             )
             
             # Add sale to session
@@ -404,8 +438,11 @@ def create_sale():
                 customer = Customer.query.get(new_sale.customer_id)
                 if customer and customer.email:
                     try:
-                        send_invoice_email(mail, customer.email, new_sale, customer)
-                        print(f"Email sent successfully to {customer.email}")
+                        # Handle multiple emails
+                        emails = [email.strip() for email in customer.email.split(',') if email.strip()]
+                        for email in emails:
+                            send_invoice_email(mail, email, new_sale, customer)
+                        print(f"Email sent successfully to {', '.join(emails)}")
                     except Exception as e:
                         print(f"Failed to send email: {str(e)}")
                         # Don't fail the sale creation if email fails
@@ -749,8 +786,11 @@ def update_sale(id):
             customer = Customer.query.get(sale.customer_id)
             if customer and customer.email:
                 try:
-                    send_invoice_email(mail, customer.email, sale, customer)
-                    print(f"Email sent successfully to {customer.email}")
+                    # Handle multiple emails
+                    emails = [email.strip() for email in customer.email.split(',') if email.strip()]
+                    for email in emails:
+                        send_invoice_email(mail, email, sale, customer)
+                    print(f"Email sent successfully to {', '.join(emails)}")
                 except Exception as e:
                     print(f"Failed to send email: {str(e)}")
                     # Don't fail the sale update if email fails
@@ -1152,10 +1192,31 @@ def get_customers():
     customers = query.all()
     return jsonify([customer.to_dict() for customer in customers]), 200
 
+def validate_multiple_emails(email_string):
+    """Validate multiple email addresses separated by commas"""
+    if not email_string or not email_string.strip():
+        return True, None
+    
+    emails = [email.strip() for email in email_string.split(',')]
+    import re
+    email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    
+    for email in emails:
+        if email and not re.match(email_pattern, email):
+            return False, f'Invalid email format: {email}'
+    
+    return True, None
+
 @app.route('/api/customers', methods=['POST'])
 def create_customer():
     data = request.get_json()
     try:
+        # Validate multiple emails if provided
+        if data.get('email'):
+            is_valid, error_msg = validate_multiple_emails(data['email'])
+            if not is_valid:
+                return jsonify({'message': error_msg}), 400
+        
         customer_data = CustomerSchema(**data)
         customer = Customer(**customer_data.dict())
         db.session.add(customer)
@@ -1174,6 +1235,12 @@ def get_customer(id):
 def update_customer(id):
     data = request.get_json()
     try:
+        # Validate multiple emails if provided
+        if data.get('email'):
+            is_valid, error_msg = validate_multiple_emails(data['email'])
+            if not is_valid:
+                return jsonify({'message': error_msg}), 400
+        
         customer_data = CustomerSchema(**data)
         customer = Customer.query.get_or_404(id)
         
@@ -1848,6 +1915,221 @@ def update_daily_wage(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
+
+# Employee routes
+@app.route('/api/employees', methods=['GET'])
+def get_employees():
+    try:
+        employees = Employee.query.all()
+        return jsonify([employee.to_dict() for employee in employees])
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@app.route('/api/employees/<int:id>', methods=['GET'])
+def get_employee(id):
+    try:
+        employee = Employee.query.get_or_404(id)
+        return jsonify(employee.to_dict())
+    except Exception as e:
+        return jsonify({'message': str(e)}), 404
+
+@app.route('/api/employees', methods=['POST'])
+@jwt_required()
+def create_employee():
+    data = request.get_json()
+    try:
+        employee_data = EmployeeSchema(**data)
+        
+        # Create new employee
+        employee = Employee(
+            full_name=employee_data.fullName,
+            title=employee_data.title,
+            home_address=employee_data.homeAddress,
+            home_phone_number=employee_data.homePhoneNumber,
+            mobile_number=employee_data.mobileNumber,
+            date_of_birth=employee_data.dateOfBirth,
+            marital_status=employee_data.maritalStatus,
+            national_insurance_number=employee_data.nationalInsuranceNumber,
+            start_date=employee_data.startDate,
+            department=employee_data.department,
+            position=employee_data.position,
+            salary=employee_data.salary,
+            probation_period=employee_data.probationPeriod,
+            line_manager=employee_data.lineManager,
+            term=employee_data.term,
+            status=employee_data.status,
+            bank_name=employee_data.bankName,
+            branch_name=employee_data.branchName,
+            branch_address=employee_data.branchAddress,
+            account_number=employee_data.accountNumber,
+            sort_code=employee_data.sortCode,
+            is_active=employee_data.isActive
+        )
+        
+        db.session.add(employee)
+        db.session.flush()  # Get employee ID
+        
+        # Add documents
+        if employee_data.documents:
+            for doc_data in employee_data.documents:
+                document = EmployeeDocument(
+                    employee_id=employee.id,
+                    document_name=doc_data.documentName,
+                    start_date=doc_data.startDate,
+                    end_date=doc_data.endDate
+                )
+                db.session.add(document)
+        
+        db.session.commit()
+        return jsonify(employee.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 400
+
+@app.route('/api/employees/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_employee(id):
+    data = request.get_json()
+    try:
+        employee_data = EmployeeSchema(**data)
+        employee = Employee.query.get_or_404(id)
+        
+        # Update employee fields
+        employee.full_name = employee_data.fullName
+        employee.title = employee_data.title
+        employee.home_address = employee_data.homeAddress
+        employee.home_phone_number = employee_data.homePhoneNumber
+        employee.mobile_number = employee_data.mobileNumber
+        employee.date_of_birth = employee_data.dateOfBirth
+        employee.marital_status = employee_data.maritalStatus
+        employee.national_insurance_number = employee_data.nationalInsuranceNumber
+        employee.start_date = employee_data.startDate
+        employee.department = employee_data.department
+        employee.position = employee_data.position
+        employee.salary = employee_data.salary
+        employee.probation_period = employee_data.probationPeriod
+        employee.line_manager = employee_data.lineManager
+        employee.term = employee_data.term
+        employee.status = employee_data.status
+        employee.bank_name = employee_data.bankName
+        employee.branch_name = employee_data.branchName
+        employee.branch_address = employee_data.branchAddress
+        employee.account_number = employee_data.accountNumber
+        employee.sort_code = employee_data.sortCode
+        employee.is_active = employee_data.isActive
+        
+        # Update documents - remove existing and add new ones
+        # Delete existing documents
+        EmployeeDocument.query.filter_by(employee_id=id).delete()
+        
+        # Add new documents
+        if employee_data.documents:
+            for doc_data in employee_data.documents:
+                document = EmployeeDocument(
+                    employee_id=id,
+                    document_name=doc_data.documentName,
+                    start_date=doc_data.startDate,
+                    end_date=doc_data.endDate
+                )
+                db.session.add(document)
+        
+        db.session.commit()
+        return jsonify(employee.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 400
+
+@app.route('/api/employees/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_employee(id):
+    try:
+        employee = Employee.query.get_or_404(id)
+        db.session.delete(employee)
+        db.session.commit()
+        return jsonify({'message': 'Employee deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 400
+
+# Business Date Management Routes
+@app.route('/api/business-date', methods=['GET'])
+def get_business_date_api():
+    """Get current and next business dates"""
+    try:
+        current_date = get_business_date()
+        next_date = get_next_business_date(current_date)
+        
+        return jsonify({
+            'currentDate': current_date.isoformat(),
+            'nextDate': next_date.isoformat(),
+            'isNextDay': next_date > current_date
+        })
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
+@app.route('/api/business-date/switch', methods=['POST'])
+@jwt_required()
+def switch_business_date():
+    """Switch to next business date"""
+    try:
+        # Get current business date
+        current_date = get_business_date()
+        next_date = get_next_business_date(current_date)
+        
+        # Set the new business date manually
+        set_business_date(next_date, is_manual=True)
+        
+        return jsonify({
+            'message': 'Business date switched successfully',
+            'newDate': next_date.isoformat(),
+            'previousDate': current_date.isoformat()
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 500
+
+@app.route('/api/business-date/reset', methods=['POST'])
+@jwt_required()
+def reset_business_date():
+    """Reset business date to current system date"""
+    try:
+        # Clear any manual override
+        business_date_record = BusinessDate.query.first()
+        if business_date_record:
+            db.session.delete(business_date_record)
+            db.session.commit()
+        
+        # Get current date (will now use system date)
+        current_date = get_business_date()
+        
+        return jsonify({
+            'message': 'Business date reset to current system date',
+            'currentDate': current_date.isoformat()
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 500
+        # This is a simple implementation - you might want to add a specific field for manual date override
+        settings.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Business date switched successfully',
+            'newDate': next_date.isoformat()
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 500
+
+def get_next_business_date(current_date):
+    """Calculate next business date (skipping weekends)"""
+    next_date = current_date + timedelta(days=1)
+    
+    # Skip weekends (Saturday = 5, Sunday = 6)
+    while next_date.weekday() >= 5:
+        next_date += timedelta(days=1)
+    
+    return next_date
 
 # Monthly Reports Routes
 @app.route('/api/reports/monthly-stats', methods=['GET'])
@@ -2749,6 +3031,8 @@ def create_purchase_invoice():
     data = request.get_json()
     # Use business date
     business_date = get_business_date()
+    supplier_id = data.get('supplierId')  # Only use the supplied value
+
     invoice_date = business_date
     if data.get('date'):
         try:
@@ -2757,6 +3041,7 @@ def create_purchase_invoice():
             invoice_date = business_date
     invoice = PurchaseInvoice(
         purchase_id=data['purchaseId'],
+        supplier_id=supplier_id,
         remarks=data.get('remarks'),
         date=invoice_date
     )
@@ -3055,6 +3340,7 @@ def daily_book_purchase():
         db.session.query(
             PurchaseInvoice.id,
             PurchaseInvoice.date,
+            PurchaseInvoice.supplier_id,
             PurchaseInvoice.purchase_id,
             Purchase.supplier_name,
             func.sum(PurchaseInvoiceItem.total_price).label('invoice_amount')
@@ -3102,8 +3388,8 @@ def daily_book_purchase():
             'slNo': idx,
             'date': row.date.strftime('%Y-%m-%d') if row.date else None,
             'supplier': row.supplier_name,
+            'supplierId': row.supplier_id,
             'invNo': row.purchase_id,
-            'delNo': 0,  # Delivery number not tracked in current schema
             'invoiceAmt': float(row.invoice_amount) if row.invoice_amount else 0
         })
     
@@ -7267,11 +7553,6 @@ def supplier_aging_report():
     except Exception as e:
         print('Error in supplier_aging_report:', str(e))
         return jsonify({'error': 'Internal server error'}), 500
-        
-@app.route('/api/business-date', methods=['GET'])
-def get_business_date_api():
-    business_date = get_business_date()
-    return jsonify({"businessDate": business_date.isoformat()})
 
 @app.route('/api/test/mail', methods=['POST'])
 def test_mail():
@@ -7400,13 +7681,17 @@ def send_customer_statement_email_api():
         for i, item in enumerate(statement_data, 1):
             item['slNo'] = i
         
-        # Send email
-        success = send_customer_statement_email(mail, customer.email, customer, statement_data, from_date, to_date, statement_type)
+        # Send email to all addresses
+        emails = [email.strip() for email in customer.email.split(',') if email.strip()]
+        success_count = 0
+        for email in emails:
+            if send_customer_statement_email(mail, email, customer, statement_data, from_date, to_date, statement_type):
+                success_count += 1
         
-        if success:
+        if success_count > 0:
             return jsonify({
                 'success': True,
-                'message': f'Customer statement email sent to {customer.email}'
+                'message': f'Customer statement email sent to {success_count}/{len(emails)} addresses: {", ".join(emails)}'
             })
         else:
             return jsonify({
@@ -7510,13 +7795,17 @@ def send_customer_history_email_api():
         for i, item in enumerate(history_data, 1):
             item['slNo'] = i
         
-        # Send email
-        success = send_customer_history_email(mail, customer.email, customer, history_data, from_date, to_date)
+        # Send email to all addresses
+        emails = [email.strip() for email in customer.email.split(',') if email.strip()]
+        success_count = 0
+        for email in emails:
+            if send_customer_history_email(mail, email, customer, history_data, from_date, to_date):
+                success_count += 1
         
-        if success:
+        if success_count > 0:
             return jsonify({
                 'success': True,
-                'message': f'Customer history email sent to {customer.email}'
+                'message': f'Customer history email sent to {success_count}/{len(emails)} addresses: {", ".join(emails)}'
             })
         else:
             return jsonify({
@@ -8046,7 +8335,64 @@ def send_sale_invoice_email(invoice_number):
         customer = sale.customer
         if not customer or not customer.email:
             return jsonify({'error': 'Customer email not found'}), 400
-        send_invoice_email(mail, customer.email, sale, customer)
-        return jsonify({'success': True, 'message': f'Invoice email sent to {customer.email}'})
+        
+        # Send email to all addresses
+        emails = [email.strip() for email in customer.email.split(',') if email.strip()]
+        success_count = 0
+        for email in emails:
+            try:
+                send_invoice_email(mail, email, sale, customer)
+                success_count += 1
+            except Exception as e:
+                print(f"Failed to send email to {email}: {str(e)}")
+        
+        if success_count > 0:
+            return jsonify({'success': True, 'message': f'Invoice email sent to {success_count}/{len(emails)} addresses: {", ".join(emails)}'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to send email to any address'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Failed to send invoice email: {str(e)}'}), 500
+
+
+@app.route('/api/reports/supplier-purchase-history', methods=['GET'])
+@jwt_required()
+def supplier_purchase_history():
+    supplier_id = request.args.get('supplierId')
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    if not supplier_id or not from_date or not to_date:
+        return jsonify([])
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+
+    # Query all purchase invoices for this supplier in the date range
+    results = (
+        db.session.query(
+            PurchaseInvoice.id.label('invoice_no'),
+            PurchaseInvoice.date,
+            PurchaseInvoiceItem.product_name,
+            PurchaseInvoiceItem.quantity,
+            PurchaseInvoiceItem.unit_price,
+            PurchaseInvoiceItem.total_price
+        )
+        .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+        .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+        .filter(Purchase.supplier_id == supplier_id)
+        .filter(PurchaseInvoice.date >= from_dt, PurchaseInvoice.date <= to_dt)
+        .order_by(PurchaseInvoice.date.desc())
+        .all()
+    )
+
+    data = [
+        {
+            'invoiceNo': row.invoice_no,
+            'date': row.date.strftime('%Y-%m-%d'),
+            'productDescription': row.product_name,
+            'quantity': row.quantity,
+            'unitPrice': float(row.unit_price),
+            'total': float(row.total_price)
+        }
+        for row in results
+    ]
+    return jsonify(data)

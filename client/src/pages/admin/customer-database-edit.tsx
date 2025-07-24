@@ -27,6 +27,14 @@ function getNextCustomerCode(customers: any[]) {
   return `C${nextNum}`;
 }
 
+// Helper to validate multiple emails
+function validateEmails(emailString: string): boolean {
+  if (!emailString.trim()) return true;
+  const emails = emailString.split(',').map(email => email.trim());
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  return emails.every(email => email === '' || emailRegex.test(email));
+}
+
 export default function CustomerAdd() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -287,10 +295,18 @@ export default function CustomerAdd() {
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Email</FormLabel>
+                      <FormLabel>Email (separate multiple emails with commas)</FormLabel>
                       <FormControl>
-                        <Input {...field} value={field.value || ""} type="email" />
+                        <Textarea 
+                          {...field} 
+                          value={field.value || ""} 
+                          placeholder="email1@example.com, email2@example.com"
+                          rows={2}
+                        />
                       </FormControl>
+                      {field.value && !validateEmails(field.value) && (
+                        <p className="text-red-500 text-sm">Please enter valid email addresses separated by commas</p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}

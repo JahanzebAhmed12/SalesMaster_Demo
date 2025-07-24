@@ -113,6 +113,7 @@ const menuSections: MenuSection[] = [
     icon: Settings,
     items: [
       { title: "User Setup", path: "/admin/user-setup" },
+      { title: "Employee Database", path: "/admin/employee-database" },
       { title: "Products Database", path: "/admin/products-database" },
       { title: "Customer Database", path: "/admin/customer-database" },
       { title: "Supplier Database", path: "/admin/supplier-database" },

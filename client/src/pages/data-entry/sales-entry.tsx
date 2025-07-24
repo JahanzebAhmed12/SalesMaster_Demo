@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
+import BusinessDateDisplay from "@/components/common/business-date-display";
 import { Plus, Clock, Trash2 } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Customer } from "@shared/schema";
@@ -180,6 +181,9 @@ console.log(heldInvoices, "see held invoices")
             </Button>
           )}
         </div>
+
+        {/* Business Date Display */}
+        <BusinessDateDisplay />
 
         {/* Held Invoices Section */}
         {showHeldInvoices && heldInvoices.length > 0 && (

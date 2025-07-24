@@ -41,6 +41,7 @@ import ProductPurchaseFullView from "@/pages/daily-report/product-purchase-full-
 import ProductSalesHistoryPage from './pages/daily-report/product-sales-history';
 import ProductPurchaseHistoryPage from './pages/daily-report/product-purchase-history';
 import CompareWithPurchasePage from './pages/daily-report/compare-with-purchase';
+import SupplierPurchaseHistoryPage from './pages/daily-report/supplier-purchase-history';
 
 // Historical Reports Pages
 import CustomerHistory from "@/pages/historical-reports/customer-history";
@@ -81,6 +82,8 @@ import ExpensesDatabaseEdit from "@/pages/admin/expenses-database-edit";
 import CompanyDetails from "@/pages/admin/company-details";
 import AdminFunctions from "./pages/admin/admin-functions";
 import UserAdd from "./pages/admin/user-database-add";
+import EmployeeDatabase from "@/pages/admin/employee-database";
+import EmployeeDatabaseEdit from "@/pages/admin/employee-database-edit";
 
 // Admin Setup
 import ClosingTime from "@/pages/closing-time";
@@ -239,6 +242,7 @@ function Router() {
       <Route path="/product-sales-history/:productId" component={ProductSalesHistoryPage} />
       <Route path="/daily-report/product-purchase-history/:productId" component={ProductPurchaseHistoryPage} />
       <Route path="/daily-report/compare-with-purchase" component={CompareWithPurchasePage} />
+      <Route path="/daily-report/supplier-purchase-history/:supplierId" component={SupplierPurchaseHistoryPage} />
      
       <Route path="/daily-report/daily-accounts">
         <ProtectedRoute requiredSection="daily_reports" title="Daily Accounts" breadcrumb="Daily Report > Daily Accounts">
@@ -390,6 +394,16 @@ function Router() {
       <Route path="/admin/user-database-add/:id?">
         <ProtectedRoute requiredSection="admin_setup" title="User Add" breadcrumb="User Add">
           <UserAdd />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/employee-database">
+        <ProtectedRoute requiredSection="admin_setup" title="Employee Database" breadcrumb="Employee Database">
+          <EmployeeDatabase />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/employee-database-edit/:id?">
+        <ProtectedRoute requiredSection="admin_setup" title="Employee Database Edit" breadcrumb="Employee Database Edit">
+          <EmployeeDatabaseEdit />
         </ProtectedRoute>
       </Route>
       <Route path="/admin/customer-database">

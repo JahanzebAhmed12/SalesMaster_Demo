@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import PageLayout from "@/components/common/page-layout";
+import BusinessDateDisplay from "@/components/common/business-date-display";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,13 +15,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { BankingEntry, InsertBankingEntry } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import React from "react";
 
 export default function Banking() {
+  const { currentDate: businessDate } = useBusinessDate();
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [newEntry, setNewEntry] = useState({
-    date: new Date(),
+    date: businessDate ? new Date(businessDate) : new Date(),
     remarks: "",
     paymentType: "CASH",
     amount: 0,
@@ -30,15 +33,12 @@ export default function Banking() {
   });
   const queryClient = useQueryClient();
 
-  // Fetch business date and set as newEntry.date on mount
+  // Update newEntry.date when businessDate changes
   React.useEffect(() => {
-    apiRequest('GET', '/api/business-date').then(res => {
-      if (res.businessDate) {
-        setNewEntry(prev => ({ ...prev, date: new Date(res.businessDate) }));
-      }
-    });
-    // eslint-disable-next-line
-  }, []);
+    if (businessDate) {
+      setNewEntry(prev => ({ ...prev, date: new Date(businessDate) }));
+    }
+  }, [businessDate]);
 
   // Fetch banking entries for date range
   const {
@@ -137,6 +137,9 @@ export default function Banking() {
   return (
     <PageLayout title="Banking" breadcrumb="Banking">
       <div className="space-y-6">
+        {/* Business Date Display */}
+        <BusinessDateDisplay />
+        
         {/* Header Section */}
         <Card>
           <CardHeader className="pb-4">
