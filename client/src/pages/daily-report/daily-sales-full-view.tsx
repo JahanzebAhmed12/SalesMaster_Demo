@@ -128,19 +128,85 @@ export default function DailySalesFullView() {
     doc.setFontSize(10);
     doc.text(`Date Range: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}`, 14, companyDetails ? 48 : 21);
     
-    // Add table
+    // Process data to group by invoice and add totals
+    const processedData: any[] = [];
+    const displayData = Array.isArray(data) ? data : [];
+    
+    displayData.forEach((row, index) => {
+      if (row.isInvoiceHeader) {
+        // Add invoice header row
+        processedData.push([
+          row.date,
+          row.invoiceNo,
+          row.customerName,
+          '', // Empty product name for header
+          '', // Empty quantity for header
+          '', // Empty unit price for header
+          ''  // Empty total for header
+        ]);
+      } else if (row.isInvoiceTotal) {
+        // Add invoice total row
+        processedData.push([
+          '', // Empty date
+          '', // Empty invoice no
+          '', // Empty customer name
+          '', // Empty product name
+          '', // Empty quantity
+          'Total', // Label in unit price column
+          `£${Number(row.total).toFixed(2)}` // Total amount
+        ]);
+        
+        // Add empty row for spacing between invoices
+        if (index < displayData.length - 1) {
+          processedData.push(['', '', '', '', '', '', '']);
+        }
+      } else {
+        // Add product row (indented by leaving date and invoice empty)
+        processedData.push([
+          '', // Empty date (already shown in header)
+          row.invoiceNo,
+          row.customerName,
+          row.productName,
+          row.quantity.toString(),
+          `£${Number(row.unitPrice).toFixed(2)}`,
+          `£${Number(row.total).toFixed(2)}`
+        ]);
+      }
+    });
+    
+    // Add table with custom styling
     autoTable(doc, {
       head: [['Date', 'Invoice No', 'Customer Name', 'Product Name', 'Quantity', 'Unit Price', 'Total']],
-      body: (Array.isArray(data) ? data : []).filter(row => !row.isInvoiceHeader && !row.isInvoiceTotal).map(row => [
-        row.date,
-        row.invoiceNo,
-        row.customerName,
-        row.productName,
-        row.quantity,
-        Number(row.unitPrice).toFixed(2),
-        Number(row.total).toFixed(2)
-      ]),
+      body: processedData,
       startY: companyDetails ? 52 : 25,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+      didParseCell: function(data) {
+        // Style invoice header rows
+        if (data.row.index < processedData.length) {
+          const rowData = processedData[data.row.index];
+          // If this is an invoice header (has date but no product)
+          if (rowData[0] && !rowData[3]) {
+            data.cell.styles.fillColor = [220, 220, 220];
+            data.cell.styles.fontStyle = 'bold';
+          }
+          // If this is a total row
+          if (rowData[5] === 'Total') {
+            data.cell.styles.fillColor = [200, 200, 200];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      }
     });
     
     return doc.output('blob');
@@ -171,31 +237,63 @@ export default function DailySalesFullView() {
       // Convert blob to base64
       const reader = new FileReader();
       reader.onloadend = async () => {
-        const base64data = reader.result as string;
-        const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
-        
-        // Send email with PDF attachment
-        const emailData = {
-          to: emailList,
-          subject: `Daily Sales Full View Report - ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}`,
-          body: `Please find attached the Daily Sales Full View report for the period from ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}.`,
-          attachment: {
-            filename: `daily-sales-full-view-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
-            content: base64PDF,
-            contentType: 'application/pdf'
+        try {
+          const base64data = reader.result as string;
+          const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+          
+          // Send email with PDF attachment
+          const emailData = {
+            to: emailList,
+            subject: `Daily Sales Full View Report - ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Sales Full View report for the period from ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}.\n\nThis report contains detailed sales information including:\n- Invoice numbers and dates\n- Customer names\n- Product details\n- Quantities and pricing\n\nBest regards,\n${companyDetails?.name || 'Sales Team'}`,
+            attachment: {
+              filename: `daily-sales-full-view-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
+              content: base64PDF,
+              contentType: 'application/pdf'
+            }
+          };
+          
+          const response = await apiRequest('POST', '/api/send-email', emailData);
+          
+          if (response.message) {
+            alert(`✅ ${response.message}`);
+            if (response.warnings) {
+              alert(`⚠️ Warning: ${response.warnings}`);
+            }
+          } else {
+            alert(`📧 PDF report sent successfully to ${emailList.length} email(s)`);
           }
-        };
-        
-        await apiRequest('POST', '/api/send-email', emailData);
-        alert(`PDF report sent successfully to ${emailList.length} email(s)`);
-        setEmails(''); // Clear email field after successful send
+          
+          setEmails(''); // Clear email field after successful send
+          
+        } catch (emailError) {
+          console.error('Error sending email:', emailError);
+          
+          // Handle specific error messages
+          let errorMessage = 'Failed to send email. Please try again.';
+          if (emailError && typeof emailError === 'object' && 'error' in emailError) {
+            errorMessage = `Email Error: ${emailError.error}`;
+          } else if (emailError && typeof emailError === 'string') {
+            errorMessage = `Email Error: ${emailError}`;
+          }
+          
+          alert(`❌ ${errorMessage}`);
+        } finally {
+          // Always reset the sending state
+          setIsEmailSending(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        alert('❌ Failed to process PDF file. Please try again.');
+        setIsEmailSending(false);
       };
       
       reader.readAsDataURL(pdfBlob);
+      
     } catch (error) {
-      console.error('Error sending email:', error);
-      alert('Failed to send email. Please try again.');
-    } finally {
+      console.error('Error generating PDF:', error);
+      alert('❌ Failed to generate PDF. Please try again.');
       setIsEmailSending(false);
     }
   };
@@ -206,22 +304,24 @@ export default function DailySalesFullView() {
     <PageLayout title="Daily Sales Full View" breadcrumb="Daily Report > Daily Sales Full View">
       <div className="space-y-6">
         <Card>
-          <CardHeader className="pb-4 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-            <CardTitle className="text-lg md:text-xl">Full View - Daily Sales</CardTitle>
-            <div className="flex flex-col sm:flex-row gap-2 md:gap-4 items-end">
-              <div className="flex gap-2">
+          <CardHeader className="pb-4">
+            <div className="flex flex-col space-y-4">
+              <CardTitle className="text-lg md:text-xl">Full View - Daily Sales</CardTitle>
+              
+              {/* Date Controls Row */}
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       className={cn(
-                        'w-full justify-start text-left font-normal h-10',
+                        'w-full sm:w-auto justify-start text-left font-normal h-10',
                         !fromDate && 'text-muted-foreground'
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
                       <span className="truncate">
-                        {fromDate ? format(fromDate, 'MM/dd/yyyy') : 'From Date'}
+                        {fromDate ? format(fromDate, 'MMM dd, yyyy') : 'From Date'}
                       </span>
                     </Button>
                   </PopoverTrigger>
@@ -235,18 +335,19 @@ export default function DailySalesFullView() {
                     />
                   </PopoverContent>
                 </Popover>
+                
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       className={cn(
-                        'w-full justify-start text-left font-normal h-10',
+                        'w-full sm:w-auto justify-start text-left font-normal h-10',
                         !toDate && 'text-muted-foreground'
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
                       <span className="truncate">
-                        {toDate ? format(toDate, 'MM/dd/yyyy') : 'To Date'}
+                        {toDate ? format(toDate, 'MMM dd, yyyy') : 'To Date'}
                       </span>
                     </Button>
                   </PopoverTrigger>
@@ -260,38 +361,50 @@ export default function DailySalesFullView() {
                     />
                   </PopoverContent>
                 </Popover>
+                
+                <div className="relative flex-1 sm:flex-none">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                  <Input
+                    placeholder="Search..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="pl-10 w-full sm:w-56"
+                  />
+                </div>
               </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                <Input
-                  placeholder="Search by invoice, customer, or product"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="pl-10 w-56"
-                />
-              </div>
-              <Button variant="outline" onClick={handlePrint} className="flex items-center gap-2">
-                <Printer size={16} /> Print
-              </Button>
-              <Button variant="outline" onClick={handlePDF} className="flex items-center gap-2">
-                <FileText size={16} /> PDF
-              </Button>
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Enter emails (comma separated)"
-                  value={emails}
-                  onChange={(e) => setEmails(e.target.value)}
-                  className="w-64"
-                  disabled={isEmailSending}
-                />
-                <Button 
-                  variant="outline" 
-                  onClick={handleEmailPDF} 
-                  className="flex items-center gap-2"
-                  disabled={isEmailSending}
-                >
-                  <Mail size={16} /> {isEmailSending ? 'Sending...' : 'Email PDF'}
-                </Button>
+              
+              {/* Action Buttons Row */}
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handlePrint} className="flex items-center gap-2 flex-1 sm:flex-none">
+                    <Printer size={16} />
+                    <span className="hidden sm:inline">Print</span>
+                  </Button>
+                  <Button variant="outline" onClick={handlePDF} className="flex items-center gap-2 flex-1 sm:flex-none">
+                    <FileText size={16} />
+                    <span className="hidden sm:inline">PDF</span>
+                  </Button>
+                </div>
+                
+                {/* Email Section */}
+                <div className="flex flex-col sm:flex-row gap-2 flex-1">
+                  <Input
+                    placeholder="Enter emails (comma separated)"
+                    value={emails}
+                    onChange={(e) => setEmails(e.target.value)}
+                    className="flex-1 min-w-0"
+                    disabled={isEmailSending}
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={handleEmailPDF} 
+                    className="flex items-center gap-2 whitespace-nowrap"
+                    disabled={isEmailSending}
+                  >
+                    <Mail size={16} />
+                    <span>{isEmailSending ? 'Sending...' : 'Email PDF'}</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>

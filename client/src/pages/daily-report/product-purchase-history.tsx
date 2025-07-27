@@ -1,10 +1,12 @@
-import React, { useState } from "react";
-import { useParams } from "wouter";
-import { format } from "date-fns";
+import React, { useState, useEffect } from "react";
+import { format, parseISO } from "date-fns";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, FileText, Printer, Download } from "lucide-react";
+import { CalendarIcon, FileText, Printer, Download, Mail } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -14,10 +16,59 @@ import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function ProductPurchaseHistoryPage() {
-  const params = useParams();
-  const productId = params.productId;
+  const [productId, setProductId] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
   const [toDate, setToDate] = useState<Date | undefined>(new Date());
+  const [productName, setProductName] = useState<string>("");
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  // Navigation handler for clickable product descriptions
+  const handleProductClick = (purchase: any) => {
+    if (!productId) return; // Don't navigate if no product ID in URL
+    
+    const fromDateStr = fromDate ? format(fromDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    const toDateStr = toDate ? format(toDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+    const productType = 'regular'; // Default to regular since we don't have this info from backend
+    
+    // Navigate to product purchase history with date range and product info (using current productId)
+    setLocation(`/reports/product-purchase-history?productId=${productId}&productType=${productType}&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(purchase.productDescription)}`);
+  };
+
+  // Read URL parameters and set initial values
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const productIdParam = urlParams.get('productId');
+    const fromDateParam = urlParams.get('fromDate');
+    const toDateParam = urlParams.get('toDate');
+    const productNameParam = urlParams.get('productName');
+
+    if (productIdParam) {
+      setProductId(productIdParam);
+    }
+
+    if (fromDateParam) {
+      try {
+        setFromDate(parseISO(fromDateParam));
+      } catch (error) {
+        console.error('Invalid fromDate parameter:', fromDateParam);
+      }
+    }
+
+    if (toDateParam) {
+      try {
+        setToDate(parseISO(toDateParam));
+      } catch (error) {
+        console.error('Invalid toDate parameter:', toDateParam);
+      }
+    }
+
+    if (productNameParam) {
+      setProductName(decodeURIComponent(productNameParam));
+    }
+  }, []);
 
   const { data: purchases = [], isLoading } = useQuery<any[]>({
     queryKey: ["product-purchase-history", productId, fromDate, toDate],
@@ -91,13 +142,129 @@ export default function ProductPurchaseHistoryPage() {
     XLSX.writeFile(wb, "product-purchase-history.xlsx");
   };
 
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text("TROPIFRUIT UK LTD", 105, 12, { align: "center" });
+    doc.setFontSize(12);
+    doc.text("Product Purchase History", 105, 20, { align: "center" });
+    if (productName) {
+      doc.setFontSize(10);
+      doc.text(`Product: ${productName}`, 105, 26, { align: "center" });
+    }
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''} to ${toDate ? format(toDate, 'yyyy-MM-dd') : ''}`, 105, productName ? 32 : 26, { align: "center" });
+    
+    autoTable(doc, {
+      head: [["Invoice No", "Date", "Supplier Name", "Product", "Quantity", "Unit Price", "Total"]],
+      body: purchases.map((row: any) => [
+        row.invoiceNo,
+        row.date,
+        row.supplierName,
+        row.productDescription,
+        row.quantity,
+        `£${Number(row.unitPrice).toFixed(2)}`,
+        `£${Number(row.total).toFixed(2)}`
+      ]),
+      startY: productName ? 38 : 32,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0 },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+    });
+    
+    return doc.output('blob');
+  };
+
+  // Email PDF handler
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      toast({
+        title: "Email Required",
+        description: "Please enter at least one email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      toast({
+        title: "Invalid Email",
+        description: `Invalid email addresses: ${invalidEmails.join(', ')}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (purchases.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No purchase history data available to send.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const base64PDF = base64data.split(',')[1];
+        
+        // Send email with PDF attachment
+        const emailData = {
+          to: emailList,
+          subject: `Product Purchase History - ${productName || 'Product'} (${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''} to ${toDate ? format(toDate, 'yyyy-MM-dd') : ''})`,
+          body: `Please find attached the Product Purchase History report${productName ? ` for ${productName}` : ''} for the period from ${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''} to ${toDate ? format(toDate, 'yyyy-MM-dd') : ''}.\n\nTotal records: ${purchases.length}`,
+          attachment: {
+            filename: `product-purchase-history-${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''}-to-${toDate ? format(toDate, 'yyyy-MM-dd') : ''}.pdf`,
+            content: base64PDF,
+            contentType: 'application/pdf'
+          }
+        };
+        
+        await apiRequest('POST', '/api/send-email', emailData);
+        toast({
+          title: "Email Sent",
+          description: `Product purchase history sent successfully to ${emailList.length} email(s)`,
+        });
+        setEmails('');
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Email Failed",
+        description: "Failed to send email. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailSending(false);
+    }
+  };
+
   return (
     <PageLayout title="Product Purchase History" breadcrumb="Product Purchase History">
       <div className="pl-0 md:pl-64 pt-6 pr-4">
         <h1 className="text-2xl font-bold mb-4">Product Purchase History</h1>
         <Card className="mx-auto max-w-7xl">
           <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <CardTitle className="text-xl font-bold">Product Purchase History</CardTitle>
+            <CardTitle className="text-xl font-bold">
+              Product Purchase History
+              {productName && <span className="text-sm font-normal text-gray-600 block mt-1">Product: {productName}</span>}
+            </CardTitle>
             <div className="flex gap-2 flex-wrap">
               <Popover>
                 <PopoverTrigger asChild>
@@ -124,6 +291,26 @@ export default function ProductPurchaseHistoryPage() {
               <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" /> Print</Button>
               <Button variant="outline" onClick={handlePDF}><FileText className="mr-2 h-4 w-4" /> PDF</Button>
               <Button variant="outline" onClick={handleExcel}><Download className="mr-2 h-4 w-4" /> Excel</Button>
+              
+              {/* Email Section */}
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Enter emails (comma separated)"
+                  value={emails}
+                  onChange={(e) => setEmails(e.target.value)}
+                  className="w-64"
+                  disabled={isEmailSending}
+                />
+                <Button 
+                  variant="outline" 
+                  onClick={handleEmailPDF} 
+                  className="flex items-center gap-2"
+                  disabled={isEmailSending}
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="overflow-x-auto p-0">
@@ -151,7 +338,15 @@ export default function ProductPurchaseHistoryPage() {
                         <td className="border-b px-4 py-2">{row.invoiceNo}</td>
                         <td className="border-b px-4 py-2">{row.date}</td>
                         <td className="border-b px-4 py-2">{row.supplierName}</td>
-                        <td className="border-b px-4 py-2">{row.productDescription}</td>
+                        <td 
+                          className={`border-b px-4 py-2 ${productId ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors' : ''}`}
+                          onClick={() => productId && handleProductClick(row)}
+                          title={productId ? "Click to view detailed product purchase history" : ""}
+                        >
+                          <span className={productId ? 'underline decoration-dotted' : ''}>
+                            {row.productDescription}
+                          </span>
+                        </td>
                         <td className="border-b px-4 py-2 text-right">{row.quantity}</td>
                         <td className="border-b px-4 py-2 text-right">£{Number(row.unitPrice).toFixed(2)}</td>
                         <td className="border-b px-4 py-2 text-right font-semibold">£{Number(row.total).toFixed(2)}</td>

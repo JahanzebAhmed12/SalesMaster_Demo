@@ -1,42 +1,131 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Check, Calendar, AlertCircle, PoundSterling } from "lucide-react";
+import { Save, Check, Calendar, AlertCircle, PoundSterling, CalendarDays } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import type { UserWithAttendance } from "@shared/schema";
+import type { EmployeeWithAttendance } from "@shared/schema";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
+import { DateRange } from "react-day-picker";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 
 interface AttendanceTableProps {
-  users: UserWithAttendance[];
+  employees: EmployeeWithAttendance[];
+  dateRange?: {
+    from: Date;
+    to: Date;
+  };
+  onDateRangeChange?: (range: { from: Date; to: Date }) => void;
+  viewMode?: 'day' | 'week' | 'month' | 'range';
+  onViewModeChange?: (mode: 'day' | 'week' | 'month' | 'range') => void;
 }
 
-export default function AttendanceTable({ users }: AttendanceTableProps) {
+export default function AttendanceTable({ 
+  employees: initialEmployees, 
+  dateRange: initialDateRange,
+  onDateRangeChange,
+  viewMode: initialViewMode = 'day',
+  onViewModeChange
+}: AttendanceTableProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [selectedStatus, setSelectedStatus] = useState<Record<number, string>>({});
   const [leaveType, setLeaveType] = useState<Record<number, string>>({});
   const [holidayName, setHolidayName] = useState<Record<number, string>>({});
   const [dailyWage, setDailyWage] = useState<Record<number, string>>({});
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'range'>(initialViewMode);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(
+    initialDateRange || { 
+      from: new Date(), 
+      to: new Date() 
+    }
+  );
+
+  // Sync with parent component if callbacks are provided
+  useEffect(() => {
+    if (onViewModeChange) {
+      onViewModeChange(viewMode);
+    }
+  }, [viewMode, onViewModeChange]);
+
+  useEffect(() => {
+    if (onDateRangeChange && dateRange?.from && dateRange?.to) {
+      onDateRangeChange({ from: dateRange.from, to: dateRange.to });
+    }
+  }, [dateRange, onDateRangeChange]);
+
+  // Fetch attendance data when date range changes
+  const { data: attendanceData, isLoading } = useQuery<EmployeeWithAttendance[]>({
+    queryKey: ['/api/attendance', dateRange],
+    queryFn: async () => {
+      if (!dateRange?.from || !dateRange?.to) return [];
+      
+      const params = new URLSearchParams({
+        from_date: format(dateRange.from, 'yyyy-MM-dd'),
+        to_date: format(dateRange.to, 'yyyy-MM-dd'),
+      });
+      
+      const response = await apiRequest("GET", `/api/attendance?${params.toString()}`);
+      return response || [];
+    },
+    enabled: !!dateRange?.from && !!dateRange?.to,
+  });
+
+  // Merge attendance data with employee data
+  const employees = initialEmployees.map(emp => {
+    const attendance = attendanceData?.find(a => a.id === emp.id)?.attendance || emp.attendance;
+    return { ...emp, attendance };
+  });
+
+  // Handle view mode changes
+  const handleViewModeChange = (mode: 'day' | 'week' | 'month' | 'range') => {
+    setViewMode(mode);
+    const today = new Date();
+    
+    switch (mode) {
+      case 'day':
+        setDateRange({ from: today, to: today });
+        break;
+      case 'week':
+        setDateRange({ from: startOfWeek(today), to: endOfWeek(today) });
+        break;
+      case 'month':
+        setDateRange({ from: startOfMonth(today), to: endOfMonth(today) });
+        break;
+      case 'range':
+        // Keep current range or default to last 7 days
+        setDateRange(prev => prev || { 
+          from: subDays(today, 7), 
+          to: today 
+        });
+        break;
+    }
+  };
 
   const markAttendanceMutation = useMutation({
-    mutationFn: async ({ userId, status, leaveType, holidayName }: { 
-      userId: number; 
+    mutationFn: async ({ employeeId, status, leaveType, holidayName, date }: { 
+      employeeId: number; 
       status: string;
       leaveType?: string;
       holidayName?: string;
+      date?: Date;
     }) => {
-      return apiRequest("POST", `/api/users/attendance/${userId}`, {
+      return apiRequest("POST", `/api/attendance`, {
+        user_id: employeeId,
         status,
-        leaveType,
-        holidayName
+        date: date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+        ...(status === "on_leave" && { leave_type: leaveType }),
+        ...(status === "holiday" && { holiday_name: holidayName }),
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users/attendance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees/attendance"] });
       toast({
         title: "Success",
         description: "Attendance marked successfully",
@@ -52,13 +141,11 @@ export default function AttendanceTable({ users }: AttendanceTableProps) {
   });
 
   const updateDailyWageMutation = useMutation({
-    mutationFn: async ({ userId, dailyWage }: { userId: number; dailyWage: number }) => {
-      return apiRequest("PUT", `/api/users/${userId}/daily-wage`, {
-        dailyWage
-      });
+    mutationFn: async ({ employeeId, dailyWage }: { employeeId: number; dailyWage: number }) => {
+      return apiRequest("PUT", `/api/employees/${employeeId}/daily-wage`, { dailyWage });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users/attendance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/employees/attendance"] });
       toast({
         title: "Success",
         description: "Daily wage updated successfully",
@@ -74,13 +161,25 @@ export default function AttendanceTable({ users }: AttendanceTableProps) {
   });
 
   const handleMarkAllPresent = () => {
-    users.forEach(user => {
-      if (user.attendance.status !== 'present') {
+    if (!dateRange?.from || !dateRange?.to) return;
+    
+    // For each day in the date range, mark all employees as present
+    const days = [];
+    let currentDate = new Date(dateRange.from);
+    
+    while (currentDate <= dateRange.to) {
+      days.push(new Date(currentDate));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    employees.forEach(employee => {
+      days.forEach(date => {
         markAttendanceMutation.mutate({ 
-          userId: user.id, 
-          status: 'present' 
+          employeeId: employee.id, 
+          status: 'present',
+          date: date
         });
-      }
+      });
     });
   };
 
@@ -90,7 +189,7 @@ export default function AttendanceTable({ users }: AttendanceTableProps) {
         return 'bg-green-100 text-green-800';
       case 'absent':
         return 'bg-red-100 text-red-800';
-      case 'leave':
+      case 'on_leave':
         return 'bg-yellow-100 text-yellow-800';
       case 'holiday':
         return 'bg-blue-100 text-blue-800';
@@ -99,61 +198,181 @@ export default function AttendanceTable({ users }: AttendanceTableProps) {
     }
   };
 
-  const handleStatusChange = (userId: number, status: string) => {
-    setSelectedStatus(prev => ({ ...prev, [userId]: status }));
+  // Initialize selectedStatus from employee data
+  useEffect(() => {
+    const initialStatus: Record<number, string> = {};
+    const initialLeaveType: Record<number, string> = {};
+    const initialHolidayName: Record<number, string> = {};
+    
+    employees.forEach(emp => {
+      if (emp.attendance) {
+        initialStatus[emp.id] = emp.attendance.status || 'absent';
+        if (emp.attendance.leaveType) {
+          initialLeaveType[emp.id] = emp.attendance.leaveType;
+        }
+        if (emp.attendance.holidayName) {
+          initialHolidayName[emp.id] = emp.attendance.holidayName;
+        }
+      } else {
+        initialStatus[emp.id] = 'absent'; // Default to absent if no attendance record
+      }
+    });
+    
+    setSelectedStatus(prev => ({ ...prev, ...initialStatus }));
+    setLeaveType(prev => ({ ...prev, ...initialLeaveType }));
+    setHolidayName(prev => ({ ...prev, ...initialHolidayName }));
+  }, [employees, dateRange]);
+
+  const handleStatusChange = (employeeId: number, status: string) => {
+    setSelectedStatus(prev => ({ ...prev, [employeeId]: status }));
     
     // Reset leave type and holiday name when status changes
-    if (status !== 'leave') {
-      setLeaveType(prev => ({ ...prev, [userId]: '' }));
+    if (status !== 'on_leave') {
+      setLeaveType(prev => ({ ...prev, [employeeId]: '' }));
     }
     if (status !== 'holiday') {
-      setHolidayName(prev => ({ ...prev, [userId]: '' }));
+      setHolidayName(prev => ({ ...prev, [employeeId]: '' }));
     }
   };
 
-  const handleSaveStatus = (userId: number) => {
-    const status = selectedStatus[userId] || 'absent';
-    const leaveTypeValue = status === 'leave' ? leaveType[userId] : undefined;
-    const holidayNameValue = status === 'holiday' ? holidayName[userId] : undefined;
-
-    markAttendanceMutation.mutate({ 
-      userId, 
-      status,
-      leaveType: leaveTypeValue,
-      holidayName: holidayNameValue
-    });
+  const handleSaveAttendance = (employeeId: number) => {
+    if (!dateRange?.from) return;
+    
+    const status = selectedStatus[employeeId] || "absent";
+    const leaveTypeValue = leaveType[employeeId];
+    const holidayNameValue = holidayName[employeeId];
+    
+    // If it's a range, apply to all days in the range
+    if (dateRange.from && dateRange.to) {
+      const days = [];
+      let currentDate = new Date(dateRange.from);
+      
+      while (currentDate <= dateRange.to) {
+        days.push(new Date(currentDate));
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      
+      days.forEach(date => {
+        markAttendanceMutation.mutate({
+          employeeId,
+          status,
+          date,
+          ...(status === "on_leave" && { leaveType: leaveTypeValue }),
+          ...(status === "holiday" && { holidayName: holidayNameValue }),
+        });
+      });
+    } else {
+      // Single day
+      markAttendanceMutation.mutate({
+        employeeId,
+        status,
+        date: dateRange.from,
+        ...(status === "on_leave" && { leaveType: leaveTypeValue }),
+        ...(status === "holiday" && { holidayName: holidayNameValue }),
+      });
+    }
   };
 
-  const handleUpdateDailyWage = (userId: number) => {
-    const wage = parseFloat(dailyWage[userId]);
-    if (isNaN(wage) || wage < 0) {
+  const handleSaveDailyWage = (employeeId: number) => {
+    const wage = dailyWage[employeeId];
+    if (wage && !isNaN(Number(wage)) && Number(wage) >= 0) {
+      updateDailyWageMutation.mutate({
+        employeeId,
+        dailyWage: Number(wage),
+      });
+    } else {
       toast({
         title: "Error",
         description: "Please enter a valid daily wage",
         variant: "destructive",
       });
-      return;
     }
+  };
 
-    updateDailyWageMutation.mutate({ userId, dailyWage: wage });
+  // Filter out inactive employees if needed (case-insensitive check)
+  const activeEmployees = employees.filter(emp => emp.status?.toLowerCase() === "active");
+
+  if (activeEmployees.length === 0) {
+    return <div className="text-center py-8">No active employees found.</div>;
+  }
+
+  const formatDateRange = () => {
+    if (!dateRange?.from) return 'Select date range';
+    
+    if (dateRange?.to) {
+      if (format(dateRange.from, 'MM/dd/yyyy') === format(dateRange.to, 'MM/dd/yyyy')) {
+        return format(dateRange.from, 'MMM d, yyyy');
+      }
+      return `${format(dateRange.from, 'MMM d, yyyy')} - ${format(dateRange.to, 'MMM d, yyyy')}`;
+    }
+    
+    return format(dateRange.from, 'MMM d, yyyy');
   };
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle>Daily Attendance</CardTitle>
-            <div className="flex space-x-3">
-              <Button 
-                onClick={handleMarkAllPresent} 
-                className="bg-green-600 hover:bg-green-700"
-                disabled={markAttendanceMutation.isPending}
-              >
-                <Check className="w-4 h-4 mr-2" />
-                Mark All Present
-              </Button>
+          <div className="flex flex-col space-y-4">
+            <div className="flex justify-between items-center">
+              <CardTitle>Attendance</CardTitle>
+              <div className="flex space-x-2">
+                <Select 
+                  value={viewMode} 
+                  onValueChange={(value: 'day' | 'week' | 'month' | 'range') => handleViewModeChange(value)}
+                >
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue placeholder="View mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="day">Day</SelectItem>
+                    <SelectItem value="week">Week</SelectItem>
+                    <SelectItem value="month">Month</SelectItem>
+                    <SelectItem value="range">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
+                
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="date"
+                      variant={"outline"}
+                      className={cn(
+                        "w-[300px] justify-start text-left font-normal",
+                        !dateRange && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarDays className="mr-2 h-4 w-4" />
+                      {formatDateRange()}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      initialFocus
+                      mode="range"
+                      defaultMonth={dateRange?.from}
+                      selected={dateRange}
+                      onSelect={setDateRange}
+                      numberOfMonths={2}
+                    />
+                  </PopoverContent>
+                </Popover>
+                
+                <Button 
+                  onClick={handleMarkAllPresent} 
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={markAttendanceMutation.isPending || !dateRange?.from}
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Mark All Present
+                </Button>
+              </div>
             </div>
+            {dateRange?.from && dateRange?.to && (
+              <div className="text-sm text-muted-foreground">
+                Showing attendance from {format(dateRange.from, 'MMM d, yyyy')} to {format(dateRange.to, 'MMM d, yyyy')}
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -162,48 +381,88 @@ export default function AttendanceTable({ users }: AttendanceTableProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Employee ID</TableHead>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Details</TableHead>
                   <TableHead>Daily Wage</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>{user.id}</TableCell>
-                    <TableCell>{user.username}</TableCell>
+                {activeEmployees.map((employee) => (
+                  <TableRow key={employee.id}>
+                    <TableCell className="font-medium">{employee.name || employee.fullName || 'N/A'}</TableCell>
+                    <TableCell>{employee.title || 'N/A'}</TableCell>
                     <TableCell>
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        getStatusColor(user.attendance.status)
-                      }`}>
-                        {user.attendance.status}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {user.attendance.status === 'leave' && user.attendance.leaveType && (
-                        <span className="text-sm text-yellow-600">
-                          {user.attendance.leaveType} Leave
-                        </span>
-                      )}
-                      {user.attendance.status === 'holiday' && user.attendance.holidayName && (
-                        <span className="text-sm text-blue-600">
-                          {user.attendance.holidayName}
-                        </span>
-                      )}
+                      <div className="flex items-center space-x-2">
+                        <Select
+                          value={selectedStatus[employee.id] || employee.attendance?.status || ""}
+                          onValueChange={(value) => handleStatusChange(employee.id, value)}
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="present">Present</SelectItem>
+                            <SelectItem value="absent">Absent</SelectItem>
+                            <SelectItem value="on_leave">On Leave</SelectItem>
+                            <SelectItem value="holiday">Holiday</SelectItem>
+                          </SelectContent>
+                        </Select>
+
+                        {selectedStatus[employee.id] === "on_leave" && (
+                          <Select
+                            value={leaveType[employee.id] || ""}
+                            onValueChange={(value) =>
+                              setLeaveType((prev) => ({
+                                ...prev,
+                                [employee.id]: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="w-[150px]">
+                              <SelectValue placeholder="Leave type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="sick">Sick Leave</SelectItem>
+                              <SelectItem value="casual">Casual Leave</SelectItem>
+                              <SelectItem value="annual">Annual Leave</SelectItem>
+                              <SelectItem value="unpaid">Unpaid Leave</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+
+                        {selectedStatus[employee.id] === "holiday" && (
+                          <Input
+                            type="text"
+                            placeholder="Holiday name"
+                            value={holidayName[employee.id] || ""}
+                            onChange={(e) =>
+                              setHolidayName((prev) => ({
+                                ...prev,
+                                [employee.id]: e.target.value,
+                              }))
+                            }
+                            className="w-[200px]"
+                          />
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         <div className="relative">
-                          <PoundSterling className="absolute left-2 top-2.5 h-4 w-4 text-gray-500" />
+                          <PoundSterling className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                           <Input
                             type="number"
-                            placeholder="Daily wage"
-                            className="pl-8 w-32"
-                            value={dailyWage[user.id] || user.dailyWage || ''}
-                            onChange={(e) => setDailyWage(prev => ({ ...prev, [user.id]: e.target.value }))}
+                            placeholder="0.00"
+                            value={dailyWage[employee.id] ?? employee.dailyWage ?? ""}
+                            onChange={(e) =>
+                              setDailyWage((prev) => ({
+                                ...prev,
+                                [employee.id]: e.target.value,
+                              }))
+                            }
+                            className="pl-8 w-[120px]"
                             min="0"
                             step="0.01"
                           />
@@ -211,66 +470,20 @@ export default function AttendanceTable({ users }: AttendanceTableProps) {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleUpdateDailyWage(user.id)}
+                          onClick={() => handleSaveDailyWage(employee.id)}
                           disabled={updateDailyWageMutation.isPending}
                         >
-                          Save
+                          {updateDailyWageMutation.isPending ? "Saving..." : "Save"}
                         </Button>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex space-x-2">
-                        <Select
-                          value={selectedStatus[user.id] || user.attendance.status}
-                          onValueChange={(value) => handleStatusChange(user.id, value)}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="present">Present</SelectItem>
-                            <SelectItem value="absent">Absent</SelectItem>
-                            <SelectItem value="leave">Leave</SelectItem>
-                            <SelectItem value="holiday">Holiday</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        {selectedStatus[user.id] === 'leave' && (
-                          <Select
-                            value={leaveType[user.id] || ''}
-                            onValueChange={(value) => setLeaveType(prev => ({ ...prev, [user.id]: value }))}
-                          >
-                            <SelectTrigger className="w-32">
-                              <SelectValue placeholder="Leave type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="annual">Annual</SelectItem>
-                              <SelectItem value="sick">Sick</SelectItem>
-                              <SelectItem value="unpaid">Unpaid</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-
-                        {selectedStatus[user.id] === 'holiday' && (
-                          <input
-                            type="text"
-                            placeholder="Holiday name"
-                            className="px-2 py-1 border rounded"
-                            value={holidayName[user.id] || ''}
-                            onChange={(e) => setHolidayName(prev => ({ ...prev, [user.id]: e.target.value }))}
-                          />
-                        )}
-
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleSaveStatus(user.id)}
-                          disabled={markAttendanceMutation.isPending}
-                        >
-                          Save
-                        </Button>
-                      </div>
+                      <Button
+                        onClick={() => handleSaveAttendance(employee.id)}
+                        disabled={markAttendanceMutation.isPending}
+                      >
+                        {markAttendanceMutation.isPending ? "Saving..." : "Save Attendance"}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

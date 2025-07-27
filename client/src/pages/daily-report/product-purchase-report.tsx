@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, ShoppingBag, FileText, Download, Copy, Printer, Search } from "lucide-react";
+import { CalendarIcon, ShoppingBag, FileText, Download, Copy, Printer, Search, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -36,6 +36,8 @@ export default function ProductPurchaseReport() {
   const [toDate, setToDate] = useState<Date>(new Date());
   const [showAll, setShowAll] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
   
   const [filters, setFilters] = useState({
     fromDate: format(new Date(), "yyyy-MM-dd"),
@@ -161,8 +163,170 @@ export default function ProductPurchaseReport() {
     alert('Table copied to clipboard!');
   };
 
-  const handleProductClick = (productId: number) => {
-    setLocation(`/daily-report/product-purchase-history/${productId}`);
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    
+    // Add company header if available
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.setFontSize(10);
+      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
+      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
+      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+    }
+    
+    // Add title
+    doc.setFontSize(14);
+    doc.text('Product Purchase Report', 14, companyDetails ? 42 : 15);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${filters.fromDate || '-'} to ${filters.toDate || '-'}`, 14, companyDetails ? 48 : 21);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total']],
+      body: purchaseData.map((item: PurchaseItem) => [
+        item.slNo.toString(),
+        item.productDescription,
+        item.quantity.toString(),
+        `£${item.avgPrice.toFixed(2)}`,
+        `£${item.total.toFixed(2)}`
+      ]),
+      startY: companyDetails ? 52 : 25,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+      columnStyles: {
+        0: { cellWidth: 20, halign: 'center' }, // Sl.No
+        1: { cellWidth: 80 }, // Product Description
+        2: { cellWidth: 25, halign: 'right' }, // Quantity
+        3: { cellWidth: 30, halign: 'right' }, // AVG Price
+        4: { cellWidth: 30, halign: 'right' }, // Total
+      },
+    });
+    
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || (companyDetails ? 52 : 25);
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, 20, 'F');
+    doc.setTextColor(40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Summary - Date Range: ${filters.fromDate || '-'} to ${filters.toDate || '-'}`, 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Products: ${purchaseData.length} | Total Quantity: ${totalQuantity} | Total Amount: £${totalAmount.toFixed(2)}`, 16, finalY + 22);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
+    
+    return doc.output('blob');
+  };
+
+  // Email PDF handler
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      alert('Please enter at least one email address');
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      alert(`Invalid email addresses: ${invalidEmails.join(', ')}`);
+      return;
+    }
+
+    if (purchaseData.length === 0) {
+      alert('No purchase data available to send. Please search for data first.');
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64data = reader.result as string;
+          const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+          
+          // Send email with PDF attachment
+          const emailData = {
+            to: emailList,
+            subject: `Product Purchase Report - ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Product Purchase Report for the period from ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}.\n\nThis report contains detailed purchase information including:\n- Product descriptions and quantities purchased\n- Average purchase prices\n- Total purchase amounts per product\n- Overall purchase summary\n\nReport Summary:\n- Total Products: ${purchaseData.length}\n- Total Quantity: ${totalQuantity}\n- Total Purchase Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}\n- Filter Applied: ${showAll}\n\nBest regards,\n${companyDetails?.name || 'Purchase Team'}`,
+            attachment: {
+              filename: `product-purchase-report-${filters.fromDate || 'unknown'}-to-${filters.toDate || 'unknown'}.pdf`,
+              content: base64PDF,
+              contentType: 'application/pdf'
+            }
+          };
+          
+          const response = await apiRequest('POST', '/api/send-email', emailData);
+          
+          if (response.message) {
+            alert(`✅ ${response.message}`);
+            if (response.warnings) {
+              alert(`⚠️ Warning: ${response.warnings}`);
+            }
+          } else {
+            alert(`📧 Product purchase report sent successfully to ${emailList.length} email(s)`);
+          }
+          
+          setEmails(''); // Clear email field after successful send
+          
+        } catch (emailError) {
+          console.error('Error sending email:', emailError);
+          
+          // Handle specific error messages
+          let errorMessage = 'Failed to send email. Please try again.';
+          if (emailError && typeof emailError === 'object' && 'error' in emailError) {
+            errorMessage = `Email Error: ${emailError.error}`;
+          } else if (emailError && typeof emailError === 'string') {
+            errorMessage = `Email Error: ${emailError}`;
+          }
+          
+          alert(`❌ ${errorMessage}`);
+        } finally {
+          // Always reset the sending state
+          setIsEmailSending(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        alert('❌ Failed to process PDF file. Please try again.');
+        setIsEmailSending(false);
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('❌ Failed to generate PDF. Please try again.');
+      setIsEmailSending(false);
+    }
+  };
+
+  const handleProductClick = (productId: number, productDescription: string) => {
+    const fromDateStr = format(fromDate, "yyyy-MM-dd");
+    const toDateStr = format(toDate, "yyyy-MM-dd");
+    setLocation(`/reports/product-purchase-history?productId=${productId}&productType=regular&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(productDescription)}`);
   };
 
   // Auto search when both dates are selected
@@ -307,6 +471,28 @@ export default function ProductPurchaseReport() {
                 <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} /> Print
                 </Button>
+                
+                {/* Email Section - next to Print button */}
+                <div className="flex items-center gap-2 ml-2">
+                  <input
+                    type="text"
+                    placeholder="Enter emails (comma separated)"
+                    value={emails}
+                    onChange={(e) => setEmails(e.target.value)}
+                    className="w-48 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                    disabled={isEmailSending}
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={handleEmailPDF} 
+                    className="flex items-center gap-1"
+                    disabled={isEmailSending}
+                    size="sm"
+                  >
+                    <Mail size={14} />
+                    <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -341,7 +527,7 @@ export default function ProductPurchaseReport() {
                         <TableCell>{item.slNo}</TableCell>
                         <TableCell>
                           <button
-                            onClick={() => handleProductClick(item.id)}
+                            onClick={() => handleProductClick(item.id, item.productDescription)}
                             className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer text-left"
                           >
                             {item.productDescription}

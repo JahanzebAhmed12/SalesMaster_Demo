@@ -336,6 +336,54 @@ export default function DailyBookSales() {
     }
   };
 
+  // Update selected sales to account payment
+  const handleUpdateToAccount = async () => {
+    if (selectedSales.size === 0) {
+      alert('Please select at least one sale to update.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to account payment?`)) {
+      return;
+    }
+
+    setIsUpdatingPayments(true);
+    try {
+      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      
+      // Process each selected sale - reverse any existing payments back to account
+      for (const sale of selectedSalesData) {
+        if (sale.cash > 0 || (sale.bank && sale.bank > 0)) { // Only process sales with cash/bank payments
+          // Calculate total paid amount to reverse
+          const totalPaidAmount = (sale.cash || 0) + (sale.bank || 0);
+          
+          if (totalPaidAmount > 0) {
+            const paymentData = {
+              customer_id: sale.customerId,
+              sale_id: sale.id,
+              amount: -totalPaidAmount, // Negative amount to reverse payment
+              payment_mode: 'account',
+              payment_date: format(new Date(), 'yyyy-MM-dd'),
+              remarks: `Reversed to account via daily book sales - was ${sale.cash > 0 ? 'cash' : 'card'} payment`
+            };
+            
+            console.log('Reversing payment:', paymentData); // Debug log
+            await apiRequest('POST', '/api/payments', paymentData);
+          }
+        }
+      }
+
+      alert(`Successfully updated ${selectedSales.size} sales to account payment.`);
+      setSelectedSales(new Set()); // Clear selection
+      refetchSales(); // Refresh the data
+    } catch (error) {
+      console.error('Error updating to account payment:', error);
+      alert('Failed to update some sales to account payment. Check console for details.');
+    } finally {
+      setIsUpdatingPayments(false);
+    }
+  };
+
   // Helper for WhatsApp and Email
   const sendInvoiceEmail = async (sale: SalesEntry) => {
     try {
@@ -378,13 +426,12 @@ export default function DailyBookSales() {
       refetchSales();
     } catch (e) {
       alert('Payment failed.');
+      return; // Don't open receipt if payment failed
     }
-    if (mode === 'cash') {
-      window.open(`/print/invoice/${sale.invoiceNo}?showCashPaid=1&backdate=${sale.date}`,'_blank');
-    }
-    if (mode === 'bank') {
-      window.open(`/print/invoice/${sale.invoiceNo}?showBankPaid=1&backdate=${sale.date}`,'_blank');
-    }
+    
+    // Open payment receipt instead of invoice
+    const paymentType = mode === 'cash' ? 'cash' : 'card';
+    window.open(`/print/payment-receipt/${sale.id}/${paymentType}`, '_blank');
   };
 
   if (loadingUserType) {
@@ -549,6 +596,13 @@ export default function DailyBookSales() {
                     disabled={selectedSales.size === 0}
                   >
                     Pay Card - {selectedSales.size}
+                  </Button>
+                  <Button
+                    className="bg-orange-600 hover:bg-orange-700 text-white"
+                    onClick={handleUpdateToAccount}
+                    disabled={selectedSales.size === 0}
+                  >
+                    Paid Account - {selectedSales.size}
                   </Button>
                 </div>
                 <div className="relative">

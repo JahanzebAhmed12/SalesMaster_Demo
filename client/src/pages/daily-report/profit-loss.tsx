@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, TrendingUp, FileText, Download, Copy, Printer, Search } from "lucide-react";
+import { CalendarIcon, TrendingUp, FileText, Download, Copy, Printer, Search, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -39,6 +39,8 @@ export default function ProfitLoss() {
   const [trigger, setTrigger] = useState(0); // for manual search
   const tableRef = useRef<HTMLDivElement>(null);
   const [showProfit, setShowProfit] = useState(true);
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
 
   // Fetch profit/loss data from backend
   const { data: profitData = [], isLoading, isError } = useQuery({
@@ -205,6 +207,186 @@ export default function ProfitLoss() {
     navigator.clipboard.writeText(text);
   };
 
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    
+    // Add company header if available
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.setFontSize(10);
+      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
+      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
+      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+    }
+    
+    // Add title
+    doc.setFontSize(14);
+    doc.text('Profit/Loss Report', 14, companyDetails ? 42 : 15);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 14, companyDetails ? 48 : 21);
+    
+    // Prepare table headers and body based on showProfit setting
+    const headers = ['Sl No', 'Product Description', 'Total Qty', 'Avg Purchase', 'Avg Sales'];
+    if (showProfit) {
+      headers.push('Avg Profit');
+    }
+    headers.push('Total Purchase', 'Total Sales');
+    if (showProfit) {
+      headers.push('Total Profit', 'Profit %');
+    }
+    
+    const body = profitData.map((item: ProfitLossItem) => {
+      const row = [
+        item.slNo.toString(),
+        item.productDescription,
+        item.totalQuantity.toString(),
+        `£${Number(item.avgPurchase).toFixed(2)}`,
+        `£${Number(item.avgSales).toFixed(2)}`
+      ];
+      if (showProfit) {
+        row.push(`£${Number(item.avgProfit).toFixed(2)}`);
+      }
+      row.push(`£${Number(item.totPurchase).toFixed(2)}`, `£${Number(item.totSales).toFixed(2)}`);
+      if (showProfit) {
+        row.push(`£${Number(item.totProfit).toFixed(2)}`, `${Number(item.percentProfit).toFixed(2)}%`);
+      }
+      return row;
+    });
+    
+    // Add table
+    autoTable(doc, {
+      head: [headers],
+      body: body,
+      startY: companyDetails ? 52 : 25,
+      styles: {
+        fontSize: 7,
+        cellPadding: 1,
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+    });
+    
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || (companyDetails ? 52 : 25);
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, showProfit ? 24 : 16, 'F');
+    doc.setTextColor(40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Summary - Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    let summaryLine1 = `Total Quantity: ${totals.totalQuantity.toFixed(2)} | Total Purchase: £${Number(totals.totPurchase).toFixed(2)} | Total Sales: £${Number(totals.totSales).toFixed(2)}`;
+    doc.text(summaryLine1, 16, finalY + 20);
+    if (showProfit) {
+      let summaryLine2 = `Total Profit: £${Number(totals.totProfit).toFixed(2)} | Percent Profit: ${Number(overallProfitPercent).toFixed(2)}%`;
+      doc.text(summaryLine2, 16, finalY + 26);
+    }
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
+    
+    return doc.output('blob');
+  };
+
+  // Email PDF handler
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      alert('Please enter at least one email address');
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      alert(`Invalid email addresses: ${invalidEmails.join(', ')}`);
+      return;
+    }
+
+    if (profitData.length === 0) {
+      alert('No profit/loss data available to send. Please search for data first.');
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64data = reader.result as string;
+          const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+          
+          // Send email with PDF attachment
+          const emailData = {
+            to: emailList,
+            subject: `Profit/Loss Report - ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`,
+            body: `Dear Recipient,\n\nPlease find attached the Profit/Loss Report for the period from ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed profit and loss analysis including:\n- Product-wise quantity analysis\n- Average and total purchase costs\n- Average and total sales amounts\n${showProfit ? '- Profit calculations and percentages\n- Loss identification (highlighted items)\n' : ''}- Overall financial performance summary\n\nReport Summary:\n- Total Products: ${profitData.length}\n- Total Quantity: ${totals.totalQuantity.toFixed(2)}\n- Total Purchase: £${Number(totals.totPurchase).toFixed(2)}\n- Total Sales: £${Number(totals.totSales).toFixed(2)}\n${showProfit ? `- Total Profit: £${Number(totals.totProfit).toFixed(2)}\n- Overall Profit Percentage: ${Number(overallProfitPercent).toFixed(2)}%\n` : ''}- Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.name || 'Finance Team'}`,
+            attachment: {
+              filename: `profit-loss-report-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
+              content: base64PDF,
+              contentType: 'application/pdf'
+            }
+          };
+          
+          const response = await apiRequest('POST', '/api/send-email', emailData);
+          
+          if (response.message) {
+            alert(`✅ ${response.message}`);
+            if (response.warnings) {
+              alert(`⚠️ Warning: ${response.warnings}`);
+            }
+          } else {
+            alert(`📧 Profit/Loss report sent successfully to ${emailList.length} email(s)`);
+          }
+          
+          setEmails(''); // Clear email field after successful send
+          
+        } catch (emailError) {
+          console.error('Error sending email:', emailError);
+          
+          // Handle specific error messages
+          let errorMessage = 'Failed to send email. Please try again.';
+          if (emailError && typeof emailError === 'object' && 'error' in emailError) {
+            errorMessage = `Email Error: ${emailError.error}`;
+          } else if (emailError && typeof emailError === 'string') {
+            errorMessage = `Email Error: ${emailError}`;
+          }
+          
+          alert(`❌ ${errorMessage}`);
+        } finally {
+          // Always reset the sending state
+          setIsEmailSending(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        alert('❌ Failed to process PDF file. Please try again.');
+        setIsEmailSending(false);
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('❌ Failed to generate PDF. Please try again.');
+      setIsEmailSending(false);
+    }
+  };
+
   return (
     <PageLayout title="Profit/Loss Report" breadcrumb="Daily Report > Profit/Loss Report">
       <div className="space-y-6">
@@ -285,11 +467,33 @@ export default function ProfitLoss() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <div className="font-semibold text-lg">Profit/Loss Report</div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Button size="sm" variant="outline" onClick={handlePrint}>Print</Button>
               <Button size="sm" variant="outline" onClick={handleExcel}>Excel</Button>
               <Button size="sm" variant="outline" onClick={handlePDF}>PDF</Button>
               <Button size="sm" variant="outline" onClick={handleCopy}>Copy</Button>
+              
+              {/* Email Section - next to Copy button */}
+              <div className="flex items-center gap-2 ml-2">
+                <input
+                  type="text"
+                  placeholder="Enter emails (comma separated)"
+                  value={emails}
+                  onChange={(e) => setEmails(e.target.value)}
+                  className="w-48 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                  disabled={isEmailSending}
+                />
+                <Button 
+                  variant="outline" 
+                  onClick={handleEmailPDF} 
+                  className="flex items-center gap-1"
+                  disabled={isEmailSending}
+                  size="sm"
+                >
+                  <Mail size={14} />
+                  <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">

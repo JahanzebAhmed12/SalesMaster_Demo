@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, ClipboardCheck, FileText, Download, Copy, Printer, Search, Check, Loader2 } from "lucide-react";
+import { CalendarIcon, ClipboardCheck, FileText, Download, Copy, Printer, Search, Check, Loader2, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -40,8 +41,34 @@ export default function StockCheck() {
   const [toDate, setToDate] = useState<Date>(new Date());
   const [stockFilter, setStockFilter] = useState("Show All");
   const [searchTerm, setSearchTerm] = useState("");
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
   const { toast } = useToast();
   const tableRef = useRef<HTMLDivElement>(null);
+  const [, setLocation] = useLocation();
+
+  // Navigation handlers for clickable columns
+  const handleNewStockClick = (item: StockItem) => {
+    if (item.ns === 0) return; // Don't navigate if no new stock
+    
+    const fromDateStr = format(osDate, "yyyy-MM-dd");
+    const toDateStr = format(toDate, "yyyy-MM-dd");
+    const productType = item.productType === 'regular' ? 'regular' : 'non';
+    
+    // Navigate to product purchase history with date range and product info
+    setLocation(`/reports/product-purchase-history?productId=${item.id}&productType=${productType}&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(item.productDescription)}`);
+  };
+
+  const handleSalesClick = (item: StockItem) => {
+    if (item.sales === 0) return; // Don't navigate if no sales
+    
+    const fromDateStr = format(osDate, "yyyy-MM-dd");
+    const toDateStr = format(toDate, "yyyy-MM-dd");
+    const productType = item.productType === 'regular' ? 'regular' : 'non';
+    
+    // Navigate to product sales history with date range and product info
+    setLocation(`/reports/product-sales-history?productId=${item.id}&productType=${productType}&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(item.productDescription)}`);
+  };
 
   // Query for stock check data
   const { data: stockData = [], isLoading, error, refetch } = useQuery<StockItem[]>({
@@ -203,6 +230,190 @@ export default function StockCheck() {
     alert('Table copied to clipboard!');
   };
 
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    
+    // Add title and company info
+    doc.setFontSize(16);
+    doc.text('TROPIFRUIT UK LTD', 14, 15);
+    doc.setFontSize(12);
+    doc.text('Stock Check Report', 14, 25);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 14, 32);
+    
+    // Add table
+    autoTable(doc, {
+      head: [[
+        'Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result'
+      ]],
+      body: filteredData.map((item: StockItem) => [
+        item.slNo,
+        item.productDescription,
+        item.os,
+        item.ns,
+        item.sales,
+        item.crtn,
+        item.dmps,
+        item.srtn,
+        item.stock,
+        item.clStock,
+        item.result
+      ]),
+      startY: 38,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0 },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+    });
+    
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || 38;
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, 20, 'F');
+    doc.setTextColor(40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Summary - Date Range: ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Totals - O.S: ${totals.os}, N.S: ${totals.ns}, Sales: ${totals.sales}, Stock: ${totals.stock}, Cl.Stock: ${totals.clStock}`, 16, finalY + 20);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
+    
+    return doc.output('blob');
+  };
+
+  // Fetch company details for PDF header
+  const { data: companyDetails }: { data: any } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
+  // Email PDF handler
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      toast({
+        title: "Email Required",
+        description: "Please enter at least one email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      toast({
+        title: "Invalid Email",
+        description: `Invalid email addresses: ${invalidEmails.join(', ')}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (filteredData.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No stock check data available to send. Please search for data first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64data = reader.result as string;
+          const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+          
+          // Send email with PDF attachment
+          const emailData = {
+            to: emailList,
+            subject: `Stock Check Report - ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`,
+            body: `Dear Recipient,\n\nPlease find attached the Stock Check report for the period from ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed stock analysis including:\n- Opening Stock (O.S) and New Stock (N.S)\n- Sales figures and Customer Returns (C.RTN)\n- Dumps and Supplier Returns (S.RTN)\n- Current Stock and Closing Stock (Cl.Stock)\n- Stock variance analysis (Short/Excess/Correct)\n\nSummary Totals:\n- Total O.S: ${totals.os}\n- Total N.S: ${totals.ns}\n- Total Sales: ${totals.sales}\n- Total C.RTN: ${totals.crtn}\n- Total Dmps: ${totals.dmps}\n- Total S.RTN: ${totals.srtn}\n- Total Stock: ${totals.stock}\n- Total Cl.Stock: ${totals.clStock}\n\nFilter Applied: ${stockFilter}\n\nBest regards,\n${companyDetails?.name || 'Stock Management Team'}`,
+            attachment: {
+              filename: `stock-check-${format(osDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
+              content: base64PDF,
+              contentType: 'application/pdf'
+            }
+          };
+          
+          const response = await apiRequest('POST', '/api/send-email', emailData);
+          
+          if (response.message) {
+            toast({
+              title: "Email Sent Successfully",
+              description: `✅ ${response.message}`,
+            });
+            if (response.warnings) {
+              toast({
+                title: "Warning",
+                description: `⚠️ ${response.warnings}`,
+                variant: "destructive",
+              });
+            }
+          } else {
+            toast({
+              title: "Email Sent",
+              description: `📧 Stock check report sent successfully to ${emailList.length} email(s)`,
+            });
+          }
+          
+          setEmails(''); // Clear email field after successful send
+          
+        } catch (emailError) {
+          console.error('Error sending email:', emailError);
+          
+          // Handle specific error messages
+          let errorMessage = 'Failed to send email. Please try again.';
+          if (emailError && typeof emailError === 'object' && 'error' in emailError) {
+            errorMessage = `Email Error: ${emailError.error}`;
+          } else if (emailError && typeof emailError === 'string') {
+            errorMessage = `Email Error: ${emailError}`;
+          }
+          
+          toast({
+            title: "Email Failed",
+            description: `❌ ${errorMessage}`,
+            variant: "destructive",
+          });
+        } finally {
+          // Always reset the sending state
+          setIsEmailSending(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        toast({
+          title: "PDF Error",
+          description: "❌ Failed to process PDF file. Please try again.",
+          variant: "destructive",
+        });
+        setIsEmailSending(false);
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast({
+        title: "PDF Generation Failed",
+        description: "❌ Failed to generate PDF. Please try again.",
+        variant: "destructive",
+      });
+      setIsEmailSending(false);
+    }
+  };
+
   return (
     <PageLayout title="Stock Check" breadcrumb="Daily Report > Stock Check">
       <div className="space-y-6">
@@ -347,7 +558,30 @@ export default function StockCheck() {
                 <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                   <Printer size={14} /> Print
                 </Button>
+                
+                {/* Email Section */}
+                <div className="flex items-center gap-2 ml-4">
+                  <Input
+                    placeholder="Enter emails (comma separated)"
+                    value={emails}
+                    onChange={(e) => setEmails(e.target.value)}
+                    className="w-64"
+                    disabled={isEmailSending}
+                    size="sm"
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={handleEmailPDF} 
+                    className="flex items-center gap-1"
+                    disabled={isEmailSending}
+                    size="sm"
+                  >
+                    <Mail size={14} />
+                    <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                  </Button>
+                </div>
               </div>
+              
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                 <Input
@@ -401,8 +635,24 @@ export default function StockCheck() {
                           </div>
                         </TableCell>
                         <TableCell className="text-center">{item.os}</TableCell>
-                        <TableCell className="text-center">{item.ns}</TableCell>
-                        <TableCell className="text-center">{item.sales}</TableCell>
+                        <TableCell 
+                          className={`text-center ${item.ns > 0 ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors' : ''}`}
+                          onClick={() => handleNewStockClick(item)}
+                          title={item.ns > 0 ? "Click to view purchase history" : ""}
+                        >
+                          <span className={item.ns > 0 ? 'underline decoration-dotted' : ''}>
+                            {item.ns}
+                          </span>
+                        </TableCell>
+                        <TableCell 
+                          className={`text-center ${item.sales > 0 ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors' : ''}`}
+                          onClick={() => handleSalesClick(item)}
+                          title={item.sales > 0 ? "Click to view sales history" : ""}
+                        >
+                          <span className={item.sales > 0 ? 'underline decoration-dotted' : ''}>
+                            {item.sales}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-center">{item.crtn}</TableCell>
                         <TableCell className="text-center">{item.dmps}</TableCell>
                         <TableCell className="text-center">{item.srtn}</TableCell>

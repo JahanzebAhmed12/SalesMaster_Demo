@@ -174,7 +174,7 @@ export default function DailyAccounts() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Label htmlFor="toDate">B/F Date:</Label>
+            <Label htmlFor="toDate">C/F Date:</Label>
             <Input
               id="toDate"
               type="date"
@@ -208,10 +208,6 @@ export default function DailyAccounts() {
                       <span className="font-mono">{Number(item.amount).toFixed(2)}</span>
                     </div>
                   ))}
-                  <div className="border-t pt-2 font-semibold flex justify-between">
-                    <span>TOTAL CASH</span>
-                    <span className="font-mono">{Number(totalReceivablesCash).toFixed(2)}</span>
-                  </div>
                 </div>
               </CardContent>
             </Card>

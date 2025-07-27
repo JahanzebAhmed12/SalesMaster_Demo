@@ -1,15 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import type { UserWithAttendance } from "@shared/schema";
+import type { EmployeeWithAttendance } from "@shared/schema";
 import AttendanceTable from "@/components/layout/attendance-table";
 
-// NOTE: This page will always show up-to-date user/attendance data
-// because user add/edit now invalidates ["/api/users/attendance"] via useInvalidateMutation.
+// NOTE: This page shows employee attendance data
+// The data is fetched from the employees endpoint which includes attendance information
 
 export default function Payroll() {
-  const { data: users, isLoading } = useQuery<UserWithAttendance[]>({
-    queryKey: ["/api/users/attendance"],
-    queryFn: () => apiRequest("GET", "/api/users/attendance")
+  const { data: employees, isLoading } = useQuery<EmployeeWithAttendance[]>({
+    queryKey: ["/api/employees/attendance"],
+    queryFn: () => apiRequest("GET", "/api/employees/attendance")
   });
 
   return (
@@ -37,7 +37,7 @@ export default function Payroll() {
       {isLoading ? (
         <div className="text-center py-8">Loading attendance data...</div>
       ) : (
-        <AttendanceTable users={users || []} />
+        <AttendanceTable employees={employees || []} />
       )}
     </div>
   );

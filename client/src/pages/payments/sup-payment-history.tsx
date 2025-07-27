@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Mail } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -36,6 +37,8 @@ export default function SupPaymentHistory() {
   const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
   const [toDate, setToDate] = useState<Date | undefined>(new Date());
   const [paymentMode, setPaymentMode] = useState<string>("All");
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
 
   const [filters, setFilters] = useState({
     supplierId: "",
@@ -194,6 +197,133 @@ export default function SupPaymentHistory() {
     alert('Table copied to clipboard!');
   };
 
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    const companyName = 'TROPIFRUIT UK LTD';
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const textWidth = doc.getTextWidth(companyName);
+    doc.text(companyName, (pageWidth - textWidth) / 2, 16);
+    doc.setFontSize(14);
+    doc.text('Supplier Payment History', 14, 26);
+    
+    // Add date range if available
+    if (fromDate && toDate) {
+      doc.setFontSize(10);
+      doc.text(`Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 14, 34);
+    }
+    
+    autoTable(doc, {
+      head: [[
+        'Payment date', 'Payment mode', 'Paid Amt', 'INV #', 'INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'
+      ]],
+      body: paymentHistory.map((item) => [
+        item.paymentDate ? format(new Date(item.paymentDate), 'dd-MM-yyyy') : '',
+        item.paymentMode,
+        `£${Number(item.paidAmt).toFixed(2)}`,
+        item.invNo,
+        item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
+        item.supplier,
+        item.invoiceAmt ? `£${Number(item.invoiceAmt).toFixed(2)}` : '-',
+        item.allocated ? `£${Number(item.allocated).toFixed(2)}` : '-',
+        item.remarks || '-'
+      ]),
+      startY: fromDate && toDate ? 40 : 32,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0 },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+    });
+    
+    // Add summary below table
+    const finalY = (doc as any).lastAutoTable.finalY || 32;
+    doc.setFontSize(12);
+    const summaryText = `Total Paid: £${totalPaid.toFixed(2)}   |   Total Invoice: £${totalInvoiceAmount.toFixed(2)}   |   Total Allocated: £${totalAllocated.toFixed(2)}`;
+    const summaryWidth = doc.getTextWidth(summaryText);
+    doc.text(summaryText, (pageWidth - summaryWidth) / 2, finalY + 14);
+    
+    return doc.output('blob');
+  };
+
+  // Email PDF handler
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      toast({
+        title: "Email Required",
+        description: "Please enter at least one email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      toast({
+        title: "Invalid Email",
+        description: `Invalid email addresses: ${invalidEmails.join(', ')}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (paymentHistory.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No payment history data available to send.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const base64PDF = base64data.split(',')[1];
+        
+        // Send email with PDF attachment
+        const emailData = {
+          to: emailList,
+          subject: `Supplier Payment History Report (${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''} to ${toDate ? format(toDate, 'yyyy-MM-dd') : ''})`,
+          body: `Please find attached the Supplier Payment History report for the period from ${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''} to ${toDate ? format(toDate, 'yyyy-MM-dd') : ''}.\n\nTotal records: ${paymentHistory.length}\nTotal paid: £${totalPaid.toFixed(2)}\nTotal invoice amount: £${totalInvoiceAmount.toFixed(2)}`,
+          attachment: {
+            filename: `supplier-payment-history-${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''}-to-${toDate ? format(toDate, 'yyyy-MM-dd') : ''}.pdf`,
+            content: base64PDF,
+            contentType: 'application/pdf'
+          }
+        };
+        
+        await apiRequest('POST', '/api/send-email', emailData);
+        toast({
+          title: "Email Sent",
+          description: `Supplier payment history sent successfully to ${emailList.length} email(s)`,
+        });
+        setEmails('');
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Email Failed",
+        description: "Failed to send email. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailSending(false);
+    }
+  };
+
   if (isError) {
     toast({
       title: "Error",
@@ -326,6 +456,26 @@ export default function SupPaymentHistory() {
                <Button variant="outline" onClick={handlePDF}>PDF</Button>
                <Button variant="outline" onClick={handleExcel}>Excel</Button>
                <Button variant="outline" onClick={handleCopy}>Copy</Button>
+             </div>
+             
+             {/* Email Section */}
+             <div className="flex items-center gap-2">
+               <Input
+                 placeholder="Enter emails (comma separated)"
+                 value={emails}
+                 onChange={(e) => setEmails(e.target.value)}
+                 className="w-64"
+                 disabled={isEmailSending}
+               />
+               <Button 
+                 variant="outline" 
+                 onClick={handleEmailPDF} 
+                 className="flex items-center gap-2"
+                 disabled={isEmailSending}
+               >
+                 <Mail className="h-4 w-4" />
+                 <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+               </Button>
              </div>
            </div>
             {/* Responsive Table Container */}

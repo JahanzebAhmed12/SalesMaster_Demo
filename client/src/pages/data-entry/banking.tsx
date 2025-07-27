@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Banknote, Save, Loader2, Plus, X } from "lucide-react";
@@ -28,8 +29,9 @@ export default function Banking() {
     paymentType: "CASH",
     amount: 0,
     payingNumber: "",
-    bagNumbers: [""], // Array of bag numbers
-    chequeNumber: ""
+    bags: [{ number: "", payingNumber: "", amount: 0 }], // Array of bag objects with number, payingNumber and amount
+    chequeNumber: "",
+    bagNumber: "" // Bag number for CHEQUE payments
   });
   const queryClient = useQueryClient();
 
@@ -39,6 +41,14 @@ export default function Banking() {
       setNewEntry(prev => ({ ...prev, date: new Date(businessDate) }));
     }
   }, [businessDate]);
+
+  // Calculate total amount for CASH and COINS payments (sum of all bag amounts)
+  const totalAmount = useMemo(() => {
+    if (newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") {
+      return newEntry.bags.reduce((sum, bag) => sum + (bag.amount || 0), 0);
+    }
+    return newEntry.amount;
+  }, [newEntry.paymentType, newEntry.bags, newEntry.amount]);
 
   // Fetch banking entries for date range
   const {
@@ -59,19 +69,20 @@ export default function Banking() {
 
   // Add new banking entry
   const addEntryMutation = useMutation({
-    mutationFn: async (data: InsertBankingEntry & { bagNumbers?: string[] }) => {
+    mutationFn: async (data: InsertBankingEntry & { bags?: Array<{number: string, payingNumber: string, amount: number}>, bagNumber?: string }) => {
       return apiRequest("POST", "/api/banking", data);
     },
     onSuccess: () => {
       toast({ title: "Success", description: "Banking entry added." });
       setNewEntry({ 
-        date: new Date(), 
+        date: businessDate ? new Date(businessDate) : new Date(), 
         remarks: "", 
         paymentType: "CASH", 
         amount: 0, 
         payingNumber: "", 
-        bagNumbers: [""], // Reset to single empty bag number
-        chequeNumber: "" 
+        bags: [{ number: "", payingNumber: "", amount: 0 }], // Reset to single empty bag
+        chequeNumber: "",
+        bagNumber: ""
       });
       refetch();
     },
@@ -81,41 +92,42 @@ export default function Banking() {
   });
 
   const handleAddEntry = () => {
-    if (!newEntry.remarks || !newEntry.amount || newEntry.amount <= 0) {
+    if (!newEntry.remarks || totalAmount <= 0) {
       return toast({ title: "Enter remarks and a valid amount" });
     }
-    if (newEntry.paymentType === "CASH" && (!newEntry.payingNumber || newEntry.bagNumbers.every(bag => !bag.trim()))) {
-      return toast({ title: "Paying number and at least one Bag number are required for CASH payments" });
+    if ((newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && newEntry.bags.every(bag => !bag.number.trim() || !bag.payingNumber.trim() || bag.amount <= 0)) {
+      return toast({ title: "At least one bag with number, paying number and amount are required for CASH/COINS payments" });
     }
-    if (newEntry.paymentType === "CHEQUE" && !newEntry.chequeNumber) {
-      return toast({ title: "Cheque number is required for CHEQUE payments" });
+    if (newEntry.paymentType === "CHEQUE" && (!newEntry.chequeNumber || !newEntry.bagNumber)) {
+      return toast({ title: "Cheque number and bag number are required for CHEQUE payments" });
     }
-    const payload: InsertBankingEntry & { bagNumbers?: string[] } = {
+    const payload: InsertBankingEntry & { bags?: Array<{number: string, payingNumber: string, amount: number}>, bagNumber?: string } = {
       date: format(newEntry.date, "yyyy-MM-dd"),
       remarks: newEntry.remarks,
       paymentType: newEntry.paymentType,
-      amount: newEntry.amount,
-      payingNumber: newEntry.paymentType === "CASH" ? newEntry.payingNumber : undefined,
-      bagNumbers: newEntry.paymentType === "CASH" ? newEntry.bagNumbers.filter(bag => bag.trim()) : undefined,
-      chequeNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequeNumber : undefined
+      amount: totalAmount,
+      bags: (newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") ? 
+        newEntry.bags.filter(bag => bag.number.trim() && bag.payingNumber.trim()) : undefined,
+      chequeNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequeNumber : undefined,
+      bagNumber: newEntry.paymentType === "CHEQUE" ? newEntry.bagNumber : undefined
     };
     addEntryMutation.mutate(payload);
   };
 
-  // Add new bag number field
-  const addBagNumber = () => {
+  // Add new bag
+  const addBag = () => {
     setNewEntry(prev => ({
       ...prev,
-      bagNumbers: [...prev.bagNumbers, ""]
+      bags: [...prev.bags, { number: "", payingNumber: "", amount: 0 }]
     }));
   };
 
-  // Remove bag number field
-  const removeBagNumber = (index: number) => {
-    if (newEntry.bagNumbers.length > 1) {
+  // Remove bag
+  const removeBag = (index: number) => {
+    if (newEntry.bags.length > 1) {
       setNewEntry(prev => ({
         ...prev,
-        bagNumbers: prev.bagNumbers.filter((_, i) => i !== index)
+        bags: prev.bags.filter((_, i) => i !== index)
       }));
     }
   };
@@ -124,7 +136,23 @@ export default function Banking() {
   const updateBagNumber = (index: number, value: string) => {
     setNewEntry(prev => ({
       ...prev,
-      bagNumbers: prev.bagNumbers.map((bag, i) => i === index ? value : bag)
+      bags: prev.bags.map((bag, i) => i === index ? { ...bag, number: value } : bag)
+    }));
+  };
+
+  // Update bag paying number
+  const updateBagPayingNumber = (index: number, value: string) => {
+    setNewEntry(prev => ({
+      ...prev,
+      bags: prev.bags.map((bag, i) => i === index ? { ...bag, payingNumber: value } : bag)
+    }));
+  };
+
+  // Update bag amount
+  const updateBagAmount = (index: number, value: number) => {
+    setNewEntry(prev => ({
+      ...prev,
+      bags: prev.bags.map((bag, i) => i === index ? { ...bag, amount: value } : bag)
     }));
   };
 
@@ -262,8 +290,10 @@ export default function Banking() {
                     ...newEntry, 
                     paymentType: value, 
                     payingNumber: "", 
-                    bagNumbers: [""], // Reset bag numbers when payment type changes
-                    chequeNumber: ""
+                    bags: [{ number: "", payingNumber: "", amount: 0 }], // Reset bags when payment type changes
+                    chequeNumber: "",
+                    bagNumber: "", // Reset bag number when payment type changes
+                    amount: 0
                   })}
                 >
                   <SelectTrigger>
@@ -274,51 +304,57 @@ export default function Banking() {
                     <SelectItem value="CARD">CARD</SelectItem>
                     <SelectItem value="BANK_TRANSFER">BANK TRANSFER</SelectItem>
                     <SelectItem value="CHEQUE">CHEQUE</SelectItem>
-                    <SelectItem value="OTHERS">OTHERS</SelectItem>
+                    <SelectItem value="COINS">COINS</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              {newEntry.paymentType === "CASH" && (
+              {(newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && (
                 <>
-                  <div>
-                    <Label>PAYING NUMBER<span className="text-red-500">*</span></Label>
-                    <Input
-                      value={newEntry.payingNumber}
-                      onChange={e => setNewEntry({...newEntry, payingNumber: e.target.value})}
-                      placeholder="Enter paying number"
-                      className="w-full"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label>BAG NUMBERS<span className="text-red-500">*</span></Label>
+                  <div className="col-span-4">
+                    <Label>BAGS<span className="text-red-500">*</span></Label>
                     <div className="space-y-2">
-                      {newEntry.bagNumbers.map((bagNumber, index) => (
-                        <div key={index} className="flex gap-2">
+                      {newEntry.bags.map((bag, index) => (
+                        <div key={index} className="flex gap-2 items-center">
                           <Input
-                            value={bagNumber}
+                            value={bag.number}
                             onChange={e => updateBagNumber(index, e.target.value)}
-                            placeholder={`Bag ${index + 1}`}
-                            className="w-32"
+                            placeholder={`Bag ${index + 1} Number`}
+                            className="w-40"
                             required
                           />
-                          {newEntry.bagNumbers.length > 1 && (
+                          <Input
+                            value={bag.payingNumber}
+                            onChange={e => updateBagPayingNumber(index, e.target.value)}
+                            placeholder={`Paying Number ${index + 1}`}
+                            className="w-40"
+                            required
+                          />
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={bag.amount}
+                            onChange={e => updateBagAmount(index, parseFloat(e.target.value) || 0)}
+                            placeholder="Amount"
+                            className="w-32 text-right"
+                            required
+                          />
+                          {newEntry.bags.length > 1 && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={() => removeBagNumber(index)}
+                              onClick={() => removeBag(index)}
                               className="px-2"
                             >
                               <X className="h-4 w-4" />
                             </Button>
                           )}
-                          {index === newEntry.bagNumbers.length - 1 && (
+                          {index === newEntry.bags.length - 1 && (
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              onClick={addBagNumber}
+                              onClick={addBag}
                               className="px-2"
                             >
                               <Plus className="h-4 w-4" />
@@ -326,43 +362,72 @@ export default function Banking() {
                           )}
                         </div>
                       ))}
+                      <div className="text-sm font-medium text-gray-700">
+                        Total: £{totalAmount.toFixed(2)}
+                      </div>
                     </div>
                   </div>
                 </>
               )}
               {newEntry.paymentType === "CHEQUE" && (
-                <div>
-                  <Label>CHEQUE NUMBER<span className="text-red-500">*</span></Label>
-                  <Input
-                    value={newEntry.chequeNumber}
-                    onChange={e => setNewEntry({...newEntry, chequeNumber: e.target.value})}
-                    placeholder="Enter cheque number"
-                    className="w-full"
-                    required
-                  />
+                <>
+                  <div>
+                    <Label>CHEQUE NUMBER<span className="text-red-500">*</span></Label>
+                    <Input
+                      value={newEntry.chequeNumber}
+                      onChange={e => setNewEntry({...newEntry, chequeNumber: e.target.value})}
+                      placeholder="Enter cheque number"
+                      className="w-full"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label>BAG NUMBER<span className="text-red-500">*</span></Label>
+                    <Input
+                      value={newEntry.bagNumber}
+                      onChange={e => setNewEntry({...newEntry, bagNumber: e.target.value})}
+                      placeholder="Enter bag number"
+                      className="w-full"
+                      required
+                    />
+                  </div>
+                </>
+              )}
+              {newEntry.paymentType !== "CASH" && newEntry.paymentType !== "COINS" && (
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label>AMOUNT</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={newEntry.amount}
+                      onChange={(e) => setNewEntry({...newEntry, amount: parseFloat(e.target.value) || 0})}
+                      placeholder="0.00"
+                      className="text-right"
+                    />
+                  </div>
+                  <Button 
+                    className="bg-green-500 hover:bg-green-600 text-white mt-6"
+                    onClick={handleAddEntry}
+                    disabled={addEntryMutation.isPending}
+                  >
+                    {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} className="mr-1" />
+                    Save
+                  </Button>
                 </div>
               )}
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label>AMOUNT</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={newEntry.amount}
-                    onChange={(e) => setNewEntry({...newEntry, amount: parseFloat(e.target.value) || 0})}
-                    placeholder="0.00"
-                    className="text-right"
-                  />
+              {(newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && (
+                <div className="flex justify-end">
+                  <Button 
+                    className="bg-green-500 hover:bg-green-600 text-white"
+                    onClick={handleAddEntry}
+                    disabled={addEntryMutation.isPending}
+                  >
+                    {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} className="mr-1" />
+                    Save
+                  </Button>
                 </div>
-                <Button 
-                  className="bg-green-500 hover:bg-green-600 text-white mt-6"
-                  onClick={handleAddEntry}
-                  disabled={addEntryMutation.isPending}
-                >
-                  {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} className="mr-1" />
-                  Save
-                </Button>
-              </div>
+              )}
             </div>
             {/* Display saved entries */}
             {isLoading ? (
@@ -371,24 +436,75 @@ export default function Banking() {
               <div className="text-red-600">Failed to load entries.</div>
             ) : bankingEntries.length > 0 ? (
               <div className="mt-6">
-                <h3 className="font-semibold mb-2">Banking Entries:</h3>
-                <div className="space-y-2">
-                  {bankingEntries.map((entry) => (
-                    <div key={entry.id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                      <span>{format(new Date(entry.date), "dd/MM/yyyy")}</span>
-                      <span>{entry.remarks}</span>
-                      <span>{entry.paymentType}</span>
-                      <span className="font-semibold">£{Number(entry.amount).toFixed(2)}</span>
-                      {entry.bagNumbers && entry.bagNumbers.length > 0 && (
-                        <span className="text-sm text-gray-600">
-                          Bags: {entry.bagNumbers.join(", ")}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                <h3 className="font-semibold mb-4">Banking Entries:</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="font-semibold">Date</TableHead>
+                        <TableHead className="font-semibold">Remarks</TableHead>
+                        <TableHead className="font-semibold">Payment Type</TableHead>
+                        <TableHead className="font-semibold text-right">Amount</TableHead>
+                        <TableHead className="font-semibold">Bag Details</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bankingEntries.map((entry) => (
+                        <TableRow key={entry.id} className="hover:bg-gray-50">
+                          <TableCell className="font-medium">
+                            {format(new Date(entry.date), "dd/MM/yyyy")}
+                          </TableCell>
+                          <TableCell>{entry.remarks}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              entry.paymentType === 'CASH' ? 'bg-green-100 text-green-800' :
+                              entry.paymentType === 'COINS' ? 'bg-yellow-100 text-yellow-800' :
+                              entry.paymentType === 'CHEQUE' ? 'bg-blue-100 text-blue-800' :
+                              entry.paymentType === 'CARD' ? 'bg-purple-100 text-purple-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {entry.paymentType}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            £{Number(entry.amount).toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            {entry.paymentType === "CHEQUE" && entry.bagNumber ? (
+                              <span className="text-sm text-gray-600">
+                                Bag: <span className="font-medium">{entry.bagNumber}</span>
+                              </span>
+                            ) : entry.bags && entry.bags.length > 0 ? (
+                              <div className="text-sm text-gray-600">
+                                {entry.bags.map((bag, index) => (
+                                  <div key={index} className="mb-1">
+                                    <span className="font-medium">{bag.number}</span>
+                                    {bag.payingNumber && (
+                                      <span className="text-gray-500"> ({bag.payingNumber})</span>
+                                    )}
+                                    <span className="font-medium text-green-600"> £{bag.amount.toFixed(2)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : entry.bagNumbers && entry.bagNumbers.length > 0 ? (
+                              <span className="text-sm text-gray-600">
+                                Bags: {entry.bagNumbers.join(", ")}
+                              </span>
+                            ) : (
+                              <span className="text-sm text-gray-400">-</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="mt-6 text-center text-gray-500 py-8">
+                No banking entries found for the selected date range.
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

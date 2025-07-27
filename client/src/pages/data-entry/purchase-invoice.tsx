@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { subDays, format } from 'date-fns';
 
 export default function PurchaseInvoice() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [unitPrice, setUnitPrice] = useState(0);
@@ -140,6 +141,14 @@ export default function PurchaseInvoice() {
   const createInvoiceMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/purchase-invoices", data),
     onSuccess: (invoice) => {
+      // Invalidate all relevant queries to update stock and other data
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock-movements"] });
+      
       toast({
         title: "Success",
         description: "Purchase invoice saved successfully!",

@@ -10,8 +10,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { insertEmployeeSchema, Employee, InsertEmployee, employeeSchema } from "@shared/schema";
-import { useEffect } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Loader2, Plus, Trash2, Upload, Download, Eye, FileText } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
@@ -24,6 +24,99 @@ const EmployeeDatabaseEdit = () => {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [uploadingFiles, setUploadingFiles] = useState<{ [key: number]: boolean }>({});
+  const [employeeDocuments, setEmployeeDocuments] = useState<any[]>([]);
+
+  // Fetch employee documents if editing existing employee
+  const { data: documents = [] } = useQuery({
+    queryKey: ["employee-documents", employeeId],
+    queryFn: () => apiRequest("GET", `/api/employees/${employeeId}/documents`),
+    enabled: !!employeeId,
+  });
+
+  useEffect(() => {
+    if (documents) {
+      setEmployeeDocuments(documents);
+    }
+  }, [documents]);
+
+  // File upload handler
+  const handleFileUpload = async (file: File, documentName: string, startDate?: string, endDate?: string) => {
+    if (!employeeId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please save the employee first before uploading documents.",
+      });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('documentName', documentName);
+    if (startDate) formData.append('startDate', startDate);
+    if (endDate) formData.append('endDate', endDate);
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/employees/${employeeId}/documents`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Upload failed:', response.status, errorText);
+        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      // Refresh documents list
+      queryClient.invalidateQueries({ queryKey: ["employee-documents", employeeId] });
+      
+      toast({
+        title: "Success",
+        description: "Document uploaded successfully.",
+      });
+
+      return result.document;
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Upload Failed",
+        description: "Failed to upload document. Please try again.",
+      });
+      throw error;
+    }
+  };
+
+  // Delete document handler
+  const handleDeleteDocument = async (documentId: number) => {
+    if (!window.confirm('Are you sure you want to delete this document?')) {
+      return;
+    }
+
+    try {
+      await apiRequest("DELETE", `/api/employees/documents/${documentId}`);
+      
+      // Refresh documents list
+      queryClient.invalidateQueries({ queryKey: ["employee-documents", employeeId] });
+      
+      toast({
+        title: "Success",
+        description: "Document deleted successfully.",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete document.",
+      });
+    }
+  };
 
   const form = useForm<InsertEmployee>({
     resolver: zodResolver(insertEmployeeSchema),
@@ -511,6 +604,33 @@ const EmployeeDatabaseEdit = () => {
                   </div>
 
                   <div>
+                    <label htmlFor="forkLiftCertificateCompanyName" className="block text-sm font-medium mb-2">Fork Lift Certificate Company Name</label>
+                    <Input 
+                      id="forkLiftCertificateCompanyName" 
+                      placeholder="Enter fork lift certificate company name" 
+                      {...form.register("forkLiftCertificateCompanyName")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="licenceCertificateNumber" className="block text-sm font-medium mb-2">Licence Certificate Number</label>
+                    <Input 
+                      id="licenceCertificateNumber" 
+                      placeholder="Enter licence certificate number" 
+                      {...form.register("licenceCertificateNumber")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="marketPermitNumber" className="block text-sm font-medium mb-2">Market Permit Number</label>
+                    <Input 
+                      id="marketPermitNumber" 
+                      placeholder="Enter market permit number" 
+                      {...form.register("marketPermitNumber")}
+                    />
+                  </div>
+
+                  <div>
                     <label htmlFor="isActive" className="block text-sm font-medium mb-2">Active Status</label>
                     <Select 
                       onValueChange={(value) => form.setValue("isActive", value)}
@@ -668,6 +788,120 @@ const EmployeeDatabaseEdit = () => {
                         </Popover>
                       </div>
                     </div>
+
+                    {/* File Upload Section */}
+                    {employeeId && (
+                      <div className="mt-4 pt-4 border-t">
+                        <label className="block text-sm font-medium mb-2">
+                          Upload Document File
+                        </label>
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                          <div className="text-center">
+                            <Upload className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                            <label htmlFor={`file-upload-${index}`} className="cursor-pointer">
+                              <span className="text-sm text-gray-600">
+                                Click to upload a document or drag and drop
+                              </span>
+                              <input
+                                id={`file-upload-${index}`}
+                                type="file"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  
+                                  const documentName = form.watch(`documents.${index}.documentName`);
+                                  if (!documentName) {
+                                    toast({
+                                      variant: "destructive",
+                                      title: "Error",
+                                      description: "Please enter a document name first.",
+                                    });
+                                    return;
+                                  }
+
+                                  setUploadingFiles(prev => ({ ...prev, [index]: true }));
+                                  
+                                  try {
+                                    await handleFileUpload(
+                                      file,
+                                      documentName,
+                                      form.watch(`documents.${index}.startDate`) || undefined,
+                                      form.watch(`documents.${index}.endDate`) || undefined
+                                    );
+                                  } finally {
+                                    setUploadingFiles(prev => ({ ...prev, [index]: false }));
+                                    e.target.value = '';
+                                  }
+                                }}
+                                accept=".pdf,.png,.jpg,.jpeg,.gif,.doc,.docx,.txt"
+                                disabled={uploadingFiles[index]}
+                              />
+                            </label>
+                            {uploadingFiles[index] && (
+                              <div className="mt-2 text-sm text-blue-600">Uploading...</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Show uploaded documents for this employee */}
+                    {employeeId && (
+                      <div className="mt-4 pt-4 border-t">
+                        <h5 className="text-sm font-medium mb-2">Uploaded Documents</h5>
+                        {employeeDocuments.length === 0 ? (
+                          <div className="text-sm text-gray-500">No documents uploaded yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {employeeDocuments.map((doc: any) => (
+                              <div key={doc.id} className="flex items-center justify-between p-2 border rounded">
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium">{doc.documentName}</div>
+                                  {doc.fileName && (
+                                    <div className="text-xs text-gray-500">{doc.fileName}</div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  {doc.hasFile && (
+                                    <>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => window.open(`http://localhost:5000/api/employees/documents/${doc.id}/view`, '_blank')}
+                                        title="View document"
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => window.open(`http://localhost:5000/api/employees/documents/${doc.id}`, '_blank')}
+                                        title="Download document"
+                                      >
+                                        <Download className="h-4 w-4" />
+                                      </Button>
+                                    </>
+                                  )}
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteDocument(doc.id)}
+                                    className="text-red-600 hover:text-red-800"
+                                    title="Delete document"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </Card>
                 ))}
               </div>

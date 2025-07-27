@@ -703,8 +703,14 @@ export const bankingEntrySchema = z.object({
   paymentType: z.string(),
   amount: z.number(),
   payingNumber: z.string().nullable().optional(),
-  bagNumber: z.string().nullable().optional(), // Keep for backward compatibility
+  bagNumber: z.string().nullable().optional(), // For CHEQUE payments and backward compatibility
   bagNumbers: z.array(z.string()).optional(), // New field for multiple bag numbers
+  bagAmounts: z.array(z.number()).optional(), // New field for individual bag amounts
+  bags: z.array(z.object({
+    number: z.string(),
+    payingNumber: z.string().optional(),
+    amount: z.number()
+  })).optional(), // Combined bag data
   chequeNumber: z.string().nullable().optional(),
   createdAt: z.string().optional(),
 });
@@ -765,6 +771,9 @@ export const employeeSchema = z.object({
   branchAddress: z.string().optional().nullable(),
   accountNumber: z.string().optional().nullable(),
   sortCode: z.string().optional().nullable(),
+  forkLiftCertificateCompanyName: z.string().optional().nullable(),
+  licenceCertificateNumber: z.string().optional().nullable(),
+  marketPermitNumber: z.string().optional().nullable(),
   documents: z.array(employeeDocumentSchema).optional().default([]),
   isActive: z.string().default("yes"),
   createdAt: z.string(),
@@ -780,4 +789,46 @@ export const insertEmployeeSchema = employeeSchema.omit({
 });
 
 export type Employee = z.infer<typeof employeeSchema>;
-export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+export interface Employee extends z.infer<typeof employeeSchema> {}
+
+export const employeeWithAttendanceSchema = z.object({
+  id: z.number(),
+  fullName: z.string(),
+  title: z.string().nullable(),
+  dailyWage: z.number().nullable(),
+  status: z.string(),
+  attendance: z.object({
+    status: z.string(),
+    leaveType: z.string().nullable(),
+    holidayName: z.string().nullable()
+  })
+});
+
+export type EmployeeWithAttendance = z.infer<typeof employeeWithAttendanceSchema>;
+
+// Holiday Request Schema
+export const holidayRequestSchema = z.object({
+  id: z.number().optional(),
+  employeeId: z.number(),
+  employeeName: z.string().min(1, "Employee name is required"),
+  jobTitle: z.string().optional(),
+  totalDaysRequested: z.number().min(1, "Total days must be at least 1"),
+  lastDateAtWork: z.string(),
+  returnDateToWork: z.string(),
+  signedByEmployee: z.string().optional(),
+  dateByEmployee: z.string().optional(),
+  status: z.enum(["pending", "granted", "not_granted"]).default("pending"),
+  daysGranted: z.number().optional(),
+  daysLeftEntitlement: z.number().optional(),
+  managerName: z.string().optional(),
+  signedByManager: z.string().optional(),
+  datedByManager: z.string().optional(),
+  managerComments: z.string().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export const insertHolidayRequestSchema = holidayRequestSchema.omit({ id: true, createdAt: true, updatedAt: true });
+
+export type HolidayRequest = z.infer<typeof holidayRequestSchema>;
+export type InsertHolidayRequest = z.infer<typeof insertHolidayRequestSchema>;

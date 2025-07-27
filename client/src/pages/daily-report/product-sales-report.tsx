@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CalendarIcon, Download, BarChart3, Database } from 'lucide-react';
+import { CalendarIcon, Download, BarChart3, Database, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -31,6 +31,8 @@ export default function ProductSalesReport() {
   const [toDate, setToDate] = useState<Date>();
   const [queryFromDate, setQueryFromDate] = useState<Date>();
   const [queryToDate, setQueryToDate] = useState<Date>();
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
 
   const formattedFromDate = queryFromDate ? format(queryFromDate, "yyyy-MM-dd") : undefined;
   const formattedToDate = queryToDate ? format(queryToDate, "yyyy-MM-dd") : undefined;
@@ -161,6 +163,164 @@ export default function ProductSalesReport() {
     alert('Table copied to clipboard!');
   };
 
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    
+    // Add company header if available
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.setFontSize(10);
+      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
+      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
+      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+    }
+    
+    // Add title
+    doc.setFontSize(14);
+    doc.text('Product Sales Report', 14, companyDetails ? 42 : 15);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${formattedFromDate || '-'} to ${formattedToDate || '-'}`, 14, companyDetails ? 48 : 21);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Product Description', 'Qty', 'Avg Price', 'Total']],
+      body: salesData.map((item: SalesReportData) => [
+        item.productDescription,
+        item.quantity.toString(),
+        `£${item.avgPrice.toFixed(2)}`,
+        `£${item.total.toFixed(2)}`
+      ]),
+      startY: companyDetails ? 52 : 25,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+      columnStyles: {
+        0: { cellWidth: 70 }, // Product Description
+        1: { cellWidth: 25, halign: 'right' }, // Qty
+        2: { cellWidth: 35, halign: 'right' }, // Avg Price
+        3: { cellWidth: 35, halign: 'right' }, // Total
+      },
+    });
+    
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || (companyDetails ? 52 : 25);
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, 16, 'F');
+    doc.setTextColor(40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Summary - Date Range: ${formattedFromDate || '-'} to ${formattedToDate || '-'}`, 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Total Sales Amount: £${totalAmount.toFixed(2)}`, 16, finalY + 20);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
+    
+    return doc.output('blob');
+  };
+
+  // Email PDF handler
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      alert('Please enter at least one email address');
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      alert(`Invalid email addresses: ${invalidEmails.join(', ')}`);
+      return;
+    }
+
+    if (salesData.length === 0) {
+      alert('No sales data available to send. Please get data first.');
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        try {
+          const base64data = reader.result as string;
+          const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
+          
+          // Send email with PDF attachment
+          const emailData = {
+            to: emailList,
+            subject: `Product Sales Report - ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Product Sales Report for the period from ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}.\n\nThis report contains detailed sales information including:\n- Product descriptions and quantities sold\n- Average selling prices\n- Total sales amounts per product\n- Overall sales summary\n\nReport Summary:\n- Total Products: ${salesData.length}\n- Total Sales Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}\n\nBest regards,\n${companyDetails?.name || 'Sales Team'}`,
+            attachment: {
+              filename: `product-sales-report-${formattedFromDate || 'unknown'}-to-${formattedToDate || 'unknown'}.pdf`,
+              content: base64PDF,
+              contentType: 'application/pdf'
+            }
+          };
+          
+          const response = await apiRequest('POST', '/api/send-email', emailData);
+          
+          if (response.message) {
+            alert(`✅ ${response.message}`);
+            if (response.warnings) {
+              alert(`⚠️ Warning: ${response.warnings}`);
+            }
+          } else {
+            alert(`📧 Product sales report sent successfully to ${emailList.length} email(s)`);
+          }
+          
+          setEmails(''); // Clear email field after successful send
+          
+        } catch (emailError) {
+          console.error('Error sending email:', emailError);
+          
+          // Handle specific error messages
+          let errorMessage = 'Failed to send email. Please try again.';
+          if (emailError && typeof emailError === 'object' && 'error' in emailError) {
+            errorMessage = `Email Error: ${emailError.error}`;
+          } else if (emailError && typeof emailError === 'string') {
+            errorMessage = `Email Error: ${emailError}`;
+          }
+          
+          alert(`❌ ${errorMessage}`);
+        } finally {
+          // Always reset the sending state
+          setIsEmailSending(false);
+        }
+      };
+      
+      reader.onerror = () => {
+        alert('❌ Failed to process PDF file. Please try again.');
+        setIsEmailSending(false);
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('❌ Failed to generate PDF. Please try again.');
+      setIsEmailSending(false);
+    }
+  };
+
   return (
     <PageLayout 
       title="Product Sales Report" 
@@ -263,11 +423,33 @@ export default function ProductSalesReport() {
         <Card>
           <CardHeader className="pb-3 sm:pb-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="flex flex-wrap gap-2 order-1 sm:order-none">
+              <div className="flex flex-wrap items-center gap-2 order-1 sm:order-none">
                 <Button size="sm" variant="outline" onClick={handlePrint}>Print</Button>
                 <Button size="sm" variant="outline" onClick={handleExcel}>Excel</Button>
                 <Button size="sm" variant="outline" onClick={handlePDF}>PDF</Button>
                 <Button size="sm" variant="outline" onClick={handleCopy}>Copy</Button>
+                
+                {/* Email Section - next to Copy button */}
+                <div className="flex items-center gap-2 ml-2">
+                  <input
+                    type="text"
+                    placeholder="Enter emails (comma separated)"
+                    value={emails}
+                    onChange={(e) => setEmails(e.target.value)}
+                    className="w-48 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                    disabled={isEmailSending}
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={handleEmailPDF} 
+                    className="flex items-center gap-1"
+                    disabled={isEmailSending}
+                    size="sm"
+                  >
+                    <Mail size={14} />
+                    <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                  </Button>
+                </div>
               </div>
               <div className="flex-1 flex justify-end">
                 <CardTitle className="text-lg sm:text-xl">Sales Report</CardTitle>
@@ -279,10 +461,10 @@ export default function ProductSalesReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[300px] px-6">Product Description</TableHead>
-                    <TableHead className="w-24 text-right px-4">Qty</TableHead>
-                    <TableHead className="w-32 text-right px-4">Avg Price</TableHead>
-                    <TableHead className="w-32 text-right px-4">Total</TableHead>
+                    <TableHead className="w-1/4 px-6">Product Description</TableHead>
+                    <TableHead className="w-1/4 text-right px-6">Qty</TableHead>
+                    <TableHead className="w-1/4 text-right px-6">Avg Price</TableHead>
+                    <TableHead className="w-1/4 text-right px-6">Total</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -304,14 +486,18 @@ export default function ProductSalesReport() {
                         <TableCell className="px-6">
                           <button
                             className="text-blue-600 underline cursor-pointer"
-                            onClick={() => navigate(`/product-sales-history/${item.id}`)}
+                            onClick={() => {
+                              const fromDateStr = queryFromDate ? format(queryFromDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+                              const toDateStr = queryToDate ? format(queryToDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+                              navigate(`/reports/product-sales-history?productId=${item.id}&productType=regular&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(item.productDescription)}`);
+                            }}
                           >
                             {item.productDescription}
                           </button>
                         </TableCell>
-                        <TableCell className="text-right px-4">{item.quantity}</TableCell>
-                        <TableCell className="text-right px-4">${item.avgPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-semibold px-4">${item.total.toFixed(2)}</TableCell>
+                        <TableCell className="text-right px-6">{item.quantity}</TableCell>
+                        <TableCell className="text-right px-6">${item.avgPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-semibold px-6">${item.total.toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}

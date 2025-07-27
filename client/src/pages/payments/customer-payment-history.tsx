@@ -5,7 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Mail } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -34,6 +36,9 @@ export default function CustomerPaymentHistory() {
   const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
   const [toDate, setToDate] = useState<Date | undefined>(new Date());
   const [selectedFilter, setSelectedFilter] = useState<string>("All");
+  const [emails, setEmails] = useState('');
+  const [isEmailSending, setIsEmailSending] = useState(false);
+  const { toast } = useToast();
 
   // Fetch customers for the dropdown
   const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
@@ -145,6 +150,123 @@ export default function CustomerPaymentHistory() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Customer Payment History');
     XLSX.writeFile(wb, 'customer-payment-history.xlsx');
+  };
+
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('TROPIFRUIT UK LTD', 14, 16);
+    doc.setFontSize(13);
+    doc.text('Customer Payment History', 14, 24);
+    
+    // Add date range if available
+    if (fromDate && toDate) {
+      doc.setFontSize(10);
+      doc.text(`Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 14, 32);
+    }
+    
+    autoTable(doc, {
+      head: [[
+        'Payment Date', 'Payment mode', 'Recd Amt', 'Inv No.', 'Inv Dt.', 'Customer', 'Invoice Amt', 'Allocated', 'Remarks'
+      ]],
+      body: (Array.isArray(paymentHistory) ? paymentHistory : []).map((payment) => [
+        payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
+        payment.paymentMode,
+        `£${Number(payment.amount).toFixed(2)}`,
+        payment.invoiceNumber || '-',
+        payment.invoiceDate ? format(new Date(payment.invoiceDate), 'dd/MM/yyyy') : '-',
+        payment.customerName,
+        payment.invoiceAmount ? `£${Number(payment.invoiceAmount).toFixed(2)}` : '-',
+        `£${Number(payment.amount).toFixed(2)}`,
+        payment.remarks || '-'
+      ]),
+      startY: fromDate && toDate ? 38 : 30,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [240, 240, 240], textColor: 0 },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+    });
+    
+    return doc.output('blob');
+  };
+
+  // Email PDF handler
+  const handleEmailPDF = async () => {
+    if (!emails.trim()) {
+      toast({
+        title: "Email Required",
+        description: "Please enter at least one email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Parse and validate emails
+    const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = emailList.filter(email => !emailRegex.test(email));
+    
+    if (invalidEmails.length > 0) {
+      toast({
+        title: "Invalid Email",
+        description: `Invalid email addresses: ${invalidEmails.join(', ')}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!paymentHistory || paymentHistory.length === 0) {
+      toast({
+        title: "No Data",
+        description: "No payment history data available to send.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsEmailSending(true);
+    
+    try {
+      // Generate PDF blob
+      const pdfBlob = generatePDFBlob();
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        const base64PDF = base64data.split(',')[1];
+        
+        // Send email with PDF attachment
+        const emailData = {
+          to: emailList,
+          subject: `Customer Payment History Report (${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''} to ${toDate ? format(toDate, 'yyyy-MM-dd') : ''})`,
+          body: `Please find attached the Customer Payment History report for the period from ${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''} to ${toDate ? format(toDate, 'yyyy-MM-dd') : ''}.\n\nTotal records: ${paymentHistory.length}\nTotal amount: £${totalAmount.toFixed(2)}`,
+          attachment: {
+            filename: `customer-payment-history-${fromDate ? format(fromDate, 'yyyy-MM-dd') : ''}-to-${toDate ? format(toDate, 'yyyy-MM-dd') : ''}.pdf`,
+            content: base64PDF,
+            contentType: 'application/pdf'
+          }
+        };
+        
+        await apiRequest('POST', '/api/send-email', emailData);
+        toast({
+          title: "Email Sent",
+          description: `Customer payment history sent successfully to ${emailList.length} email(s)`,
+        });
+        setEmails('');
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Email Failed",
+        description: "Failed to send email. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailSending(false);
+    }
   };
 
   return (
@@ -268,6 +390,26 @@ export default function CustomerPaymentHistory() {
                 <Button variant="outline" onClick={handlePrint}>Print</Button>
                 <Button variant="outline" onClick={handlePDF}>PDF</Button>
                 <Button variant="outline" onClick={handleExcel}>Excel</Button>
+              </div>
+              
+              {/* Email Section */}
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="Enter emails (comma separated)"
+                  value={emails}
+                  onChange={(e) => setEmails(e.target.value)}
+                  className="w-64"
+                  disabled={isEmailSending}
+                />
+                <Button 
+                  variant="outline" 
+                  onClick={handleEmailPDF} 
+                  className="flex items-center gap-2"
+                  disabled={isEmailSending}
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                </Button>
               </div>
             </div>
             {/* Responsive Table Container */}

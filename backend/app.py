@@ -2,13 +2,16 @@ from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
-    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema
+    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema, HolidayRequestSchema
 )
 from models import Company, Supplier, PurchaseInvoice, PurchaseInvoiceItem, Purchase
 from flask import Flask, request, jsonify, session, current_app, send_file
+import os
+import uuid
+from werkzeug.utils import secure_filename
 from users import verify_password, create_admin_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
@@ -57,6 +60,21 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'cached_statements': 128,  # Cache prepared statements
     }
 }
+
+# File upload configuration
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads', 'employee_documents')
+ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'txt'}
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+
+# Create upload directory if it doesn't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # Initialize database
 db.init_app(app)
@@ -388,31 +406,61 @@ def create_sale():
                 # Prepare stock updates if sale is finalized
                 if sale_data.status == 'finalized':
                     if item_data.product_id:
-                        stock_updates.append({
-                            'product_id': item_data.product_id,
-                            'product_type': 'regular',
-                            'quantity_change': -item_data.quantity if item_data.quantity > 0 else abs(item_data.quantity),
-                            'remarks': f"Sale invoice: {next_invoice}"
-                        })
+                        if item_data.quantity > 0:
+                            # Normal sale - reduce stock
+                            stock_updates.append({
+                                'product_id': item_data.product_id,
+                                'product_type': 'regular',
+                                'quantity_change': -item_data.quantity,
+                                'movement_type': 'sale',
+                                'remarks': f"Sale invoice: {next_invoice}"
+                            })
+                        else:
+                            # Negative quantity - customer return, increase stock
+                            stock_updates.append({
+                                'product_id': item_data.product_id,
+                                'product_type': 'regular',
+                                'quantity_change': abs(item_data.quantity),
+                                'movement_type': 'customer_return',
+                                'remarks': f"Customer return via sale invoice: {next_invoice}",
+                                'is_return': True,
+                                'item_data': item_data
+                            })
                     elif item_data.non_product_id:
-                        stock_updates.append({
-                            'product_id': item_data.non_product_id,
-                            'product_type': 'non',
-                            'quantity_change': -item_data.quantity if item_data.quantity > 0 else abs(item_data.quantity),
-                            'remarks': f"Sale invoice: {next_invoice}"
-                        })
+                        if item_data.quantity > 0:
+                            # Normal sale - reduce stock
+                            stock_updates.append({
+                                'product_id': item_data.non_product_id,
+                                'product_type': 'non',
+                                'quantity_change': -item_data.quantity,
+                                'movement_type': 'sale',
+                                'remarks': f"Sale invoice: {next_invoice}"
+                            })
+                        else:
+                            # Negative quantity - customer return, increase stock
+                            stock_updates.append({
+                                'product_id': item_data.non_product_id,
+                                'product_type': 'non',
+                                'quantity_change': abs(item_data.quantity),
+                                'movement_type': 'customer_return',
+                                'remarks': f"Customer return via sale invoice: {next_invoice}",
+                                'is_return': True,
+                                'item_data': item_data
+                            })
             
             # Add all sale items at once
             db.session.add_all(sale_items)
             
             # Process stock updates efficiently
             stock_warnings = []
+            customer_returns_created = []
+            
             for stock_update in stock_updates:
                 success, result = update_product_stock(
                     product_id=stock_update['product_id'],
                     product_type=stock_update['product_type'],
                     quantity_change=stock_update['quantity_change'],
-                    movement_type='sale',
+                    movement_type=stock_update['movement_type'],
                     reference_id=new_sale.id,
                     reference_type='sale',
                     remarks=stock_update['remarks'],
@@ -424,6 +472,54 @@ def create_sale():
                 elif not success:
                     db.session.rollback()
                     return jsonify({"error": f"Stock update failed: {result}"}), 400
+                
+                # If this is a return (negative quantity), create customer return entry
+                if stock_update.get('is_return', False):
+                    try:
+                        item_data = stock_update['item_data']
+                        
+                        # Get product details for description
+                        product_description = None
+                        if item_data.product_id:
+                            product = RegularProduct.query.get(item_data.product_id)
+                            if product:
+                                product_description = product.description
+                        elif item_data.non_product_id:
+                            product = NonProduct.query.get(item_data.non_product_id)
+                            if product:
+                                product_description = product.description
+                        
+                        # Generate customer return reference number
+                        last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
+                        ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
+                        
+                        # Create customer return entry
+                        customer_return = CustomerReturn(
+                            ref_number=ref_number,
+                            date=sale_date,
+                            customer_id=new_sale.customer_id,
+                            sale_id=new_sale.id,
+                            product_id=item_data.product_id if item_data.product_id else item_data.non_product_id,
+                            product_type=stock_update['product_type'],
+                            description=product_description or f"Product ID: {item_data.product_id or item_data.non_product_id}",
+                            invoice_number=next_invoice,
+                            remarks=f"Customer return via negative quantity in sale invoice {next_invoice}",
+                            quantity=abs(item_data.quantity),
+                            unit_price=abs(item_data.unit_price),
+                            total_value=abs(item_data.total_price),
+                            return_reason="Return via negative quantity sale",
+                            credit_note_issued=False,
+                            credit_note_amount=0,
+                            status='completed',
+                            created_by=user_id
+                        )
+                        
+                        db.session.add(customer_return)
+                        customer_returns_created.append(ref_number)
+                        
+                    except Exception as e:
+                        print(f"Warning: Failed to create customer return entry: {str(e)}")
+                        # Don't fail the sale creation if customer return creation fails
             
             # Commit everything at once
             db.session.commit()
@@ -436,13 +532,47 @@ def create_sale():
             # Mail invoice if requested
             if request.json.get('mailInvoice'):
                 customer = Customer.query.get(new_sale.customer_id)
-                if customer and customer.email:
+                if customer:
                     try:
-                        # Handle multiple emails
-                        emails = [email.strip() for email in customer.email.split(',') if email.strip()]
-                        for email in emails:
-                            send_invoice_email(mail, email, new_sale, customer)
-                        print(f"Email sent successfully to {', '.join(emails)}")
+                        # Get email data from request
+                        email_data = request.json.get('emailData')
+                        all_emails = []
+                        
+                        if email_data:
+                            # Use emails from emailData (customer emails + additional emails)
+                            customer_emails = email_data.get('customerEmails', '')
+                            additional_emails = email_data.get('additionalEmails', '')
+                            
+                            # Add customer emails
+                            if customer_emails:
+                                all_emails.extend([email.strip() for email in customer_emails.split(',') if email.strip()])
+                            
+                            # Add additional emails
+                            if additional_emails:
+                                all_emails.extend([email.strip() for email in additional_emails.split(',') if email.strip()])
+                        
+                        # Always check customer's stored email as fallback/additional source
+                        if customer.email:
+                            customer_stored_emails = [email.strip() for email in customer.email.split(',') if email.strip()]
+                            # Add any customer stored emails that aren't already in the list
+                            for email in customer_stored_emails:
+                                if email and email not in all_emails:
+                                    all_emails.append(email)
+                        
+                        # Remove duplicates while preserving order
+                        unique_emails = []
+                        for email in all_emails:
+                            if email and email not in unique_emails:
+                                unique_emails.append(email)
+                        
+                        # Send emails
+                        if unique_emails:
+                            for email in unique_emails:
+                                send_invoice_email(mail, email, new_sale, customer)
+                            print(f"Email sent successfully to {', '.join(unique_emails)}")
+                        else:
+                            print("No valid email addresses found")
+                            
                     except Exception as e:
                         print(f"Failed to send email: {str(e)}")
                         # Don't fail the sale creation if email fails
@@ -522,8 +652,27 @@ def update_sale(id):
         for key, value in sale_data.dict(exclude={'items'}).items():
             setattr(sale, key, value)
         
-        # Always update the date to the correct business date
-        sale.date = get_business_date()
+        # Only update date if not provided in the request, otherwise preserve the original date
+        if sale_data.date:
+            # Parse the provided date string to datetime object
+            try:
+                if isinstance(sale_data.date, str):
+                    # Handle different date formats
+                    if 'T' in sale_data.date:
+                        # ISO format with time
+                        parsed_date = datetime.fromisoformat(sale_data.date.replace('Z', '+00:00'))
+                    else:
+                        # Date only format
+                        parsed_date = datetime.strptime(sale_data.date, '%Y-%m-%d')
+                    sale.date = parsed_date
+                else:
+                    sale.date = sale_data.date
+            except (ValueError, TypeError):
+                # If date parsing fails, use current business date as fallback
+                sale.date = get_business_date()
+        else:
+            # If no date provided, use current business date
+            sale.date = get_business_date()
         
         # Update sale items
         sale.items = []  # Clear existing items
@@ -552,37 +701,132 @@ def update_sale(id):
         
         # Handle stock updates for status changes
         if old_status != 'finalized' and new_status == 'finalized':
-            # Stock should be reduced when status changes to finalized
+            # Stock should be updated when status changes to finalized
             for item_data in sale_data.items:
                 if item_data.product_id:
                     # Regular product
-                    success, result = update_product_stock(
-                        product_id=item_data.product_id,
-                        product_type='regular',
-                        quantity_change=-item_data.quantity,  # Negative for sales
-                        movement_type='sale',
-                        reference_id=sale.id,
-                        reference_type='sale',
-                        remarks=f"Sale invoice finalized: {sale.invoice_number}",
-                        user_id=user_id
-                    )
+                    if item_data.quantity > 0:
+                        # Normal sale - reduce stock
+                        success, result = update_product_stock(
+                            product_id=item_data.product_id,
+                            product_type='regular',
+                            quantity_change=-item_data.quantity,
+                            movement_type='sale',
+                            reference_id=sale.id,
+                            reference_type='sale',
+                            remarks=f"Sale invoice finalized: {sale.invoice_number}",
+                            user_id=user_id
+                        )
+                    else:
+                        # Negative quantity - customer return, increase stock
+                        success, result = update_product_stock(
+                            product_id=item_data.product_id,
+                            product_type='regular',
+                            quantity_change=abs(item_data.quantity),
+                            movement_type='customer_return',
+                            reference_id=sale.id,
+                            reference_type='sale',
+                            remarks=f"Customer return via sale invoice: {sale.invoice_number}",
+                            user_id=user_id
+                        )
+                        
+                        # Create customer return entry for negative quantity
+                        try:
+                            product = RegularProduct.query.get(item_data.product_id)
+                            product_description = product.description if product else f"Product ID: {item_data.product_id}"
+                            
+                            # Generate customer return reference number
+                            last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
+                            ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
+                            
+                            customer_return = CustomerReturn(
+                                ref_number=ref_number,
+                                date=sale.date.date() if hasattr(sale.date, 'date') else sale.date,
+                                customer_id=sale.customer_id,
+                                sale_id=sale.id,
+                                product_id=item_data.product_id,
+                                product_type='regular',
+                                description=product_description,
+                                invoice_number=sale.invoice_number,
+                                remarks=f"Customer return via negative quantity in updated sale invoice {sale.invoice_number}",
+                                quantity=abs(item_data.quantity),
+                                unit_price=abs(item_data.unit_price),
+                                total_value=abs(item_data.total_price),
+                                return_reason="Return via negative quantity sale",
+                                credit_note_issued=False,
+                                credit_note_amount=0,
+                                status='completed',
+                                created_by=user_id
+                            )
+                            db.session.add(customer_return)
+                        except Exception as e:
+                            print(f"Warning: Failed to create customer return entry: {str(e)}")
+                    
                     if not success:
                         if 'Insufficient stock' in result:
                             stock_warnings.append(f"Insufficient stock for product ID {item_data.product_id}: {result}")
                         else:
                             return jsonify({"error": f"Stock update failed: {result}"}), 400
+                            
                 elif item_data.non_product_id:
                     # Non-product
-                    success, result = update_product_stock(
-                        product_id=item_data.non_product_id,
-                        product_type='non',
-                        quantity_change=-item_data.quantity,  # Negative for sales
-                        movement_type='sale',
-                        reference_id=sale.id,
-                        reference_type='sale',
-                        remarks=f"Sale invoice finalized: {sale.invoice_number}",
-                        user_id=user_id
-                    )
+                    if item_data.quantity > 0:
+                        # Normal sale - reduce stock
+                        success, result = update_product_stock(
+                            product_id=item_data.non_product_id,
+                            product_type='non',
+                            quantity_change=-item_data.quantity,
+                            movement_type='sale',
+                            reference_id=sale.id,
+                            reference_type='sale',
+                            remarks=f"Sale invoice finalized: {sale.invoice_number}",
+                            user_id=user_id
+                        )
+                    else:
+                        # Negative quantity - customer return, increase stock
+                        success, result = update_product_stock(
+                            product_id=item_data.non_product_id,
+                            product_type='non',
+                            quantity_change=abs(item_data.quantity),
+                            movement_type='customer_return',
+                            reference_id=sale.id,
+                            reference_type='sale',
+                            remarks=f"Customer return via sale invoice: {sale.invoice_number}",
+                            user_id=user_id
+                        )
+                        
+                        # Create customer return entry for negative quantity
+                        try:
+                            product = NonProduct.query.get(item_data.non_product_id)
+                            product_description = product.description if product else f"Non-Product ID: {item_data.non_product_id}"
+                            
+                            # Generate customer return reference number
+                            last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
+                            ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
+                            
+                            customer_return = CustomerReturn(
+                                ref_number=ref_number,
+                                date=sale.date.date() if hasattr(sale.date, 'date') else sale.date,
+                                customer_id=sale.customer_id,
+                                sale_id=sale.id,
+                                product_id=item_data.non_product_id,
+                                product_type='non',
+                                description=product_description,
+                                invoice_number=sale.invoice_number,
+                                remarks=f"Customer return via negative quantity in updated sale invoice {sale.invoice_number}",
+                                quantity=abs(item_data.quantity),
+                                unit_price=abs(item_data.unit_price),
+                                total_value=abs(item_data.total_price),
+                                return_reason="Return via negative quantity sale",
+                                credit_note_issued=False,
+                                credit_note_amount=0,
+                                status='completed',
+                                created_by=user_id
+                            )
+                            db.session.add(customer_return)
+                        except Exception as e:
+                            print(f"Warning: Failed to create customer return entry: {str(e)}")
+                    
                     if not success:
                         if 'Insufficient stock' in result:
                             stock_warnings.append(f"Insufficient stock for non-product ID {item_data.non_product_id}: {result}")
@@ -784,13 +1028,43 @@ def update_sale(id):
         # Mail invoice if requested
         if request.json.get('mailInvoice'):
             customer = Customer.query.get(sale.customer_id)
-            if customer and customer.email:
+            if customer:
                 try:
-                    # Handle multiple emails
-                    emails = [email.strip() for email in customer.email.split(',') if email.strip()]
-                    for email in emails:
-                        send_invoice_email(mail, email, sale, customer)
-                    print(f"Email sent successfully to {', '.join(emails)}")
+                    # Get email data from request
+                    email_data = request.json.get('emailData')
+                    all_emails = []
+                    
+                    if email_data:
+                        # Use emails from emailData (customer emails + additional emails)
+                        customer_emails = email_data.get('customerEmails', '')
+                        additional_emails = email_data.get('additionalEmails', '')
+                        
+                        # Add customer emails
+                        if customer_emails:
+                            all_emails.extend([email.strip() for email in customer_emails.split(',') if email.strip()])
+                        
+                        # Add additional emails
+                        if additional_emails:
+                            all_emails.extend([email.strip() for email in additional_emails.split(',') if email.strip()])
+                    else:
+                        # Fallback to customer's stored email if no emailData
+                        if customer.email:
+                            all_emails = [email.strip() for email in customer.email.split(',') if email.strip()]
+                    
+                    # Remove duplicates while preserving order
+                    unique_emails = []
+                    for email in all_emails:
+                        if email and email not in unique_emails:
+                            unique_emails.append(email)
+                    
+                    # Send emails
+                    if unique_emails:
+                        for email in unique_emails:
+                            send_invoice_email(mail, email, sale, customer)
+                        print(f"Email sent successfully to {', '.join(unique_emails)}")
+                    else:
+                        print("No valid email addresses found")
+                        
                 except Exception as e:
                     print(f"Failed to send email: {str(e)}")
                     # Don't fail the sale update if email fails
@@ -1547,36 +1821,70 @@ def update_settings():
 # Attendance routes
 @app.route('/api/attendance', methods=['GET'])
 def get_attendance():
+    # Check for date range parameters first (takes precedence)
+    from_date_str = request.args.get('from_date')
+    to_date_str = request.args.get('to_date')
+    
+    # Fall back to year/month/week parameters if date range not provided
     year = request.args.get('year', type=int)
     month = request.args.get('month', type=int)
     week = request.args.get('week', type=int)
-
-    print(f"DEBUG: /api/attendance year={year}, month={month}, week={week}")
+    
+    # Also support employee_id filter
+    employee_id = request.args.get('employee_id', type=int)
+    
+    print(f"DEBUG: /api/attendance from_date={from_date_str}, to_date={to_date_str}, year={year}, month={month}, week={week}, employee_id={employee_id}")
 
     query = Attendance.query
+    
+    # Apply employee filter if provided
+    if employee_id:
+        query = query.filter(Attendance.user_id == employee_id)
 
-    if year and month:
-        from datetime import datetime, timedelta
+    # Handle date range parameters (takes precedence over year/month/week)
+    if from_date_str and to_date_str:
+        try:
+            from_date = datetime.strptime(from_date_str, '%Y-%m-%d').date()
+            to_date = datetime.strptime(to_date_str, '%Y-%m-%d').date()
+            print(f"DEBUG: Using date range: {from_date} to {to_date}")
+            query = query.filter(Attendance.date >= from_date, Attendance.date <= to_date)
+        except ValueError as e:
+            print(f"ERROR: Invalid date format. Expected YYYY-MM-DD. Error: {e}")
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    # Fall back to year/month/week parameters
+    elif year and month:
         start_date = datetime(year, month, 1)
         if month == 12:
             end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
         else:
             end_date = datetime(year, month + 1, 1) - timedelta(days=1)
-        print(f"DEBUG: Attendance month start_date={start_date.date()}, end_date={end_date.date()}")
+        print(f"DEBUG: Using month range: {start_date.date()} to {end_date.date()}")
         query = query.filter(Attendance.date >= start_date.date(), Attendance.date <= end_date.date())
     elif year and week:
-        from datetime import datetime, timedelta
         def iso_to_gregorian(iso_year, iso_week, iso_day):
             fourth_jan = datetime(iso_year, 1, 4)
             delta = timedelta(days=iso_day - fourth_jan.isoweekday())
             return fourth_jan + timedelta(weeks=iso_week - 1) + delta
         start_date = iso_to_gregorian(year, week, 1)  # Monday
         end_date = iso_to_gregorian(year, week, 7)    # Sunday
-        print(f"DEBUG: Attendance week start_date={start_date.date()}, end_date={end_date.date()}")
+        print(f"DEBUG: Using week range: {start_date.date()} to {end_date.date()}")
         query = query.filter(Attendance.date >= start_date.date(), Attendance.date <= end_date.date())
-
+    else:
+        # Default to today if no date range specified
+        today = datetime.now().date()
+        print(f"DEBUG: No date range specified, defaulting to today: {today}")
+        query = query.filter(Attendance.date == today)
+    
+    # Order by date ascending
+    query = query.order_by(Attendance.date.asc())
+    
+    # Execute query and return results
     attendance_records = query.all()
-    return jsonify([record.to_dict() for record in attendance_records])
+    print(f"DEBUG: Found {len(attendance_records)} attendance records")
+    
+    # Convert to list of dictionaries
+    result = [record.to_dict() for record in attendance_records]
+    return jsonify(result)
 
 @app.route('/api/attendance', methods=['POST'])
 def create_attendance():
@@ -1799,7 +2107,7 @@ def delete_user(id):
         user = User.query.get_or_404(id)
         db.session.delete(user)
         db.session.commit()
-        return jsonify({'message': 'User deleted successfully'})
+        return jsonify({'message': 'User deleted successfully'}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
@@ -1887,11 +2195,124 @@ def mark_attendance(user_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/users/<int:id>/daily-wage', methods=['PUT'])
-def update_daily_wage(id):
+@app.route('/api/employees/attendance', methods=['GET'])
+def get_employees_attendance():
+    today = datetime.now().date()
+    employees = Employee.query.filter(Employee.is_active == 'yes').all()
+    result = []
+    
+    for employee in employees:
+        attendance = Attendance.query.filter_by(
+            user_id=employee.id,  # Using user_id as the foreign key
+            date=today
+        ).first()
+        
+        result.append({
+            'id': employee.id,
+            'name': employee.full_name,
+            'title': employee.title,
+            'status': 'Active',
+            'dailyWage': float(employee.salary) if employee.salary else 0,
+            'attendance': {
+                'status': attendance.status if attendance else 'absent',
+                'leaveType': attendance.leave_type if attendance else None,
+                'holidayName': attendance.holiday_name if attendance else None
+            }
+        })
+    
+    return jsonify(result)
+
+@app.route('/api/employees/attendance/<int:employee_id>', methods=['POST'])
+def mark_employee_attendance(employee_id):
+    data = request.get_json()
+    
+    # Validate required fields
+    if not data or 'status' not in data:
+        return jsonify({'error': 'Status is required'}), 400
+    
+    # Validate status
+    valid_statuses = ['present', 'absent', 'leave', 'holiday']
+    if data['status'] not in valid_statuses:
+        return jsonify({'error': 'Invalid status'}), 400
+    
+    # Validate leave type if status is leave
+    if data['status'] == 'leave' and not data.get('leaveType'):
+        return jsonify({'error': 'Leave type is required for leave status'}), 400
+    
+    # Validate holiday name if status is holiday
+    if data['status'] == 'holiday' and not data.get('holidayName'):
+        return jsonify({'error': 'Holiday name is required for holiday status'}), 400
+    
+    # Check if employee exists
+    employee = Employee.query.get(employee_id)
+    if not employee:
+        return jsonify({'error': 'Employee not found'}), 404
+    
+    # Parse date range or default to today
+    try:
+        if 'date' in data:
+            # Single date
+            date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+            date_range = [date]
+        elif 'startDate' in data and 'endDate' in data:
+            # Date range
+            start_date = datetime.strptime(data['startDate'], '%Y-%m-%d').date()
+            end_date = datetime.strptime(data['endDate'], '%Y-%m-%d').date()
+            if start_date > end_date:
+                return jsonify({'error': 'Start date cannot be after end date'}), 400
+            date_range = [start_date + timedelta(days=x) for x in range((end_date - start_date).days + 1)]
+        else:
+            # Default to today
+            date_range = [datetime.now().date()]
+    except ValueError as e:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    
+    results = []
+    
+    for current_date in date_range:
+        # Check if attendance record exists for this date
+        attendance = Attendance.query.filter_by(
+            user_id=employee_id,
+            date=current_date
+        ).first()
+        
+        if attendance:
+            # Update existing record
+            attendance.status = data['status']
+            attendance.leave_type = data.get('leaveType')
+            attendance.holiday_name = data.get('holidayName')
+            
+            # Set check-in time if marking as present and no check-in exists
+            if data['status'] == 'present' and not attendance.check_in:
+                attendance.check_in = datetime.now()
+        else:
+            # Create new record
+            attendance = Attendance(
+                user_id=employee_id,
+                date=current_date,
+                status=data['status'],
+                leave_type=data.get('leaveType'),
+                holiday_name=data.get('holidayName'),
+                check_in=datetime.now() if data['status'] == 'present' else None
+            )
+            db.session.add(attendance)
+        
+        results.append(attendance.to_dict())
+    
+    try:
+        db.session.commit()
+        if len(results) == 1:
+            return jsonify(results[0])
+        return jsonify({'message': f'Successfully updated {len(results)} attendance records', 'data': results})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/<int:id>/daily-wage', methods=['PUT'])
+def update_employee_daily_wage(id):
     data = request.get_json()
     try:
-        user = User.query.get_or_404(id)
+        employee = Employee.query.get_or_404(id)
         
         if 'dailyWage' not in data:
             return jsonify({'message': 'Daily wage is required'}), 400
@@ -1904,13 +2325,13 @@ def update_daily_wage(id):
         except ValueError:
             return jsonify({'message': 'Daily wage must be a valid number'}), 400
         
-        user.daily_wage = daily_wage
+        employee.daily_wage = daily_wage
         db.session.commit()
         
         return jsonify({
-            'id': user.id,
-            'username': user.username,
-            'dailyWage': float(user.daily_wage) if user.daily_wage else None
+            'id': employee.id,
+            'name': employee.full_name,
+            'dailyWage': float(employee.daily_wage) if employee.daily_wage else None
         })
     except Exception as e:
         db.session.rollback()
@@ -1919,10 +2340,47 @@ def update_daily_wage(id):
 # Employee routes
 @app.route('/api/employees', methods=['GET'])
 def get_employees():
+    # ... (rest of the code remains the same)
     try:
+        # Test if employee_documents table exists
+        try:
+            db.session.execute(db.text("SELECT COUNT(*) FROM employee_documents LIMIT 1"))
+        except Exception as table_error:
+            print(f"employee_documents table might not exist: {str(table_error)}")
+            # Create tables if they don't exist
+            try:
+                db.create_all()
+                print("Database tables created/updated")
+            except Exception as create_error:
+                print(f"Error creating tables: {str(create_error)}")
+        
         employees = Employee.query.all()
-        return jsonify([employee.to_dict() for employee in employees])
+        result = []
+        for employee in employees:
+            try:
+                result.append(employee.to_dict())
+            except Exception as emp_error:
+                print(f"Error serializing employee {employee.id}: {str(emp_error)}")
+                # Add a basic employee dict without documents if serialization fails
+                result.append({
+                    'id': employee.id,
+                    'fullName': employee.full_name,
+                    'title': employee.title,
+                    'department': employee.department,
+                    'position': employee.position,
+                    'mobileNumber': employee.mobile_number,
+                    'startDate': employee.start_date.isoformat() if employee.start_date else None,
+                    'term': employee.term,
+                    'status': employee.status,
+                    'isActive': employee.is_active,
+                    'documents': [],  # Empty documents array as fallback
+                    'error': f"Document loading failed: {str(emp_error)}"
+                })
+        return jsonify(result)
     except Exception as e:
+        print(f"Error in get_employees: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return jsonify({'message': str(e)}), 500
 
 @app.route('/api/employees/<int:id>', methods=['GET'])
@@ -1963,6 +2421,9 @@ def create_employee():
             branch_address=employee_data.branchAddress,
             account_number=employee_data.accountNumber,
             sort_code=employee_data.sortCode,
+            fork_lift_certificate_company_name=employee_data.forkLiftCertificateCompanyName,
+            licence_certificate_number=employee_data.licenceCertificateNumber,
+            market_permit_number=employee_data.marketPermitNumber,
             is_active=employee_data.isActive
         )
         
@@ -2016,6 +2477,9 @@ def update_employee(id):
         employee.branch_address = employee_data.branchAddress
         employee.account_number = employee_data.accountNumber
         employee.sort_code = employee_data.sortCode
+        employee.fork_lift_certificate_company_name = employee_data.forkLiftCertificateCompanyName
+        employee.licence_certificate_number = employee_data.licenceCertificateNumber
+        employee.market_permit_number = employee_data.marketPermitNumber
         employee.is_active = employee_data.isActive
         
         # Update documents - remove existing and add new ones
@@ -2050,6 +2514,239 @@ def delete_employee(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
+
+# Employee Document routes
+@app.route('/api/employees/<int:employee_id>/documents', methods=['POST'])
+@jwt_required()
+def upload_employee_document(employee_id):
+    """Upload a document for an employee"""
+    try:
+        # Check if employee exists
+        employee = Employee.query.get_or_404(employee_id)
+        
+        # Ensure employee_documents table exists
+        try:
+            db.session.execute(db.text("SELECT COUNT(*) FROM employee_documents LIMIT 1"))
+        except Exception as table_error:
+            print(f"Creating employee_documents table: {str(table_error)}")
+            try:
+                db.create_all()
+                print("Database tables created for document upload")
+            except Exception as create_error:
+                print(f"Error creating tables: {str(create_error)}")
+                return jsonify({'error': 'Database setup failed', 'details': str(create_error)}), 500
+        
+        # Check if file is in request
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        document_name = request.form.get('documentName', '')
+        start_date = request.form.get('startDate')
+        end_date = request.form.get('endDate')
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if not document_name:
+            return jsonify({'error': 'Document name is required'}), 400
+        
+        if file and allowed_file(file.filename):
+            # Generate unique filename
+            file_extension = file.filename.rsplit('.', 1)[1].lower()
+            unique_filename = f"{uuid.uuid4()}.{file_extension}"
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            
+            # Save file
+            file.save(file_path)
+            
+            # Create document record
+            document = EmployeeDocument(
+                employee_id=employee_id,
+                document_name=document_name,
+                file_name=file.filename,
+                file_path=unique_filename,  # Store relative path
+                file_size=os.path.getsize(file_path),
+                file_type=file.content_type,
+                start_date=datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else None,
+                end_date=datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else None
+            )
+            
+            db.session.add(document)
+            db.session.commit()
+            
+            return jsonify({
+                'message': 'Document uploaded successfully',
+                'document': document.to_dict()
+            }), 201
+        else:
+            return jsonify({'error': 'File type not allowed'}), 400
+            
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/<int:employee_id>/documents', methods=['GET'])
+def get_employee_documents(employee_id):
+    """Get all documents for an employee"""
+    try:
+        # Check if employee exists
+        employee = Employee.query.get_or_404(employee_id)
+        
+        # Test if employee_documents table exists and create if needed
+        try:
+            db.session.execute(db.text("SELECT COUNT(*) FROM employee_documents LIMIT 1"))
+        except Exception as table_error:
+            print(f"employee_documents table issue: {str(table_error)}")
+            try:
+                db.create_all()
+                print("Database tables created/updated for documents")
+            except Exception as create_error:
+                print(f"Error creating tables: {str(create_error)}")
+                return jsonify({'error': 'Database table creation failed', 'details': str(create_error)}), 500
+        
+        # Query documents with error handling
+        try:
+            documents = EmployeeDocument.query.filter_by(employee_id=employee_id).all()
+            result = []
+            for doc in documents:
+                try:
+                    result.append(doc.to_dict())
+                except Exception as doc_error:
+                    print(f"Error serializing document {doc.id}: {str(doc_error)}")
+                    # Add basic document info if serialization fails
+                    result.append({
+                        'id': doc.id,
+                        'documentName': doc.document_name or 'Unknown Document',
+                        'fileName': getattr(doc, 'file_name', None),
+                        'hasFile': bool(getattr(doc, 'file_path', None)),
+                        'error': f"Serialization failed: {str(doc_error)}"
+                    })
+            return jsonify(result)
+        except Exception as query_error:
+            print(f"Error querying documents: {str(query_error)}")
+            return jsonify([])  # Return empty array if query fails
+            
+    except Exception as e:
+        print(f"Error in get_employee_documents: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/documents/<int:document_id>', methods=['GET'])
+def download_employee_document(document_id):
+    """Download an employee document"""
+    try:
+        # Ensure tables exist
+        try:
+            db.session.execute(db.text("SELECT COUNT(*) FROM employee_documents LIMIT 1"))
+        except Exception:
+            db.create_all()
+            
+        document = EmployeeDocument.query.get_or_404(document_id)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], document.file_path)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=document.file_name,
+            mimetype=document.file_type
+        )
+    except Exception as e:
+        print(f"Error in download_employee_document: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/documents/<int:document_id>', methods=['DELETE'])
+@jwt_required()
+def delete_employee_document(document_id):
+    """Delete an employee document"""
+    try:
+        document = EmployeeDocument.query.get_or_404(document_id)
+        
+        # Delete file from filesystem
+        if document.file_path:
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], document.file_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        
+        # Delete database record
+        db.session.delete(document)
+        db.session.commit()
+        
+        return jsonify({'message': 'Document deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/documents/<int:document_id>/view', methods=['GET'])
+def view_employee_document(document_id):
+    """View an employee document (for PDFs and images)"""
+    try:
+        document = EmployeeDocument.query.get_or_404(document_id)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], document.file_path)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        
+        return send_file(
+            file_path,
+            mimetype=document.file_type,
+            as_attachment=False  # Display in browser instead of download
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Employee Document Expiration Alerts
+@app.route('/api/employees/documents/expiring', methods=['GET'])
+@jwt_required()
+def get_expiring_employee_documents():
+    """Get employee documents expiring within a week"""
+    try:
+        from datetime import datetime, timedelta
+        
+        # Calculate date range (today to 7 days from now)
+        today = datetime.now().date()
+        week_from_now = today + timedelta(days=7)
+        
+        # Query for documents expiring within a week
+        expiring_docs = db.session.query(
+            EmployeeDocument.id,
+            EmployeeDocument.document_name,
+            EmployeeDocument.end_date,
+            Employee.full_name.label('employee_name'),
+            Employee.id.label('employee_id')
+        ).join(
+            Employee, EmployeeDocument.employee_id == Employee.id
+        ).filter(
+            EmployeeDocument.end_date.isnot(None),  # Only documents with end dates
+            EmployeeDocument.end_date >= today,     # Not already expired
+            EmployeeDocument.end_date <= week_from_now  # Expiring within a week
+        ).order_by(
+            EmployeeDocument.end_date.asc()  # Sort by expiration date
+        ).all()
+        
+        # Format the results
+        alerts = []
+        for doc in expiring_docs:
+            days_until_expiry = (doc.end_date - today).days
+            alerts.append({
+                'id': doc.id,
+                'employeeId': doc.employee_id,
+                'employeeName': doc.employee_name,
+                'documentName': doc.document_name,
+                'endDate': doc.end_date.isoformat(),
+                'daysUntilExpiry': days_until_expiry,
+                'isExpiringSoon': days_until_expiry <= 3,  # Mark as urgent if 3 days or less
+                'alertType': 'document_expiry'
+            })
+        
+        return jsonify(alerts)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # Business Date Management Routes
 @app.route('/api/business-date', methods=['GET'])
@@ -2159,7 +2856,7 @@ def get_monthly_stats():
     # Calculate statistics
     total_leaves = sum(1 for record in attendance_records if record.status == 'leave')
     total_present = sum(1 for record in attendance_records if record.status == 'present')
-    total_employees = User.query.count()
+    total_employees = Employee.query.filter(Employee.is_active == 'yes').count()
     
     avg_attendance = (total_present / (working_days * total_employees)) * 100 if total_employees > 0 else 0
     
@@ -2175,33 +2872,33 @@ def get_payroll_report():
     to_date = request.args.get('to_date')
     employee_id = request.args.get('employeeId', type=int)
     result = []
-    query = User.query
+    query = Employee.query.filter(Employee.is_active == 'yes')
     if employee_id:
-        query = query.filter(User.id == employee_id)
-    users = query.all()
+        query = query.filter(Employee.id == employee_id)
+    employees = query.all()
 
     # If from_date and to_date are provided, use them for filtering
     if from_date and to_date:
         from_dt = datetime.strptime(from_date, "%Y-%m-%d")
         to_dt = datetime.strptime(to_date, "%Y-%m-%d")
-        for user in users:
+        for employee in employees:
             present_days = Attendance.query.filter(
-                Attendance.user_id == user.id,
+                Attendance.user_id == employee.id,
                 Attendance.date >= from_dt.date(),
                 Attendance.date <= to_dt.date(),
                 Attendance.status == 'present'
             ).all()
             present_dates = [a.date.isoformat() for a in present_days]
             present_count = len(present_dates)
-            daily_wage = float(user.daily_wage) if user.daily_wage else 0
+            daily_wage = float(employee.salary) if employee.salary else 0
             pay = present_count * daily_wage
             result.append({
-                'user': {
-                    'id': user.id,
-                    'username': user.username,
-                    'userType': user.user_type,
-                    'status': user.status,
-                    'dailyWage': daily_wage
+                'employee': {
+                    'id': employee.id,
+                    'fullName': employee.full_name,
+                    'position': employee.position,
+                    'status': employee.status,
+                    'salary': daily_wage
                 },
                 'presentDays': present_count,
                 'presentDates': present_dates,
@@ -2220,24 +2917,24 @@ def get_payroll_report():
         end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
     else:
         end_date = datetime(year, month + 1, 1) - timedelta(days=1)
-    for user in users:
+    for employee in employees:
         present_days = Attendance.query.filter(
-            Attendance.user_id == user.id,
+            Attendance.user_id == employee.id,
             Attendance.date >= start_date.date(),
             Attendance.date <= end_date.date(),
             Attendance.status == 'present'
         ).all()
         present_dates = [a.date.isoformat() for a in present_days]
         present_count = len(present_dates)
-        daily_wage = float(user.daily_wage) if user.daily_wage else 0
+        daily_wage = float(employee.salary) if employee.salary else 0
         pay = present_count * daily_wage
         result.append({
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'userType': user.user_type,
-                'status': user.status,
-                'dailyWage': daily_wage
+            'employee': {
+                'id': employee.id,
+                'fullName': employee.full_name,
+                'position': employee.position,
+                'status': employee.status,
+                'salary': daily_wage
             },
             'presentDays': present_count,
             'presentDates': present_dates,
@@ -2446,6 +3143,43 @@ def get_customer_outstanding_invoices(customer_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/customers/<int:customer_id>/paid_invoices', methods=['GET'])
+@jwt_required()
+def get_customer_paid_invoices(customer_id):
+    try:
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            return jsonify({"error": "Customer not found"}), 404
+
+        # Fetch sales where the invoice is fully paid (total_amount <= paid_amount)
+        # and has a payment status of 'paid' or status is 'finalized'
+        paid_sales = Sale.query.filter(
+            Sale.customer_id == customer_id,
+            or_(
+                and_(Sale.payment_status == 'paid', Sale.status == 'finalized'),
+                and_(Sale.total_amount <= (Sale.paid_amount or 0), Sale.paid_amount > 0)
+            )
+        ).order_by(Sale.date.desc()).all()
+
+        # Enrich the response with payment details
+        result = []
+        for sale in paid_sales:
+            sale_dict = sale.to_dict()
+            
+            # Get payment details for this sale
+            payments = Payment.query.filter(Payment.sale_id == sale.id).all()
+            payment_modes = [p.payment_mode for p in payments]
+            
+            # Add payment mode information
+            sale_dict['paymentModes'] = payment_modes
+            sale_dict['hasPayments'] = len(payments) > 0
+            
+            result.append(sale_dict)
+
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/payments/history', methods=['GET'])
 @jwt_required()
 def get_payment_history():
@@ -2550,10 +3284,25 @@ def daily_book_sales():
     for idx, sale in enumerate(sales, 1):
         boxes = sum(item.quantity for item in sale.items)
         cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
-        # For account sales, show the invoice amount as account; for others, 0
-        account_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'account' else 0
+        # Calculate account amount and credit amount based on total_amount sign
+        total_amount = float(sale.total_amount)
+        
+        if sale.customer_type and sale.customer_type.lower() == 'account':
+            if total_amount >= 0:
+                # Positive amount goes to accounts column
+                account_amount = total_amount
+                credit_amount = 0
+            else:
+                # Negative amount goes to credit column
+                account_amount = 0
+                credit_amount = abs(total_amount)
+        else:
+            account_amount = 0
+            credit_amount = 0
+        
         bank_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() in ['bank', 'bank transfer'])
         bank_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank' else 0
+        
         result.append({
             'id': sale.id,
             'slNo': idx,
@@ -2567,7 +3316,8 @@ def daily_book_sales():
             'amount': account_amount,
             'cash': cash_paid,
             'bank': bank_paid,
-            'bankAmount': bank_amount
+            'bankAmount': bank_amount,
+            'credit': credit_amount
         })
     return jsonify(result)
 
@@ -4512,6 +5262,72 @@ def get_expense_entries():
         expense_entries = query.order_by(ExpenseEntry.date.desc()).all()
         return jsonify([entry.to_dict() for entry in expense_entries]), 200
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/stock-template', methods=['GET'])
+@jwt_required()
+def stock_template_report():
+    """Get all products with stock for stock template print"""
+    try:
+        # Get all regular products with stock > 0
+        regular_products = db.session.query(RegularProduct).filter(
+            RegularProduct.status == 'active'
+        ).all()
+        
+        # Get all non-products with stock > 0  
+        non_products = db.session.query(NonProduct).filter(
+            NonProduct.status == 'active'
+        ).all()
+        
+        stock_items = []
+        
+        # Process regular products
+        for product in regular_products:
+            # Get current stock from latest stock movement or initial stock
+            latest_movement = StockMovement.query.filter_by(
+                product_id=product.id,
+                product_type='regular'
+            ).order_by(StockMovement.created_at.desc()).first()
+            
+            current_stock = latest_movement.new_stock if latest_movement else (product.initial_stock or 0)
+            
+            # Only include products with stock > 0
+            if current_stock > 0:
+                stock_items.append({
+                    'id': product.id,
+                    'productCode': product.product_code,
+                    'description': product.description,
+                    'currentStock': float(current_stock),
+                    'type': 'regular'
+                })
+        
+        # Process non-products
+        for product in non_products:
+            # Get current stock from latest stock movement or initial stock
+            latest_movement = StockMovement.query.filter_by(
+                product_id=product.id,
+                product_type='non'
+            ).order_by(StockMovement.created_at.desc()).first()
+            
+            current_stock = latest_movement.new_stock if latest_movement else (product.initial_stock or 0)
+            
+            # Only include products with stock > 0
+            if current_stock > 0:
+                stock_items.append({
+                    'id': product.id,
+                    'productCode': product.product_code,
+                    'description': product.description,
+                    'currentStock': float(current_stock),
+                    'type': 'non'
+                })
+        
+        # Sort by product description
+        stock_items.sort(key=lambda x: x['description'])
+        
+        return jsonify(stock_items), 200
+        
+    except Exception as e:
+        print(f"[ERROR] Exception in stock_template_report: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/expense-entries', methods=['POST'])
@@ -6759,18 +7575,22 @@ def daily_accounts_report():
 
     # --- Receivables Cash ---
     sales_cash = sum_payment('cash', sale_id_null=False)
-    account_cash = sum_payment('cash', sale_id_null=True)
     on_account_cash = sum_payment('cash', sale_id_null=True)
-    bf = db.session.query(CashCarryForward).filter(
+    
+    # Get Cash Carry Forward (C/F) for the selected date
+    cf = db.session.query(CashCarryForward).filter(
         CashCarryForward.date == from_dt.date()
     ).first()
-    bf_amount = float(bf.pounds + bf.coins) if bf else 0  # Convert Decimal to float
-    total_cash = sales_cash + account_cash + on_account_cash + bf_amount
+    cf_amount = float(cf.pounds + cf.coins) if cf else 0  # Convert Decimal to float
+    
+    # Account Cash should show the C/F amount for backdate payments
+    account_cash = cf_amount
+    
+    total_cash = sales_cash + account_cash + on_account_cash
     receivables_cash = [
         {"item": "Sales Cash", "amount": sales_cash},
-        {"item": "Account Cash", "amount": account_cash},
+        {"item": "Account Cash (C/F)", "amount": account_cash},
         {"item": "On Account Cash", "amount": on_account_cash},
-        {"item": "B/F", "amount": bf_amount},
         {"item": "TOTAL CASH", "amount": total_cash}
     ]
 
@@ -6869,7 +7689,7 @@ def daily_accounts_report():
     ]
 
     # --- C/F ---
-    cf_total = bf_amount
+    cf_total = cf_amount
 
     # --- Actual Balance and Shortfall ---
     actual_balance = cf_total + total_cash + total_others - total_payables_cash - total_payables_others
@@ -6946,8 +7766,8 @@ def add_banking_entry():
     payment_type = data.get('paymentType', 'CASH')
     amount = data.get('amount', 0)
     paying_number = data.get('payingNumber')
-    bag_number = data.get('bagNumber')  # Keep for backward compatibility
-    bag_numbers = data.get('bagNumbers', [])  # New field for multiple bag numbers
+    bag_number = data.get('bagNumber')  # For CHEQUE payments or backward compatibility
+    bags = data.get('bags', [])  # New field for bag objects with number, payingNumber, and amount
     cheque_number = data.get('chequeNumber')
     # Use business date logic
     if date_str:
@@ -6961,20 +7781,32 @@ def add_banking_entry():
         payment_type=payment_type,
         amount=amount,
         paying_number=paying_number,
-        bag_number=bag_number,  # Keep for backward compatibility
+        bag_number=bag_number,  # Keep for backward compatibility and CHEQUE payments
         cheque_number=cheque_number
     )
     db.session.add(entry)
     db.session.flush()  # Get the ID of the entry
     
-    # Add multiple bag numbers
-    for bag_num in bag_numbers:
-        if bag_num and bag_num.strip():  # Only add non-empty bag numbers
+    # Add bags with individual paying numbers and amounts (for CASH/COINS)
+    for bag in bags:
+        if bag.get('number') and bag.get('number').strip():  # Only add non-empty bag numbers
             bag_entry = BankingBagNumber(
                 banking_entry_id=entry.id,
-                bag_number=bag_num.strip()
+                bag_number=bag.get('number').strip(),
+                paying_number=bag.get('payingNumber', '').strip() if bag.get('payingNumber') else None,
+                amount=bag.get('amount', 0)
             )
             db.session.add(bag_entry)
+    
+    # For CHEQUE payments, create a single bag entry if bag_number is provided
+    if payment_type == 'CHEQUE' and bag_number and bag_number.strip():
+        bag_entry = BankingBagNumber(
+            banking_entry_id=entry.id,
+            bag_number=bag_number.strip(),
+            paying_number=None,  # CHEQUE doesn't have paying number for bags
+            amount=amount  # Use the total amount for CHEQUE
+        )
+        db.session.add(bag_entry)
     
     db.session.commit()
     return entry.to_dict(), 201
@@ -8167,6 +8999,81 @@ def update_email_config():
     mail = init_mail(current_app)
     return jsonify({'success': True})
 
+@app.route('/api/send-email', methods=['POST'])
+@jwt_required()
+def send_email_with_attachment():
+    """Send email with PDF attachment"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('to') or not data.get('subject') or not data.get('body'):
+            return jsonify({"error": "Missing required fields: to, subject, body"}), 400
+        
+        # Get email list
+        email_list = data.get('to')
+        if isinstance(email_list, str):
+            email_list = [email_list]
+        
+        # Validate email addresses
+        import re
+        email_regex = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+        invalid_emails = [email for email in email_list if not re.match(email_regex, email)]
+        if invalid_emails:
+            return jsonify({"error": f"Invalid email addresses: {', '.join(invalid_emails)}"}), 400
+        
+        # Get attachment data
+        attachment = data.get('attachment')
+        if not attachment:
+            return jsonify({"error": "No attachment provided"}), 400
+        
+        # Import required modules
+        from flask_mail import Message
+        import base64
+        
+        # Send email to each recipient
+        sent_count = 0
+        failed_emails = []
+        
+        for email in email_list:
+            try:
+                msg = Message(
+                    subject=data.get('subject'),
+                    sender=mail.default_sender,
+                    recipients=[email]
+                )
+                msg.body = data.get('body')
+                
+                # Add PDF attachment
+                if attachment:
+                    pdf_content = base64.b64decode(attachment.get('content'))
+                    msg.attach(
+                        filename=attachment.get('filename', 'report.pdf'),
+                        content_type=attachment.get('contentType', 'application/pdf'),
+                        data=pdf_content
+                    )
+                
+                mail.send(msg)
+                sent_count += 1
+                print(f"Email sent successfully to {email}")
+                
+            except Exception as e:
+                print(f"Failed to send email to {email}: {str(e)}")
+                failed_emails.append(email)
+        
+        # Return response
+        if sent_count > 0:
+            response = {"message": f"Email sent successfully to {sent_count} recipient(s)"}
+            if failed_emails:
+                response["warnings"] = f"Failed to send to: {', '.join(failed_emails)}"
+            return jsonify(response), 200
+        else:
+            return jsonify({"error": "Failed to send email to any recipients"}), 500
+            
+    except Exception as e:
+        print(f"Error in send_email_with_attachment: {str(e)}")
+        return jsonify({"error": f"Failed to send email: {str(e)}"}), 500
+
 
 from flask_mail import Message
 from io import BytesIO
@@ -8396,3 +9303,109 @@ def supplier_purchase_history():
         for row in results
     ]
     return jsonify(data)
+# Holiday Request routes
+@app.route('/api/holiday-requests', methods=['GET'])
+@jwt_required()
+def get_holiday_requests():
+    """Get all holiday requests"""
+    try:
+        requests = HolidayRequest.query.order_by(HolidayRequest.created_at.desc()).all()
+        return jsonify([request.to_dict() for request in requests])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/holiday-requests', methods=['POST'])
+@jwt_required()
+def create_holiday_request():
+    """Create a new holiday request"""
+    try:
+        data = request.get_json()
+        holiday_data = HolidayRequestSchema(**data)
+        user_id = get_jwt_identity()
+        
+        # Validate employee exists
+        employee = Employee.query.get(holiday_data.employeeId)
+        if not employee:
+            return jsonify({"error": "Employee not found"}), 404
+        
+        new_request = HolidayRequest(
+            employee_id=holiday_data.employeeId,
+            employee_name=holiday_data.employeeName,
+            job_title=holiday_data.jobTitle,
+            total_days_requested=holiday_data.totalDaysRequested,
+            last_date_at_work=holiday_data.lastDateAtWork,
+            return_date_to_work=holiday_data.returnDateToWork,
+            signed_by_employee=holiday_data.signedByEmployee,
+            date_by_employee=holiday_data.dateByEmployee,
+            status=holiday_data.status or 'pending',
+            days_granted=holiday_data.daysGranted,
+            days_left_entitlement=holiday_data.daysLeftEntitlement,
+            manager_name=holiday_data.managerName,
+            signed_by_manager=holiday_data.signedByManager,
+            dated_by_manager=holiday_data.datedByManager,
+            manager_comments=holiday_data.managerComments,
+            created_by=user_id
+        )
+        
+        db.session.add(new_request)
+        db.session.commit()
+        
+        return jsonify(new_request.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/holiday-requests/<int:id>', methods=['GET'])
+@jwt_required()
+def get_holiday_request(id):
+    """Get a specific holiday request"""
+    try:
+        holiday_request = HolidayRequest.query.get_or_404(id)
+        return jsonify(holiday_request.to_dict())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/holiday-requests/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_holiday_request(id):
+    """Update a holiday request"""
+    try:
+        data = request.get_json()
+        holiday_data = HolidayRequestSchema(**data)
+        holiday_request = HolidayRequest.query.get_or_404(id)
+        
+        # Update fields
+        holiday_request.employee_id = holiday_data.employeeId
+        holiday_request.employee_name = holiday_data.employeeName
+        holiday_request.job_title = holiday_data.jobTitle
+        holiday_request.total_days_requested = holiday_data.totalDaysRequested
+        holiday_request.last_date_at_work = holiday_data.lastDateAtWork
+        holiday_request.return_date_to_work = holiday_data.returnDateToWork
+        holiday_request.signed_by_employee = holiday_data.signedByEmployee
+        holiday_request.date_by_employee = holiday_data.dateByEmployee
+        holiday_request.status = holiday_data.status
+        holiday_request.days_granted = holiday_data.daysGranted
+        holiday_request.days_left_entitlement = holiday_data.daysLeftEntitlement
+        holiday_request.manager_name = holiday_data.managerName
+        holiday_request.signed_by_manager = holiday_data.signedByManager
+        holiday_request.dated_by_manager = holiday_data.datedByManager
+        holiday_request.manager_comments = holiday_data.managerComments
+        
+        db.session.commit()
+        return jsonify(holiday_request.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/holiday-requests/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_holiday_request(id):
+    """Delete a holiday request"""
+    try:
+        holiday_request = HolidayRequest.query.get_or_404(id)
+        db.session.delete(holiday_request)
+        db.session.commit()
+        return jsonify({'message': 'Holiday request deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

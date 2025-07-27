@@ -60,6 +60,7 @@ const menuSections: MenuSection[] = [
       { title: "Daily Book Sales", path: "/daily-report/daily-book-sales" },
       { title: "Daily Book Purchase", path: "/daily-report/daily-book-purchase" },
       { title: "Stock Check", path: "/daily-report/stock-check" },
+      { title: "Stock Template", path: "/daily-report/stock-template" },
       { title: "Product Sales Report", path: "/daily-report/product-sales-report" },
       { title: "Product Purchase Report", path: "/daily-report/product-purchase-report" },
       { title: "Profit Loss", path: "/daily-report/profit-loss" },
@@ -103,9 +104,8 @@ const menuSections: MenuSection[] = [
     title: "Payroll",
     icon: Users,
     items: [
-      { title: "Daily Attendance", path: "/payroll/payroll" },
       { title: "Monthly Reports", path: "/payroll/monthly-report" },
-  
+      { title: "Holiday Requests", path: "/payroll/holiday-requests" },
     ],
   },
   {
@@ -228,6 +228,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
               </div>
             );
           })}
+
+          {/* Daily Attendance */}
+          <Link href="/payroll/payroll">
+            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${
+              location === '/payroll/payroll' ? 'active' : ''
+            }`}>
+              <Clock size={20} />
+              <span className="ml-3 font-medium">Daily Attendance</span>
+            </a>
+          </Link>
 
           {/* Closing Time */}
           <Link href="/closing-time">

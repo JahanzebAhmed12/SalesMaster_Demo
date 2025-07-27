@@ -10,7 +10,7 @@ import { Printer, FileText, Download, RefreshCw } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
-import type { User, Attendance } from "@shared/schema";
+import type { Employee, EmployeeWithAttendance } from "@shared/schema";
 import React from "react";
 
 interface MonthlyStats {
@@ -19,8 +19,8 @@ interface MonthlyStats {
   avgAttendance: number;
 }
 
-interface UserMonthlyData {
-  user: User;
+interface EmployeeMonthlyData {
+  employee: Employee;
   presentDays: number;
   absentDays: number;
   leaveDays: number;
@@ -30,13 +30,11 @@ interface UserMonthlyData {
 }
 
 interface PayrollData {
-  user: {
+  employee: {
     id: number;
-    username: string;
-    userType: string;
+    fullName: string;
+    title: string | null;
     status: string;
-    email: string | null;
-    phone: string | null;
     dailyWage: number | null;
   };
   attendance: {
@@ -72,7 +70,7 @@ export default function MonthlyReports() {
     return `${lastWeek.getFullYear()}-${weekNumber}`;
   });
 
-  const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
   const [timeFrame, setTimeFrame] = useState<"weekly" | "monthly">("monthly");
   const [shouldFetch, setShouldFetch] = useState(false);
   
@@ -84,7 +82,7 @@ export default function MonthlyReports() {
   // Simple payroll section state
   const [fromDate, setFromDate] = useState<Date | null>(null);
   const [toDate, setToDate] = useState<Date | null>(null);
-  const [selectedPayrollUser, setSelectedPayrollUser] = useState<string>("all");
+  const [selectedPayrollEmployee, setSelectedPayrollEmployee] = useState<string>("all");
   const [payrollSearchClicked, setPayrollSearchClicked] = useState(false);
 
   // Replace getWeekNumber with ISO week calculation
@@ -163,25 +161,26 @@ export default function MonthlyReports() {
     ...(!weekOptionsRaw.some(opt => opt.value === nextWeekOption.value) ? [nextWeekOption] : [])
   ];
 
-  // Fetch users first
-  const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
-    queryKey: ['/api/users'],
-    queryFn: () => apiRequest("GET", "/api/users")
+  // Fetch employees first
+  const { data: employees = [], isLoading: isLoadingEmployees } = useQuery<Employee[]>({
+    queryKey: ['/api/employees'],
+    queryFn: () => apiRequest("GET", "/api/employees"),
+    select: (data) => data.filter((emp: Employee) => emp.status === "active"),
   });
 
-  console.log("Users data:", users); // Debug log
+  console.log("Employees data:", employees); // Debug log
 
-  const { data: monthlyAttendance, refetch: refetchMonthlyAttendance } = useQuery<Attendance[]>({
-    queryKey: [`/api/attendance?year=${year}&month=${month}`],
-    queryFn: () => apiRequest("GET", `/api/attendance?year=${year}&month=${month}`),
+  const { data: monthlyAttendance, refetch: refetchMonthlyAttendance } = useQuery<EmployeeWithAttendance[]>({
+    queryKey: [`/api/attendance/monthly?year=${year}&month=${month}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`],
+    queryFn: () => apiRequest("GET", `/api/attendance/monthly?year=${year}&month=${month}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`),
     enabled: timeFrame === "monthly" && shouldFetch
   });
 
   console.log("Monthly attendance data:", monthlyAttendance); // Debug log
 
-  const { data: weeklyAttendance, refetch: refetchWeeklyAttendance } = useQuery<Attendance[]>({
-    queryKey: [`/api/attendance?year=${weekYear}&week=${weekNumber}`],
-    queryFn: () => apiRequest("GET", `/api/attendance?year=${weekYear}&week=${weekNumber}`),
+  const { data: weeklyAttendance, refetch: refetchWeeklyAttendance } = useQuery<EmployeeWithAttendance[]>({
+    queryKey: [`/api/attendance/weekly?year=${weekYear}&week=${weekNumber}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`],
+    queryFn: () => apiRequest("GET", `/api/attendance/weekly?year=${weekYear}&week=${weekNumber}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`),
     enabled: timeFrame === "weekly" && shouldFetch
   });
 
@@ -202,12 +201,12 @@ export default function MonthlyReports() {
   const { data: payrollData, refetch: refetchPayroll } = useQuery<PayrollData[]>({
     queryKey: [
       timeFrame === "monthly" 
-        ? `/api/reports/payroll?year=${year}&month=${month}${selectedUser !== 'all' ? `&userId=${selectedUser}` : ''}`
-        : `/api/reports/weekly-payroll?year=${weekYear}&week=${weekNumber}${selectedUser !== 'all' ? `&userId=${selectedUser}` : ''}`
+        ? `/api/reports/payroll?year=${year}&month=${month}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`
+        : `/api/reports/weekly-payroll?year=${weekYear}&week=${weekNumber}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`
     ],
     queryFn: () => apiRequest("GET", timeFrame === "monthly" 
-      ? `/api/reports/payroll?year=${year}&month=${month}${selectedUser !== 'all' ? `&userId=${selectedUser}` : ''}`
-      : `/api/reports/weekly-payroll?year=${weekYear}&week=${weekNumber}${selectedUser !== 'all' ? `&userId=${selectedUser}` : ''}`
+      ? `/api/reports/payroll?year=${year}&month=${month}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`
+      : `/api/reports/weekly-payroll?year=${weekYear}&week=${weekNumber}${selectedEmployee !== 'all' ? `&employeeId=${selectedEmployee}` : ''}`
     ),
     enabled: shouldFetch
   });
@@ -218,18 +217,18 @@ export default function MonthlyReports() {
   }
 
   // Fetch payroll data (simple logic)
-  const { data: payrollDataSimple = [], isLoading: loadingPayroll } = useQuery<any[]>({
+  const { data: payrollDataSimple = [], isLoading: loadingPayroll } = useQuery<PayrollData[]>({
     queryKey: [
-      "simple-payroll",
+      "simple-employee-payroll",
       fromDate?.toISOString(),
       toDate?.toISOString(),
-      selectedPayrollUser,
+      selectedPayrollEmployee,
       payrollSearchClicked
     ],
     queryFn: async () => {
       if (!fromDate || !toDate) return [];
       let url = `/api/reports/payroll?from_date=${fromDate.toISOString().slice(0,10)}&to_date=${toDate.toISOString().slice(0,10)}`;
-      if (selectedPayrollUser !== "all") url += `&employeeId=${selectedPayrollUser}`;
+      if (selectedPayrollEmployee !== "all") url += `&employeeId=${selectedPayrollEmployee}`;
       return apiRequest("GET", url);
     },
     enabled: !!payrollSearchClicked && !!fromDate && !!toDate,
@@ -277,20 +276,20 @@ export default function MonthlyReports() {
     // TODO: Implement Excel export logic
   };
 
-  const calculateUserData = (): UserMonthlyData[] => {
-    if (!users || (!monthlyAttendance && !weeklyAttendance)) return [];
+  const calculateUserData = (): EmployeeMonthlyData[] => {
+    if (!employees || (!monthlyAttendance && !weeklyAttendance)) return [];
 
     const attendance = timeFrame === "monthly" ? monthlyAttendance : weeklyAttendance;
     
-    return users.map(user => {
-      if (!user) return null; // Skip if user is undefined
+    return employees.map(employee => {
+      if (!employee) return null; // Skip if employee is undefined
       
-      const userAttendance = attendance?.filter(att => att.userId === user.id) || [];
+      const userAttendance = attendance?.filter(att => att.id === employee.id) || [];
       
-      const presentDays = userAttendance.filter(att => att.status === 'present').length;
-      const absentDays = userAttendance.filter(att => att.status === 'absent').length;
-      const leaveDays = userAttendance.filter(att => att.status === 'leave').length;
-      const holidayDays = userAttendance.filter(att => att.status === 'holiday').length;
+      const presentDays = userAttendance.filter(att => att.attendance?.status === 'present').length;
+      const absentDays = userAttendance.filter(att => att.attendance?.status === 'absent').length;
+      const leaveDays = userAttendance.filter(att => att.attendance?.status === 'on_leave').length;
+      const holidayDays = userAttendance.filter(att => att.attendance?.status === 'holiday').length;
       
       const totalWorkingDays = timeFrame === "monthly" 
         ? monthlyStats?.workingDays || 30
@@ -300,7 +299,7 @@ export default function MonthlyReports() {
       const totalHours = presentDays * 8; // Assuming 8 hours per day
 
       return {
-        user,
+        employee,
         presentDays,
         absentDays,
         leaveDays,
@@ -308,13 +307,13 @@ export default function MonthlyReports() {
         attendancePercentage: Math.round(attendancePercentage * 10) / 10,
         totalHours,
       };
-    }).filter((data): data is UserMonthlyData => data !== null); // Filter out null values
+    }).filter((data): data is EmployeeMonthlyData => data !== null); // Filter out null values
   };
 
-  const userData = calculateUserData();
+  const employeeData = calculateUserData();
 
-  // Add this after userData is calculated
-  const hasAttendanceData = userData.some(item => item.presentDays > 0);
+  // Add this after employeeData is calculated
+  const hasAttendanceData = employeeData.some(item => item.presentDays > 0);
 
   const getAttendanceColor = (percentage: number) => {
     if (percentage >= 95) return "bg-green-100 text-green-800";
@@ -325,10 +324,10 @@ export default function MonthlyReports() {
   // Add this effect to reset shouldFetch when selection changes
   useEffect(() => {
     setShouldFetch(false);
-  }, [selectedMonth, selectedWeek, timeFrame, selectedUser]);
+  }, [selectedMonth, selectedWeek, timeFrame, selectedEmployee]);
 
   // Generate a key for attendance table to force remount on selection change
-  const attendanceTableKey = `${timeFrame}-${selectedMonth}-${selectedWeek}-${selectedUser}`;
+  const attendanceTableKey = `${timeFrame}-${selectedMonth}-${selectedWeek}-${selectedEmployee}`;
 
   // Add this effect after the state declarations for year, month, selectedMonth
   useEffect(() => {
@@ -408,9 +407,9 @@ export default function MonthlyReports() {
                   </SelectContent>
                 </Select>
               )}
-              <Button onClick={handleFetchData} className="bg-blue-600 hover:bg-blue-700" disabled={isLoadingUsers}>
+              <Button onClick={handleFetchData} className="bg-blue-600 hover:bg-blue-700" disabled={isLoadingEmployees}>
                 <RefreshCw className="w-4 h-4 mr-2" />
-                {isLoadingUsers ? "Loading..." : "Fetch Data"}
+                {isLoadingEmployees ? "Loading..." : "Fetch Data"}
               </Button>
               <Button onClick={handlePrint} className="no-print">
                 <Printer className="w-4 h-4 mr-2" />
@@ -480,8 +479,8 @@ export default function MonthlyReports() {
 
             {/* Attendance Table (above) */}
             <div key={attendanceTableKey}>
-              {isLoadingUsers ? (
-                <div className="text-center py-8">Loading users...</div>
+              {isLoadingEmployees ? (
+                <div className="text-center py-8">Loading employees...</div>
               ) : shouldFetch && !hasAttendanceData ? (
                 <div className="text-center py-8 text-gray-500">
                   No attendance data found for the selected period.
@@ -501,22 +500,23 @@ export default function MonthlyReports() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {userData.map((item) => {
-                        if (!item || !item.user || !item.user.username) {
-                          console.error("Invalid user attendance data item (skipping):", item);
+                      {employeeData.map((item) => {
+                        if (!item || !item.employee) {
+                          console.error("Invalid employee attendance data item (skipping):", item);
                           return null;
                         }
-                        const initials = item.user.username.split(' ').map((n: string) => n[0]).join('').toUpperCase();
+                        const name = item.employee.name || item.employee.fullName || 'Unknown';
+                        const initials = name.split(' ').map((n: string) => n[0]).join('').toUpperCase();
                         return (
-                          <tr key={item.user.id} className="hover:bg-gray-50">
+                          <tr key={item.employee.id} className="hover:bg-gray-50">
                             <td className="py-4 px-4">
                               <div className="flex items-center space-x-3">
                                 <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-sm font-medium">
                                   {initials}
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium text-gray-900">{item.user.username}</p>
-                                  <p className="text-xs text-gray-500">{item.user.id} - {item.user.userType}</p>
+                                  <p className="text-sm font-medium text-gray-900">{name}</p>
+                                  <p className="text-xs text-gray-500">{item.employee.title || 'No Title'}</p>
                                 </div>
                               </div>
                             </td>
@@ -538,7 +538,7 @@ export default function MonthlyReports() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
-                  {users ? "No users found." : "Failed to load users."}
+                  {employees ? "No employees found." : "Failed to load employees."}
                 </div>
               )}
             </div>
@@ -567,10 +567,10 @@ export default function MonthlyReports() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">User</label>
-              <select value={selectedPayrollUser} onChange={e => setSelectedPayrollUser(e.target.value)} className="border rounded px-2 py-1">
-                <option value="all">All Users</option>
-                {users && users.map(u => (
-                  <option key={u.id} value={u.id}>{u.username}</option>
+              <select value={selectedPayrollEmployee} onChange={e => setSelectedPayrollEmployee(e.target.value)} className="border rounded px-2 py-1">
+                <option value="all">All Employees</option>
+                {employees && employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>{emp.name || emp.fullName || `Employee ${emp.id}`}</option>
                 ))}
               </select>
             </div>
@@ -582,7 +582,7 @@ export default function MonthlyReports() {
             <table className="w-full min-w-[600px]">
               <thead>
                 <tr className="bg-blue-50">
-                  <th className="text-center px-2 py-2">User</th>
+                  <th className="text-center px-2 py-2">Employee</th>
                   <th className="text-center px-2 py-2">Present Days</th>
                   <th className="text-center px-2 py-2">Daily Wage</th>
                   <th className="text-center px-2 py-2">Pay</th>
@@ -595,12 +595,12 @@ export default function MonthlyReports() {
                 ) : payrollDataSimple.length === 0 ? (
                   <tr><td colSpan={5} className="text-center py-8">No data</td></tr>
                 ) : payrollDataSimple.map((item: any) => (
-                  <tr key={item.user.id} className="hover:bg-blue-50">
-                    <td className="text-center px-2 py-2 font-medium">{item.user.username}</td>
+                  <tr key={item.employee.id} className="hover:bg-blue-50">
+                    <td className="text-center px-2 py-2 font-medium">{item.employee.name || item.employee.fullName || `Employee ${item.employee.id}`}</td>
                     <td className="text-center px-2 py-2">{item.presentDays}</td>
-                    <td className="text-center px-2 py-2">£{item.user.dailyWage}</td>
+                    <td className="text-center px-2 py-2">£{item.employee.salary || item.employee.dailyWage || '0.00'}</td>
                     <td className="text-center px-2 py-2 font-bold text-green-700">£{item.pay}</td>
-                    <td className="text-center px-2 py-2 text-xs">{item.presentDates.join(", ")}</td>
+                    <td className="text-center px-2 py-2 text-xs">{(item.presentDates || []).join(", ")}</td>
                   </tr>
                 ))}
               </tbody>

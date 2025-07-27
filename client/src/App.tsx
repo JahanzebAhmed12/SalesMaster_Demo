@@ -11,6 +11,12 @@ import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
 import MonthlyReports from "@/pages/payroll/monthly-reports";
 import Payroll from "@/pages/payroll/payroll";
+import HolidayRequests from "@/pages/payroll/holiday-requests";
+import HolidayRequestForm from "@/pages/payroll/holiday-request-form";
+import HolidayRequestView from "@/pages/payroll/holiday-request-view";
+import HolidayRequestPrint from "@/pages/print/holiday-request-print";
+import EmployeeContractPrint from "@/pages/print/employee-contract-print";
+import PaymentReceiptPrint from "@/pages/print/payment-receipt-print";
 
 // Data Entry Pages
 import SalesEntry from "@/pages/data-entry/sales-entry";
@@ -239,8 +245,8 @@ function Router() {
           <ProductPurchaseFullView />
         </ProtectedRoute>
       </Route>
-      <Route path="/product-sales-history/:productId" component={ProductSalesHistoryPage} />
-      <Route path="/daily-report/product-purchase-history/:productId" component={ProductPurchaseHistoryPage} />
+      <Route path="/reports/product-sales-history" component={ProductSalesHistoryPage} />
+      <Route path="/reports/product-purchase-history" component={ProductPurchaseHistoryPage} />
       <Route path="/daily-report/compare-with-purchase" component={CompareWithPurchasePage} />
       <Route path="/daily-report/supplier-purchase-history/:supplierId" component={SupplierPurchaseHistoryPage} />
      
@@ -366,8 +372,26 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/payroll/payroll">
-        <ProtectedRoute requiredSection="payroll" title="Yearly Report" breadcrumb="Yearly Report">
-          <Payroll />
+        <AuthenticatedRoute component={Payroll} title="Daily Attendance" breadcrumb="Daily Attendance" />
+      </Route>
+      <Route path="/payroll/holiday-requests">
+        <ProtectedRoute requiredSection="payroll" title="Holiday Requests" breadcrumb="Payroll > Holiday Requests">
+          <HolidayRequests />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/payroll/holiday-requests/new">
+        <ProtectedRoute requiredSection="payroll" title="New Holiday Request" breadcrumb="Payroll > Holiday Requests > New">
+          <HolidayRequestForm />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/payroll/holiday-requests/edit/:id">
+        <ProtectedRoute requiredSection="payroll" title="Edit Holiday Request" breadcrumb="Payroll > Holiday Requests > Edit">
+          <HolidayRequestForm />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/payroll/holiday-requests/view/:id">
+        <ProtectedRoute requiredSection="payroll" title="View Holiday Request" breadcrumb="Payroll > Holiday Requests > View">
+          <HolidayRequestView />
         </ProtectedRoute>
       </Route>
       {/* Admin Pages */}
@@ -473,6 +497,9 @@ function Router() {
         <DeliveryNotePrintPage />
       </Route>
       <Route path="/print/packing-list/:invoiceNumber" component={PackingListPrintPage} />
+      <Route path="/print/holiday-request/:id" component={HolidayRequestPrint} />
+      <Route path="/print/employee-contract/:id" component={EmployeeContractPrint} />
+      <Route path="/print/payment-receipt/:saleId/:paymentType" component={PaymentReceiptPrint} />
       
       {/* Fallback to 404 */}
       <Route component={NotFound} />

@@ -219,6 +219,7 @@ const SalesInvoice = () => {
         gate_number: currentSale.gateNumber,
         notes: currentSale.notes,
         status: currentSale.status,
+        date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
         items: saleItems.map(item => ({
           product_id: item.productId,
           non_product_id: item.nonProductId,
@@ -685,6 +686,7 @@ const SalesInvoice = () => {
         gate_number: currentSale.gateNumber,
         notes: currentSale.notes,
         status: currentSale.status,
+        date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
         items: updatedItems.map(item => ({
           product_id: item.productId,
           non_product_id: item.nonProductId,
@@ -712,6 +714,7 @@ const SalesInvoice = () => {
   const [whatsappLoading, setWhatsappLoading] = useState(false);
   const [whatsappError, setWhatsappError] = useState<string | null>(null);
   const [whatsappSuccess, setWhatsappSuccess] = useState(false);
+  const [additionalEmails, setAdditionalEmails] = useState<string>("");
 
   const handleSaveInvoice = (mailInvoice = false, printInvoice = false) => {
     if (!customerId) {
@@ -735,7 +738,7 @@ const SalesInvoice = () => {
     skipAutoHoldRef.current = true; // Prevent auto-hold on navigation
     setIsCreatingSale(true);
     const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
-    const payload: Partial<BackendSalePayload & { mailInvoice?: boolean }> = {
+    const payload: Partial<BackendSalePayload & { mailInvoice?: boolean; emailData?: any }> = {
       customer_id: parseInt(customerId),
       customer_type: "account",
       payment_status: "pending",
@@ -759,6 +762,10 @@ const SalesInvoice = () => {
         created_at: item.createdAt,
       })),
       mailInvoice,
+      emailData: mailInvoice ? {
+        customerEmails: selectedCustomer?.email || '',
+        additionalEmails: additionalEmails
+      } : null,
     };
     createSaleMutation.mutate(payload, {
       onSuccess: (response) => {
@@ -775,6 +782,11 @@ const SalesInvoice = () => {
         }
         if (printPackingList && response?.invoiceNumber) {
           window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
+        }
+
+        // Clear additional emails after successful save
+        if (mailInvoice) {
+          setAdditionalEmails('');
         }
 
         // Handle WhatsApp sending after successful save
@@ -1355,6 +1367,7 @@ const SalesInvoice = () => {
                                 gate_number: currentSale.gateNumber,
                                 notes: currentSale.notes,
                                 status: currentSale.status,
+                                date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
                                 items: updatedItems.map(item => ({
                                   product_id: item.productId,
                                   non_product_id: item.nonProductId,
@@ -1513,14 +1526,32 @@ const SalesInvoice = () => {
                   />
                   Whatsapp Ticket
                 </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={mailInvoice}
-                    onChange={e => setMailInvoice(e.target.checked)}
-                  />
-                  Email Ticket
-                </label>
+                <div className="flex flex-col gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={mailInvoice}
+                      onChange={e => setMailInvoice(e.target.checked)}
+                    />
+                    Email Ticket
+                  </label>
+                  {mailInvoice && (
+                    <div className="ml-6 flex flex-col gap-1">
+                      <label className="text-xs text-gray-600">Email addresses:</label>
+                      <Input
+                        placeholder="Enter additional emails (comma separated)"
+                        value={additionalEmails}
+                        onChange={(e) => setAdditionalEmails(e.target.value)}
+                        className="text-xs"
+                      />
+                      {selectedCustomer?.email && (
+                        <div className="text-xs text-gray-500">
+                          Customer emails: {selectedCustomer.email}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {/* Print Ticket checkbox removed */}
 
                 {whatsappLoading && <div className="text-blue-600 text-xs">Sending to WhatsApp...</div>}
@@ -1553,6 +1584,7 @@ const SalesInvoice = () => {
                         gate_number: gateNumber || null,
                         notes: notes || null,
                         status: currentSale.status,
+                        date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
                         items: saleItems.map(item => ({
                           product_id: item.productId,
                           non_product_id: item.nonProductId,

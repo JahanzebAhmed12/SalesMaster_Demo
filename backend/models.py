@@ -976,7 +976,10 @@ class BankingEntry(db.Model):
             'amount': float(self.amount),
             'payingNumber': self.paying_number,
             'bagNumber': self.bag_number,  # Keep for backward compatibility
-            'bagNumbers': [bag.bag_number for bag in self.bag_numbers],  # New field for multiple bag numbers
+            'bagNumbers': [bag.bag_number for bag in self.bag_numbers],  # Bag numbers
+            'bagPayingNumbers': [bag.paying_number for bag in self.bag_numbers],  # Individual paying numbers
+            'bagAmounts': [float(bag.amount) if bag.amount else 0 for bag in self.bag_numbers],  # Individual bag amounts
+            'bags': [{'number': bag.bag_number, 'payingNumber': bag.paying_number, 'amount': float(bag.amount) if bag.amount else 0} for bag in self.bag_numbers],  # Combined bag data
             'chequeNumber': self.cheque_number,
             'createdAt': self.created_at.isoformat() if self.created_at else None
         }
@@ -986,6 +989,8 @@ class BankingBagNumber(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     banking_entry_id = db.Column(db.Integer, db.ForeignKey('banking_entries.id'), nullable=False)
     bag_number = db.Column(db.String(50), nullable=False)
+    paying_number = db.Column(db.String(50), nullable=True)  # Individual paying number for each bag
+    amount = db.Column(db.Numeric(10, 2), nullable=True, default=0)  # Individual bag amount
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     def to_dict(self):
@@ -993,6 +998,8 @@ class BankingBagNumber(db.Model):
             'id': self.id,
             'bankingEntryId': self.banking_entry_id,
             'bagNumber': self.bag_number,
+            'payingNumber': self.paying_number,
+            'amount': float(self.amount) if self.amount else 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -1063,6 +1070,10 @@ class EmployeeDocument(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
     document_name = db.Column(db.String(200), nullable=False)
+    file_name = db.Column(db.String(255))  # Original filename
+    file_path = db.Column(db.String(500))  # Path to stored file
+    file_size = db.Column(db.Integer)      # File size in bytes
+    file_type = db.Column(db.String(100))  # MIME type
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -1072,8 +1083,65 @@ class EmployeeDocument(db.Model):
         return {
             'id': self.id,
             'documentName': self.document_name,
+            'fileName': self.file_name,
+            'filePath': self.file_path,
+            'fileSize': self.file_size,
+            'fileType': self.file_type,
             'startDate': self.start_date.isoformat() if self.start_date else None,
             'endDate': self.end_date.isoformat() if self.end_date else None,
+            'hasFile': bool(self.file_path),
+        }
+
+class HolidayRequest(db.Model):
+    __tablename__ = 'holiday_requests'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
+    employee_name = db.Column(db.String(200), nullable=False)
+    job_title = db.Column(db.String(200))
+    total_days_requested = db.Column(db.Integer, nullable=False)
+    last_date_at_work = db.Column(db.Date, nullable=False)
+    return_date_to_work = db.Column(db.Date, nullable=False)
+    signed_by_employee = db.Column(db.String(200))
+    date_by_employee = db.Column(db.Date)
+    
+    # Management decision
+    status = db.Column(db.String(20), default='pending')  # pending, granted, not_granted
+    days_granted = db.Column(db.Integer)
+    days_left_entitlement = db.Column(db.Integer)
+    manager_name = db.Column(db.String(200))
+    signed_by_manager = db.Column(db.String(200))
+    dated_by_manager = db.Column(db.Date)
+    manager_comments = db.Column(db.Text)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+    # Relationships with explicit foreign_keys and lazy loading
+    employee = db.relationship('Employee', foreign_keys=[employee_id], lazy='select')
+    user = db.relationship('User', foreign_keys=[created_by], lazy='select')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'employeeId': self.employee_id,
+            'employeeName': self.employee_name,
+            'jobTitle': self.job_title,
+            'totalDaysRequested': self.total_days_requested,
+            'lastDateAtWork': self.last_date_at_work.isoformat() if self.last_date_at_work else None,
+            'returnDateToWork': self.return_date_to_work.isoformat() if self.return_date_to_work else None,
+            'signedByEmployee': self.signed_by_employee,
+            'dateByEmployee': self.date_by_employee.isoformat() if self.date_by_employee else None,
+            'status': self.status,
+            'daysGranted': self.days_granted,
+            'daysLeftEntitlement': self.days_left_entitlement,
+            'managerName': self.manager_name,
+            'signedByManager': self.signed_by_manager,
+            'datedByManager': self.dated_by_manager.isoformat() if self.dated_by_manager else None,
+            'managerComments': self.manager_comments,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
         }
 
 class BusinessDate(db.Model):
@@ -1119,6 +1187,9 @@ class Employee(db.Model):
     branch_address = db.Column(db.Text)
     account_number = db.Column(db.String(20))
     sort_code = db.Column(db.String(10))
+    fork_lift_certificate_company_name = db.Column(db.String(200))  # New field
+    licence_certificate_number = db.Column(db.String(50))  # New field
+    market_permit_number = db.Column(db.String(50))  # New field
     is_active = db.Column(db.String(3), default='yes')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1127,6 +1198,15 @@ class Employee(db.Model):
     documents = db.relationship('EmployeeDocument', backref='employee', cascade='all, delete-orphan')
 
     def to_dict(self):
+        try:
+            # Safely handle documents relationship
+            documents_list = []
+            if hasattr(self, 'documents') and self.documents:
+                documents_list = [doc.to_dict() for doc in self.documents]
+        except Exception as e:
+            print(f"Error loading documents for employee {self.id}: {str(e)}")
+            documents_list = []
+        
         return {
             'id': self.id,
             'fullName': self.full_name,
@@ -1150,7 +1230,10 @@ class Employee(db.Model):
             'branchAddress': self.branch_address,
             'accountNumber': self.account_number,
             'sortCode': self.sort_code,
-            'documents': [doc.to_dict() for doc in self.documents],
+            'forkLiftCertificateCompanyName': self.fork_lift_certificate_company_name,
+            'licenceCertificateNumber': self.licence_certificate_number,
+            'marketPermitNumber': self.market_permit_number,
+            'documents': documents_list,
             'isActive': self.is_active,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None

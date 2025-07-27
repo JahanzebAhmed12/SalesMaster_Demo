@@ -470,8 +470,31 @@ class EmployeeSchema(BaseModel):
     branchAddress: Optional[str] = Field(default=None, alias='branchAddress')
     accountNumber: Optional[str] = Field(default=None, alias='accountNumber')
     sortCode: Optional[str] = Field(default=None, alias='sortCode')
+    forkLiftCertificateCompanyName: Optional[str] = Field(default=None, alias='forkLiftCertificateCompanyName')
+    licenceCertificateNumber: Optional[str] = Field(default=None, alias='licenceCertificateNumber')
+    marketPermitNumber: Optional[str] = Field(default=None, alias='marketPermitNumber')
     documents: Optional[List[EmployeeDocumentSchema]] = Field(default=[], alias='documents')
     isActive: str = Field(default="yes", alias='isActive')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+class HolidayRequestSchema(BaseModel):
+    employeeId: int = Field(alias='employeeId')
+    employeeName: str = Field(alias='employeeName')
+    jobTitle: Optional[str] = Field(default=None, alias='jobTitle')
+    totalDaysRequested: int = Field(alias='totalDaysRequested')
+    lastDateAtWork: date = Field(alias='lastDateAtWork')
+    returnDateToWork: date = Field(alias='returnDateToWork')
+    signedByEmployee: Optional[str] = Field(default=None, alias='signedByEmployee')
+    dateByEmployee: Optional[date] = Field(default=None, alias='dateByEmployee')
+    status: Optional[str] = Field(default='pending', alias='status')
+    daysGranted: Optional[int] = Field(default=None, alias='daysGranted')
+    daysLeftEntitlement: Optional[int] = Field(default=None, alias='daysLeftEntitlement')
+    managerName: Optional[str] = Field(default=None, alias='managerName')
+    signedByManager: Optional[str] = Field(default=None, alias='signedByManager')
+    datedByManager: Optional[date] = Field(default=None, alias='datedByManager')
+    managerComments: Optional[str] = Field(default=None, alias='managerComments')
 
     class Config:
         from_attributes = True
