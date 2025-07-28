@@ -1,8 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { API_BASE_URL, useRelativeUrls } from "./config";
 
-const API_URL = "http://localhost:5000";
-//const API_URL = "/api";
+// Helper to get the correct API URL
+const getApiUrl = (endpoint: string) => {
+  return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
+};
 interface User {
   id: number;
   username: string;
@@ -25,7 +28,7 @@ export const useAuth = create<AuthState>()(
       isAuthenticated: false,
       login: async (username: string, password: string) => {
         try {
-          const response = await fetch(`${API_URL}/api/auth/login`, {
+          const response = await fetch(getApiUrl("/api/auth/login"), {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -54,7 +57,7 @@ export const useAuth = create<AuthState>()(
       },
       logout: async () => {
         try {
-          await fetch(`${API_URL}/api/auth/logout`, {
+          await fetch(getApiUrl("/api/auth/logout"), {
             method: "POST",
             credentials: "include",
           });
@@ -70,7 +73,7 @@ export const useAuth = create<AuthState>()(
       },
       checkAuth: async () => {
         try {
-          const response = await fetch(`${API_URL}/api/auth/me`, {
+          const response = await fetch(getApiUrl("/api/auth/me"), {
             headers: {
               'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
             },

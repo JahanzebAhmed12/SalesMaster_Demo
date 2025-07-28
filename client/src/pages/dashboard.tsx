@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -35,7 +36,11 @@ export default function Dashboard() {
   });
 
   React.useEffect(() => {
-    fetch("http://localhost:5000/api/settings")
+    const getApiUrl = (endpoint: string) => {
+      return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
+    };
+    
+    fetch(getApiUrl("/api/settings"))
       .then(res => res.json())
       .then(settings => setShowProfit(settings.showProfit !== false));
   }, []);

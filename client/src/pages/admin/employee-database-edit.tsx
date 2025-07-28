@@ -9,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
 import { insertEmployeeSchema, Employee, InsertEmployee, employeeSchema } from "@shared/schema";
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, Upload, Download, Eye, FileText } from "lucide-react";
@@ -40,6 +41,11 @@ const EmployeeDatabaseEdit = () => {
     }
   }, [documents]);
 
+  // Helper to get the correct API URL for file operations
+  const getApiUrl = (endpoint: string) => {
+    return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
+  };
+
   // File upload handler
   const handleFileUpload = async (file: File, documentName: string, startDate?: string, endDate?: string) => {
     if (!employeeId) {
@@ -58,7 +64,7 @@ const EmployeeDatabaseEdit = () => {
     if (endDate) formData.append('endDate', endDate);
 
     try {
-      const response = await fetch(`http://localhost:5000/api/employees/${employeeId}/documents`, {
+      const response = await fetch(getApiUrl(`/api/employees/${employeeId}/documents`), {
         method: 'POST',
         body: formData,
         headers: {
@@ -869,7 +875,7 @@ const EmployeeDatabaseEdit = () => {
                                         type="button"
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => window.open(`http://localhost:5000/api/employees/documents/${doc.id}/view`, '_blank')}
+                                        onClick={() => window.open(getApiUrl(`/api/employees/documents/${doc.id}/view`), '_blank')}
                                         title="View document"
                                       >
                                         <Eye className="h-4 w-4" />
@@ -878,7 +884,7 @@ const EmployeeDatabaseEdit = () => {
                                         type="button"
                                         variant="ghost"
                                         size="sm"
-                                        onClick={() => window.open(`http://localhost:5000/api/employees/documents/${doc.id}`, '_blank')}
+                                        onClick={() => window.open(getApiUrl(`/api/employees/documents/${doc.id}`), '_blank')}
                                         title="Download document"
                                       >
                                         <Download className="h-4 w-4" />

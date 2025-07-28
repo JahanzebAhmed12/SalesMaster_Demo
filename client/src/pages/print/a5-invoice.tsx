@@ -2,12 +2,16 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import logo from '@/public/printlogo.png';
+import { API_BASE_URL, useRelativeUrls } from '@/lib/config';
 
 // Public API request function (no authentication required)
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
-  // const normalizedEndpoint = endpoint.replace(/^\/api/, '');
-  // const url = `/api:5000${normalizedEndpoint}`;
-  const url = `http://localhost:5000${endpoint}`;
+  // Helper to get the correct API URL for public requests
+  const getApiUrl = (endpoint: string) => {
+    return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
+  };
+
+  const url = getApiUrl(endpoint);
   
   const response = await fetch(url, {
     method,
