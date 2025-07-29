@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2 } from "lucide-react";
+import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import React from 'react';
@@ -20,6 +20,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useLocation } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote } from "lucide-react";
 import classNames from 'classnames';
 
@@ -52,6 +53,16 @@ export default function DailyBookSales() {
   const [loadingUserType, setLoadingUserType] = useState(true);
   const [selectedSales, setSelectedSales] = useState<Set<number>>(new Set());
   const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
+  
+  // Split payment dialog state
+  const [splitPaymentDialog, setSplitPaymentDialog] = useState<{
+    isOpen: boolean;
+    sale: SalesEntry | null;
+  }>({ isOpen: false, sale: null });
+  const [splitPaymentData, setSplitPaymentData] = useState({
+    cashAmount: 0,
+    cardAmount: 0
+  });
   
   // Fetch users for the salesman dropdown
   const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -512,6 +523,101 @@ export default function DailyBookSales() {
     window.open(`/print/payment-receipt/${sale.id}/${paymentType}`, '_blank');
   };
 
+  // Handle split payment
+  const handleSplitPayment = (sale: SalesEntry) => {
+    const totalAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
+    setSplitPaymentDialog({ isOpen: true, sale });
+    setSplitPaymentData({
+      cashAmount: 0,
+      cardAmount: 0
+    });
+  };
+
+  // Submit split payment
+  const handleSplitPaymentSubmit = async () => {
+    if (!splitPaymentDialog.sale) return;
+    
+    const { cashAmount, cardAmount } = splitPaymentData;
+    const sale = splitPaymentDialog.sale;
+    const totalAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
+    
+    // Validate amounts
+    if (cashAmount + cardAmount !== totalAmount) {
+      alert(`Total split amount (£${(cashAmount + cardAmount).toFixed(2)}) must equal the invoice total (£${totalAmount.toFixed(2)})`);
+      return;
+    }
+    
+    if (cashAmount < 0 || cardAmount < 0) {
+      alert('Payment amounts cannot be negative');
+      return;
+    }
+
+    try {
+      setIsUpdatingPayments(true);
+      
+      // First, reverse any existing payments
+      if (sale.cash > 0) {
+        await apiRequest('POST', '/api/payments', {
+          customerId: sale.customerId,
+          saleId: sale.id,
+          amount: -sale.cash,
+          paymentMode: 'cash',
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          remarks: `Reversed cash payment for split payment`
+        });
+      }
+      
+      if (sale.bank && sale.bank > 0) {
+        await apiRequest('POST', '/api/payments', {
+          customerId: sale.customerId,
+          saleId: sale.id,
+          amount: -sale.bank,
+          paymentMode: 'bank',
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          remarks: `Reversed bank payment for split payment`
+        });
+      }
+      
+      // Create new split payments
+      if (cashAmount > 0) {
+        await apiRequest('POST', '/api/payments', {
+          customerId: sale.customerId,
+          saleId: sale.id,
+          amount: cashAmount,
+          paymentMode: 'cash',
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          remarks: `Split payment - Cash portion`
+        });
+      }
+      
+      if (cardAmount > 0) {
+        await apiRequest('POST', '/api/payments', {
+          customerId: sale.customerId,
+          saleId: sale.id,
+          amount: cardAmount,
+          paymentMode: 'bank',
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          remarks: `Split payment - Card portion`
+        });
+      }
+      
+      // Update sale customer type to mixed (or keep as is since it's split)
+      await apiRequest('PATCH', `/api/sales/${sale.id}`, {
+        customer_type: cashAmount > cardAmount ? 'cash' : 'bank' // Set to dominant payment type
+      });
+      
+      alert('Split payment applied successfully!');
+      setSplitPaymentDialog({ isOpen: false, sale: null });
+      refetchSales();
+      
+    } catch (error) {
+      console.error('Error applying split payment:', error);
+      alert('Error applying split payment. Please try again.');
+    } finally {
+      setIsUpdatingPayments(false);
+    }
+  };
+
   if (loadingUserType) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -767,6 +873,9 @@ export default function DailyBookSales() {
                               <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'bank')}>
                                 <CreditCard className="mr-2 h-5 w-5" /> Pay (Bank)
                               </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => handleSplitPayment(sale)}>
+                                <Split className="mr-2 h-5 w-5" /> Split Payment
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -823,6 +932,104 @@ export default function DailyBookSales() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Split Payment Dialog */}
+        <Dialog open={splitPaymentDialog.isOpen} onOpenChange={(open) => {
+          if (!open) {
+            setSplitPaymentDialog({ isOpen: false, sale: null });
+            setSplitPaymentData({ cashAmount: 0, cardAmount: 0 });
+          }
+        }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Split Payment</DialogTitle>
+            </DialogHeader>
+            
+            {splitPaymentDialog.sale && (
+              <div className="space-y-4">
+                <div className="text-sm text-gray-600">
+                  <p><strong>Invoice:</strong> {splitPaymentDialog.sale.invoiceNo}</p>
+                  <p><strong>Customer:</strong> {splitPaymentDialog.sale.customerName}</p>
+                  <p><strong>Total Amount:</strong> £{((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0)).toFixed(2)}</p>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="cashAmount">Cash Amount</Label>
+                    <Input
+                      id="cashAmount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={splitPaymentData.cashAmount}
+                      onChange={(e) => setSplitPaymentData(prev => ({
+                        ...prev,
+                        cashAmount: parseFloat(e.target.value) || 0
+                      }))}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="cardAmount">Card Amount</Label>
+                    <Input
+                      id="cardAmount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={splitPaymentData.cardAmount}
+                      onChange={(e) => setSplitPaymentData(prev => ({
+                        ...prev,
+                        cardAmount: parseFloat(e.target.value) || 0
+                      }))}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                
+                <div className="text-sm">
+                  <p><strong>Total Split:</strong> £{(splitPaymentData.cashAmount + splitPaymentData.cardAmount).toFixed(2)}</p>
+                  <p className={`${
+                    (splitPaymentData.cashAmount + splitPaymentData.cardAmount) === 
+                    ((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0))
+                    ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    <strong>Difference:</strong> £{(
+                      ((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0)) - 
+                      (splitPaymentData.cashAmount + splitPaymentData.cardAmount)
+                    ).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            )}
+            
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSplitPaymentDialog({ isOpen: false, sale: null });
+                  setSplitPaymentData({ cashAmount: 0, cardAmount: 0 });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSplitPaymentSubmit}
+                disabled={isUpdatingPayments}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isUpdatingPayments ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Apply Split Payment'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </PageLayout>
   );
