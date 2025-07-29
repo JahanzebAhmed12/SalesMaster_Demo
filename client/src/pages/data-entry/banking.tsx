@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Banknote, Save, Loader2, Plus, X } from "lucide-react";
+import { CalendarIcon, Banknote, Save, Loader2, Plus, X, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -88,6 +88,20 @@ export default function Banking() {
     },
     onError: (e: any) => {
       toast({ title: "Error", description: e?.message || "Failed to add entry." });
+    }
+  });
+
+  // Delete banking entry
+  const deleteEntryMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/banking/${id}`);
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Banking entry deleted." });
+      refetch();
+    },
+    onError: (e: any) => {
+      toast({ title: "Error", description: e?.message || "Failed to delete entry.", variant: "destructive" });
     }
   });
 
@@ -446,6 +460,7 @@ export default function Banking() {
                         <TableHead className="font-semibold">Payment Type</TableHead>
                         <TableHead className="font-semibold text-right">Amount</TableHead>
                         <TableHead className="font-semibold">Bag Details</TableHead>
+                        <TableHead className="font-semibold text-center">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -493,6 +508,25 @@ export default function Banking() {
                             ) : (
                               <span className="text-sm text-gray-400">-</span>
                             )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                if (confirm("Are you sure you want to delete this banking entry?")) {
+                                  deleteEntryMutation.mutate(entry.id);
+                                }
+                              }}
+                              disabled={deleteEntryMutation.isPending}
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              {deleteEntryMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}

@@ -1190,6 +1190,7 @@ class Employee(db.Model):
     fork_lift_certificate_company_name = db.Column(db.String(200))  # New field
     licence_certificate_number = db.Column(db.String(50))  # New field
     market_permit_number = db.Column(db.String(50))  # New field
+    entitlement_days = db.Column(db.Integer, default=25)  # Annual holiday entitlement days
     is_active = db.Column(db.String(3), default='yes')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1233,6 +1234,7 @@ class Employee(db.Model):
             'forkLiftCertificateCompanyName': self.fork_lift_certificate_company_name,
             'licenceCertificateNumber': self.licence_certificate_number,
             'marketPermitNumber': self.market_permit_number,
+            'entitlementDays': self.entitlement_days,
             'documents': documents_list,
             'isActive': self.is_active,
             'createdAt': self.created_at.isoformat() if self.created_at else None,

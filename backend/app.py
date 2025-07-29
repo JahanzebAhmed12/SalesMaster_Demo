@@ -2585,6 +2585,7 @@ def create_employee():
             fork_lift_certificate_company_name=employee_data.forkLiftCertificateCompanyName,
             licence_certificate_number=employee_data.licenceCertificateNumber,
             market_permit_number=employee_data.marketPermitNumber,
+            entitlement_days=employee_data.entitlementDays,
             is_active=employee_data.isActive
         )
         
@@ -2641,6 +2642,7 @@ def update_employee(id):
         employee.fork_lift_certificate_company_name = employee_data.forkLiftCertificateCompanyName
         employee.licence_certificate_number = employee_data.licenceCertificateNumber
         employee.market_permit_number = employee_data.marketPermitNumber
+        employee.entitlement_days = employee_data.entitlementDays
         employee.is_active = employee_data.isActive
         
         # Update documents - remove existing and add new ones
@@ -2675,6 +2677,60 @@ def delete_employee(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
+
+@app.route('/api/employees/<int:employee_id>/entitlement', methods=['GET'])
+@jwt_required()
+def get_employee_entitlement(employee_id):
+    """Get employee holiday entitlement information"""
+    try:
+        employee = Employee.query.get_or_404(employee_id)
+        
+        # Get current year
+        current_year = datetime.now().year
+        
+        # Calculate total days used this year
+        total_used = db.session.query(func.sum(HolidayRequest.days_granted)).filter(
+            HolidayRequest.employee_id == employee_id,
+            HolidayRequest.status == 'granted',
+            extract('year', HolidayRequest.last_date_at_work) == current_year
+        ).scalar() or 0
+        
+        # Calculate remaining days
+        remaining_days = (employee.entitlement_days or 25) - total_used
+        
+        return jsonify({
+            'employeeId': employee_id,
+            'employeeName': employee.full_name,
+            'entitlementDays': employee.entitlement_days or 25,
+            'usedDays': total_used,
+            'remainingDays': max(0, remaining_days),
+            'currentYear': current_year
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# Database migration for entitlement_days field
+def add_entitlement_days_column():
+    """Add entitlement_days column to employees table if it doesn't exist"""
+    try:
+        # Check if column exists
+        result = db.session.execute(db.text("PRAGMA table_info(employees)")).fetchall()
+        columns = [row[1] for row in result]
+        
+        if 'entitlement_days' not in columns:
+            # Add the column with default value of 25
+            db.session.execute(db.text("ALTER TABLE employees ADD COLUMN entitlement_days INTEGER DEFAULT 25"))
+            db.session.commit()
+            print("Added entitlement_days column to employees table")
+        else:
+            print("entitlement_days column already exists")
+    except Exception as e:
+        print(f"Error adding entitlement_days column: {str(e)}")
+        db.session.rollback()
+
+# Run migration when app starts
+with app.app_context():
+    add_entitlement_days_column()
 
 # Employee Document routes
 @app.route('/api/employees/<int:employee_id>/documents', methods=['POST'])
@@ -7971,6 +8027,26 @@ def add_banking_entry():
     
     db.session.commit()
     return entry.to_dict(), 201
+
+@app.route('/api/banking/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_banking_entry(id):
+    """Delete a banking entry"""
+    try:
+        entry = BankingEntry.query.get_or_404(id)
+        
+        # Delete associated bag numbers if they exist
+        if hasattr(entry, 'bag_numbers'):
+            for bag in entry.bag_numbers:
+                db.session.delete(bag)
+        
+        db.session.delete(entry)
+        db.session.commit()
+        
+        return jsonify({'message': 'Banking entry deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/banking', methods=['GET'])
 @jwt_required()

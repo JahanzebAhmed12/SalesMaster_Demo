@@ -87,6 +87,7 @@ const HolidayRequests = () => {
                       <th className="border border-gray-300 px-4 py-2 text-left">Return Date</th>
                       <th className="border border-gray-300 px-4 py-2 text-left">Status</th>
                       <th className="border border-gray-300 px-4 py-2 text-left">Days Granted</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left">Remaining Entitlement</th>
                       <th className="border border-gray-300 px-4 py-2 text-left">Actions</th>
                     </tr>
                   </thead>
@@ -107,6 +108,9 @@ const HolidayRequests = () => {
                         </td>
                         <td className="border border-gray-300 px-4 py-2 text-center">
                           {request.daysGranted || '-'}
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2 text-center">
+                          {request.daysLeftEntitlement !== undefined ? request.daysLeftEntitlement : '-'}
                         </td>
                         <td className="border border-gray-300 px-4 py-2">
                           <div className="flex space-x-2">

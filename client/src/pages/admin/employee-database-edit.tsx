@@ -148,6 +148,7 @@ const EmployeeDatabaseEdit = () => {
       branchAddress: "",
       accountNumber: "",
       sortCode: "",
+      entitlementDays: 25,
       documents: [],
       isActive: "yes",
     },
@@ -633,6 +634,18 @@ const EmployeeDatabaseEdit = () => {
                       id="marketPermitNumber" 
                       placeholder="Enter market permit number" 
                       {...form.register("marketPermitNumber")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="entitlementDays" className="block text-sm font-medium mb-2">Annual Holiday Entitlement (Days)</label>
+                    <Input 
+                      id="entitlementDays" 
+                      type="number"
+                      min="0"
+                      max="365"
+                      placeholder="25" 
+                      {...form.register("entitlementDays", { valueAsNumber: true })}
                     />
                   </div>
 

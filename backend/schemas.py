@@ -473,6 +473,7 @@ class EmployeeSchema(BaseModel):
     forkLiftCertificateCompanyName: Optional[str] = Field(default=None, alias='forkLiftCertificateCompanyName')
     licenceCertificateNumber: Optional[str] = Field(default=None, alias='licenceCertificateNumber')
     marketPermitNumber: Optional[str] = Field(default=None, alias='marketPermitNumber')
+    entitlementDays: Optional[int] = Field(default=25, alias='entitlementDays')
     documents: Optional[List[EmployeeDocumentSchema]] = Field(default=[], alias='documents')
     isActive: str = Field(default="yes", alias='isActive')
 

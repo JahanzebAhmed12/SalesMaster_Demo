@@ -774,6 +774,7 @@ export const employeeSchema = z.object({
   forkLiftCertificateCompanyName: z.string().optional().nullable(),
   licenceCertificateNumber: z.string().optional().nullable(),
   marketPermitNumber: z.string().optional().nullable(),
+  entitlementDays: z.number().optional().default(25),
   documents: z.array(employeeDocumentSchema).optional().default([]),
   isActive: z.string().default("yes"),
   createdAt: z.string(),

@@ -52,6 +52,13 @@ const HolidayRequestForm = () => {
     queryFn: () => apiRequest("GET", "/api/employees"),
   });
 
+  // Fetch employee entitlement information when employee is selected
+  const { data: entitlementInfo, isLoading: isLoadingEntitlement } = useQuery({
+    queryKey: ["employee-entitlement", form.watch("employeeId")],
+    queryFn: () => apiRequest("GET", `/api/employees/${form.watch("employeeId")}/entitlement`),
+    enabled: !!form.watch("employeeId") && form.watch("employeeId") > 0,
+  });
+
   // Fetch existing request if editing
   const { data: existingRequest, isLoading, isError, error } = useQuery({
     queryKey: ["holiday-request", requestId],
@@ -119,6 +126,11 @@ const HolidayRequestForm = () => {
   };
 
   const onSubmit = (data: InsertHolidayRequest) => {
+    // Auto-calculate days left from entitlement if we have entitlement info
+    if (entitlementInfo && data.daysGranted) {
+      data.daysLeftEntitlement = entitlementInfo.remainingDays - data.daysGranted;
+    }
+    
     if (requestId) {
       updateRequestMutation.mutate({ ...data, id: requestId } as HolidayRequest);
     } else {
@@ -243,6 +255,47 @@ const HolidayRequestForm = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Employee Entitlement Information */}
+                {entitlementInfo && (
+                  <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h4 className="text-sm font-semibold text-blue-900 mb-2">Holiday Entitlement Information</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <span className="text-blue-700 font-medium">Annual Entitlement:</span>
+                        <div className="text-blue-900 font-semibold">{entitlementInfo.entitlementDays} days</div>
+                      </div>
+                      <div>
+                        <span className="text-blue-700 font-medium">Used This Year:</span>
+                        <div className="text-blue-900 font-semibold">{entitlementInfo.usedDays} days</div>
+                      </div>
+                      <div>
+                        <span className="text-blue-700 font-medium">Remaining:</span>
+                        <div className={`font-semibold ${entitlementInfo.remainingDays > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {entitlementInfo.remainingDays} days
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-blue-700 font-medium">Year:</span>
+                        <div className="text-blue-900 font-semibold">{entitlementInfo.currentYear}</div>
+                      </div>
+                    </div>
+                    {entitlementInfo.remainingDays < form.watch("totalDaysRequested") && (
+                      <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+                        <strong>Warning:</strong> Requested days ({form.watch("totalDaysRequested")}) exceed remaining entitlement ({entitlementInfo.remainingDays} days).
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isLoadingEntitlement && form.watch("employeeId") > 0 && (
+                  <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                    <div className="flex items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <span className="text-sm text-gray-600">Loading entitlement information...</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Holiday Dates */}
