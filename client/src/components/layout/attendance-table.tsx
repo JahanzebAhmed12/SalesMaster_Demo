@@ -116,12 +116,11 @@ export default function AttendanceTable({
       holidayName?: string;
       date?: Date;
     }) => {
-      return apiRequest("POST", `/api/attendance`, {
-        user_id: employeeId,
-        status,
+      return apiRequest("POST", `/api/employees/attendance/${employeeId}`, {
+        status: status,
         date: date ? format(date, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-        ...(status === "on_leave" && { leave_type: leaveType }),
-        ...(status === "holiday" && { holiday_name: holidayName }),
+        ...(status === "leave" && { leaveType: leaveType }),
+        ...(status === "holiday" && { holidayName: holidayName }),
       });
     },
     onSuccess: () => {
@@ -189,7 +188,7 @@ export default function AttendanceTable({
         return 'bg-green-100 text-green-800';
       case 'absent':
         return 'bg-red-100 text-red-800';
-      case 'on_leave':
+      case 'leave':
         return 'bg-yellow-100 text-yellow-800';
       case 'holiday':
         return 'bg-blue-100 text-blue-800';
@@ -198,36 +197,46 @@ export default function AttendanceTable({
     }
   };
 
-  // Initialize selectedStatus from employee data
+  // Initialize selectedStatus from employee data only once or when employees change significantly
   useEffect(() => {
     const initialStatus: Record<number, string> = {};
     const initialLeaveType: Record<number, string> = {};
     const initialHolidayName: Record<number, string> = {};
     
     employees.forEach(emp => {
-      if (emp.attendance) {
-        initialStatus[emp.id] = emp.attendance.status || 'absent';
-        if (emp.attendance.leaveType) {
-          initialLeaveType[emp.id] = emp.attendance.leaveType;
+      // Only set initial status if we don't already have a selected status for this employee
+      if (selectedStatus[emp.id] === undefined) {
+        if (emp.attendance) {
+          initialStatus[emp.id] = emp.attendance.status || 'absent';
+          if (emp.attendance.leaveType) {
+            initialLeaveType[emp.id] = emp.attendance.leaveType;
+          }
+          if (emp.attendance.holidayName) {
+            initialHolidayName[emp.id] = emp.attendance.holidayName;
+          }
+        } else {
+          initialStatus[emp.id] = 'absent'; // Default to absent if no attendance record
         }
-        if (emp.attendance.holidayName) {
-          initialHolidayName[emp.id] = emp.attendance.holidayName;
-        }
-      } else {
-        initialStatus[emp.id] = 'absent'; // Default to absent if no attendance record
       }
     });
     
-    setSelectedStatus(prev => ({ ...prev, ...initialStatus }));
-    setLeaveType(prev => ({ ...prev, ...initialLeaveType }));
-    setHolidayName(prev => ({ ...prev, ...initialHolidayName }));
-  }, [employees, dateRange]);
+    // Only update if we have new initial values
+    if (Object.keys(initialStatus).length > 0) {
+      setSelectedStatus(prev => ({ ...prev, ...initialStatus }));
+    }
+    if (Object.keys(initialLeaveType).length > 0) {
+      setLeaveType(prev => ({ ...prev, ...initialLeaveType }));
+    }
+    if (Object.keys(initialHolidayName).length > 0) {
+      setHolidayName(prev => ({ ...prev, ...initialHolidayName }));
+    }
+  }, [employees.length]); // Only depend on employees.length, not the full employees array
 
   const handleStatusChange = (employeeId: number, status: string) => {
     setSelectedStatus(prev => ({ ...prev, [employeeId]: status }));
     
     // Reset leave type and holiday name when status changes
-    if (status !== 'on_leave') {
+    if (status !== 'leave') {
       setLeaveType(prev => ({ ...prev, [employeeId]: '' }));
     }
     if (status !== 'holiday') {
@@ -257,7 +266,7 @@ export default function AttendanceTable({
           employeeId,
           status,
           date,
-          ...(status === "on_leave" && { leaveType: leaveTypeValue }),
+          ...(status === "leave" && { leaveType: leaveTypeValue }),
           ...(status === "holiday" && { holidayName: holidayNameValue }),
         });
       });
@@ -267,7 +276,7 @@ export default function AttendanceTable({
         employeeId,
         status,
         date: dateRange.from,
-        ...(status === "on_leave" && { leaveType: leaveTypeValue }),
+        ...(status === "leave" && { leaveType: leaveTypeValue }),
         ...(status === "holiday" && { holidayName: holidayNameValue }),
       });
     }
@@ -405,12 +414,12 @@ export default function AttendanceTable({
                           <SelectContent>
                             <SelectItem value="present">Present</SelectItem>
                             <SelectItem value="absent">Absent</SelectItem>
-                            <SelectItem value="on_leave">On Leave</SelectItem>
+                            <SelectItem value="leave">On Leave</SelectItem>
                             <SelectItem value="holiday">Holiday</SelectItem>
                           </SelectContent>
                         </Select>
 
-                        {selectedStatus[employee.id] === "on_leave" && (
+                        {selectedStatus[employee.id] === "leave" && (
                           <Select
                             value={leaveType[employee.id] || ""}
                             onValueChange={(value) =>

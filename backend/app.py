@@ -2157,6 +2157,120 @@ def delete_user(id):
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
 
+# Monthly Reports endpoints
+@app.route('/api/reports/attendance', methods=['GET'])
+def get_attendance_report():
+    """Get attendance data for date range with employee details"""
+    from_date_str = request.args.get('from_date')
+    to_date_str = request.args.get('to_date')
+    employee_id = request.args.get('employee_id', type=int)
+    
+    if not from_date_str or not to_date_str:
+        return jsonify({'error': 'from_date and to_date are required'}), 400
+    
+    try:
+        from_date = datetime.strptime(from_date_str, '%Y-%m-%d').date()
+        to_date = datetime.strptime(to_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    
+    # Get all active employees
+    employees_query = Employee.query.filter(Employee.is_active == 'yes')
+    if employee_id:
+        employees_query = employees_query.filter(Employee.id == employee_id)
+    
+    employees = employees_query.all()
+    result = []
+    
+    for employee in employees:
+        # Get attendance records for this employee in the date range
+        attendance_records = Attendance.query.filter(
+            Attendance.user_id == employee.id,
+            Attendance.date >= from_date,
+            Attendance.date <= to_date
+        ).all()
+        
+        # Calculate attendance statistics
+        present_days = len([a for a in attendance_records if a.status == 'present'])
+        absent_days = len([a for a in attendance_records if a.status == 'absent'])
+        leave_days = len([a for a in attendance_records if a.status == 'leave'])
+        holiday_days = len([a for a in attendance_records if a.status == 'holiday'])
+        
+        # Calculate total working days in the range
+        total_days = (to_date - from_date).days + 1
+        attendance_percentage = (present_days / total_days * 100) if total_days > 0 else 0
+        
+        # Get present dates for payroll calculation
+        present_dates = [a.date.strftime('%Y-%m-%d') for a in attendance_records if a.status == 'present']
+        
+        employee_data = {
+            'employee': {
+                'id': employee.id,
+                'name': employee.full_name,
+                'fullName': employee.full_name,
+                'title': employee.title,
+                'status': 'active',
+                'salary': float(employee.salary) if employee.salary else 0,
+                'dailyWage': float(employee.salary) if employee.salary else 0
+            },
+            'attendance': {
+                'presentDays': present_days,
+                'absentDays': absent_days,
+                'leaveDays': leave_days,
+                'holidayDays': holiday_days,
+                'attendancePercentage': round(attendance_percentage, 1),
+                'totalHours': present_days * 8  # Assuming 8 hours per day
+            },
+            'presentDays': present_days,
+            'presentDates': present_dates,
+            'pay': present_days * (float(employee.salary) if employee.salary else 0)
+        }
+        
+        result.append(employee_data)
+    
+    return jsonify(result)
+
+@app.route('/api/reports/attendance-stats', methods=['GET'])
+def get_attendance_stats():
+    """Get attendance statistics for date range"""
+    from_date_str = request.args.get('from_date')
+    to_date_str = request.args.get('to_date')
+    
+    if not from_date_str or not to_date_str:
+        return jsonify({'error': 'from_date and to_date are required'}), 400
+    
+    try:
+        from_date = datetime.strptime(from_date_str, '%Y-%m-%d').date()
+        to_date = datetime.strptime(to_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    
+    # Calculate working days
+    working_days = (to_date - from_date).days + 1
+    
+    # Get all attendance records in the date range
+    attendance_records = Attendance.query.filter(
+        Attendance.date >= from_date,
+        Attendance.date <= to_date
+    ).all()
+    
+    # Calculate statistics
+    total_present = len([a for a in attendance_records if a.status == 'present'])
+    total_leaves = len([a for a in attendance_records if a.status == 'leave'])
+    total_employees = Employee.query.filter(Employee.is_active == 'yes').count()
+    
+    # Calculate average attendance percentage
+    if total_employees > 0 and working_days > 0:
+        avg_attendance = (total_present / (total_employees * working_days)) * 100
+    else:
+        avg_attendance = 0
+    
+    return jsonify({
+        'workingDays': working_days,
+        'totalLeaves': total_leaves,
+        'avgAttendance': round(avg_attendance, 1)
+    })
+
 @app.route('/api/users/attendance', methods=['GET'])
 def get_users_attendance():
     today = datetime.now().date()
@@ -2342,13 +2456,15 @@ def mark_employee_attendance(employee_id):
             )
             db.session.add(attendance)
         
-        results.append(attendance.to_dict())
+        results.append(attendance)
     
     try:
         db.session.commit()
-        if len(results) == 1:
-            return jsonify(results[0])
-        return jsonify({'message': f'Successfully updated {len(results)} attendance records', 'data': results})
+        # Convert to dict after commit so created_at/updated_at are populated
+        result_dicts = [att.to_dict() for att in results]
+        if len(result_dicts) == 1:
+            return jsonify(result_dicts[0])
+        return jsonify({'message': f'Successfully updated {len(result_dicts)} attendance records', 'data': result_dicts})
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
