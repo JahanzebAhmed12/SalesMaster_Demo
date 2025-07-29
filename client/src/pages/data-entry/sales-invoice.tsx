@@ -999,6 +999,10 @@ const SalesInvoice = () => {
     held.push(invoiceData);
     localStorage.setItem('heldInvoices', JSON.stringify(held));
     setHeldInvoices(held);
+    
+    // Set skipAutoHoldRef to prevent auto-hold on navigation
+    skipAutoHoldRef.current = true;
+    
     // Clear current form
     setCustomerId("");
     setVehicleDetails("");

@@ -218,6 +218,7 @@ export default function PurchaseInvoice() {
       remarks: productRemarks // Add remarks to item
     }]);
     setSelectedProductId("");
+    setProductSearch(""); // Clear the product search field
     setQuantity(1);
     setUnitPrice(0);
     setProductRemarks(""); // Clear remarks after adding
@@ -281,6 +282,9 @@ export default function PurchaseInvoice() {
               <DropdownMenuContent>
                 <DropdownMenuItem onClick={handleSupplierHistory}>
                   Supplier History
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setLocation("/data-entry/purchase-entry")}>
+                  Close Invoice
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

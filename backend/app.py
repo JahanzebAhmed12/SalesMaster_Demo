@@ -42,7 +42,7 @@ PHONE_NUMBER_ID = os.getenv('PHONE_NUMBER_ID')
 CORS(app, 
      resources={r"/api/*": {
          "origins": ["http://localhost:5173"],
-         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
          "allow_headers": ["Content-Type", "Authorization"],
          "supports_credentials": True
      }})
@@ -1074,6 +1074,51 @@ def update_sale(id):
         if stock_warnings:
             data['stockWarnings'] = stock_warnings
         return jsonify(data)
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': str(e)}), 400
+
+@app.route('/api/sales/<int:id>', methods=['PATCH'])
+@jwt_required()
+def patch_sale(id):
+    """Partial update for sale - only update specific fields"""
+    data = request.get_json()
+    try:
+        sale = Sale.query.get_or_404(id)
+        user_id = get_jwt_identity()
+        
+        # Check backdate editing permission
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        today = datetime.now().date()
+        # If editing not allowed and sale.date is not today, block
+        if backdate_opt and not backdate_opt.editing and sale.date.date() != today:
+            return jsonify({"error": "You do not have permission to edit sales for previous dates."}), 403
+        
+        # Check current date editing permission
+        if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale.date.date() == today:
+            return jsonify({"error": "You do not have permission to edit sales for today."}), 403
+        
+        # Only update the fields provided in the request
+        allowed_fields = ['customer_type', 'payment_status', 'notes', 'vehicle_details', 'gate_number']
+        
+        for field in allowed_fields:
+            if field in data:
+                setattr(sale, field, data[field])
+        
+        # Special handling for payment status logic
+        if 'customer_type' in data:
+            # When changing customer_type, also update payment_status appropriately
+            if data['customer_type'] == 'account':
+                # For account customers, set to pending if not already paid
+                if sale.payment_status not in ['paid', 'overpaid']:
+                    sale.payment_status = 'pending'
+            elif data['customer_type'] in ['cash', 'bank']:
+                # For cash/bank customers, set to paid if not already set
+                if sale.payment_status not in ['paid', 'overpaid']:
+                    sale.payment_status = 'paid'
+        
+        db.session.commit()
+        return jsonify(sale.to_dict())
     except Exception as e:
         db.session.rollback()
         return jsonify({'message': str(e)}), 400
