@@ -1240,3 +1240,24 @@ class Employee(db.Model):
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
+class Equipment(db.Model):
+    __tablename__ = 'equipment'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    description = db.Column(db.String(500), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    is_active = db.Column(db.String(3), default='yes')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'description': self.description,
+            'startDate': self.start_date.isoformat() if self.start_date else None,
+            'endDate': self.end_date.isoformat() if self.end_date else None,
+            'isActive': self.is_active,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None
+        }

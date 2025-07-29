@@ -57,6 +57,7 @@ const menuSections: MenuSection[] = [
     title: "Daily Report",
     icon: BarChart3,
     items: [
+      { title: "Daily Summary", path: "/daily-report/daily-summary" },
       { title: "Daily Book Sales", path: "/daily-report/daily-book-sales" },
       { title: "Daily Book Purchase", path: "/daily-report/daily-book-purchase" },
       { title: "Stock Check", path: "/daily-report/stock-check" },
@@ -114,6 +115,7 @@ const menuSections: MenuSection[] = [
     items: [
       { title: "User Setup", path: "/admin/user-setup" },
       { title: "Employee Database", path: "/admin/employee-database" },
+      { title: "Equipment Database", path: "/admin/equipment-database" },
       { title: "Products Database", path: "/admin/products-database" },
       { title: "Customer Database", path: "/admin/customer-database" },
       { title: "Supplier Database", path: "/admin/supplier-database" },

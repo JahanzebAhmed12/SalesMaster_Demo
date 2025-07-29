@@ -2,10 +2,10 @@ from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
-    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema, HolidayRequestSchema
+    SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema, HolidayRequestSchema, EquipmentSchema
 )
 from models import Company, Supplier, PurchaseInvoice, PurchaseInvoiceItem, Purchase
 from flask import Flask, request, jsonify, session, current_app, send_file
@@ -2965,6 +2965,156 @@ def get_expiring_employee_documents():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Equipment routes
+@app.route('/api/equipment', methods=['GET'])
+@jwt_required()
+def get_equipment():
+    try:
+        equipment_list = Equipment.query.filter_by(is_active='yes').all()
+        return jsonify([equipment.to_dict() for equipment in equipment_list])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/equipment/<int:id>', methods=['GET'])
+@jwt_required()
+def get_equipment_item(id):
+    try:
+        equipment = Equipment.query.get_or_404(id)
+        return jsonify(equipment.to_dict())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 404
+
+@app.route('/api/equipment', methods=['POST'])
+@jwt_required()
+def create_equipment():
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('description'):
+            return jsonify({'error': 'Description is required'}), 400
+        if not data.get('startDate'):
+            return jsonify({'error': 'Start date is required'}), 400
+        if not data.get('endDate'):
+            return jsonify({'error': 'End date is required'}), 400
+        
+        # Parse dates
+        from datetime import datetime
+        start_date = datetime.strptime(data['startDate'], '%Y-%m-%d').date()
+        end_date = datetime.strptime(data['endDate'], '%Y-%m-%d').date()
+        
+        # Validate date range
+        if end_date <= start_date:
+            return jsonify({'error': 'End date must be after start date'}), 400
+        
+        equipment = Equipment(
+            description=data['description'],
+            start_date=start_date,
+            end_date=end_date,
+            is_active='yes'
+        )
+        
+        db.session.add(equipment)
+        db.session.commit()
+        
+        return jsonify(equipment.to_dict()), 201
+        
+    except ValueError as e:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/equipment/<int:id>', methods=['PUT'])
+@jwt_required()
+def update_equipment(id):
+    try:
+        equipment = Equipment.query.get_or_404(id)
+        data = request.get_json()
+        
+        # Validate required fields
+        if not data.get('description'):
+            return jsonify({'error': 'Description is required'}), 400
+        if not data.get('startDate'):
+            return jsonify({'error': 'Start date is required'}), 400
+        if not data.get('endDate'):
+            return jsonify({'error': 'End date is required'}), 400
+        
+        # Parse dates
+        from datetime import datetime
+        start_date = datetime.strptime(data['startDate'], '%Y-%m-%d').date()
+        end_date = datetime.strptime(data['endDate'], '%Y-%m-%d').date()
+        
+        # Validate date range
+        if end_date <= start_date:
+            return jsonify({'error': 'End date must be after start date'}), 400
+        
+        equipment.description = data['description']
+        equipment.start_date = start_date
+        equipment.end_date = end_date
+        equipment.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify(equipment.to_dict())
+        
+    except ValueError as e:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+@app.route('/api/equipment/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_equipment(id):
+    try:
+        equipment = Equipment.query.get_or_404(id)
+        equipment.is_active = 'no'
+        equipment.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        return jsonify({'message': 'Equipment deleted successfully'})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+# Equipment Expiration Alerts
+@app.route('/api/equipment/expiring', methods=['GET'])
+@jwt_required()
+def get_expiring_equipment():
+    """Get equipment expiring within a week"""
+    try:
+        from datetime import datetime, timedelta
+        
+        # Calculate date range (today to 7 days from now)
+        today = datetime.now().date()
+        week_from_now = today + timedelta(days=7)
+        
+        # Query for equipment expiring within a week
+        expiring_equipment = Equipment.query.filter(
+            Equipment.is_active == 'yes',
+            Equipment.end_date >= today,     # Not already expired
+            Equipment.end_date <= week_from_now  # Expiring within a week
+        ).order_by(
+            Equipment.end_date.asc()  # Sort by expiration date
+        ).all()
+        
+        # Format the results
+        alerts = []
+        for equipment in expiring_equipment:
+            days_until_expiry = (equipment.end_date - today).days
+            alerts.append({
+                'id': equipment.id,
+                'description': equipment.description,
+                'endDate': equipment.end_date.isoformat(),
+                'daysUntilExpiry': days_until_expiry,
+                'isExpiringSoon': days_until_expiry <= 3,  # Mark as urgent if 3 days or less
+                'alertType': 'equipment_expiry'
+            })
+        
+        return jsonify(alerts)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # Business Date Management Routes
 @app.route('/api/business-date', methods=['GET'])
 def get_business_date_api():
@@ -4053,6 +4203,61 @@ def create_purchase_invoice():
 def get_purchase_invoice(invoice_id):
     invoice = PurchaseInvoice.query.get_or_404(invoice_id)
     return jsonify(invoice.to_dict())
+
+@app.route('/api/purchase-invoices/by-purchase/<int:purchase_id>', methods=['GET'])
+@jwt_required()
+def get_purchase_invoice_by_purchase_id(purchase_id):
+    """Get purchase invoice data by purchase_id for editing"""
+    try:
+        # Find the purchase invoice for this purchase_id
+        invoice = PurchaseInvoice.query.filter_by(purchase_id=purchase_id).first()
+        if not invoice:
+            return jsonify({"error": "No invoice found for this purchase"}), 404
+        
+        # Get the purchase details
+        purchase = Purchase.query.get_or_404(purchase_id)
+        
+        # Return both purchase and invoice data
+        return jsonify({
+            "purchase": purchase.to_dict(),
+            "invoice": invoice.to_dict()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/purchase-invoices/<int:invoice_id>', methods=['PUT'])
+@jwt_required()
+def update_purchase_invoice(invoice_id):
+    """Update an existing purchase invoice"""
+    try:
+        data = request.get_json()
+        invoice = PurchaseInvoice.query.get_or_404(invoice_id)
+        
+        # Update invoice fields
+        invoice.remarks = data.get('remarks', '')
+        
+        # Delete existing items
+        PurchaseInvoiceItem.query.filter_by(invoice_id=invoice_id).delete()
+        
+        # Add new items
+        for item_data in data.get('items', []):
+            item = PurchaseInvoiceItem(
+                invoice_id=invoice.id,
+                product_id=item_data['productId'],
+                product_name=item_data['productName'],
+                quantity=item_data['quantity'],
+                unit_price=item_data['unitPrice'],
+                total_price=item_data['totalPrice'],
+                remarks=item_data.get('remarks', '')
+            )
+            db.session.add(item)
+        
+        db.session.commit()
+        return jsonify(invoice.to_dict())
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/purchase-invoices/<int:invoice_id>/print', methods=['GET'])
 def print_purchase_invoice(invoice_id):
@@ -7922,6 +8127,423 @@ def daily_accounts_report():
         "actualBalance": actual_balance,
         "shortfall": shortfall
     }), 200
+
+@app.route('/api/reports/daily-summary', methods=['GET'])
+@jwt_required()
+def daily_summary_report():
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, and_, or_
+    
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'date is required'}), 400
+    
+    try:
+        report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+    
+    # 1. Daily Sales Summary (like the image provided)
+    # Get all sales for the date
+    sales_query = db.session.query(
+        Sale.id,
+        Sale.invoice_number,
+        Customer.customer_name,
+        Sale.total_amount,
+        Sale.payment_status,
+        Sale.customer_type
+    ).join(
+        Customer, Sale.customer_id == Customer.id
+    ).filter(
+        func.date(Sale.date) == report_date
+    ).order_by(Sale.invoice_number).all()
+    
+    # Process sales data to match the image format
+    sales_summary = []
+    cash_total = 0
+    card_total = 0
+    account_total = 0
+    
+    for sale in sales_query:
+        cash_amount = 0
+        card_amount = 0
+        account_amount = 0
+        
+        # Get payments for this sale
+        sale_payments = db.session.query(Payment).filter(
+            Payment.sale_id == sale.id
+        ).all()
+        
+        for payment in sale_payments:
+            if payment.payment_mode == 'cash':
+                cash_amount += float(payment.amount)
+            elif payment.payment_mode == 'bank':  # Card payments are stored as 'bank' in backend
+                card_amount += float(payment.amount)
+        
+        # If it's an account sale and no payments, add to account total
+        if sale.customer_type == 'account' and not sale_payments:
+            account_amount = float(sale.total_amount or 0)
+        
+        cash_total += cash_amount
+        card_total += card_amount
+        account_total += account_amount
+        
+        sales_summary.append({
+            'customer_name': sale.customer_name,
+            'ticket_no': sale.invoice_number,
+            'cash_sales': cash_amount,
+            'card_paid': card_amount,
+            'account_sales': account_amount,
+            'account_paid_cash': 0,  # Will be calculated separately
+            'account_paid_cheque': 0,  # Will be calculated separately
+            'account_credits': 0  # Will be calculated separately
+        })
+    
+    # 2. Customer Payments (using sale_id relationship)
+    customer_payments = db.session.query(
+        Customer.customer_name,
+        Sale.invoice_number,
+        Payment.sale_id,
+        Payment.payment_mode,
+        Payment.amount,
+        Payment.payment_date
+    ).join(
+        Customer, Payment.customer_id == Customer.id
+    ).outerjoin(
+        Sale, Payment.sale_id == Sale.id
+    ).filter(
+        Payment.payment_date == report_date
+    ).order_by(Customer.customer_name, Sale.invoice_number).all()
+    
+    # Group payments by customer and invoice using sale_id
+    payment_groups = {}
+    for payment in customer_payments:
+        # Use sale_id as the key, or 'on_account' if no sale_id
+        sale_key = payment.sale_id if payment.sale_id else 'on_account'
+        key = (payment.customer_name, sale_key)
+        
+        if key not in payment_groups:
+            payment_groups[key] = {
+                'customer_name': payment.customer_name,
+                'invoice_no': payment.invoice_number if payment.sale_id else 'On Account',
+                'cash_amount': 0,
+                'card_amount': 0,
+                'total_amount': 0,
+                'date': payment.payment_date.isoformat()
+            }
+        
+        amount = float(payment.amount)
+        if payment.payment_mode.lower() == 'cash':
+            payment_groups[key]['cash_amount'] += amount
+        elif payment.payment_mode.lower() == 'bank':  # Card payments are stored as 'bank' in backend
+            payment_groups[key]['card_amount'] += amount
+        
+        payment_groups[key]['total_amount'] += amount
+    
+    customer_payments_data = list(payment_groups.values())
+    
+    # 3. Supplier Payments
+    supplier_payments = db.session.query(
+        Supplier.supplier_name,
+        SupplierPayment.id,
+        SupplierPayment.amount,
+        SupplierPayment.payment_mode,
+        SupplierPayment.payment_date
+    ).join(
+        Supplier, SupplierPayment.supplier_id == Supplier.id
+    ).filter(
+        SupplierPayment.payment_date == report_date
+    ).order_by(SupplierPayment.id).all()
+    
+    supplier_payments_data = []
+    for payment in supplier_payments:
+        supplier_payments_data.append({
+            'supplier_name': payment.supplier_name,
+            'receipt_no': f"SUP{payment.id:06d}",  # Generate receipt number from ID
+            'amount': float(payment.amount),
+            'payment_mode': payment.payment_mode,
+            'date': payment.payment_date.isoformat()
+        })
+    
+    # 4. Banking Records
+    banking_records = db.session.query(BankingEntry).filter(
+        BankingEntry.date == report_date
+    ).order_by(BankingEntry.id).all()
+    
+    banking_data = []
+    for record in banking_records:
+        # Get bag details
+        bag_details = []
+        for bag in record.bag_numbers:
+            bag_details.append({
+                'bag_number': bag.bag_number,
+                'paying_number': bag.paying_number,
+                'amount': float(bag.amount) if bag.amount else 0
+            })
+        
+        banking_data.append({
+            'date': record.date.isoformat(),
+            'remarks': record.remarks,
+            'payment_type': record.payment_type,
+            'amount': float(record.amount),
+            'paying_number': record.paying_number,
+            'cheque_number': record.cheque_number,
+            'bag_details': bag_details
+        })
+    
+    # Calculate totals
+    totals = {
+        'cash_sales': cash_total,
+        'card_sales': card_total,
+        'account_sales': account_total,
+        'total_sales': cash_total + card_total + account_total,
+        'customer_payments_total': sum(float(p.amount) for p in customer_payments),
+        'supplier_payments_total': sum(float(p.amount) for p in supplier_payments),
+        'banking_total': sum(float(r.amount) for r in banking_records)
+    }
+    
+    return jsonify({
+        'date': date_str,
+        'sales_summary': sales_summary,
+        'customer_payments': customer_payments_data,
+        'supplier_payments': supplier_payments_data,
+        'banking_records': banking_data,
+        'totals': totals
+    })
+
+@app.route('/api/reports/daily-summary/pdf', methods=['GET'])
+def daily_summary_pdf():
+    # Handle token from query parameter for popup windows
+    token = request.args.get('token')
+    if token:
+        try:
+            from flask_jwt_extended import decode_token
+            decode_token(token)
+        except:
+            return jsonify({'error': 'Invalid token'}), 401
+    else:
+        # Use regular JWT required decorator logic
+        from flask_jwt_extended import verify_jwt_in_request
+        try:
+            verify_jwt_in_request()
+        except:
+            return jsonify({'error': 'Authentication required'}), 401
+    from datetime import datetime, timedelta
+    from sqlalchemy import func, and_, or_
+    from flask import make_response
+    import json
+    
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'date is required'}), 400
+    
+    try:
+        report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        
+        # Get the same data as the regular daily summary
+        # 1. Daily Sales Summary
+        sales_query = db.session.query(
+            Sale.id,
+            Sale.invoice_number,
+            Customer.customer_name,
+            Sale.total_amount,
+            Sale.payment_status,
+            Sale.customer_type
+        ).join(
+            Customer, Sale.customer_id == Customer.id
+        ).filter(
+            func.date(Sale.date) == report_date
+        ).order_by(Sale.invoice_number).all()
+        
+        sales_summary = []
+        cash_total = 0
+        card_total = 0
+        account_total = 0
+        
+        for sale in sales_query:
+            cash_amount = 0
+            card_amount = 0
+            account_amount = 0
+            
+            sale_payments = db.session.query(Payment).filter(
+                Payment.sale_id == sale.id
+            ).all()
+            
+            for payment in sale_payments:
+                if payment.payment_mode == 'cash':
+                    cash_amount += float(payment.amount)
+                elif payment.payment_mode == 'bank':  # Card payments are stored as 'bank' in backend
+                    card_amount += float(payment.amount)
+            
+            if sale.customer_type == 'account' and not sale_payments:
+                account_amount = float(sale.total_amount or 0)
+            
+            cash_total += cash_amount
+            card_total += card_amount
+            account_total += account_amount
+            
+            sales_summary.append({
+                'customer_name': sale.customer_name,
+                'ticket_no': sale.invoice_number,
+                'cash_sales': cash_amount,
+                'card_paid': card_amount,
+                'account_sales': account_amount
+            })
+        
+        # 2. Customer Payments
+        customer_payments = db.session.query(
+            Customer.customer_name,
+            Sale.invoice_number,
+            Payment.sale_id,
+            Payment.payment_mode,
+            Payment.amount,
+            Payment.payment_date
+        ).join(
+            Customer, Payment.customer_id == Customer.id
+        ).outerjoin(
+            Sale, Payment.sale_id == Sale.id
+        ).filter(
+            Payment.payment_date == report_date
+        ).order_by(Customer.customer_name, Sale.invoice_number).all()
+        
+        payment_groups = {}
+        for payment in customer_payments:
+            sale_key = payment.sale_id if payment.sale_id else 'on_account'
+            key = (payment.customer_name, sale_key)
+            
+            if key not in payment_groups:
+                payment_groups[key] = {
+                    'customer_name': payment.customer_name,
+                    'invoice_no': payment.invoice_number if payment.sale_id else 'On Account',
+                    'cash_amount': 0,
+                    'card_amount': 0,
+                    'total_amount': 0
+                }
+            
+            amount = float(payment.amount)
+            if payment.payment_mode.lower() == 'cash':
+                payment_groups[key]['cash_amount'] += amount
+            elif payment.payment_mode.lower() == 'bank':  # Card payments are stored as 'bank' in backend
+                payment_groups[key]['card_amount'] += amount
+            
+            payment_groups[key]['total_amount'] += amount
+        
+        customer_payments_data = list(payment_groups.values())
+        
+        # Generate HTML with actual data
+        sales_rows = ""
+        for sale in sales_summary:
+            sales_rows += f"""
+                <tr>
+                    <td>{sale['customer_name']}</td>
+                    <td>{sale['ticket_no']}</td>
+                    <td class="text-right">{'£%.2f' % sale['cash_sales'] if sale['cash_sales'] > 0 else '-'}</td>
+                    <td class="text-right">{'£%.2f' % sale['card_paid'] if sale['card_paid'] > 0 else '-'}</td>
+                    <td class="text-right">{'£%.2f' % sale['account_sales'] if sale['account_sales'] > 0 else '-'}</td>
+                    <td class="text-right">-</td>
+                    <td class="text-right">-</td>
+                    <td class="text-right">-</td>
+                </tr>
+            """
+        
+        customer_payment_rows = ""
+        for payment in customer_payments_data:
+            customer_payment_rows += f"""
+                <tr>
+                    <td>{payment['customer_name']}</td>
+                    <td>{payment['invoice_no']}</td>
+                    <td class="text-right">{'£%.2f' % payment['cash_amount'] if payment['cash_amount'] > 0 else '-'}</td>
+                    <td class="text-right">{'£%.2f' % payment['card_amount'] if payment['card_amount'] > 0 else '-'}</td>
+                    <td class="text-right">£{payment['total_amount']:.2f}</td>
+                </tr>
+            """
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Daily Summary - {date_str}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }}
+                table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
+                th, td {{ border: 1px solid #000; padding: 4px; text-align: left; }}
+                th {{ background-color: #f2f2f2; font-weight: bold; }}
+                .text-right {{ text-align: right; }}
+                .text-center {{ text-align: center; }}
+                h1, h2 {{ color: #333; margin-bottom: 10px; }}
+                h3 {{ color: #333; margin-top: 20px; margin-bottom: 10px; }}
+                .totals-row {{ background-color: #f9f9f9; font-weight: bold; }}
+                @media print {{
+                    body {{ margin: 0; }}
+                    .no-print {{ display: none; }}
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>Daily Summary Report</h1>
+            <h2>Date: {datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</h2>
+            
+            <h3>Daily Sales Summary</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>TKT No</th>
+                        <th>Cash Sales</th>
+                        <th>Card Paid</th>
+                        <th>Account Sales</th>
+                        <th>Account Paid Cash</th>
+                        <th>Account Paid Cheque</th>
+                        <th>Account Credits</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {sales_rows}
+                    <tr class="totals-row">
+                        <td colspan="2">TOTALS</td>
+                        <td class="text-right">£{cash_total:.2f}</td>
+                        <td class="text-right">£{card_total:.2f}</td>
+                        <td class="text-right">£{account_total:.2f}</td>
+                        <td class="text-right">-</td>
+                        <td class="text-right">-</td>
+                        <td class="text-right">-</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h3>Customer Payments</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Customer Name</th>
+                        <th>Invoice No</th>
+                        <th>Cash Amount</th>
+                        <th>Card Amount</th>
+                        <th>Total Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {customer_payment_rows if customer_payment_rows else '<tr><td colspan="5" class="text-center">No customer payments found</td></tr>'}
+                </tbody>
+            </table>
+            
+            <script>
+                window.onload = function() {{
+                    window.print();
+                }}
+            </script>
+        </body>
+        </html>
+        """
+        
+        response = make_response(html_content)
+        response.headers['Content-Type'] = 'text/html'
+        response.headers['Content-Disposition'] = f'inline; filename=daily-summary-{date_str}.html'
+        
+        return response
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     
 @app.route('/api/cash-cf', methods=['POST'])
 @jwt_required()
@@ -7972,6 +8594,21 @@ def get_cash_cf_range():
     to_dt = datetime.strptime(to_date, "%Y-%m-%d").date()
     cfs = CashCarryForward.query.filter(CashCarryForward.date >= from_dt, CashCarryForward.date <= to_dt).all()
     return jsonify([cf.to_dict() for cf in cfs])
+
+@app.route('/api/cash-cf', methods=['DELETE'])
+@jwt_required()
+def delete_cash_cf():
+    from datetime import datetime
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'date is required'}), 400
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+    cf = CashCarryForward.query.filter_by(date=date_obj).first()
+    if not cf:
+        return jsonify({'error': 'Cash C/F entry not found'}), 404
+    db.session.delete(cf)
+    db.session.commit()
+    return jsonify({'message': 'Cash C/F entry deleted successfully'}), 200
 
 @app.route('/api/banking', methods=['POST'])
 @jwt_required()

@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // Dashboard page content without layout wrapper
 import SalesPurchaseChart from "@/components/charts/sales-purchase-chart";
 import ProfitTrendChart from "@/components/charts/profit-trend-chart";
-import { DollarSign, ShoppingCart, Percent, Package, TrendingUp, TrendingDown, AlertTriangle, Calendar, User } from "lucide-react";
+import { DollarSign, ShoppingCart, Percent, Package, TrendingUp, TrendingDown, AlertTriangle, Calendar, User, Settings } from "lucide-react";
 import React from "react";
 import { useAuth } from "@/lib/auth";
 
@@ -32,6 +32,12 @@ export default function Dashboard() {
   const { data: expiringDocs, isLoading: expiringDocsLoading } = useQuery({
     queryKey: ["/api/employees/documents/expiring"],
     queryFn: () => apiRequest("GET", "/api/employees/documents/expiring"),
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
+  });
+
+  const { data: expiringEquipment, isLoading: expiringEquipmentLoading } = useQuery({
+    queryKey: ["/api/equipment/expiring"],
+    queryFn: () => apiRequest("GET", "/api/equipment/expiring"),
     refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
   });
 
@@ -131,6 +137,72 @@ export default function Dashboard() {
                   <div className="text-center pt-2">
                     <p className="text-sm text-gray-600">
                       And {expiringDocs.length - 5} more documents expiring soon...
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Equipment Expiration Alerts */}
+        {!expiringEquipmentLoading && expiringEquipment && expiringEquipment.length > 0 && (
+          <Card className="border-red-200 bg-red-50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="text-red-600 h-5 w-5" />
+                <CardTitle className="text-red-800">Equipment Expiration Alerts</CardTitle>
+                <Badge variant="secondary" className="bg-red-200 text-red-800">
+                  {expiringEquipment.length} {expiringEquipment.length === 1 ? 'Alert' : 'Alerts'}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {expiringEquipment.slice(0, 5).map((alert: any) => (
+                  <div 
+                    key={alert.id} 
+                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                      alert.isExpiringSoon 
+                        ? 'bg-red-50 border-red-200' 
+                        : 'bg-yellow-50 border-yellow-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-full ${
+                        alert.isExpiringSoon ? 'bg-red-100' : 'bg-yellow-100'
+                      }`}>
+                        <Settings className={`h-4 w-4 ${
+                          alert.isExpiringSoon ? 'text-red-600' : 'text-yellow-600'
+                        }`} />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{alert.description}</p>
+                        <p className="text-sm text-gray-600">Equipment</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center gap-1 text-sm text-gray-600">
+                        <Calendar className="h-4 w-4" />
+                        <span>{new Date(alert.endDate).toLocaleDateString()}</span>
+                      </div>
+                      <p className={`text-sm font-medium ${
+                        alert.isExpiringSoon ? 'text-red-600' : 'text-yellow-600'
+                      }`}>
+                        {alert.daysUntilExpiry === 0 
+                          ? 'Expires today' 
+                          : alert.daysUntilExpiry === 1 
+                            ? 'Expires tomorrow'
+                            : `Expires in ${alert.daysUntilExpiry} days`
+                        }
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {expiringEquipment.length > 5 && (
+                  <div className="text-center pt-2">
+                    <p className="text-sm text-gray-600">
+                      And {expiringEquipment.length - 5} more equipment expiring soon...
                     </p>
                   </div>
                 )}

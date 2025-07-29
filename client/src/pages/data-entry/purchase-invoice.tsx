@@ -34,13 +34,20 @@ export default function PurchaseInvoice() {
   const [highlightedProduct, setHighlightedProduct] = useState(-1);
   const productInputRef = useRef<HTMLInputElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   // Extract purchaseId from URL on component mount and URL changes
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("purchaseId");
-    console.log("PurchaseInvoice: Extracted purchaseId from URL:", id);
+    const editMode = params.get("edit");
+    console.log("PurchaseInvoice: Extracted purchaseId from URL:", id, "Edit mode:", editMode);
     setPurchaseId(id);
+    
+    // If in edit mode, fetch existing invoice data
+    if (editMode === "true" && id) {
+      fetchExistingInvoiceData(id);
+    }
   }, [locationStr]);
 
   // Extract invoiceId from URL on mount and URL changes
@@ -49,6 +56,42 @@ export default function PurchaseInvoice() {
     const invId = params.get("invoiceId");
     setInvoiceId(invId);
   }, [locationStr]);
+
+  // Function to fetch existing invoice data for editing
+  const fetchExistingInvoiceData = async (purchaseId: string) => {
+    try {
+      const response = await apiRequest("GET", `/api/purchase-invoices/by-purchase/${purchaseId}`);
+      if (response.invoice) {
+        setIsEditMode(true);
+        setInvoiceId(response.invoice.id);
+        setRemarks(response.invoice.remarks || "");
+        
+        // Pre-fill items if they exist
+        if (response.invoice.items && response.invoice.items.length > 0) {
+          const formattedItems = response.invoice.items.map((item: any) => ({
+            productId: item.productId,
+            productName: item.productName,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            remarks: item.remarks || ""
+          }));
+          setItems(formattedItems);
+        }
+        
+        toast({
+          title: "Invoice Loaded",
+          description: "Existing invoice data has been loaded for editing.",
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching existing invoice:", error);
+      toast({
+        title: "Info",
+        description: "No existing invoice found. Creating a new one.",
+      });
+    }
+  };
 
   // Fetch purchase details
   const { data: purchase, isLoading, isError, refetch } = useQuery({
@@ -139,7 +182,13 @@ export default function PurchaseInvoice() {
 
   // Save invoice mutation
   const createInvoiceMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/purchase-invoices", data),
+    mutationFn: (data: any) => {
+      if (isEditMode && invoiceId) {
+        return apiRequest("PUT", `/api/purchase-invoices/${invoiceId}`, data);
+      } else {
+        return apiRequest("POST", "/api/purchase-invoices", data);
+      }
+    },
     onSuccess: (invoice) => {
       // Invalidate all relevant queries to update stock and other data
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
@@ -151,15 +200,18 @@ export default function PurchaseInvoice() {
       
       toast({
         title: "Success",
-        description: "Purchase invoice saved successfully!",
+        description: isEditMode ? "Purchase invoice updated successfully!" : "Purchase invoice saved successfully!",
       });
-      setLocation(`/data-entry/purchase-invoice?purchaseId=${purchaseId}&invoiceId=${invoice.id}`);
-      setInvoiceId(invoice.id);
+      
+      if (!isEditMode) {
+        setLocation(`/data-entry/purchase-invoice?purchaseId=${purchaseId}&invoiceId=${invoice.id}`);
+        setInvoiceId(invoice.id);
+      }
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to save purchase invoice",
+        description: isEditMode ? "Failed to update purchase invoice" : "Failed to save purchase invoice",
         variant: "destructive",
       });
     }
@@ -353,7 +405,7 @@ export default function PurchaseInvoice() {
         {/* Invoice Form Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Create Purchase Invoice</CardTitle>
+            <CardTitle>{isEditMode ? "Edit Purchase Invoice" : "Create Purchase Invoice"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
           
@@ -459,6 +511,7 @@ export default function PurchaseInvoice() {
                       <TableHead className="text-right">Quantity</TableHead>
                       <TableHead className="text-right">Unit Price</TableHead>
                       <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -469,10 +522,23 @@ export default function PurchaseInvoice() {
                         <TableCell className="text-right">{item.quantity}</TableCell>
                         <TableCell className="text-right">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-right font-medium">£{item.totalPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const newItems = items.filter((_, index) => index !== idx);
+                              setItems(newItems);
+                            }}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            Remove
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
-                      <TableCell colSpan={4} className="text-right font-bold">
+                      <TableCell colSpan={5} className="text-right font-bold">
                         Total Amount:
                       </TableCell>
                       <TableCell className="text-right font-bold text-lg">
@@ -518,7 +584,10 @@ export default function PurchaseInvoice() {
                   disabled={createInvoiceMutation.isPending || items.length === 0}
                   className="px-8"
                 >
-                  {createInvoiceMutation.isPending ? "Saving..." : "Save Purchase Invoice"}
+                  {createInvoiceMutation.isPending 
+                    ? (isEditMode ? "Updating..." : "Saving...") 
+                    : (isEditMode ? "Update Purchase Invoice" : "Save Purchase Invoice")
+                  }
                 </Button>
               </div>
             </div>

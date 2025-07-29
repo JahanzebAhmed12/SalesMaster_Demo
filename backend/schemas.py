@@ -500,3 +500,13 @@ class HolidayRequestSchema(BaseModel):
     class Config:
         from_attributes = True
         populate_by_name = True
+        
+class EquipmentSchema(BaseModel):
+    description: str
+    startDate: date = Field(alias='startDate')
+    endDate: date = Field(alias='endDate')
+    isActive: Optional[str] = Field(default='yes', alias='isActive')
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True

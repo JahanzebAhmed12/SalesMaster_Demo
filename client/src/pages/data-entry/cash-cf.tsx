@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, DollarSign, Save } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { CalendarIcon, DollarSign, Save, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,10 +18,11 @@ export default function CashCF() {
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [pounds, setPounds] = useState("");
   const [coins, setCoins] = useState("");
+  const [justSaved, setJustSaved] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch C/F for selected date
-  const { data, isLoading, isError } = useQuery<{ pounds?: number; coins?: number } | undefined>({
+  const { data, isLoading, isError } = useQuery<{ id?: number; date?: string; pounds?: number; coins?: number; createdAt?: string }>({
     queryKey: ["cash-cf", fromDate],
     queryFn: async () => {
       const dateStr = format(fromDate, "yyyy-MM-dd");
@@ -34,18 +36,49 @@ export default function CashCF() {
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
-  // Update pounds/coins when data changes
+  // Update pounds/coins when data changes or date changes (but not right after saving)
   React.useEffect(() => {
-    if (data) {
-      setPounds(data.pounds !== undefined ? String(data.pounds) : "");
-      setCoins(data.coins !== undefined ? String(data.coins) : "");
+    if (justSaved) {
+      // Don't populate fields if we just saved
+      return;
     }
-  }, [data]);
+    
+    if (data && data.id && data.pounds !== undefined && data.coins !== undefined) {
+      // Only populate fields if there's an existing entry
+      setPounds(String(data.pounds));
+      setCoins(String(data.coins));
+    } else {
+      // Clear fields if no entry exists for this date
+      setPounds("");
+      setCoins("");
+    }
+  }, [data, fromDate, justSaved]);
+
+  // Reset justSaved flag when date changes
+  React.useEffect(() => {
+    setJustSaved(false);
+  }, [fromDate]);
 
   // Save C/F
-  const mutation = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async (payload: { date: string; pounds: string; coins: string }) => {
       return apiRequest("POST", "/api/cash-cf", payload);
+    },
+    onSuccess: () => {
+      // Set flag to prevent useEffect from refilling fields
+      setJustSaved(true);
+      // Reset fields after successful save
+      setPounds("");
+      setCoins("");
+      // Invalidate queries to refresh the table
+      queryClient.invalidateQueries({ queryKey: ["cash-cf"] });
+    },
+  });
+
+  // Delete C/F
+  const deleteMutation = useMutation({
+    mutationFn: async (date: string) => {
+      return apiRequest("DELETE", `/api/cash-cf?date=${date}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cash-cf"] });
@@ -54,11 +87,17 @@ export default function CashCF() {
 
   const handleSave = () => {
     if (pounds || coins) {
-      mutation.mutate({
+      saveMutation.mutate({
         date: format(fromDate, "yyyy-MM-dd"),
         pounds: pounds || "0",
         coins: coins || "0",
       });
+    }
+  };
+
+  const handleDelete = () => {
+    if (data && data.id) {
+      deleteMutation.mutate(format(fromDate, "yyyy-MM-dd"));
     }
   };
 
@@ -152,10 +191,10 @@ export default function CashCF() {
                   <Button
                     className="bg-green-500 hover:bg-green-600 text-white h-12 px-6"
                     onClick={handleSave}
-                    disabled={mutation.isPending}
+                    disabled={saveMutation.isPending}
                   >
                     <Save size={16} className="mr-2" />
-                    {mutation.isPending ? "Saving..." : "Save"}
+                    {saveMutation.isPending ? "Saving..." : "Save"}
                   </Button>
                 </div>
               </div>
@@ -163,6 +202,49 @@ export default function CashCF() {
             )}
           </CardContent>
         </Card>
+
+        {/* Current Entry Display */}
+        {data && data.id && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Current Cash C/F Entry</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Pounds</TableHead>
+                    <TableHead className="text-right">Coins</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Created At</TableHead>
+                    <TableHead className="w-16">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow>
+                    <TableCell>{data.date}</TableCell>
+                    <TableCell className="text-right">£{data.pounds?.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">£{data.coins?.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-medium">£{((data.pounds || 0) + (data.coins || 0)).toFixed(2)}</TableCell>
+                    <TableCell>{data.createdAt ? format(new Date(data.createdAt), "yyyy-MM-dd HH:mm:ss") : ""}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleDelete}
+                        disabled={deleteMutation.isPending}
+                        className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </PageLayout>
   );

@@ -832,4 +832,19 @@ export const holidayRequestSchema = z.object({
 export const insertHolidayRequestSchema = holidayRequestSchema.omit({ id: true, createdAt: true, updatedAt: true });
 
 export type HolidayRequest = z.infer<typeof holidayRequestSchema>;
-export type InsertHolidayRequest = z.infer<typeof insertHolidayRequestSchema>;
+export type InsertHolidayRequest = z.infer<typeof insertHolidayRequestSchema>;// 
+// Equipment Schema
+export const equipmentSchema = z.object({
+  id: z.number().optional(),
+  description: z.string().min(1, "Description is required"),
+  startDate: z.string(),
+  endDate: z.string(),
+  isActive: z.string().default("yes"),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export const insertEquipmentSchema = equipmentSchema.omit({ id: true, createdAt: true, updatedAt: true });
+
+export type Equipment = z.infer<typeof equipmentSchema>;
+export type InsertEquipment = z.infer<typeof insertEquipmentSchema>;

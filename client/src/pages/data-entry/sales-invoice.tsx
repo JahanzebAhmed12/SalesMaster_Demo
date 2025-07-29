@@ -1237,6 +1237,7 @@ const SalesInvoice = () => {
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
+                <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Cancel Ticket</Button>
               </div>
             </div>
           </div>
@@ -1272,7 +1273,6 @@ const SalesInvoice = () => {
               <Button variant="outline" size="sm">Excel</Button>
               <Button variant="outline" size="sm" onClick={handleShowOutstanding}>Cust_Outstanding</Button>
               <Button variant="outline" size="sm" onClick={handleCustomerHistory}>Customer History</Button>
-              <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Cancel Ticket</Button>
             </div>
             {/* Removed More, Payment details, Options, and Search bar as requested */}
           </div>

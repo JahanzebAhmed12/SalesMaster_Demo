@@ -33,7 +33,7 @@ export default function DailyBookPurchase() {
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   const [filters, setFilters] = useState({
     fromDate: format(new Date(), "yyyy-MM-dd"),
     toDate: format(new Date(), "yyyy-MM-dd"),
@@ -242,7 +242,7 @@ export default function DailyBookPurchase() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
+
               <div>
                 <Label>To Date:</Label>
                 <Popover>
@@ -268,9 +268,9 @@ export default function DailyBookPurchase() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
+
               <div>
-                <Button 
+                <Button
                   className="bg-blue-500 hover:bg-blue-600 w-full"
                   onClick={handleSearch}
                   disabled={isLoading}
@@ -287,7 +287,7 @@ export default function DailyBookPurchase() {
                   Full View
                 </Button>
               </div>
-              
+
               <div></div>
             </div>
           </CardContent>
@@ -361,13 +361,21 @@ export default function DailyBookPurchase() {
                               <span>{item.supplier}</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-center">{item.invNo}</TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="link"
+                              className="p-0 text-blue-600 underline"
+                              onClick={() => navigate(`/data-entry/purchase-invoice?purchaseId=${item.invNo}&edit=true`)}
+                            >
+                              {item.invNo}
+                            </Button>
+                          </TableCell>
                           <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
                         </TableRow>
                       );
                     })
                   )}
-                  
+
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
