@@ -790,7 +790,6 @@ export const insertEmployeeSchema = employeeSchema.omit({
 });
 
 export type Employee = z.infer<typeof employeeSchema>;
-export interface Employee extends z.infer<typeof employeeSchema> {}
 
 export const employeeWithAttendanceSchema = z.object({
   id: z.number(),
@@ -832,7 +831,8 @@ export const holidayRequestSchema = z.object({
 export const insertHolidayRequestSchema = holidayRequestSchema.omit({ id: true, createdAt: true, updatedAt: true });
 
 export type HolidayRequest = z.infer<typeof holidayRequestSchema>;
-export type InsertHolidayRequest = z.infer<typeof insertHolidayRequestSchema>;// 
+export type InsertHolidayRequest = z.infer<typeof insertHolidayRequestSchema>;
+
 // Equipment Schema
 export const equipmentSchema = z.object({
   id: z.number().optional(),

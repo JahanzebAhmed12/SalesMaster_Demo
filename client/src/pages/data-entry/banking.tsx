@@ -106,8 +106,8 @@ export default function Banking() {
   });
 
   const handleAddEntry = () => {
-    if (!newEntry.remarks || totalAmount <= 0) {
-      return toast({ title: "Enter remarks and a valid amount" });
+    if (totalAmount <= 0) {
+      return toast({ title: "Enter a valid amount" });
     }
     if ((newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && newEntry.bags.every(bag => !bag.number.trim() || !bag.payingNumber.trim() || bag.amount <= 0)) {
       return toast({ title: "At least one bag with number, paying number and amount are required for CASH/COINS payments" });

@@ -115,7 +115,11 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
         Print
       </button>
       <button
-        onClick={() => window.close()}
+        onClick={() => {
+          if (window.confirm("Are you sure you want to close this invoice? Any unsaved changes will be lost.")) {
+            window.close();
+          }
+        }}
         style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
         className="no-print"
       >

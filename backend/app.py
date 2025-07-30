@@ -8430,23 +8430,75 @@ def daily_summary_pdf():
         
         customer_payments_data = list(payment_groups.values())
         
-        # 3. Banking Records
+        # 3. Supplier Payments
+        supplier_payments = db.session.query(
+            Supplier.supplier_name,
+            SupplierPayment.id,
+            SupplierPayment.amount,
+            SupplierPayment.payment_mode,
+            SupplierPayment.payment_date
+        ).join(
+            Supplier, SupplierPayment.supplier_id == Supplier.id
+        ).filter(
+            SupplierPayment.payment_date == report_date
+        ).order_by(SupplierPayment.id).all()
+        
+        supplier_payments_data = []
+        for payment in supplier_payments:
+            supplier_payments_data.append({
+                'supplier_name': payment.supplier_name,
+                'receipt_no': f"SUP{payment.id:06d}",
+                'amount': float(payment.amount),
+                'payment_mode': payment.payment_mode
+            })
+        
+        # 4. Banking Records
         banking_records = db.session.query(BankingEntry).filter(
             BankingEntry.date == report_date
         ).order_by(BankingEntry.id).all()
         
+        banking_data = []
+        for record in banking_records:
+            bag_details = []
+            for bag in record.bag_numbers:
+                bag_details.append({
+                    'bag_number': bag.bag_number,
+                    'paying_number': bag.paying_number,
+                    'amount': float(bag.amount) if bag.amount else 0
+                })
+            
+            banking_data.append({
+                'date': record.date.isoformat(),
+                'remarks': record.remarks,
+                'payment_type': record.payment_type,
+                'amount': float(record.amount),
+                'paying_number': record.paying_number,
+                'cheque_number': record.cheque_number,
+                'bag_details': bag_details
+            })
+        
         banking_total = sum(float(r.amount) for r in banking_records)
+        
+        # Format totals to avoid f-string decimal literal issues
+        cash_total_str = f"{cash_total:.2f}"
+        card_total_str = f"{card_total:.2f}"
+        account_total_str = f"{account_total:.2f}"
+        banking_total_str = f"{banking_total:.2f}"
         
         # Generate HTML with actual data
         sales_rows = ""
         for sale in sales_summary:
+            cash_sales_str = f"{sale['cash_sales']:.2f}" if sale['cash_sales'] > 0 else '-'
+            card_paid_str = f"{sale['card_paid']:.2f}" if sale['card_paid'] > 0 else '-'
+            account_sales_str = f"{sale['account_sales']:.2f}" if sale['account_sales'] > 0 else '-'
+            
             sales_rows += f"""
                 <tr>
                     <td>{sale['customer_name']}</td>
                     <td>{sale['ticket_no']}</td>
-                    <td class="text-right">{'%.2f' % sale['cash_sales'] if sale['cash_sales'] > 0 else '-'}</td>
-                    <td class="text-right">{'%.2f' % sale['card_paid'] if sale['card_paid'] > 0 else '-'}</td>
-                    <td class="text-right">{'%.2f' % sale['account_sales'] if sale['account_sales'] > 0 else '-'}</td>
+                    <td class="text-right">{cash_sales_str}</td>
+                    <td class="text-right">{card_paid_str}</td>
+                    <td class="text-right">{account_sales_str}</td>
                     <td class="text-right">-</td>
                     <td class="text-right">-</td>
                     <td class="text-right">-</td>
@@ -8455,15 +8507,62 @@ def daily_summary_pdf():
         
         customer_payment_rows = ""
         for payment in customer_payments_data:
+            cash_amount_str = f"{payment['cash_amount']:.2f}" if payment['cash_amount'] > 0 else '-'
+            card_amount_str = f"{payment['card_amount']:.2f}" if payment['card_amount'] > 0 else '-'
+            total_amount_str = f"{payment['total_amount']:.2f}"
+            
             customer_payment_rows += f"""
                 <tr>
                     <td>{payment['customer_name']}</td>
                     <td>{payment['invoice_no']}</td>
-                    <td class="text-right">{'%.2f' % payment['cash_amount'] if payment['cash_amount'] > 0 else '-'}</td>
-                    <td class="text-right">{'%.2f' % payment['card_amount'] if payment['card_amount'] > 0 else '-'}</td>
-                    <td class="text-right">{payment['total_amount']:.2f}</td>
+                    <td class="text-right">{cash_amount_str}</td>
+                    <td class="text-right">{card_amount_str}</td>
+                    <td class="text-right">{total_amount_str}</td>
                 </tr>
             """
+        
+        # Generate supplier payment rows
+        supplier_payment_rows = ""
+        for payment in supplier_payments_data:
+            amount_str = f"{payment['amount']:.2f}"
+            
+            supplier_payment_rows += f"""
+                <tr>
+                    <td>{payment['supplier_name']}</td>
+                    <td>{payment['receipt_no']}</td>
+                    <td class="text-right">{amount_str}</td>
+                    <td class="capitalize">{payment['payment_mode']}</td>
+                </tr>
+            """
+        
+        # Generate banking record rows
+        banking_rows = ""
+        for record in banking_data:
+            bag_details_str = ""
+            if record['bag_details']:
+                for bag in record['bag_details']:
+                    bag_amount_str = f"{bag['amount']:.2f}"
+                    bag_details_str += f"Bag: {bag['bag_number']} | Pay: {bag['paying_number']} | {bag_amount_str}<br>"
+            else:
+                if record['paying_number']:
+                    bag_details_str += f"Pay: {record['paying_number']}"
+                if record['cheque_number']:
+                    bag_details_str += f" | Cheque: {record['cheque_number']}"
+            
+            record_amount_str = f"{record['amount']:.2f}"
+            record_date_str = datetime.strptime(record['date'], '%Y-%m-%d').strftime('%d/%m/%Y')
+            
+            banking_rows += f"""
+                <tr>
+                    <td>{record_date_str}</td>
+                    <td>{record['remarks'] or ''}</td>
+                    <td class="capitalize">{record['payment_type']}</td>
+                    <td class="text-right">{record_amount_str}</td>
+                    <td>{bag_details_str}</td>
+                </tr>
+            """
+        
+
         
         html_content = f"""
         <!DOCTYPE html>
@@ -8473,13 +8572,14 @@ def daily_summary_pdf():
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }}
                 table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
-                th, td {{ border: 1px solid #000; padding: 4px; text-align: left; }}
+                th, td {{ border: 1px solid #000; padding: 8px; text-align: left; }}
                 th {{ background-color: #f2f2f2; font-weight: bold; }}
                 .text-right {{ text-align: right; }}
                 .text-center {{ text-align: center; }}
                 h1, h2 {{ color: #333; margin-bottom: 10px; }}
                 h3 {{ color: #333; margin-top: 20px; margin-bottom: 10px; }}
                 .totals-row {{ background-color: #f9f9f9; font-weight: bold; }}
+                .capitalize {{ text-transform: capitalize; }}
                 @media print {{
                     body {{ margin: 0; }}
                     .no-print {{ display: none; }}
@@ -8508,9 +8608,9 @@ def daily_summary_pdf():
                     {sales_rows}
                     <tr class="totals-row">
                         <td colspan="2">TOTALS</td>
-                        <td class="text-right">{cash_total:.2f}</td>
-                        <td class="text-right">{card_total:.2f}</td>
-                        <td class="text-right">{account_total:.2f}</td>
+                        <td class="text-right">{cash_total_str}</td>
+                        <td class="text-right">{card_total_str}</td>
+                        <td class="text-right">{account_total_str}</td>
                         <td class="text-right">-</td>
                         <td class="text-right">-</td>
                         <td class="text-right">-</td>
@@ -8522,15 +8622,15 @@ def daily_summary_pdf():
                 <h4 style="margin-bottom: 10px;">Summary Totals:</h4>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <span><strong>Total Cash Sales:</strong></span>
-                    <span><strong>{cash_total:.2f}</strong></span>
+                    <span><strong>{cash_total_str}</strong></span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <span><strong>Total Card Sales:</strong></span>
-                    <span><strong>{card_total:.2f}</strong></span>
+                    <span><strong>{card_total_str}</strong></span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <span><strong>Total Banking:</strong></span>
-                    <span><strong>{banking_total:.2f}</strong></span>
+                    <span><strong>{banking_total_str}</strong></span>
                 </div>
             </div>
             
@@ -8547,6 +8647,53 @@ def daily_summary_pdf():
                 </thead>
                 <tbody>
                     {customer_payment_rows if customer_payment_rows else '<tr><td colspan="5" class="text-center">No customer payments found</td></tr>'}
+                    {f'''<tr class="totals-row">
+                        <td colspan="2">TOTAL</td>
+                        <td class="text-right">{sum(p["cash_amount"] for p in customer_payments_data):.2f}</td>
+                        <td class="text-right">{sum(p["card_amount"] for p in customer_payments_data):.2f}</td>
+                        <td class="text-right">{sum(p["total_amount"] for p in customer_payments_data):.2f}</td>
+                    </tr>''' if customer_payments_data else ''}
+                </tbody>
+            </table>
+            
+            <h3>Supplier Payments</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Supplier Name</th>
+                        <th>Receipt No</th>
+                        <th>Amount</th>
+                        <th>Payment Mode</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {supplier_payment_rows if supplier_payment_rows else '<tr><td colspan="4" class="text-center">No supplier payments found</td></tr>'}
+                    {f'''<tr class="totals-row">
+                        <td colspan="2">TOTAL</td>
+                        <td class="text-right">{sum(p["amount"] for p in supplier_payments_data):.2f}</td>
+                        <td></td>
+                    </tr>''' if supplier_payments_data else ''}
+                </tbody>
+            </table>
+            
+            <h3>Banking Records</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Remarks</th>
+                        <th>Payment Type</th>
+                        <th>Amount</th>
+                        <th>Bag Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {banking_rows if banking_rows else '<tr><td colspan="5" class="text-center">No banking records found</td></tr>'}
+                    {f'''<tr class="totals-row">
+                        <td colspan="3">TOTAL</td>
+                        <td class="text-right">{banking_total_str}</td>
+                        <td></td>
+                    </tr>''' if banking_data else ''}
                 </tbody>
             </table>
             
@@ -8557,8 +8704,7 @@ def daily_summary_pdf():
             </script>
         </body>
         </html>
-        """
-        
+    """    
         response = make_response(html_content)
         response.headers['Content-Type'] = 'text/html'
         response.headers['Content-Disposition'] = f'inline; filename=daily-summary-{date_str}.html'
@@ -8938,7 +9084,6 @@ def all_customer_history():
 @app.route('/api/reports/customer-currencies', methods=['GET'])
 @jwt_required()
 def get_customer_currencies():
-    """Get all unique currencies used by customers"""
     currencies = db.session.query(Customer.customer_currency).distinct().all()
     currency_list = [currency[0] for currency in currencies if currency[0]]
     return jsonify(currency_list)
@@ -9285,7 +9430,6 @@ def supplier_aging_report():
 
 @app.route('/api/test/mail', methods=['POST'])
 def test_mail():
-    """Test endpoint to check if mail functionality works"""
     try:
         data = request.get_json()
         test_email = data.get('email', 'test@example.com')
@@ -9321,7 +9465,6 @@ def test_mail():
 @app.route('/api/send/customer-statement', methods=['POST'])
 @jwt_required()
 def send_customer_statement_email_api():
-    """Send customer statement email with PDF attachment"""
     try:
         data = request.get_json()
         customer_id = data.get('customerId')
@@ -9437,7 +9580,6 @@ def send_customer_statement_email_api():
 @app.route('/api/send/customer-history', methods=['POST'])
 @jwt_required()
 def send_customer_history_email_api():
-    """Send customer history email with PDF attachment"""
     try:
         data = request.get_json()
         customer_id = data.get('customerId')
@@ -9551,7 +9693,6 @@ def send_customer_history_email_api():
 @app.route('/api/send/supplier-statement', methods=['POST'])
 @jwt_required()
 def send_supplier_statement_email_api():
-    """Send supplier statement email with PDF attachment"""
     try:
         data = request.get_json()
         supplier_id = data.get('supplierId')
@@ -9899,7 +10040,6 @@ def update_email_config():
 @app.route('/api/send-email', methods=['POST'])
 @jwt_required()
 def send_email_with_attachment():
-    """Send email with PDF attachment"""
     try:
         data = request.get_json()
         
@@ -10059,7 +10199,6 @@ def send_closing_stock_pdf():
 @app.route('/api/whatsapp/status', methods=['GET'])
 @jwt_required()
 def whatsapp_status():
-    """Debug endpoint to check WhatsApp API configuration"""
     status = {
         'meta_token_set': bool(META_TOKEN),
         'phone_number_id_set': bool(PHONE_NUMBER_ID),
@@ -10204,7 +10343,6 @@ def supplier_purchase_history():
 @app.route('/api/holiday-requests', methods=['GET'])
 @jwt_required()
 def get_holiday_requests():
-    """Get all holiday requests"""
     try:
         requests = HolidayRequest.query.order_by(HolidayRequest.created_at.desc()).all()
         return jsonify([request.to_dict() for request in requests])
@@ -10214,7 +10352,6 @@ def get_holiday_requests():
 @app.route('/api/holiday-requests', methods=['POST'])
 @jwt_required()
 def create_holiday_request():
-    """Create a new holiday request"""
     try:
         data = request.get_json()
         holiday_data = HolidayRequestSchema(**data)
@@ -10255,7 +10392,6 @@ def create_holiday_request():
 @app.route('/api/holiday-requests/<int:id>', methods=['GET'])
 @jwt_required()
 def get_holiday_request(id):
-    """Get a specific holiday request"""
     try:
         holiday_request = HolidayRequest.query.get_or_404(id)
         return jsonify(holiday_request.to_dict())
@@ -10265,7 +10401,6 @@ def get_holiday_request(id):
 @app.route('/api/holiday-requests/<int:id>', methods=['PUT'])
 @jwt_required()
 def update_holiday_request(id):
-    """Update a holiday request"""
     try:
         data = request.get_json()
         holiday_data = HolidayRequestSchema(**data)
@@ -10297,7 +10432,6 @@ def update_holiday_request(id):
 @app.route('/api/holiday-requests/<int:id>', methods=['DELETE'])
 @jwt_required()
 def delete_holiday_request(id):
-    """Delete a holiday request"""
     try:
         holiday_request = HolidayRequest.query.get_or_404(id)
         db.session.delete(holiday_request)
