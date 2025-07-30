@@ -57,7 +57,6 @@ const menuSections: MenuSection[] = [
     title: "Daily Report",
     icon: BarChart3,
     items: [
-      { title: "Daily Summary", path: "/daily-report/daily-summary" },
       { title: "Daily Book Sales", path: "/daily-report/daily-book-sales" },
       { title: "Daily Book Purchase", path: "/daily-report/daily-book-purchase" },
       { title: "Stock Check", path: "/daily-report/stock-check" },
@@ -248,6 +247,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             }`}>
               <Settings size={20} />
               <span className="ml-3 font-medium">Timings Setup</span>
+            </a>
+          </Link>
+
+          {/* Daily Summary */}
+          <Link href="/daily-report/daily-summary">
+            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${
+              location === '/daily-report/daily-summary' ? 'active' : ''
+            }`}>
+              <BarChart3 size={20} />
+              <span className="ml-3 font-medium">Daily Summary</span>
             </a>
           </Link>
         </nav>

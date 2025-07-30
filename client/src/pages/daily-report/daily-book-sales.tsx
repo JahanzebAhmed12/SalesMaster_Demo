@@ -132,16 +132,71 @@ export default function DailyBookSales() {
     // eslint-disable-next-line
   }, []);
 
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   // Export handlers
   const handlePrint = () => {
-    if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Daily Book Sales</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
+      
+      // Add company details header following the specific structure
+      printWindow.document.write('<div class="company-details">');
+      if (companyDetails) {
+        // Company name
+        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+        
+        // Email
+        if (companyDetails.email) {
+          printWindow.document.write(`<p>${companyDetails.email}</p>`);
+        }
+        
+        // Bank details
+        if (companyDetails.bankDetails) {
+          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
+        }
+        
+        // VAT and Registration info
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add report title
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h3>DAILY BOOK SALES</h3>');
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      const headers = ['Date', '# Boxes', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'];
+      headers.forEach(h => {
+        printWindow.document.write(`<th>${h}</th>`);
+      });
+      printWindow.document.write('</tr></thead><tbody>');
+      salesData.forEach(sale => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${format(new Date(sale.date), "yyyy-MM-dd")}</td>`);
+        printWindow.document.write(`<td>${sale.boxes}</td>`);
+        printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
+        printWindow.document.write(`<td>${sale.customerName}</td>`);
+        printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(sale.bank ?? 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(sale.credit ?? 0).toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -171,56 +226,83 @@ export default function DailyBookSales() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
+    let yPosition = 20;
+    
+    // Add company details following the specific structure
+    if (companyDetails) {
+      // Company name
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
+    }
+    
+    // Add report title
     doc.setFontSize(14);
-    doc.text('Daily Book Sales', 14, 16);
+    doc.text('DAILY BOOK SALES', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
     doc.setFontSize(10);
-    // Table first
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add table
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer', 'Credit'
+        'Date', '# Boxes', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'
       ]],
       body: salesData.map((item: SalesEntry) => [
-        item.slNo,
-        item.date,
+        format(new Date(item.date), "yyyy-MM-dd"),
         item.boxes,
         item.invoiceNo,
         item.customerName,
-        item.amount,
-        item.cash,
-        item.bank || 0,
-        item.credit || 0
+        `£${Number(item.amount ?? 0).toFixed(2)}`,
+        `£${Number(item.cash ?? 0).toFixed(2)}`,
+        `£${Number(item.bank ?? 0).toFixed(2)}`,
+        `£${Number(item.credit ?? 0).toFixed(2)}`
       ]),
-      startY: 22,
+      startY: yPosition,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 15 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 35 },
+        4: { cellWidth: 20 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 20 },
+        7: { cellWidth: 20 }
+      }
     });
-    // Add summary at the bottom
-    const finalY = (doc as any).lastAutoTable.finalY || 22;
-    doc.setDrawColor(200);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(12, finalY + 6, 185, 18, 'F');
-    doc.setTextColor(40);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Date Range:`, 16, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to ${toDate ? format(toDate, 'yyyy-MM-dd') : '-'}`, 46, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Boxes:`, 90, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${totalBoxes}`, 115, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total VAT:`, 140, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`£${totalVAT.toFixed(2)}`, 165, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Amount:`, 16, finalY + 22);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`£${totalAmount.toFixed(2)}`, 46, finalY + 22);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Cash:`, 90, finalY + 22);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`£${totalCash.toFixed(2)}`, 115, finalY + 22);
-    doc.setTextColor(0);
-    doc.setFont('helvetica', 'normal');
-    doc.save('daily-book-sales.pdf');
+    
+    doc.save(`daily-book-sales-${fromDate ? format(fromDate, "yyyyMMdd") : 'all'}-${toDate ? format(toDate, "yyyyMMdd") : 'all'}.pdf`);
   };
 
   const handleCopy = () => {

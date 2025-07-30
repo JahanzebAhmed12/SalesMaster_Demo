@@ -60,7 +60,21 @@ export default function ProductPurchaseFullView() {
       printWindow.document.write('<html><head><title>Print Table</title>');
       printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}@media print{body{margin:0;}}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write('<div style="font-size:20px;font-weight:bold;text-align:center;margin-bottom:8px;">Product Purchase Full View</div>');
+      
+      // Company details header
+      if (companyDetails) {
+        printWindow.document.write(`<div style="text-align:center;margin-bottom:20px;">`);
+        printWindow.document.write(`<div style="font-size:20px;font-weight:bold;margin-bottom:4px;">${companyDetails.name || 'Company Name'}</div>`);
+        if (companyDetails.address) printWindow.document.write(`<div style="font-size:12px;">${companyDetails.address}</div>`);
+        if (companyDetails.phone) printWindow.document.write(`<div style="font-size:12px;">Phone: ${companyDetails.phone}</div>`);
+        if (companyDetails.email) printWindow.document.write(`<div style="font-size:12px;">Email: ${companyDetails.email}</div>`);
+        if (companyDetails.bankDetails) printWindow.document.write(`<div style="font-size:12px;">Bank: ${companyDetails.bankDetails}</div>`);
+        if (companyDetails.vatNumber) printWindow.document.write(`<div style="font-size:12px;">VAT: ${companyDetails.vatNumber}</div>`);
+        printWindow.document.write(`</div>`);
+      }
+      
+      printWindow.document.write(`<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Product Purchase Full View</div>`);
+      printWindow.document.write(`<div style="font-size:12px;text-align:center;margin-bottom:16px;">Period: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}</div>`);
       printWindow.document.write(printContents);
       printWindow.document.write('</body></html>');
       printWindow.document.close();
@@ -71,103 +85,87 @@ export default function ProductPurchaseFullView() {
 
   const generatePDFBlob = () => {
     const doc = new jsPDF();
+    let yPosition = 15;
     
-    // Add company header if available
+    // Company details header
     if (companyDetails) {
       doc.setFontSize(16);
-      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.text(companyDetails.name || 'Company Name', 14, yPosition);
+      yPosition += 7;
+      
       doc.setFontSize(10);
-      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
-      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
-      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+      if (companyDetails.address) {
+        doc.text(companyDetails.address, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.phone) {
+        doc.text(`Phone: ${companyDetails.phone}`, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.email) {
+        doc.text(`Email: ${companyDetails.email}`, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.bankDetails) {
+        doc.text(`Bank: ${companyDetails.bankDetails}`, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.vatNumber) {
+        doc.text(`VAT: ${companyDetails.vatNumber}`, 14, yPosition);
+        yPosition += 5;
+      }
+      yPosition += 5;
     }
     
-    // Add title
+    // Report title and period
     doc.setFontSize(14);
-    doc.text('Product Purchase Full View', 14, companyDetails ? 42 : 15);
+    doc.text('Product Purchase Full View', 14, yPosition);
+    yPosition += 7;
     doc.setFontSize(10);
-    doc.text(`Date Range: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}`, 14, companyDetails ? 48 : 21);
+    doc.text(`Period: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}`, 14, yPosition);
+    yPosition += 10;
     
-    // Process data to group by purchase invoice and add totals
+    // Process data for grouped display
     const processedData: any[] = [];
     const displayData = Array.isArray(data) ? data : [];
     
     displayData.forEach((row, index) => {
       if (row.isHeader) {
-        // Add purchase header row
         processedData.push([
-          row.date,
-          row.supplier,
-          row.invNo,
-          row.awb,
-          '', // Empty product name for header
-          '', // Empty quantity for header
-          '', // Empty unit price for header
-          '', // Empty selling price for header
-          ''  // Empty total for header
+          row.date, row.supplier, row.invNo, row.awb,
+          '', '', '', '', ''
         ]);
       } else if (row.isTotal) {
-        // Add purchase total row
         processedData.push([
-          '', // Empty date
-          '', // Empty supplier
-          '', // Empty invoice no
-          '', // Empty AWB
-          row.product, // Product summary or "Total" label
-          row.quantity.toString(), // Total quantity
-          '', // Empty unit price
-          '', // Empty selling price
-          `£${Number(row.total).toFixed(2)}` // Total amount
+          '', '', '', '', row.product, row.quantity.toString(),
+          '', '', Number(row.total).toFixed(2)
         ]);
-        
-        // Add empty row for spacing between purchases
         if (index < displayData.length - 1) {
           processedData.push(['', '', '', '', '', '', '', '', '']);
         }
       } else {
-        // Add product row (indented by leaving date, supplier empty)
         processedData.push([
-          '', // Empty date (already shown in header)
-          '', // Empty supplier (already shown in header)
-          row.invNo,
-          row.awb,
-          row.product,
-          row.quantity.toString(),
-          `£${Number(row.unitPrice).toFixed(2)}`,
-          `£${Number(row.sellingPrice).toFixed(2)}`,
-          `£${Number(row.total).toFixed(2)}`
+          '', '', row.invNo, row.awb, row.product, row.quantity.toString(),
+          Number(row.unitPrice).toFixed(2), Number(row.sellingPrice).toFixed(2), Number(row.total).toFixed(2)
         ]);
       }
     });
     
-    // Add table with custom styling
     autoTable(doc, {
       head: [['Date', 'Supplier', 'Inv.No', 'AWB', 'Product', 'Quantity', 'Unit Price', 'Selling Price', 'Total']],
       body: processedData,
-      startY: companyDetails ? 52 : 25,
-      styles: {
-        fontSize: 8,
-        cellPadding: 2,
-      },
-      headStyles: {
-        fillColor: [66, 139, 202],
-        textColor: 255,
-        fontStyle: 'bold',
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
+      startY: yPosition,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
       didParseCell: function(data) {
-        // Style purchase header rows
         if (data.row.index < processedData.length) {
           const rowData = processedData[data.row.index];
-          // If this is a purchase header (has date and supplier but no product)
           if (rowData[0] && rowData[1] && !rowData[4]) {
             data.cell.styles.fillColor = [220, 220, 220];
             data.cell.styles.fontStyle = 'bold';
           }
-          // If this is a total row (has product summary and total amount)
-          if (rowData[4] && rowData[8] && rowData[8].startsWith('£') && !rowData[0] && !rowData[1]) {
+          if (rowData[4] && rowData[8] && !rowData[0] && !rowData[1]) {
             data.cell.styles.fillColor = [200, 200, 200];
             data.cell.styles.fontStyle = 'bold';
           }
@@ -266,25 +264,94 @@ export default function ProductPurchaseFullView() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text('Product Purchase Full View', 14, 16);
-    autoTable(doc, {
-      head: [[
-        'Date', 'Supplier', 'Inv.No', 'AWB', 'Product', 'Quantity', 'Unit Price', 'Selling Price', 'Total'
-      ]],
-      body: (Array.isArray(data) ? data : []).map((row: any) => [
-        row.date,
-        row.supplier,
-        row.invNo,
-        row.awb,
-        row.product,
-        row.quantity,
-        Number(row.unitPrice).toFixed(2),
-        Number(row.sellingPrice).toFixed(2),
-        Number(row.total).toFixed(2)
-      ]),
-      startY: 22,
+    let yPosition = 15;
+    
+    // Company details header
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.name || 'Company Name', 14, yPosition);
+      yPosition += 7;
+      
+      doc.setFontSize(10);
+      if (companyDetails.address) {
+        doc.text(companyDetails.address, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.phone) {
+        doc.text(`Phone: ${companyDetails.phone}`, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.email) {
+        doc.text(`Email: ${companyDetails.email}`, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.bankDetails) {
+        doc.text(`Bank: ${companyDetails.bankDetails}`, 14, yPosition);
+        yPosition += 5;
+      }
+      if (companyDetails.vatNumber) {
+        doc.text(`VAT: ${companyDetails.vatNumber}`, 14, yPosition);
+        yPosition += 5;
+      }
+      yPosition += 5;
+    }
+    
+    // Report title and period
+    doc.setFontSize(14);
+    doc.text('Product Purchase Full View', 14, yPosition);
+    yPosition += 7;
+    doc.setFontSize(10);
+    doc.text(`Period: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}`, 14, yPosition);
+    yPosition += 10;
+    
+    // Process data for grouped display
+    const processedData: any[] = [];
+    const displayData = Array.isArray(data) ? data : [];
+    
+    displayData.forEach((row, index) => {
+      if (row.isHeader) {
+        processedData.push([
+          row.date, row.supplier, row.invNo, row.awb,
+          '', '', '', '', ''
+        ]);
+      } else if (row.isTotal) {
+        processedData.push([
+          '', '', '', '', row.product, row.quantity.toString(),
+          '', '', Number(row.total).toFixed(2)
+        ]);
+        if (index < displayData.length - 1) {
+          processedData.push(['', '', '', '', '', '', '', '', '']);
+        }
+      } else {
+        processedData.push([
+          '', '', row.invNo, row.awb, row.product, row.quantity.toString(),
+          Number(row.unitPrice).toFixed(2), Number(row.sellingPrice).toFixed(2), Number(row.total).toFixed(2)
+        ]);
+      }
     });
+    
+    autoTable(doc, {
+      head: [['Date', 'Supplier', 'Inv.No', 'AWB', 'Product', 'Quantity', 'Unit Price', 'Selling Price', 'Total']],
+      body: processedData,
+      startY: yPosition,
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
+      didParseCell: function(data) {
+        if (data.row.index < processedData.length) {
+          const rowData = processedData[data.row.index];
+          if (rowData[0] && rowData[1] && !rowData[4]) {
+            data.cell.styles.fillColor = [220, 220, 220];
+            data.cell.styles.fontStyle = 'bold';
+          }
+          if (rowData[4] && rowData[8] && !rowData[0] && !rowData[1]) {
+            data.cell.styles.fillColor = [200, 200, 200];
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      }
+    });
+    
     doc.save('product-purchase-full-view.pdf');
   };
 

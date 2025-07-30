@@ -109,21 +109,47 @@ export default function CustomerReturn() {
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Customer Returns</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      // Add header
+      
+      // Add company details header
+      printWindow.document.write('<div class="company-details">');
+      if (companyDetails) {
+        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+        if (companyDetails.address1) printWindow.document.write(`<p>${companyDetails.address1}</p>`);
+        if (companyDetails.address2) printWindow.document.write(`<p>${companyDetails.address2}</p>`);
+        
+        let contactInfo = [];
+        if (companyDetails.telephone) contactInfo.push(`Tel: ${companyDetails.telephone}`);
+        if (companyDetails.mobile) contactInfo.push(`Mobile: ${companyDetails.mobile}`);
+        if (companyDetails.fax) contactInfo.push(`Fax: ${companyDetails.fax}`);
+        if (contactInfo.length > 0) printWindow.document.write(`<p>${contactInfo.join(' | ')}</p>`);
+        
+        if (companyDetails.email) printWindow.document.write(`<p>Email: ${companyDetails.email}</p>`);
+        if (companyDetails.website) printWindow.document.write(`<p>Website: ${companyDetails.website}</p>`);
+        
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (companyDetails.einlNumber) regInfo.push(`EINL: ${companyDetails.einlNumber}`);
+        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+        
+        if (companyDetails.bankDetails) printWindow.document.write(`<p><strong>Bank Details:</strong> ${companyDetails.bankDetails}</p>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add report title
       printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>CUSTOMER RETURNS REPORT</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
+      printWindow.document.write('<h3>CUSTOMER RETURNS</h3>');
       printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
       printWindow.document.write('</div>');
+      
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
       printWindow.document.write('<th>Sl.No</th>');
       printWindow.document.write('<th>Return Date</th>');
       printWindow.document.write('<th>Customer Name</th>');
-      printWindow.document.write('<th>Invoice No</th>');
       printWindow.document.write('<th>Product Name</th>');
       printWindow.document.write('<th>Quantity</th>');
       printWindow.document.write('<th>Return Reason</th>');
@@ -135,7 +161,6 @@ export default function CustomerReturn() {
         printWindow.document.write(`<td>${item.slNo}</td>`);
         printWindow.document.write(`<td>${format(new Date(item.returnDate), "dd/MM/yyyy")}</td>`);
         printWindow.document.write(`<td>${item.customerName}</td>`);
-        printWindow.document.write(`<td>${item.invoiceNo}</td>`);
         printWindow.document.write(`<td>${item.productName}</td>`);
         printWindow.document.write(`<td>${item.quantity}</td>`);
         printWindow.document.write(`<td>${item.returnReason}</td>`);
@@ -396,7 +421,6 @@ export default function CustomerReturn() {
                     <TableHead>Sl.No</TableHead>
                     <TableHead>Return Date</TableHead>
                     <TableHead>Customer Name</TableHead>
-                    <TableHead>Invoice No</TableHead>
                     <TableHead>Product Name</TableHead>
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead>Return Reason</TableHead>
@@ -414,7 +438,6 @@ export default function CustomerReturn() {
                       <TableCell>{returnItem.slNo}</TableCell>
                       <TableCell>{format(new Date(returnItem.returnDate), "dd/MM/yyyy")}</TableCell>
                       <TableCell>{returnItem.customerName}</TableCell>
-                      <TableCell>{returnItem.invoiceNo}</TableCell>
                       <TableCell>{returnItem.productName}</TableCell>
                       <TableCell className="text-center">{returnItem.quantity}</TableCell>
                       <TableCell>{returnItem.returnReason}</TableCell>
@@ -435,7 +458,6 @@ export default function CustomerReturn() {
                   <TableRow className="border-t-2 border-gray-300 bg-purple-50">
                     <TableCell></TableCell>
                     <TableCell className="font-bold">TOTAL</TableCell>
-                    <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-center font-bold">{totals.totalQuantity}</TableCell>

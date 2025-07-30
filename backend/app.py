@@ -8430,6 +8430,13 @@ def daily_summary_pdf():
         
         customer_payments_data = list(payment_groups.values())
         
+        # 3. Banking Records
+        banking_records = db.session.query(BankingEntry).filter(
+            BankingEntry.date == report_date
+        ).order_by(BankingEntry.id).all()
+        
+        banking_total = sum(float(r.amount) for r in banking_records)
+        
         # Generate HTML with actual data
         sales_rows = ""
         for sale in sales_summary:
@@ -8437,9 +8444,9 @@ def daily_summary_pdf():
                 <tr>
                     <td>{sale['customer_name']}</td>
                     <td>{sale['ticket_no']}</td>
-                    <td class="text-right">{'£%.2f' % sale['cash_sales'] if sale['cash_sales'] > 0 else '-'}</td>
-                    <td class="text-right">{'£%.2f' % sale['card_paid'] if sale['card_paid'] > 0 else '-'}</td>
-                    <td class="text-right">{'£%.2f' % sale['account_sales'] if sale['account_sales'] > 0 else '-'}</td>
+                    <td class="text-right">{'%.2f' % sale['cash_sales'] if sale['cash_sales'] > 0 else '-'}</td>
+                    <td class="text-right">{'%.2f' % sale['card_paid'] if sale['card_paid'] > 0 else '-'}</td>
+                    <td class="text-right">{'%.2f' % sale['account_sales'] if sale['account_sales'] > 0 else '-'}</td>
                     <td class="text-right">-</td>
                     <td class="text-right">-</td>
                     <td class="text-right">-</td>
@@ -8452,9 +8459,9 @@ def daily_summary_pdf():
                 <tr>
                     <td>{payment['customer_name']}</td>
                     <td>{payment['invoice_no']}</td>
-                    <td class="text-right">{'£%.2f' % payment['cash_amount'] if payment['cash_amount'] > 0 else '-'}</td>
-                    <td class="text-right">{'£%.2f' % payment['card_amount'] if payment['card_amount'] > 0 else '-'}</td>
-                    <td class="text-right">£{payment['total_amount']:.2f}</td>
+                    <td class="text-right">{'%.2f' % payment['cash_amount'] if payment['cash_amount'] > 0 else '-'}</td>
+                    <td class="text-right">{'%.2f' % payment['card_amount'] if payment['card_amount'] > 0 else '-'}</td>
+                    <td class="text-right">{payment['total_amount']:.2f}</td>
                 </tr>
             """
         
@@ -8501,15 +8508,31 @@ def daily_summary_pdf():
                     {sales_rows}
                     <tr class="totals-row">
                         <td colspan="2">TOTALS</td>
-                        <td class="text-right">£{cash_total:.2f}</td>
-                        <td class="text-right">£{card_total:.2f}</td>
-                        <td class="text-right">£{account_total:.2f}</td>
+                        <td class="text-right">{cash_total:.2f}</td>
+                        <td class="text-right">{card_total:.2f}</td>
+                        <td class="text-right">{account_total:.2f}</td>
                         <td class="text-right">-</td>
                         <td class="text-right">-</td>
                         <td class="text-right">-</td>
                     </tr>
                 </tbody>
             </table>
+            
+            <div style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; background-color: #f9f9f9;">
+                <h4 style="margin-bottom: 10px;">Summary Totals:</h4>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Cash Sales:</strong></span>
+                    <span><strong>{cash_total:.2f}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Card Sales:</strong></span>
+                    <span><strong>{card_total:.2f}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Banking:</strong></span>
+                    <span><strong>{banking_total:.2f}</strong></span>
+                </div>
+            </div>
             
             <h3>Customer Payments</h3>
             <table>

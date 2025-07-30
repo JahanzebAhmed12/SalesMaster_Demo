@@ -262,34 +262,21 @@ export default function DailySummary() {
                     </TableBody>
                   </Table>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Total Balance Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Total Balance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-6">
-                  <div className="text-center p-4 bg-green-50 rounded-lg border">
-                    <h3 className="text-lg font-semibold text-green-800 mb-2">Cash Sales</h3>
-                    <p className="text-2xl font-bold text-green-600">{summaryData.totals.cash_sales.toFixed(2)}</p>
+                
+                {/* Simple Totals Display */}
+                <div className="mt-6 space-y-2 text-lg">
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Cash Sales:</span>
+                    <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
                   </div>
-                  <div className="text-center p-4 bg-blue-50 rounded-lg border">
-                    <h3 className="text-lg font-semibold text-blue-800 mb-2">Card Sales</h3>
-                    <p className="text-2xl font-bold text-blue-600">{summaryData.totals.card_sales.toFixed(2)}</p>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Card Sales:</span>
+                    <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
                   </div>
-                  <div className="text-center p-4 bg-purple-50 rounded-lg border">
-                    <h3 className="text-lg font-semibold text-purple-800 mb-2">Total Banking</h3>
-                    <p className="text-2xl font-bold text-purple-600">{summaryData.totals.banking_total.toFixed(2)}</p>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Banking:</span>
+                    <span className="font-bold">£{summaryData.totals.banking_total.toFixed(2)}</span>
                   </div>
-                </div>
-                <div className="mt-4 text-center p-4 bg-gray-100 rounded-lg border">
-                  <h3 className="text-lg font-semibold text-gray-800 mb-2">Grand Total</h3>
-                  <p className="text-3xl font-bold text-gray-700">
-                    {(summaryData.totals.cash_sales + summaryData.totals.card_sales + summaryData.totals.banking_total).toFixed(2)}
-                  </p>
                 </div>
               </CardContent>
             </Card>

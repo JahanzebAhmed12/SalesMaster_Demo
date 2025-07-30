@@ -116,14 +116,66 @@ export default function StockCheck() {
 
   // Export handlers
   const handlePrint = () => {
-    if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Stock Check</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
+      
+      // Add company details header following the specific structure
+      printWindow.document.write('<div class="company-details">');
+      if (companyDetails) {
+        // Company name
+        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+        
+        // Email
+        if (companyDetails.email) {
+          printWindow.document.write(`<p>${companyDetails.email}</p>`);
+        }
+        
+        // Bank details
+        if (companyDetails.bankDetails) {
+          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
+        }
+        
+        // VAT and Registration info
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add report title
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h3>STOCK CHECK</h3>');
+      printWindow.document.write(`<p>Period: ${format(osDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      const headers = ['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result'];
+      headers.forEach(h => {
+        printWindow.document.write(`<th>${h}</th>`);
+      });
+      printWindow.document.write('</tr></thead><tbody>');
+      filteredData.forEach(item => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.slNo}</td>`);
+        printWindow.document.write(`<td>${item.productDescription}</td>`);
+        printWindow.document.write(`<td>${item.os}</td>`);
+        printWindow.document.write(`<td>${item.ns}</td>`);
+        printWindow.document.write(`<td>${item.sales}</td>`);
+        printWindow.document.write(`<td>${item.crtn}</td>`);
+        printWindow.document.write(`<td>${item.dmps}</td>`);
+        printWindow.document.write(`<td>${item.srtn}</td>`);
+        printWindow.document.write(`<td>${item.stock}</td>`);
+        printWindow.document.write(`<td>${item.clStock}</td>`);
+        printWindow.document.write(`<td>${item.result}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -155,7 +207,51 @@ export default function StockCheck() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    doc.text('Stock Check', 14, 16);
+    let yPosition = 20;
+    
+    // Add company details following the specific structure
+    if (companyDetails) {
+      // Company name
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
+    }
+    
+    // Add report title
+    doc.setFontSize(14);
+    doc.text('STOCK CHECK', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
+    doc.setFontSize(10);
+    doc.text(`Period: ${format(osDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add table
     autoTable(doc, {
       head: [[
         'Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result'
@@ -173,41 +269,33 @@ export default function StockCheck() {
         item.clStock,
         item.result
       ]),
-      startY: 22,
+      startY: yPosition,
+      styles: {
+        fontSize: 7,
+        cellPadding: 1
+      },
+      columnStyles: {
+        0: { cellWidth: 12 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 12 },
+        3: { cellWidth: 12 },
+        4: { cellWidth: 12 },
+        5: { cellWidth: 12 },
+        6: { cellWidth: 12 },
+        7: { cellWidth: 12 },
+        8: { cellWidth: 12 },
+        9: { cellWidth: 12 },
+        10: { cellWidth: 12 }
+      }
     });
-    // Add summary at the bottom
-    const finalY = (doc as any).lastAutoTable.finalY || 22;
-    doc.setDrawColor(200);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(12, finalY + 6, 185, 16, 'F');
-    doc.setTextColor(40);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Date Range:`, 16, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 46, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Totals - O.S:`, 90, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${totals.os}`, 110, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`N.S:`, 120, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${totals.ns}`, 135, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Sales:`, 145, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${totals.sales}`, 160, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Stock:`, 16, finalY + 22);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${totals.stock}`, 36, finalY + 22);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Cl.Stock:`, 46, finalY + 22);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${totals.clStock}`, 70, finalY + 22);
-    doc.setTextColor(0);
-    doc.setFont('helvetica', 'normal');
-    doc.save('stock-check.pdf');
+    
+    // Add clean summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || yPosition;
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${totals.os} N.S: ${totals.ns} Sales: ${totals.sales}`, 14, finalY + 10);
+    doc.text(`Stock: ${totals.stock} Cl.Stock: ${totals.clStock}`, 14, finalY + 18);
+    
+    doc.save(`stock-check-${format(osDate, "yyyyMMdd")}-${format(toDate, "yyyyMMdd")}.pdf`);
   };
 
   const handleCopy = () => {
@@ -233,14 +321,49 @@ export default function StockCheck() {
   // Generate PDF blob for email
   const generatePDFBlob = () => {
     const doc = new jsPDF();
+    let yPosition = 20;
     
-    // Add title and company info
-    doc.setFontSize(16);
-    doc.text('TROPIFRUIT UK LTD', 14, 15);
-    doc.setFontSize(12);
-    doc.text('Stock Check Report', 14, 25);
+    // Add company details following the specific structure
+    if (companyDetails) {
+      // Company name
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
+    }
+    
+    // Add report title
+    doc.setFontSize(14);
+    doc.text('STOCK CHECK', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
     doc.setFontSize(10);
-    doc.text(`Date Range: ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 14, 32);
+    doc.text(`Period: ${format(osDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
     
     // Add table
     autoTable(doc, {
@@ -260,24 +383,31 @@ export default function StockCheck() {
         item.clStock,
         item.result
       ]),
-      startY: 38,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [240, 240, 240], textColor: 0 },
-      alternateRowStyles: { fillColor: [250, 250, 250] },
+      startY: yPosition,
+      styles: {
+        fontSize: 7,
+        cellPadding: 1
+      },
+      columnStyles: {
+        0: { cellWidth: 12 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 12 },
+        3: { cellWidth: 12 },
+        4: { cellWidth: 12 },
+        5: { cellWidth: 12 },
+        6: { cellWidth: 12 },
+        7: { cellWidth: 12 },
+        8: { cellWidth: 12 },
+        9: { cellWidth: 12 },
+        10: { cellWidth: 12 }
+      }
     });
     
-    // Add summary at the bottom
-    const finalY = (doc as any).lastAutoTable.finalY || 38;
-    doc.setDrawColor(200);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(12, finalY + 6, 185, 20, 'F');
-    doc.setTextColor(40);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Summary - Date Range: ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 16, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Totals - O.S: ${totals.os}, N.S: ${totals.ns}, Sales: ${totals.sales}, Stock: ${totals.stock}, Cl.Stock: ${totals.clStock}`, 16, finalY + 20);
-    doc.setTextColor(0);
-    doc.setFont('helvetica', 'normal');
+    // Add clean summary at the bottom (same format as regular PDF)
+    const finalY = (doc as any).lastAutoTable.finalY || yPosition;
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${totals.os} N.S: ${totals.ns} Sales: ${totals.sales}`, 14, finalY + 10);
+    doc.text(`Stock: ${totals.stock} Cl.Stock: ${totals.clStock}`, 14, finalY + 18);
     
     return doc.output('blob');
   };

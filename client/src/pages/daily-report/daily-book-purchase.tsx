@@ -104,16 +104,67 @@ export default function DailyBookPurchase() {
 
   const tableRef = useRef<HTMLDivElement>(null);
 
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   // Export handlers
   const handlePrint = () => {
-    if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Daily Book Purchase</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
+      
+      // Add company details header following the specific structure
+      printWindow.document.write('<div class="company-details">');
+      if (companyDetails) {
+        // Company name
+        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+        
+        // Email
+        if (companyDetails.email) {
+          printWindow.document.write(`<p>${companyDetails.email}</p>`);
+        }
+        
+        // Bank details
+        if (companyDetails.bankDetails) {
+          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
+        }
+        
+        // VAT and Registration info
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add report title
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h3>DAILY BOOK PURCHASE</h3>');
+      printWindow.document.write(`<p>Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      const headers = ['Date', 'Supplier', 'Inv.No', 'Invoice Amt'];
+      headers.forEach(h => {
+        printWindow.document.write(`<th>${h}</th>`);
+      });
+      printWindow.document.write('</tr></thead><tbody>');
+      filteredPurchaseData.forEach(item => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.date}</td>`);
+        printWindow.document.write(`<td>${item.supplier}</td>`);
+        printWindow.document.write(`<td>${item.invNo}</td>`);
+        printWindow.document.write(`<td>£${item.invoiceAmt.toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -138,36 +189,75 @@ export default function DailyBookPurchase() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    doc.text('Daily Book Purchase', 14, 16);
+    let yPosition = 20;
+    
+    // Add company details following the specific structure
+    if (companyDetails) {
+      // Company name
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
+    }
+    
+    // Add report title
+    doc.setFontSize(14);
+    doc.text('DAILY BOOK PURCHASE', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
+    doc.setFontSize(10);
+    doc.text(`Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add table
     autoTable(doc, {
       head: [[
         'Date', 'Supplier', 'Inv.No', 'Invoice Amt'
       ]],
-      body: purchaseData.map((item: PurchaseEntry) => [
+      body: filteredPurchaseData.map((item: PurchaseEntry) => [
         item.date,
         item.supplier,
         item.invNo,
-        item.invoiceAmt
+        `£${item.invoiceAmt.toFixed(2)}`
       ]),
-      startY: 22,
+      startY: yPosition,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 30 },
+        1: { cellWidth: 50 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 30 }
+      }
     });
-    // Add summary at the bottom
-    const finalY = (doc as any).lastAutoTable.finalY || 22;
-    doc.setDrawColor(200);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(12, finalY + 6, 185, 12, 'F');
-    doc.setTextColor(40);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Date Range:`, 16, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${filters.fromDate || '-'} to ${filters.toDate || '-'}`, 46, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Total Invoice Amount:`, 90, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`£${totalInvoiceAmount.toFixed(2)}`, 140, finalY + 14);
-    doc.setTextColor(0);
-    doc.setFont('helvetica', 'normal');
-    doc.save('daily-book-purchase.pdf');
+    
+    doc.save(`daily-book-purchase-${filters.fromDate || 'all'}-${filters.toDate || 'all'}.pdf`);
   };
 
   const handleCopy = () => {

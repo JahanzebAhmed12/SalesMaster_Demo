@@ -285,34 +285,63 @@ export default function ReturnToSupplier() {
   const cardTitle = 'Supplier Returns';
 
   const handlePrint = () => {
-    // Generate a table without the Actions column
-    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>${cardTitle}</div>`;
-    html += `<table style='width:100%;border-collapse:collapse;'>`;
-    html += `<thead><tr>`;
-    const headers = ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'];
-    headers.forEach(h => {
-      html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
-    });
-    html += `</tr></thead><tbody>`;
-    supplierReturns.forEach(item => {
-      html += '<tr>';
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${format(new Date(item.date), 'dd/MM/yyyy')}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.refNumber}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.supplierName}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.quantity}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.unitPrice.toFixed(2)}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.totalValue.toFixed(2)}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.status}</td>`;
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Supplier Returns</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(html);
+      
+      // Add company details header following the specific structure
+      printWindow.document.write('<div class="company-details">');
+      if (companyDetails) {
+        // Company name
+        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+        
+        // Email
+        if (companyDetails.email) {
+          printWindow.document.write(`<p>${companyDetails.email}</p>`);
+        }
+        
+        // Bank details
+        if (companyDetails.bankDetails) {
+          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
+        }
+        
+        // VAT and Registration info
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add report title
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h3>RETURN TO SUPPLIER</h3>');
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      const headers = ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'];
+      headers.forEach(h => {
+        printWindow.document.write(`<th>${h}</th>`);
+      });
+      printWindow.document.write('</tr></thead><tbody>');
+      supplierReturns.forEach(item => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${format(new Date(item.date), 'dd/MM/yyyy')}</td>`);
+        printWindow.document.write(`<td>${item.refNumber}</td>`);
+        printWindow.document.write(`<td>${item.supplierName}</td>`);
+        printWindow.document.write(`<td>${item.description}</td>`);
+        printWindow.document.write(`<td>${item.quantity}</td>`);
+        printWindow.document.write(`<td>£${item.unitPrice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${item.totalValue.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${item.status}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -346,7 +375,51 @@ export default function ReturnToSupplier() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    doc.text(cardTitle, 14, 16);
+    let yPosition = 20;
+    
+    // Add company details following the specific structure
+    if (companyDetails) {
+      // Company name
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
+    }
+    
+    // Add report title
+    doc.setFontSize(14);
+    doc.text('RETURN TO SUPPLIER', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
+    doc.setFontSize(10);
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add table
     autoTable(doc, {
       head: [[
         'Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'
@@ -357,13 +430,28 @@ export default function ReturnToSupplier() {
         item.supplierName,
         item.description,
         item.quantity,
-        item.unitPrice,
-        item.totalValue,
+        `£${item.unitPrice.toFixed(2)}`,
+        `£${item.totalValue.toFixed(2)}`,
         item.status,
       ]),
-      startY: 22,
+      startY: yPosition,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 35 },
+        4: { cellWidth: 15 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 20 },
+        7: { cellWidth: 15 }
+      }
     });
-    doc.save('supplier-returns.pdf');
+    
+    doc.save(`return-to-supplier-${fromDate ? format(fromDate, "yyyyMMdd") : 'all'}-${toDate ? format(toDate, "yyyyMMdd") : 'all'}.pdf`);
   };
 
   const handleCopy = () => {

@@ -88,15 +88,60 @@ export default function ProductPurchaseReport() {
 
   // Export handlers
   const handlePrint = () => {
-    if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;} .summary-print{margin:24px 0 24px 0;padding:12px 24px;font-weight:500;text-align:center;}</style>');
+      printWindow.document.write('<html><head><title>Product Purchase Report</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(`<div style='text-align:center;font-size:20px;font-weight:bold;margin-bottom:8px;'>${companyDetails?.companyName || 'Company Name'}</div>`);
-      printWindow.document.write(printContents);
+      
+      // Add company details header following the specific structure
+      printWindow.document.write('<div class="company-details">');
+      if (companyDetails) {
+        // Company name
+        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+        
+        // Email
+        if (companyDetails.email) {
+          printWindow.document.write(`<p>${companyDetails.email}</p>`);
+        }
+        
+        // Bank details
+        if (companyDetails.bankDetails) {
+          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
+        }
+        
+        // VAT and Registration info
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add report title
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h3>PRODUCT PURCHASE REPORT</h3>');
+      printWindow.document.write(`<p>Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      const headers = ['Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'];
+      headers.forEach(h => {
+        printWindow.document.write(`<th>${h}</th>`);
+      });
+      printWindow.document.write('</tr></thead><tbody>');
+      purchaseData.forEach(item => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.slNo}</td>`);
+        printWindow.document.write(`<td>${item.productDescription}</td>`);
+        printWindow.document.write(`<td>${item.quantity}</td>`);
+        printWindow.document.write(`<td>£${item.avgPrice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${item.total.toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -119,14 +164,51 @@ export default function ProductPurchaseReport() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    // Company name centered
-    const companyName = companyDetails?.companyName || 'Company Name';
-    doc.setFontSize(16);
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const textWidth = doc.getTextWidth(companyName);
-    doc.text(companyName, (pageWidth - textWidth) / 2, 16);
+    let yPosition = 20;
+    
+    // Add company details following the specific structure
+    if (companyDetails) {
+      // Company name
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
+    }
+    
+    // Add report title
     doc.setFontSize(14);
-    doc.text('Product Purchase Report', (pageWidth - doc.getTextWidth('Product Purchase Report')) / 2, 26);
+    doc.text('PRODUCT PURCHASE REPORT', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
+    doc.setFontSize(10);
+    doc.text(`Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add table
     autoTable(doc, {
       head: [[
         'Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'
@@ -135,18 +217,24 @@ export default function ProductPurchaseReport() {
         item.slNo,
         item.productDescription,
         item.quantity,
-        item.avgPrice,
-        item.total
+        `£${item.avgPrice.toFixed(2)}`,
+        `£${item.total.toFixed(2)}`
       ]),
-      startY: 36,
+      startY: yPosition,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 80 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 30 }
+      }
     });
-    // Add summary below table, centered
-    const finalY = (doc as any).lastAutoTable.finalY || 36;
-    doc.setFontSize(12);
-    const summaryText = `Date Range: ${filters.fromDate || '-'} to ${filters.toDate || '-'}   |   Total Quantity: ${totalQuantity}   |   Total Amount: £${totalAmount.toFixed(2)}`;
-    const summaryWidth = doc.getTextWidth(summaryText);
-    doc.text(summaryText, (pageWidth - summaryWidth) / 2, finalY + 14);
-    doc.save('product-purchase-report.pdf');
+    
+    doc.save(`product-purchase-report-${filters.fromDate || 'all'}-${filters.toDate || 'all'}.pdf`);
   };
 
   const handleCopy = () => {
@@ -166,22 +254,49 @@ export default function ProductPurchaseReport() {
   // Generate PDF blob for email
   const generatePDFBlob = () => {
     const doc = new jsPDF();
+    let yPosition = 20;
     
-    // Add company header if available
+    // Add company details following the specific structure
     if (companyDetails) {
+      // Company name
       doc.setFontSize(16);
-      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
       doc.setFontSize(10);
-      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
-      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
-      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
     }
     
-    // Add title
+    // Add report title
     doc.setFontSize(14);
-    doc.text('Product Purchase Report', 14, companyDetails ? 42 : 15);
+    doc.text('PRODUCT PURCHASE REPORT', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
     doc.setFontSize(10);
-    doc.text(`Date Range: ${filters.fromDate || '-'} to ${filters.toDate || '-'}`, 14, companyDetails ? 48 : 21);
+    doc.text(`Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
     
     // Add table
     autoTable(doc, {
@@ -193,40 +308,19 @@ export default function ProductPurchaseReport() {
         `£${item.avgPrice.toFixed(2)}`,
         `£${item.total.toFixed(2)}`
       ]),
-      startY: companyDetails ? 52 : 25,
+      startY: yPosition,
       styles: {
         fontSize: 8,
-        cellPadding: 2,
-      },
-      headStyles: {
-        fillColor: [66, 139, 202],
-        textColor: 255,
-        fontStyle: 'bold',
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
+        cellPadding: 2
       },
       columnStyles: {
-        0: { cellWidth: 20, halign: 'center' }, // Sl.No
-        1: { cellWidth: 80 }, // Product Description
-        2: { cellWidth: 25, halign: 'right' }, // Quantity
-        3: { cellWidth: 30, halign: 'right' }, // AVG Price
-        4: { cellWidth: 30, halign: 'right' }, // Total
-      },
+        0: { cellWidth: 20 },
+        1: { cellWidth: 80 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: 30 }
+      }
     });
-    
-    // Add summary at the bottom
-    const finalY = (doc as any).lastAutoTable.finalY || (companyDetails ? 52 : 25);
-    doc.setDrawColor(200);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(12, finalY + 6, 185, 20, 'F');
-    doc.setTextColor(40);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`Summary - Date Range: ${filters.fromDate || '-'} to ${filters.toDate || '-'}`, 16, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`Total Products: ${purchaseData.length} | Total Quantity: ${totalQuantity} | Total Amount: £${totalAmount.toFixed(2)}`, 16, finalY + 22);
-    doc.setTextColor(0);
-    doc.setFont('helvetica', 'normal');
     
     return doc.output('blob');
   };

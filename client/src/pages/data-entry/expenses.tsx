@@ -176,34 +176,64 @@ export default function Expenses() {
   // Export handlers (same as Dumps)
   const exportTitle = 'Expense Entries';
   const handlePrint = () => {
-    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>${exportTitle}</div>`;
-    html += `<table style='width:100%;border-collapse:collapse;'>`;
-    html += `<thead><tr>`;
-    const headers = ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
-    headers.forEach(h => {
-      html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
-    });
-    html += `</tr></thead><tbody>`;
-    expenseEntries.forEach((item: ExpenseEntry) => {
-      html += '<tr>';
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.refNumber}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${format(new Date(item.date), "dd/MM/yyyy")}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.supplierName || '-'}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.expenseName || '-'}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.invoiceNumber || '-'}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.remarks || '-'}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.paymentMode}</td>`;
-      html += `<td style='border:1px solid #ccc;padding:8px;'>£${item.amount.toFixed(2)}</td>`;
-      html += '</tr>';
-    });
-    html += '</tbody></table>';
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Expense Entries</title>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(html);
+      
+      // Add company details header following the specific structure
+      printWindow.document.write('<div class="company-details">');
+      if (companyDetails) {
+        // Company name
+        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+        
+        // Email
+        if (companyDetails.email) {
+          printWindow.document.write(`<p>${companyDetails.email}</p>`);
+        }
+        
+        // Bank details
+        if (companyDetails.bankDetails) {
+          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
+        }
+        
+        // VAT and Registration info
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add report title
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h3>EXPENSES</h3>');
+      printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      const headers = ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
+      headers.forEach(h => {
+        printWindow.document.write(`<th>${h}</th>`);
+      });
+      printWindow.document.write('</tr></thead><tbody>');
+      expenseEntries.forEach((item: ExpenseEntry) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.refNumber}</td>`);
+        printWindow.document.write(`<td>${format(new Date(item.date), "dd/MM/yyyy")}</td>`);
+        printWindow.document.write(`<td>${item.supplierName || '-'}</td>`);
+        printWindow.document.write(`<td>${item.expenseName || '-'}</td>`);
+        printWindow.document.write(`<td>${item.description}</td>`);
+        printWindow.document.write(`<td>${item.invoiceNumber || '-'}</td>`);
+        printWindow.document.write(`<td>${item.remarks || '-'}</td>`);
+        printWindow.document.write(`<td>${item.paymentMode}</td>`);
+        printWindow.document.write(`<td>£${item.amount.toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -238,7 +268,51 @@ export default function Expenses() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    doc.text(exportTitle, 14, 16);
+    let yPosition = 20;
+    
+    // Add company details following the specific structure
+    if (companyDetails) {
+      // Company name
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      
+      // Email
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // Bank details
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) {
+        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+        yPosition += 10;
+      } else {
+        yPosition += 5;
+      }
+    }
+    
+    // Add report title
+    doc.setFontSize(14);
+    doc.text('EXPENSES', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    
+    doc.setFontSize(10);
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add table
     autoTable(doc, {
       head: [[
         'Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'
@@ -252,11 +326,27 @@ export default function Expenses() {
         item.invoiceNumber || '-',
         item.remarks || '-',
         item.paymentMode,
-        item.amount,
+        `£${item.amount.toFixed(2)}`,
       ]),
-      startY: 22,
+      startY: yPosition,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 30 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 25 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 20 }
+      }
     });
-    doc.save('expense-entries.pdf');
+    
+    doc.save(`expenses-${format(fromDate, "yyyyMMdd")}-${format(toDate, "yyyyMMdd")}.pdf`);
   };
 
   const handleCopy = () => {
