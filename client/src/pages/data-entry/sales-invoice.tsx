@@ -979,6 +979,9 @@ const SalesInvoice = () => {
   }
 
   const handleHoldInvoice = () => {
+    // Set skipAutoHoldRef first to prevent auto-hold on navigation
+    skipAutoHoldRef.current = true;
+    
     const holdId = Date.now().toString();
     console.log('Saving saleItems to held invoice:', saleItems);
     if (saleItems.length > 0) {
@@ -986,6 +989,8 @@ const SalesInvoice = () => {
         console.log(`  [save] Item ${idx}:`, item, Object.keys(item));
       });
     }
+    
+    // Create invoice data with current state
     const invoiceData = {
       customerId,
       vehicleDetails,
@@ -995,21 +1000,21 @@ const SalesInvoice = () => {
       holdId,
       holdTime: new Date().toISOString(),
     };
+    
+    // Save to localStorage
     const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
     held.push(invoiceData);
     localStorage.setItem('heldInvoices', JSON.stringify(held));
     setHeldInvoices(held);
     
-    // Set skipAutoHoldRef to prevent auto-hold on navigation
-    skipAutoHoldRef.current = true;
-    
-    // Clear current form
+    // Clear current form immediately after saving
+    setSaleItems([]);
     setCustomerId("");
     setVehicleDetails("");
     setGateNumber("");
     setNotes("");
-    setSaleItems([]);
     setApplyPorterage(true); // Reset porterage application
+    
     toast({ title: "Invoice Held", description: "You can resume it later from Held Invoices." });
     setLocation('/data-entry/sales-entry');
   };
@@ -1059,6 +1064,10 @@ const SalesInvoice = () => {
     // Function to hold the invoice
     function autoHoldInvoice() {
       if (!shouldAutoHold()) return;
+      
+      // Additional check to prevent holding empty or duplicate invoices
+      if (saleItems.length === 0) return;
+      
       const holdId = Date.now().toString();
       const invoiceData = {
         customerId,
@@ -1069,11 +1078,22 @@ const SalesInvoice = () => {
         holdId,
         holdTime: new Date().toISOString(),
       };
-      // Save to localStorage (append to heldInvoices)
+      
+      // Check for duplicates before saving
       const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-      held.push(invoiceData);
-      localStorage.setItem('heldInvoices', JSON.stringify(held));
-      // Optionally clear current draft
+      const isDuplicate = held.some((existingInvoice: any) => 
+        existingInvoice.customerId === customerId &&
+        existingInvoice.saleItems.length === saleItems.length &&
+        JSON.stringify(existingInvoice.saleItems) === JSON.stringify(saleItems)
+      );
+      
+      if (!isDuplicate) {
+        held.push(invoiceData);
+        localStorage.setItem('heldInvoices', JSON.stringify(held));
+        console.log('Auto-held invoice with', saleItems.length, 'items');
+      }
+      
+      // Clear current draft
       localStorage.removeItem('currentInvoiceDraft');
     }
 

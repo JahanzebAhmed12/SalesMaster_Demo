@@ -28,20 +28,20 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  ticketNo: { top: '26mm', left: '65mm' }, // Position for invoice number 823187
-  date: { top: '26mm', left: '110mm' }, // Position for date 26/03/2023
-  itemsStartTop: '45mm', // Starting position for items grid
+  ticketNo: { top: '56', left: '65mm' }, // Position for invoice number - moved down 4mm
+  date: { top: '60mm', left: '110mm' }, // Position for date - moved down 4mm
+  itemsStartTop: '80mm', // Starting position for items grid - moved down 5mm
   itemsRowHeight: '6mm', // Height between rows
   columns: {
-    quantity: { left: '8mm', width: '15mm' } as ColumnConfig,
-    description: { left: '25mm', width: '80mm' } as ColumnConfig,
-    price: { left: '105mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '130mm', width: '25mm', align: 'right' } as ColumnConfig
+    quantity: { left: '15mm', width: '15mm' } as ColumnConfig,
+    description: { left: '30mm', width: '80mm' } as ColumnConfig,
+    price: { left: '112mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '137mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '140mm', left: '130mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '146mm', left: '130mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '152mm', left: '130mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '175mm', left: '140mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    vat: { top: '180mm', left: '140mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    total: { top: '185mm', left: '140mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
   }
 };
 
@@ -131,8 +131,8 @@ export default function DotMatrixInvoicePrintPage() {
       <div className="p-4 bg-gray-100 print:hidden">
         <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
         <p className="text-sm text-gray-600 mb-4">Invoice: {sale?.invoice_number}</p>
-        <button 
-          onClick={handlePrint} 
+        <button
+          onClick={handlePrint}
           className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           Print Invoice
@@ -140,19 +140,19 @@ export default function DotMatrixInvoicePrintPage() {
       </div>
 
       {/* Dot Matrix Content - only this shows during print */}
-      <div className="dot-matrix-print" style={{ 
-        position: 'relative', 
-        width: '176mm', 
-        height: '203mm', 
+      <div className="dot-matrix-print" style={{
+        position: 'relative',
+        width: '176mm',
+        height: '203mm',
         margin: '0 auto',
-        fontFamily: 'monospace', 
+        fontFamily: 'monospace',
         color: '#000',
         backgroundColor: '#fff'
       }}>
         {/* Ticket No (Invoice Number) */}
-        <div style={{ 
-          position: 'absolute', 
-          ...FIELD_POSITIONS.ticketNo, 
+        <div style={{
+          position: 'absolute',
+          ...FIELD_POSITIONS.ticketNo,
           fontFamily: 'monospace',
           fontSize: '12pt'
         }}>
@@ -160,8 +160,8 @@ export default function DotMatrixInvoicePrintPage() {
         </div>
 
         {/* Date */}
-        <div style={{ 
-          position: 'absolute', 
+        <div style={{
+          position: 'absolute',
           ...FIELD_POSITIONS.date,
           fontFamily: 'monospace',
           fontSize: '12pt'
@@ -173,7 +173,7 @@ export default function DotMatrixInvoicePrintPage() {
         {items?.map((item, idx) => (
           <React.Fragment key={idx}>
             {/* Quantity */}
-            <div style={{ 
+            <div style={{
               position: 'absolute',
               top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
               left: FIELD_POSITIONS.columns.quantity.left,
@@ -185,7 +185,7 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Product Description */}
-            <div style={{ 
+            <div style={{
               position: 'absolute',
               top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
               left: FIELD_POSITIONS.columns.description.left,
@@ -200,7 +200,7 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Unit Price */}
-            <div style={{ 
+            <div style={{
               position: 'absolute',
               top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
               left: FIELD_POSITIONS.columns.price.left,
@@ -213,7 +213,7 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Total Value */}
-            <div style={{ 
+            <div style={{
               position: 'absolute',
               top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
               left: FIELD_POSITIONS.columns.value.left,
@@ -228,7 +228,7 @@ export default function DotMatrixInvoicePrintPage() {
         ))}
 
         {/* Totals */}
-        <div style={{ 
+        <div style={{
           position: 'absolute',
           ...FIELD_POSITIONS.totals.goods,
           fontFamily: 'monospace',
@@ -238,7 +238,7 @@ export default function DotMatrixInvoicePrintPage() {
           £{totalAmount.toFixed(2)}
         </div>
 
-        <div style={{ 
+        <div style={{
           position: 'absolute',
           ...FIELD_POSITIONS.totals.vat,
           fontFamily: 'monospace',
@@ -248,7 +248,7 @@ export default function DotMatrixInvoicePrintPage() {
           £{vatAmount.toFixed(2)}
         </div>
 
-        <div style={{ 
+        <div style={{
           position: 'absolute',
           ...FIELD_POSITIONS.totals.total,
           fontFamily: 'monospace',
