@@ -28,20 +28,20 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  ticketNo: { top: '68mm', left: '37mm' }, // Position for invoice number - moved down 4mm
-  date: { top: '67mm', left: '66mm' }, // Position for date - moved down 4mm
-  itemsStartTop: '88mm', // Starting position for items grid - moved down 5mm
+  ticketNo: { top: '65mm', left: '35mm' }, // Position for invoice number - moved down 4mm
+  date: { top: '65mm', left: '63mm' }, // Position for date - moved down 4mm
+  itemsStartTop: '85mm', // Starting position for items grid - moved down 5mm
   itemsRowHeight: '6mm', // Height between rows
   columns: {
-    quantity: { left: '3mm', width: '15mm' } as ColumnConfig,
-    description: { left: '21mm', width: '80mm' } as ColumnConfig,
+    quantity: { left: '0mm', width: '15mm' } as ColumnConfig,
+    description: { left: '20mm', width: '80mm' } as ColumnConfig,
     price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '120mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '175mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    vat: { top: '185mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    total: { top: '195mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
+    goods: { top: '170mm', left: '123mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    vat: { top: '180mm', left: '123mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    total: { top: '190mm', left: '123mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
   }
 };
 
@@ -143,7 +143,7 @@ export default function DotMatrixInvoicePrintPage() {
       <div className="dot-matrix-print" style={{
         position: 'relative',
         width: '176mm',
-        height: '196mm',
+        height: '200mm',
         margin: '0 auto',
         fontFamily: 'monospace',
         color: '#000',
