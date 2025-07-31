@@ -28,20 +28,20 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  ticketNo: { top: '56', left: '65mm' }, // Position for invoice number - moved down 4mm
-  date: { top: '60mm', left: '110mm' }, // Position for date - moved down 4mm
-  itemsStartTop: '80mm', // Starting position for items grid - moved down 5mm
+  ticketNo: { top: '65mm', left: '50mm' }, // Position for invoice number - moved down 4mm
+  date: { top: '65mm', left: '110mm' }, // Position for date - moved down 4mm
+  itemsStartTop: '85mm', // Starting position for items grid - moved down 5mm
   itemsRowHeight: '6mm', // Height between rows
   columns: {
-    quantity: { left: '15mm', width: '15mm' } as ColumnConfig,
-    description: { left: '30mm', width: '80mm' } as ColumnConfig,
-    price: { left: '112mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '137mm', width: '25mm', align: 'right' } as ColumnConfig
+    quantity: { left: '9mm', width: '15mm' } as ColumnConfig,
+    description: { left: '23mm', width: '80mm' } as ColumnConfig,
+    price: { left: '108mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '130mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '175mm', left: '140mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    vat: { top: '180mm', left: '140mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    total: { top: '185mm', left: '140mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
+    goods: { top: '172mm', left: '135mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    vat: { top: '182mm', left: '135mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    total: { top: '190mm', left: '135mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
   }
 };
 
