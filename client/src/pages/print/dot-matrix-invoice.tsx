@@ -28,20 +28,20 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  ticketNo: { top: '66mm', left: '40mm' }, // Position for invoice number - moved down 4mm
-  date: { top: '65mm', left: '70mm' }, // Position for date - moved down 4mm
+  ticketNo: { top: '68mm', left: '37mm' }, // Position for invoice number - moved down 4mm
+  date: { top: '67mm', left: '66mm' }, // Position for date - moved down 4mm
   itemsStartTop: '88mm', // Starting position for items grid - moved down 5mm
   itemsRowHeight: '6mm', // Height between rows
   columns: {
     quantity: { left: '3mm', width: '15mm' } as ColumnConfig,
     description: { left: '21mm', width: '80mm' } as ColumnConfig,
-    price: { left: '105mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '125mm', width: '25mm', align: 'right' } as ColumnConfig
+    price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '120mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '172mm', left: '128mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    vat: { top: '182mm', left: '128mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    total: { top: '193mm', left: '128mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
+    goods: { top: '175mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    vat: { top: '185mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    total: { top: '195mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
   }
 };
 
@@ -99,7 +99,7 @@ export default function DotMatrixInvoicePrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 176mm 203mm; 
+            size: 176mm 200mm; 
             margin: 0; 
             padding: 0;
           }
@@ -122,7 +122,7 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 0 !important;
             width: 176mm !important;
-            height: 203mm !important;
+            height: 200mm !important;
           }
         }
       `}</style>
@@ -143,7 +143,7 @@ export default function DotMatrixInvoicePrintPage() {
       <div className="dot-matrix-print" style={{
         position: 'relative',
         width: '176mm',
-        height: '203mm',
+        height: '196mm',
         margin: '0 auto',
         fontFamily: 'monospace',
         color: '#000',
