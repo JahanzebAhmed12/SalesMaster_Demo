@@ -131,7 +131,7 @@ export default function DotMatrixPaymentPrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 176mm 200mm; 
+            size: 186mm 200mm; 
             margin: 0; 
             padding: 0;
           }
@@ -153,7 +153,7 @@ export default function DotMatrixPaymentPrintPage() {
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 176mm !important;
+            width: 186mm !important;
             height: 200mm !important;
           }
         }
@@ -175,7 +175,7 @@ export default function DotMatrixPaymentPrintPage() {
       {pages.map((page, pageIndex) => (
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
-          width: '176mm',
+          width: '186mm',
           height: '200mm',
           margin: '0 auto',
           fontFamily: 'monospace',
