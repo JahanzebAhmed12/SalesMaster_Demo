@@ -53,9 +53,8 @@ const FIELD_POSITIONS = {
     value: { left: '125mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '175mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '185mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '192mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '172mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
+    
   }
 };
 
@@ -330,7 +329,7 @@ export default function DotMatrixPaymentPrintPage() {
                 £{totalAmount.toFixed(2)}
               </div>
 
-              <div style={{
+              {/* <div style={{
                 position: 'absolute',
                 ...FIELD_POSITIONS.totals.vat,
                 fontFamily: 'monospace',
@@ -338,9 +337,9 @@ export default function DotMatrixPaymentPrintPage() {
                 textAlign: FIELD_POSITIONS.totals.vat.align as TextAlign
               }}>
                 £0.00
-              </div>
+              </div> */}
 
-              <div style={{
+              {/* <div style={{
                 position: 'absolute',
                 ...FIELD_POSITIONS.totals.total,
                 fontFamily: 'monospace',
@@ -348,7 +347,7 @@ export default function DotMatrixPaymentPrintPage() {
                 textAlign: FIELD_POSITIONS.totals.total.align as TextAlign
               }}>
                 £{totalAmount.toFixed(2)}
-              </div>
+              </div> */}
             </>
           )}
         </div>
