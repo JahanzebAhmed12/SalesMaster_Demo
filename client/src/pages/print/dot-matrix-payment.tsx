@@ -36,26 +36,26 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '01mm', left: '3mm' }, // Position for account number (customer ID) - moved up 5mm
-  customerName: { top: '10mm', left: '1mm' }, // Position for customer name - moved up 5mm
-  customerAddress: { top: '18mm', left: '1mm', width: '48mm' }, // Position for customer address with wrapping - moved up 5mm
-  paymentId: { top: '47mm', left: '25mm' }, // Position for payment ID
-  date: { top: '47mm', left: '50mm' }, // Position for date
-  pageNumber: { top: '120mm', left: '25mm' }, // Position for page number (60mm right of date)
-  itemsStartTop: '65mm', // Starting position for items grid
-  itemsRowHeight: '10mm', // Height between rows
+  accountNo: { top: '08mm', left: '4mm' }, // Position for account number (customer ID) - moved up 5mm
+  customerName: { top: '20mm', left: '4mm' }, // Position for customer name - moved up 5mm
+  customerAddress: { top: '28mm', left: '4mm', width: '50mm' }, // Position for customer address with wrapping - moved up 5mm
+  paymentId: { top: '65mm', left: '35mm' }, // Position for payment ID
+  date: { top: '65mm', left: '63mm' }, // Position for date
+  pageNumber: { top: '175mm', left: '50mm' }, // Position for page number (60mm right of date)
+  itemsStartTop: '85mm', // Starting position for items grid
+  itemsRowHeight: '12mm', // Height between rows
   maxItemsPerPage: 6, // Maximum payment items that fit on one page (considering larger row height)
-  pageEndPosition: '190mm', // Page should end 15mm above totals (185mm - 15mm)
+  pageEndPosition: '170mm', // Page should end 15mm above totals (185mm - 15mm)
   columns: {
-    quantity: { left: '1mm', width: '15mm' } as ColumnConfig,
-    description: { left: '10mm', width: '80mm' } as ColumnConfig,
-    price: { left: '70mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '80mm', width: '25mm', align: 'right' } as ColumnConfig
+    quantity: { left: '4mm', width: '15mm' } as ColumnConfig,
+    description: { left: '20mm', width: '80mm' } as ColumnConfig,
+    price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '125mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '110mm', left: '80mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '125mm', left: '80mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '120mm', left: '80mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '175mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '185mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '192mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
@@ -131,8 +131,10 @@ export default function DotMatrixPaymentPrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: A4;
-            margin: 17mm 17mm 97mm 17mm; /* Bottom margin = A4 height - your content (297mm - 200mm = 97mm) */
+        
+            size: A5; 
+            margin: 0 0 -10mm 0; 
+            padding: 0;
           }
           body { 
             margin: 0; 
@@ -152,10 +154,8 @@ export default function DotMatrixPaymentPrintPage() {
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 176mm !important;
+            width: 186mm !important;
             height: 200mm !important;
-            max-height: 200mm;
-            overflow: hidden;
           }
         }
       `}</style>
@@ -176,14 +176,12 @@ export default function DotMatrixPaymentPrintPage() {
       {pages.map((page, pageIndex) => (
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
-          width: '176mm',
+          width: '186mm',
           height: '200mm',
           margin: '0 auto',
           fontFamily: 'monospace',
           color: '#000',
           backgroundColor: '#fff',
-          maxHeight: '200mm',
-          overflow: 'hidden',
           pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto'
         }}>
           {/* Account Number (Customer ID) */}
