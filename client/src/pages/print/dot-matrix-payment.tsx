@@ -41,7 +41,7 @@ const FIELD_POSITIONS = {
   customerAddress: { top: '28mm', left: '4mm', width: '50mm' }, // Position for customer address with wrapping - moved up 5mm
   paymentId: { top: '65mm', left: '35mm' }, // Position for payment ID
   date: { top: '65mm', left: '63mm' }, // Position for date
-  pageNumber: { top: '65mm', left: '145mm' }, // Position for page number (60mm right of date)
+  pageNumber: { top: '175mm', left: '85mm' }, // Position for page number (60mm right of date)
   itemsStartTop: '85mm', // Starting position for items grid
   itemsRowHeight: '12mm', // Height between rows
   maxItemsPerPage: 6, // Maximum payment items that fit on one page (considering larger row height)
@@ -53,9 +53,9 @@ const FIELD_POSITIONS = {
     value: { left: '125mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '177mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '187mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '194mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '175mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '185mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '192mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
