@@ -53,9 +53,9 @@ const FIELD_POSITIONS = {
     value: { left: '80mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '110mm', left: '97mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '125mm', left: '97mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '120mm', left: '97mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '110mm', left: '80mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '125mm', left: '80mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '120mm', left: '80mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
@@ -131,9 +131,8 @@ export default function DotMatrixPaymentPrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 176mm 200mm; 
-            margin: 0; 
-            padding: 0;
+            size: A4;
+            margin: 17mm 17mm 97mm 17mm; /* Bottom margin = A4 height - your content (297mm - 200mm = 97mm) */
           }
           body { 
             margin: 0; 
@@ -155,6 +154,8 @@ export default function DotMatrixPaymentPrintPage() {
             padding: 0 !important;
             width: 176mm !important;
             height: 200mm !important;
+            max-height: 200mm;
+            overflow: hidden;
           }
         }
       `}</style>
@@ -175,12 +176,14 @@ export default function DotMatrixPaymentPrintPage() {
       {pages.map((page, pageIndex) => (
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
-          width: '186mm',
+          width: '176mm',
           height: '200mm',
           margin: '0 auto',
           fontFamily: 'monospace',
           color: '#000',
           backgroundColor: '#fff',
+          maxHeight: '200mm',
+          overflow: 'hidden',
           pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto'
         }}>
           {/* Account Number (Customer ID) */}
