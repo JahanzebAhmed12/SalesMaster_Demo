@@ -36,26 +36,26 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '08mm', left: '4mm' }, // Position for account number (customer ID) - moved up 5mm
-  customerName: { top: '20mm', left: '4mm' }, // Position for customer name - moved up 5mm
-  customerAddress: { top: '28mm', left: '4mm', width: '50mm' }, // Position for customer address with wrapping - moved up 5mm
-  paymentId: { top: '65mm', left: '35mm' }, // Position for payment ID
-  date: { top: '65mm', left: '63mm' }, // Position for date
-  pageNumber: { top: '175mm', left: '85mm' }, // Position for page number (60mm right of date)
-  itemsStartTop: '85mm', // Starting position for items grid
-  itemsRowHeight: '12mm', // Height between rows
+  accountNo: { top: '02mm', left: '3mm' }, // Position for account number (customer ID) - moved up 5mm
+  customerName: { top: '10mm', left: '2mm' }, // Position for customer name - moved up 5mm
+  customerAddress: { top: '15mm', left: '2mm', width: '48mm' }, // Position for customer address with wrapping - moved up 5mm
+  paymentId: { top: '45mm', left: '30mm' }, // Position for payment ID
+  date: { top: '45mm', left: '53mm' }, // Position for date
+  pageNumber: { top: '150mm', left: '30mm' }, // Position for page number (60mm right of date)
+  itemsStartTop: '65mm', // Starting position for items grid
+  itemsRowHeight: '10mm', // Height between rows
   maxItemsPerPage: 6, // Maximum payment items that fit on one page (considering larger row height)
-  pageEndPosition: '170mm', // Page should end 15mm above totals (185mm - 15mm)
+  pageEndPosition: '190mm', // Page should end 15mm above totals (185mm - 15mm)
   columns: {
-    quantity: { left: '4mm', width: '15mm' } as ColumnConfig,
-    description: { left: '20mm', width: '80mm' } as ColumnConfig,
-    price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '125mm', width: '25mm', align: 'right' } as ColumnConfig
+    quantity: { left: '1mm', width: '15mm' } as ColumnConfig,
+    description: { left: '10mm', width: '80mm' } as ColumnConfig,
+    price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '100mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '175mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '185mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '192mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '140mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '150mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '160mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
