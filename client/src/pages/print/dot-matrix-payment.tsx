@@ -131,9 +131,9 @@ export default function DotMatrixPaymentPrintPage() {
       <style>{`
         @media print {
           @page { 
-        
-            size: A5; 
-            margin: 0 0 -10mm 0; 
+            
+            size: 176mm 190mm; 
+            margin: 0; 
             padding: 0;
           }
           body { 
@@ -154,7 +154,7 @@ export default function DotMatrixPaymentPrintPage() {
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 186mm !important;
+            width: 176mm !important;
             height: 200mm !important;
           }
         }
