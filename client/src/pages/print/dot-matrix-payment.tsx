@@ -36,12 +36,12 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '10mm', left: '4mm' }, // Position for account number (customer ID) - moved up 5mm
+  accountNo: { top: '08mm', left: '4mm' }, // Position for account number (customer ID) - moved up 5mm
   customerName: { top: '20mm', left: '4mm' }, // Position for customer name - moved up 5mm
-  customerAddress: { top: '28mm', left: '4mm', width: '40mm' }, // Position for customer address with wrapping - moved up 5mm
+  customerAddress: { top: '28mm', left: '4mm', width: '50mm' }, // Position for customer address with wrapping - moved up 5mm
   paymentId: { top: '65mm', left: '35mm' }, // Position for payment ID
   date: { top: '65mm', left: '63mm' }, // Position for date
-  pageNumber: { top: '65mm', left: '135mm' }, // Position for page number (60mm right of date)
+  pageNumber: { top: '65mm', left: '145mm' }, // Position for page number (60mm right of date)
   itemsStartTop: '85mm', // Starting position for items grid
   itemsRowHeight: '12mm', // Height between rows
   maxItemsPerPage: 6, // Maximum payment items that fit on one page (considering larger row height)
@@ -55,7 +55,7 @@ const FIELD_POSITIONS = {
   totals: {
     goods: { top: '180mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
     vat: { top: '190mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '200mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
+    total: { top: '194mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
@@ -131,7 +131,7 @@ export default function DotMatrixPaymentPrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 186mm 200mm; 
+            size: 176mm 200mm; 
             margin: 0; 
             padding: 0;
           }
@@ -153,7 +153,7 @@ export default function DotMatrixPaymentPrintPage() {
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 186mm !important;
+            width: 176mm !important;
             height: 200mm !important;
           }
         }
