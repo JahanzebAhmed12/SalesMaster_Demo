@@ -54,8 +54,24 @@ export default function SalesEntry() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
   const [gateNumber, setGateNumber] = useState("");
+  const [isGateNumberFromCustomer, setIsGateNumberFromCustomer] = useState(false);
 
   console.log(heldInvoices, "==============?")
+
+  // Helper function to handle customer selection
+  const handleCustomerSelection = (customer: Customer) => {
+    form.setValue("customerId", customer.id.toString());
+    setCustomerSearch(`${customer.customer_code} - ${customer.customer_name}`);
+    // Auto-populate gate number from customer's others field
+    if (customer.others) {
+      setGateNumber(customer.others);
+      setIsGateNumberFromCustomer(true);
+    } else {
+      setGateNumber("");
+      setIsGateNumberFromCustomer(false);
+    }
+    setShowDropdown(false);
+  };
 
   const form = useForm<SalesFormData>({
     resolver: zodResolver(salesSchema),
@@ -112,9 +128,7 @@ console.log(heldInvoices, "see held invoices")
       e.preventDefault();
       if (highlightedIndex >= 0 && highlightedIndex < customerOptions.length) {
         const customer = customerOptions[highlightedIndex];
-        form.setValue("customerId", customer.id.toString());
-        setCustomerSearch(`${customer.customer_code} - ${customer.customer_name}`);
-        setShowDropdown(false);
+        handleCustomerSelection(customer);
       }
     } else if (e.key === "Escape") {
       setShowDropdown(false);
@@ -272,11 +286,7 @@ console.log(heldInvoices, "see held invoices")
                             <div
                               key={customer.id}
                               className={`p-2 cursor-pointer flex items-center ${highlightedIndex === idx ? "bg-blue-100" : form.watch("customerId") === customer.id.toString() ? "bg-blue-50" : ""}`}
-                              onMouseDown={() => {
-                                form.setValue("customerId", customer.id.toString());
-                                setCustomerSearch(`${customer.customer_code} - ${customer.customer_name}`);
-                                setShowDropdown(false);
-                              }}
+                              onMouseDown={() => handleCustomerSelection(customer)}
                               onMouseEnter={() => setHighlightedIndex(idx)}
                             >
                               <span className="font-mono text-xs text-gray-600">{customer.customer_code}</span>
@@ -300,10 +310,17 @@ console.log(heldInvoices, "see held invoices")
                   <Input
                     id="gateNumber"
                     type="text"
-                    placeholder="Others/Gate (optional)"
+                    placeholder={isGateNumberFromCustomer ? "Auto-filled from customer" : "Others/Gate (optional)"}
                     value={gateNumber}
                     onChange={e => setGateNumber(e.target.value)}
+                    readOnly={isGateNumberFromCustomer}
+                    className={isGateNumberFromCustomer ? "bg-gray-100 cursor-not-allowed" : ""}
                   />
+                  {isGateNumberFromCustomer && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      This field is auto-filled from customer database
+                    </p>
+                  )}
                 </div>
               </div>
               <Button 

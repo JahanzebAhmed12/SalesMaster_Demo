@@ -286,6 +286,7 @@ class Customer(db.Model):
     settlement_days = db.Column(db.Integer, default=0)
     settlement_discount = db.Column(db.Numeric(5, 2), default=0)
     web_address = db.Column(db.String(200))
+    others = db.Column(db.String(100))  # Others/Gate field for sales entry
     is_active = db.Column(db.String(3), default='yes')
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -314,6 +315,7 @@ class Customer(db.Model):
             'settlement_days': self.settlement_days,
             'settlement_discount': float(self.settlement_discount) if self.settlement_discount else None,
             'web_address': self.web_address,
+            'others': self.others,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
@@ -326,6 +328,7 @@ class Payment(db.Model):
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     payment_mode = db.Column(db.String(50), nullable=False) # e.g., 'cash', 'card', 'bank transfer'
     payment_date = db.Column(db.Date, nullable=False)
+    batch_id = db.Column(db.Integer) # For grouping related payments in the same transaction
     remarks = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -341,6 +344,7 @@ class Payment(db.Model):
             'amount': float(self.amount),
             'paymentMode': self.payment_mode,
             'paymentDate': self.payment_date.isoformat(),
+            'batchId': self.batch_id,
             'remarks': self.remarks,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None

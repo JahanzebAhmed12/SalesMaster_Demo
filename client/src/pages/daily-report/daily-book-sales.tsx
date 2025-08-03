@@ -32,6 +32,7 @@ interface SalesEntry {
   boxes: number;
   invoiceNo: string;
   customerName: string;
+  customerOthers?: string;
   customerId: number;
   vat: number;
   amount: number;
@@ -70,7 +71,7 @@ export default function DailyBookSales() {
     queryFn: () => apiRequest("GET", "/api/users"),
   });
 
-  // Fetch sales data from backend
+  // Fetch sales data from backend with auto-refresh every 20 seconds
   const { data: rawSalesData = [], isLoading: isLoadingSales, refetch: refetchSales } = useQuery<any[]>({
     queryKey: [
       "daily-book-sales",
@@ -89,6 +90,8 @@ export default function DailyBookSales() {
           `&salesman=${userFilter}` +
           `&search=${encodeURIComponent(searchTerm)}`
       ),
+    refetchInterval: 20000, // Auto-refresh every 20 seconds
+    refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
   });
 
   // Map 'account' to 'amount' for compatibility
@@ -179,7 +182,7 @@ export default function DailyBookSales() {
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
-      const headers = ['Date', '# Boxes', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'];
+      const headers = ['Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'];
       headers.forEach(h => {
         printWindow.document.write(`<th>${h}</th>`);
       });
@@ -187,9 +190,8 @@ export default function DailyBookSales() {
       salesData.forEach(sale => {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${format(new Date(sale.date), "yyyy-MM-dd")}</td>`);
-        printWindow.document.write(`<td>${sale.boxes}</td>`);
         printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
-        printWindow.document.write(`<td>${sale.customerName}</td>`);
+        printWindow.document.write(`<td>${sale.customerName}${sale.customerOthers ? ` <small style="color: #666;">(${sale.customerOthers})</small>` : ''}</td>`);
         printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.bank ?? 0).toFixed(2)}</td>`);
@@ -211,9 +213,8 @@ export default function DailyBookSales() {
     const ws = XLSX.utils.json_to_sheet(salesData.map((item: SalesEntry) => ({
       'Sl.No': item.slNo,
       'Date': item.date,
-      'Boxes': item.boxes,
       'Invoice No': item.invoiceNo,
-      'Customer Name': item.customerName,
+      'Customer Name': item.customerName + (item.customerOthers ? ` (${item.customerOthers})` : ''),
       'Account': item.amount,
       'Cash': item.cash,
       'Bank Transfer': item.bank || 0,
@@ -273,13 +274,12 @@ export default function DailyBookSales() {
     // Add table
     autoTable(doc, {
       head: [[
-        'Date', '# Boxes', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'
+        'Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'
       ]],
       body: salesData.map((item: SalesEntry) => [
         format(new Date(item.date), "yyyy-MM-dd"),
-        item.boxes,
         item.invoiceNo,
-        item.customerName,
+        item.customerName + (item.customerOthers ? ` (${item.customerOthers})` : ''),
         `£${Number(item.amount ?? 0).toFixed(2)}`,
         `£${Number(item.cash ?? 0).toFixed(2)}`,
         `£${Number(item.bank ?? 0).toFixed(2)}`,
@@ -291,14 +291,13 @@ export default function DailyBookSales() {
         cellPadding: 2
       },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 15 },
-        2: { cellWidth: 25 },
-        3: { cellWidth: 35 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 20 },
-        7: { cellWidth: 20 }
+        0: { cellWidth: 25 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 45 },
+        3: { cellWidth: 25 },
+        4: { cellWidth: 25 },
+        5: { cellWidth: 25 },
+        6: { cellWidth: 25 }
       }
     });
     
@@ -306,13 +305,12 @@ export default function DailyBookSales() {
   };
 
   const handleCopy = () => {
-    const header = ['Sl.No', 'Date', 'Boxes', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer', 'Credit'];
+    const header = ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer', 'Credit'];
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
       item.date,
-      item.boxes,
       item.invoiceNo,
-      item.customerName,
+      item.customerName + (item.customerOthers ? ` (${item.customerOthers})` : ''),
       item.amount,
       item.cash,
       0, // Placeholder for bank transfer
@@ -897,9 +895,8 @@ export default function DailyBookSales() {
                       />
                     </TableHead>
                     <TableHead className="min-w-[120px]">Date</TableHead>
-                    <TableHead className="min-w-[80px]"># Boxes</TableHead>
                     <TableHead className="min-w-[140px]">Invoice No</TableHead>
-                    <TableHead className="min-w-[180px]">Customer Name</TableHead>
+                    <TableHead className="min-w-[220px]">Customer Name</TableHead>
                     <TableHead className="min-w-[130px] text-right">Accounts</TableHead>
                     <TableHead className="min-w-[120px] text-right">Cash</TableHead>
                     <TableHead className="min-w-[120px] text-right">Card Payment</TableHead>
@@ -909,7 +906,7 @@ export default function DailyBookSales() {
                 <TableBody>
                   {isLoadingSales ? (
                     <TableRow>
-                      <TableCell colSpan={10}>Loading...</TableCell>
+                      <TableCell colSpan={9}>Loading...</TableCell>
                     </TableRow>
                   ) : (
                     salesData.map((sale) => (
@@ -923,7 +920,6 @@ export default function DailyBookSales() {
                           />
                         </TableCell>
                         <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
-                        <TableCell className="text-center">{sale.boxes}</TableCell>
                         <TableCell>{/* Invoice No as link */}
                           <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
                             {sale.invoiceNo}
@@ -932,8 +928,15 @@ export default function DailyBookSales() {
                         <TableCell className="text-blue-600">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer">
-                                {sale.customerName}
+                              <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
+                                <span>
+                                  {sale.customerName}
+                                  {sale.customerOthers && (
+                                    <span className="text-xs text-gray-500 font-normal ml-2">
+                                      ({sale.customerOthers})
+                                    </span>
+                                  )}
+                                </span>
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">

@@ -103,6 +103,7 @@ const SalesInvoice = () => {
   const [customerId, setCustomerId] = useState<string>("");
   const [vehicleDetails, setVehicleDetails] = useState<string>("");
   const [gateNumber, setGateNumber] = useState<string>("");
+  const [isGateNumberFromCustomer, setIsGateNumberFromCustomer] = useState<boolean>(false);
   const [notes, setNotes] = useState<string>("");
   const [status, setStatus] = useState<string>("draft");
 
@@ -204,6 +205,17 @@ const SalesInvoice = () => {
     setCustomerId(id.toString());
     setIsEditCustomerOpen(false);
     setCustomerSearch("");
+    
+    // Auto-populate gate number from customer's others field
+    const selectedCustomer = customers?.find(c => c.id === id);
+    if (selectedCustomer?.others && !currentSale) {
+      // Only auto-populate for new invoices, not existing ones
+      setGateNumber(selectedCustomer.others);
+      setIsGateNumberFromCustomer(true);
+    } else if (!selectedCustomer?.others) {
+      setIsGateNumberFromCustomer(false);
+    }
+    
     if (currentSale) {
       const updatedSalePayload: BackendSalePayload = {
         invoice_number: currentSale.invoiceNumber,
@@ -1079,18 +1091,29 @@ const SalesInvoice = () => {
         holdTime: new Date().toISOString(),
       };
       
-      // Check for duplicates before saving
+      // Check for duplicates before saving - more robust check
       const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
       const isDuplicate = held.some((existingInvoice: any) => 
         existingInvoice.customerId === customerId &&
+        existingInvoice.vehicleDetails === vehicleDetails &&
+        existingInvoice.gateNumber === gateNumber &&
         existingInvoice.saleItems.length === saleItems.length &&
-        JSON.stringify(existingInvoice.saleItems) === JSON.stringify(saleItems)
+        // Check if all items match (more thorough comparison)
+        existingInvoice.saleItems.every((existingItem: any, index: number) => {
+          const currentItem = saleItems[index];
+          return existingItem.productId === currentItem.productId &&
+                 existingItem.nonProductId === currentItem.nonProductId &&
+                 existingItem.quantity === currentItem.quantity &&
+                 existingItem.unitPrice === currentItem.unitPrice;
+        })
       );
       
       if (!isDuplicate) {
         held.push(invoiceData);
         localStorage.setItem('heldInvoices', JSON.stringify(held));
         console.log('Auto-held invoice with', saleItems.length, 'items');
+      } else {
+        console.log('Duplicate invoice detected, not auto-holding');
       }
       
       // Clear current draft
@@ -1108,12 +1131,51 @@ const SalesInvoice = () => {
     // Cleanup: auto-hold on unmount (navigation away)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Auto-hold on component unmount (SPA navigation)
-      if (shouldAutoHold()) {
-        autoHoldInvoice();
+      // Auto-hold on component unmount (SPA navigation) - capture current state
+      const currentSaleItems = saleItems;
+      const currentCustomerId = customerId;
+      const currentVehicleDetails = vehicleDetails;
+      const currentGateNumber = gateNumber;
+      const currentNotes = notes;
+      const currentCurrentSale = currentSale;
+      
+      // Only auto-hold if there are products and invoice is not saved
+      if (currentSaleItems.length > 0 && !currentCurrentSale && !skipAutoHoldRef.current) {
+        const holdId = Date.now().toString();
+        const invoiceData = {
+          customerId: currentCustomerId,
+          vehicleDetails: currentVehicleDetails,
+          gateNumber: currentGateNumber,
+          notes: currentNotes,
+          saleItems: currentSaleItems,
+          holdId,
+          holdTime: new Date().toISOString(),
+        };
+        
+        // Check for duplicates before saving
+        const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
+        const isDuplicate = held.some((existingInvoice: any) => 
+          existingInvoice.customerId === currentCustomerId &&
+          existingInvoice.vehicleDetails === currentVehicleDetails &&
+          existingInvoice.gateNumber === currentGateNumber &&
+          existingInvoice.saleItems.length === currentSaleItems.length &&
+          existingInvoice.saleItems.every((existingItem: any, index: number) => {
+            const currentItem = currentSaleItems[index];
+            return existingItem.productId === currentItem.productId &&
+                   existingItem.nonProductId === currentItem.nonProductId &&
+                   existingItem.quantity === currentItem.quantity &&
+                   existingItem.unitPrice === currentItem.unitPrice;
+          })
+        );
+        
+        if (!isDuplicate) {
+          held.push(invoiceData);
+          localStorage.setItem('heldInvoices', JSON.stringify(held));
+          console.log('Auto-held invoice on unmount with', currentSaleItems.length, 'items');
+        }
       }
     };
-  }, [saleItems, currentSale, customerId, vehicleDetails, gateNumber, notes]);
+  }, []); // Empty dependency array - only run on mount/unmount
 
 
   if (isCreatingSale) {
@@ -1246,6 +1308,9 @@ const SalesInvoice = () => {
                   <div>
                     <span>Gate Number: </span>
                     <span className="font-semibold">{currentSale?.gateNumber || gateNumber}</span>
+                    {isGateNumberFromCustomer && !currentSale && (
+                      <span className="text-xs text-gray-500 ml-2">(from customer)</span>
+                    )}
                   </div>
                 )}
               </div>

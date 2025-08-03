@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search } from "lucide-react";
+import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,8 +23,8 @@ type InvoiceWithBalance = Sale & {
 
 export default function CustomerPayment() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
-  const [paymentMode, setPaymentMode] = useState<string>("CASH");
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(new Set());
+  const [invoicePaymentModes, setInvoicePaymentModes] = useState<Map<number, string>>(new Map());
   const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
@@ -45,18 +45,39 @@ export default function CustomerPayment() {
     enabled: !!selectedCustomerId,
   });
 
+  // Fetch payment history for the selected customer
+  const { data: paymentHistory, refetch: refetchPaymentHistory } = useQuery<Payment[]>({
+    queryKey: ["/api/payments/history", selectedCustomerId],
+    queryFn: () => apiRequest("GET", `/api/payments/history?customerId=${selectedCustomerId}`),
+    enabled: !!selectedCustomerId,
+  });
+
   // Mutation for creating a new payment
-  const createPaymentMutation = useMutation<Payment, Error, InsertPayment>({
-    mutationFn: (paymentData) => apiRequest("POST", "/api/payments", paymentData),
-    onSuccess: () => {
+  const createPaymentMutation = useMutation<any, Error, any>({
+    mutationFn: (paymentData) => apiRequest("POST", "/api/payments/bulk", paymentData),
+    onSuccess: (response) => {
+      const cashAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cash').reduce((sum, inv) => sum + inv.balance, 0);
+      const cardAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank').reduce((sum, inv) => sum + inv.balance, 0);
+      
+      let paymentSummary = `ID: ${response.paymentId}`;
+      if (cashAmount > 0 && cardAmount > 0) {
+        paymentSummary += ` (Cash: £${cashAmount.toFixed(2)}, Card: £${cardAmount.toFixed(2)})`;
+      } else if (cashAmount > 0) {
+        paymentSummary += ` (Cash: £${cashAmount.toFixed(2)})`;
+      } else if (cardAmount > 0) {
+        paymentSummary += ` (Card: £${cardAmount.toFixed(2)})`;
+      }
+      
       toast({
         title: "Success",
-        description: "Payment recorded successfully.",
+        description: `Payment recorded successfully. Batch ${paymentSummary}`,
       });
       refetchOutstandingInvoices();
+      refetchPaymentHistory();
       setReceivedAmount(0);
       setRemarks("");
-      setSelectedInvoiceId("");
+      setSelectedInvoiceIds(new Set());
+      setInvoicePaymentModes(new Map());
     },
     onError: (error) => {
       toast({
@@ -66,6 +87,62 @@ export default function CustomerPayment() {
       });
     },
   });
+
+  // Handle checkbox selection
+  const handleInvoiceSelection = (invoiceId: number, checked: boolean) => {
+    const newSelection = new Set(selectedInvoiceIds);
+    const newPaymentModes = new Map(invoicePaymentModes);
+    
+    if (checked) {
+      newSelection.add(invoiceId);
+      // Set default payment mode to cash for new selections
+      if (!newPaymentModes.has(invoiceId)) {
+        newPaymentModes.set(invoiceId, 'cash');
+      }
+    } else {
+      newSelection.delete(invoiceId);
+      newPaymentModes.delete(invoiceId);
+    }
+    
+    setSelectedInvoiceIds(newSelection);
+    setInvoicePaymentModes(newPaymentModes);
+    
+    // Auto-calculate total amount for selected invoices
+    const selectedInvoices = displayedInvoices.filter(inv => newSelection.has(inv.id));
+    const totalAmount = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
+    setReceivedAmount(totalAmount);
+  };
+
+  // Handle select all checkbox
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(displayedInvoices.map(inv => inv.id));
+      const newPaymentModes = new Map(invoicePaymentModes);
+      
+      // Set default payment mode for all invoices
+      displayedInvoices.forEach(inv => {
+        if (!newPaymentModes.has(inv.id)) {
+          newPaymentModes.set(inv.id, 'cash');
+        }
+      });
+      
+      setSelectedInvoiceIds(allIds);
+      setInvoicePaymentModes(newPaymentModes);
+      const totalAmount = displayedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
+      setReceivedAmount(totalAmount);
+    } else {
+      setSelectedInvoiceIds(new Set());
+      setInvoicePaymentModes(new Map());
+      setReceivedAmount(0);
+    }
+  };
+
+  // Handle payment mode change for individual invoice
+  const handleInvoicePaymentModeChange = (invoiceId: number, paymentMode: string) => {
+    const newPaymentModes = new Map(invoicePaymentModes);
+    newPaymentModes.set(invoiceId, paymentMode);
+    setInvoicePaymentModes(newPaymentModes);
+  };
 
   const handlePaymentSubmit = () => {
     if (!selectedCustomerId || receivedAmount <= 0 || !paymentDate) {
@@ -77,13 +154,20 @@ export default function CustomerPayment() {
       return;
     }
 
-    const paymentPayload: InsertPayment = {
+    const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+    
+    const paymentPayload = {
       customerId: parseInt(selectedCustomerId),
       amount: receivedAmount,
-      paymentMode: paymentMode,
       paymentDate: format(paymentDate, "yyyy-MM-dd"),
       remarks: remarks,
-      saleId: selectedInvoiceId ? parseInt(selectedInvoiceId) : null,
+      invoiceIds: Array.from(selectedInvoiceIds),
+      invoices: selectedInvoices.map(inv => ({
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        balance: inv.balance,
+        paymentMode: invoicePaymentModes.get(inv.id) || 'cash'
+      }))
     };
 
     createPaymentMutation.mutate(paymentPayload);
@@ -110,6 +194,11 @@ export default function CustomerPayment() {
 
   const displayedInvoices = calculateRunningBalance();
   const totalOutstandingBalance = displayedInvoices.reduce((sum, invoice) => sum + invoice.balance, 0);
+  
+  // Calculate selected invoices total
+  const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+  const selectedTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
+  const remainingBalance = selectedTotal - receivedAmount;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -153,39 +242,23 @@ export default function CustomerPayment() {
               </div>
 
               <div>
-                <Label htmlFor="invoice">Select Invoice (Optional):</Label>
-                <Select value={selectedInvoiceId} onValueChange={setSelectedInvoiceId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an invoice" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingInvoices ? (
-                      <SelectItem value="disabled" disabled>Loading invoices...</SelectItem>
-                    ) : displayedInvoices && displayedInvoices.length > 0 ? (
-                      displayedInvoices.map((invoice) => (
-                        <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                          {invoice.invoiceNumber} - £{invoice.balance.toFixed(2)} remaining
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="disabled" disabled>No outstanding invoices</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <Label>Selected Invoices Total:</Label>
+                <div className="p-2 border rounded bg-gray-50">
+                  <span className="font-semibold text-lg">£{selectedTotal.toFixed(2)}</span>
+                  <span className="text-sm text-gray-500 ml-2">
+                    ({selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} selected)
+                  </span>
+                </div>
               </div>
 
               <div>
-                <Label htmlFor="payment-mode">Payment Mode:</Label>
-                <Select value={paymentMode} onValueChange={setPaymentMode}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">CASH</SelectItem>
-                    <SelectItem value="CARD">CARD</SelectItem>
-                    <SelectItem value="BANK">BANK</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Payment Summary:</Label>
+                <div className="p-2 border rounded bg-gray-50">
+                  <div className="text-sm">
+                    <div>Cash: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cash').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
+                    <div>Card: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -226,7 +299,7 @@ export default function CustomerPayment() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               <div>
                 <Label htmlFor="remarks">Remarks:</Label>
                 <Input
@@ -237,11 +310,23 @@ export default function CustomerPayment() {
                 />
               </div>
 
+              <div>
+                <Label>Remaining Balance:</Label>
+                <div className="p-2 border rounded bg-gray-50">
+                  <span className={`font-semibold text-lg ${remainingBalance > 0 ? 'text-red-600' : remainingBalance < 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                    £{Math.abs(remainingBalance).toFixed(2)}
+                  </span>
+                  <span className="text-sm text-gray-500 ml-2">
+                    {remainingBalance > 0 ? 'remaining' : remainingBalance < 0 ? 'overpaid' : 'exact'}
+                  </span>
+                </div>
+              </div>
+
               <div className="flex items-end">
                 <Button
                   className="w-full"
                   onClick={handlePaymentSubmit}
-                  disabled={createPaymentMutation.isPending}
+                  disabled={createPaymentMutation.isPending || selectedInvoiceIds.size === 0}
                 >
                   {createPaymentMutation.isPending ? "Processing..." : "Record Payment"}
                 </Button>
@@ -272,28 +357,63 @@ export default function CustomerPayment() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <input
+                      type="checkbox"
+                      checked={selectedInvoiceIds.size === displayedInvoices.length && displayedInvoices.length > 0}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="rounded"
+                    />
+                  </TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Invoice No.</TableHead>
                   <TableHead className="text-right">Total Amount</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
+                  <TableHead>Payment Mode</TableHead>
                   <TableHead className="text-right">Running Balance</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {displayedInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
+                  <TableRow key={invoice.id} className={selectedInvoiceIds.has(invoice.id) ? 'bg-blue-50' : ''}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedInvoiceIds.has(invoice.id)}
+                        onChange={(e) => handleInvoiceSelection(invoice.id, e.target.checked)}
+                        className="rounded"
+                      />
+                    </TableCell>
                     <TableCell>{format(new Date(invoice.date || ''), "dd/MM/yyyy")}</TableCell>
                     <TableCell>{invoice.invoiceNumber}</TableCell>
                     <TableCell className="text-right">£{invoice.totalAmount.toFixed(2)}</TableCell>
                     <TableCell className="text-right">£{invoice.paid.toFixed(2)}</TableCell>
                     <TableCell className="text-right">£{invoice.balance.toFixed(2)}</TableCell>
+                    <TableCell>
+                      {selectedInvoiceIds.has(invoice.id) ? (
+                        <Select 
+                          value={invoicePaymentModes.get(invoice.id) || 'cash'} 
+                          onValueChange={(value) => handleInvoicePaymentModeChange(invoice.id, value)}
+                        >
+                          <SelectTrigger className="w-20">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="cash">Cash</SelectItem>
+                            <SelectItem value="bank">Card</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">£{invoice.runningBal.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
                 {displayedInvoices.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-4">
+                    <TableCell colSpan={8} className="text-center py-4">
                       No outstanding invoices found
                     </TableCell>
                   </TableRow>
@@ -302,6 +422,61 @@ export default function CustomerPayment() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Payment History Table */}
+        {selectedCustomerId && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Payment ID</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Invoice No.</TableHead>
+                    <TableHead>Payment Mode</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Remarks</TableHead>
+                    <TableHead>Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paymentHistory?.sort((a: any, b: any) => (b.batchId || 0) - (a.batchId || 0)).map((payment: any) => (
+                    <TableRow key={payment.id}>
+                      <TableCell className="font-mono">{payment.batchId || '-'}</TableCell>
+                      <TableCell>{format(new Date(payment.paymentDate), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>{payment.invoiceNumber || 'On Account'}</TableCell>
+                      <TableCell className="capitalize">{payment.paymentMode}</TableCell>
+                      <TableCell className="text-right">£{payment.amount.toFixed(2)}</TableCell>
+                      <TableCell>{payment.remarks || '-'}</TableCell>
+                      <TableCell>
+                        {payment.batchId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(`/print/dot-matrix-payment/${payment.batchId}`, '_blank')}
+                            title="Print Payment Receipt"
+                          >
+                            <Receipt className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {(!paymentHistory || paymentHistory.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="text-center py-4">
+                        No payment history found
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

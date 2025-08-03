@@ -3482,12 +3482,139 @@ def create_payment():
         print("Full traceback:", traceback.format_exc())  # Debug log
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/payments/bulk', methods=['POST'])
+@jwt_required()
+def create_bulk_payment():
+    try:
+        data = request.get_json()
+        print("Received bulk payment data:", data)  # Debug log
+        
+        customer_id = data.get('customerId')
+        total_amount = float(data.get('amount'))
+        payment_date = datetime.strptime(data.get('paymentDate'), '%Y-%m-%d').date()
+        remarks = data.get('remarks', '')
+        invoices = data.get('invoices', [])
+        
+        # Generate a unique batch ID for this payment transaction
+        # Get the highest batch_id and increment
+        last_batch = db.session.query(Payment.batch_id).filter(
+            Payment.batch_id.isnot(None)
+        ).order_by(Payment.batch_id.desc()).first()
+        
+        batch_id = (last_batch[0] + 1) if last_batch else 1
+        
+        # Distribute payment across selected invoices
+        remaining_amount = total_amount
+        payments_created = []
+        
+        for invoice_data in invoices:
+            if remaining_amount <= 0:
+                break
+                
+            invoice_balance = float(invoice_data['balance'])
+            invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
+            payment_amount = min(remaining_amount, invoice_balance)
+            
+            # Create payment for this invoice with its specific payment mode
+            payment = Payment(
+                customer_id=customer_id,
+                sale_id=invoice_data['invoiceId'],
+                amount=payment_amount,
+                payment_mode=invoice_payment_mode,
+                payment_date=payment_date,
+                batch_id=batch_id,
+                remarks=f"{remarks} (Batch ID: {batch_id} - {invoice_payment_mode.title()})"
+            )
+            
+            # Update the sale's payment status
+            sale = Sale.query.get(invoice_data['invoiceId'])
+            if sale:
+                current_paid = float(sale.paid_amount or 0)
+                new_paid = current_paid + payment_amount
+                
+                if new_paid >= float(sale.total_amount):
+                    sale.payment_status = "paid"
+                    sale.paid_amount = sale.total_amount
+                    sale.status = "finalized"
+                    # Update customer_type based on payment mode
+                    if invoice_payment_mode.lower() == "cash":
+                        sale.customer_type = "cash"
+                    elif invoice_payment_mode.lower() == "bank":
+                        sale.customer_type = "bank"
+                else:
+                    sale.payment_status = "partial"
+                    sale.paid_amount = new_paid
+                
+                db.session.add(sale)
+            
+            db.session.add(payment)
+            payments_created.append(payment)
+            remaining_amount -= payment_amount
+        
+        # If there's remaining amount, create an on-account payment (default to cash)
+        if remaining_amount > 0:
+            on_account_payment = Payment(
+                customer_id=customer_id,
+                sale_id=None,  # On account payment
+                amount=remaining_amount,
+                payment_mode='cash',  # Default to cash for on-account
+                payment_date=payment_date,
+                batch_id=batch_id,
+                remarks=f"{remarks} (On Account - Batch ID: {batch_id})"
+            )
+            db.session.add(on_account_payment)
+            payments_created.append(on_account_payment)
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'paymentId': batch_id,
+            'paymentsCreated': len(payments_created),
+            'totalAmount': total_amount
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print("Error creating bulk payment:", str(e))
+        import traceback
+        print("Full traceback:", traceback.format_exc())
+        return jsonify({'message': str(e)}), 400
+
 @app.route('/api/payments', methods=['GET'])
 @jwt_required()
 def get_payments():
     try:
         payments = Payment.query.all()
         return jsonify([payment.to_dict() for payment in payments]), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/payments/batch/<int:batch_id>', methods=['GET'])
+@jwt_required()
+def get_payments_by_batch(batch_id):
+    try:
+        payments = Payment.query.filter(Payment.batch_id == batch_id).all()
+        
+        # Include invoice information for each payment
+        payment_details = []
+        for payment in payments:
+            payment_dict = payment.to_dict()
+            if payment.sale:
+                payment_dict['invoiceNumber'] = payment.sale.invoice_number
+                payment_dict['invoiceAmount'] = float(payment.sale.total_amount)
+            else:
+                payment_dict['invoiceNumber'] = 'On Account'
+                payment_dict['invoiceAmount'] = None
+            
+            payment_details.append(payment_dict)
+        
+        return jsonify({
+            'batchId': batch_id,
+            'payments': payment_details,
+            'totalAmount': sum(float(p.amount) for p in payments),
+            'paymentCount': len(payments)
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -3596,6 +3723,7 @@ def get_payment_history():
             
             payment_history.append({
                 'id': payment.id,
+                'batchId': payment.batch_id,
                 'paymentDate': payment.payment_date.isoformat(),
                 'paymentMode': payment.payment_mode,
                 'amount': float(payment.amount),
@@ -3646,7 +3774,7 @@ def daily_book_sales():
         )
     # Only show finalized sales
     query = query.filter(Sale.status == 'finalized')
-    sales = query.order_by(Sale.date.desc()).all()
+    sales = query.order_by(Sale.invoice_number.desc()).all()
     result = []
     for idx, sale in enumerate(sales, 1):
         boxes = sum(item.quantity for item in sale.items)
@@ -3678,6 +3806,7 @@ def daily_book_sales():
             'boxes': boxes,
             'invoiceNo': sale.invoice_number,
             'customerName': sale.customer.customer_name if sale.customer else '',
+            'customerOthers': sale.customer.others if sale.customer and sale.customer.others else None,
             'customerId': sale.customer_id,
             'vat': float(sale.vat_amount),
             'amount': account_amount,
@@ -8158,16 +8287,49 @@ def daily_summary_report():
         func.date(Sale.date) == report_date
     ).order_by(Sale.invoice_number).all()
     
+    # Get customer returns for the date (to show as negative credits)
+    customer_returns = db.session.query(
+        CustomerReturn.customer_id,
+        CustomerReturn.credit_note_amount,
+        Customer.customer_name,
+        CustomerReturn.invoice_number
+    ).join(
+        Customer, CustomerReturn.customer_id == Customer.id
+    ).filter(
+        CustomerReturn.date == report_date,
+        CustomerReturn.credit_note_issued == True
+    ).all()
+    
+    # Get negative payments (payments with negative amounts)
+    negative_payments = db.session.query(
+        Payment.customer_id,
+        Payment.amount,
+        Customer.customer_name,
+        Sale.invoice_number
+    ).join(
+        Customer, Payment.customer_id == Customer.id
+    ).outerjoin(
+        Sale, Payment.sale_id == Sale.id
+    ).filter(
+        Payment.payment_date == report_date,
+        Payment.amount < 0
+    ).all()
+    
     # Process sales data to match the image format
     sales_summary = []
     cash_total = 0
     card_total = 0
     account_total = 0
     
+    # Track processed returns and negative payments to avoid duplicates
+    processed_returns = set()
+    processed_neg_payments = set()
+    
     for sale in sales_query:
         cash_amount = 0
         card_amount = 0
         account_amount = 0
+        account_credits = 0
         
         # Get payments for this sale
         sale_payments = db.session.query(Payment).filter(
@@ -8184,6 +8346,16 @@ def daily_summary_report():
         if sale.customer_type == 'account' and not sale_payments:
             account_amount = float(sale.total_amount or 0)
         
+        # Check for negative quantities in sale items or negative total amount
+        negative_items = db.session.query(SaleItem).filter(
+            SaleItem.sale_id == sale.id,
+            or_(SaleItem.quantity < 0, SaleItem.total_price < 0)
+        ).all()
+        
+        if negative_items or float(sale.total_amount) < 0:
+            # This is a negative invoice, show in account credits
+            account_credits = abs(float(sale.total_amount or 0))
+        
         cash_total += cash_amount
         card_total += card_amount
         account_total += account_amount
@@ -8196,8 +8368,52 @@ def daily_summary_report():
             'account_sales': account_amount,
             'account_paid_cash': 0,  # Will be calculated separately
             'account_paid_cheque': 0,  # Will be calculated separately
-            'account_credits': 0  # Will be calculated separately
+            'account_credits': account_credits
         })
+    
+    # Add customer returns as separate entries
+    for return_item in customer_returns:
+        if return_item.customer_id not in processed_returns:
+            # Group all returns for this customer
+            customer_return_total = sum(
+                float(r.credit_note_amount or 0) 
+                for r in customer_returns 
+                if r.customer_id == return_item.customer_id
+            )
+            
+            sales_summary.append({
+                'customer_name': return_item.customer_name,
+                'ticket_no': f"CR-{return_item.invoice_number or 'RETURN'}",
+                'cash_sales': 0,
+                'card_paid': 0,
+                'account_sales': 0,
+                'account_paid_cash': 0,
+                'account_paid_cheque': 0,
+                'account_credits': customer_return_total
+            })
+            processed_returns.add(return_item.customer_id)
+    
+    # Add negative payments as separate entries
+    for neg_payment in negative_payments:
+        if neg_payment.customer_id not in processed_neg_payments:
+            # Group all negative payments for this customer
+            customer_neg_total = sum(
+                abs(float(p.amount)) 
+                for p in negative_payments 
+                if p.customer_id == neg_payment.customer_id
+            )
+            
+            sales_summary.append({
+                'customer_name': neg_payment.customer_name,
+                'ticket_no': f"NP-{neg_payment.invoice_number or 'PAYMENT'}",
+                'cash_sales': 0,
+                'card_paid': 0,
+                'account_sales': 0,
+                'account_paid_cash': 0,
+                'account_paid_cheque': 0,
+                'account_credits': customer_neg_total
+            })
+            processed_neg_payments.add(neg_payment.customer_id)
     
     # 2. Customer Payments (using sale_id relationship)
     customer_payments = db.session.query(
@@ -8265,7 +8481,48 @@ def daily_summary_report():
             'date': payment.payment_date.isoformat()
         })
     
-    # 4. Banking Records
+    # 4. Expense Entries
+    expense_entries = db.session.query(
+        ExpenseEntry.ref_number,
+        ExpenseEntry.description,
+        ExpenseEntry.amount,
+        ExpenseEntry.payment_mode,
+        ExpenseEntry.date,
+        Supplier.supplier_name,
+        Expense.expense_name
+    ).join(
+        Supplier, ExpenseEntry.supplier_id == Supplier.id
+    ).join(
+        Expense, ExpenseEntry.expense_id == Expense.id
+    ).filter(
+        ExpenseEntry.date == report_date
+    ).order_by(ExpenseEntry.id).all()
+    
+    expense_data = []
+    for expense in expense_entries:
+        expense_data.append({
+            'ref_number': expense.ref_number,
+            'description': expense.description,
+            'supplier_name': expense.supplier_name,
+            'expense_name': expense.expense_name,
+            'amount': float(expense.amount),
+            'payment_mode': expense.payment_mode,
+            'date': expense.date.isoformat()
+        })
+
+    # 5. Cash Carry Forward
+    cash_cf = db.session.query(CashCarryForward).filter(
+        CashCarryForward.date == report_date
+    ).first()
+    
+    cash_cf_data = {
+        'pounds': float(cash_cf.pounds) if cash_cf else 0,
+        'coins': float(cash_cf.coins) if cash_cf else 0,
+        'total': float(cash_cf.pounds + cash_cf.coins) if cash_cf else 0,
+        'date': report_date.isoformat()
+    }
+
+    # 6. Banking Records
     banking_records = db.session.query(BankingEntry).filter(
         BankingEntry.date == report_date
     ).order_by(BankingEntry.id).all()
@@ -8292,13 +8549,24 @@ def daily_summary_report():
         })
     
     # Calculate totals
+    account_credits_total = sum(
+        float(return_item.credit_note_amount or 0) for return_item in customer_returns
+    ) + sum(
+        abs(float(neg_payment.amount)) for neg_payment in negative_payments
+    ) + sum(
+        sale['account_credits'] for sale in sales_summary if sale['account_credits'] > 0
+    )
+    
     totals = {
         'cash_sales': cash_total,
         'card_sales': card_total,
         'account_sales': account_total,
+        'account_credits': account_credits_total,
         'total_sales': cash_total + card_total + account_total,
         'customer_payments_total': sum(float(p.amount) for p in customer_payments),
         'supplier_payments_total': sum(float(p.amount) for p in supplier_payments),
+        'expense_total': sum(float(e.amount) for e in expense_entries),
+        'cash_cf_total': cash_cf_data['total'],
         'banking_total': sum(float(r.amount) for r in banking_records)
     }
     
@@ -8307,6 +8575,8 @@ def daily_summary_report():
         'sales_summary': sales_summary,
         'customer_payments': customer_payments_data,
         'supplier_payments': supplier_payments_data,
+        'expense_entries': expense_data,
+        'cash_cf': cash_cf_data,
         'banking_records': banking_data,
         'totals': totals
     })

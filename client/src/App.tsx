@@ -100,6 +100,7 @@ import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
 import InvoicePrintPage from "@/pages/print/invoice";
 import A5InvoicePrintPage from "@/pages/print/a5-invoice";
 import DotMatrixInvoicePrintPage from "@/pages/print/dot-matrix-invoice";
+import DotMatrixPaymentPrintPage from "@/pages/print/dot-matrix-payment";
 import PurchaseInvoicePrintPage from "@/pages/print/purchase-invoice";
 import DeliveryNotePrintPage from "./pages/print/delivery-note";
 import PackingListPrintPage from "./pages/print/packing-list";
@@ -510,6 +511,8 @@ function Router() {
       <Route path="/print/a5-invoice/:invoiceNumber" component={A5InvoicePrintPage} />
       {/* Dot Matrix Print Invoice Route (public) */}
       <Route path="/print/dot-matrix-invoice/:invoiceNumber" component={DotMatrixInvoicePrintPage} />
+      {/* Dot Matrix Print Payment Route (public) */}
+      <Route path="/print/dot-matrix-payment/:batchId" component={DotMatrixPaymentPrintPage} />
       <Route path="/print/purchase-invoice/:invoiceId" component={PurchaseInvoicePrintPage} />
       <Route path="/print/delivery-note/:invoiceNumber">
         <DeliveryNotePrintPage />

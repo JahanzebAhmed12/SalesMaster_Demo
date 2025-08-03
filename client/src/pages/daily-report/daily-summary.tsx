@@ -40,6 +40,21 @@ interface DailySummaryData {
     payment_mode: string;
     date: string;
   }>;
+  expense_entries: Array<{
+    ref_number: string;
+    description: string;
+    supplier_name: string;
+    expense_name: string;
+    amount: number;
+    payment_mode: string;
+    date: string;
+  }>;
+  cash_cf: {
+    pounds: number;
+    coins: number;
+    total: number;
+    date: string;
+  };
   banking_records: Array<{
     date: string;
     remarks: string;
@@ -57,9 +72,12 @@ interface DailySummaryData {
     cash_sales: number;
     card_sales: number;
     account_sales: number;
+    account_credits: number;
     total_sales: number;
     customer_payments_total: number;
     supplier_payments_total: number;
+    expense_total: number;
+    cash_cf_total: number;
     banking_total: number;
   };
 }
@@ -90,7 +108,7 @@ export default function DailySummary() {
     }
   }, [businessDate]);
 
-  // Fetch daily summary data
+  // Fetch daily summary data with fresh data on mount and date changes
   const { data: summaryData, isLoading, error } = useQuery<DailySummaryData>({
     queryKey: ["/api/reports/daily-summary", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
     queryFn: () => {
@@ -98,6 +116,10 @@ export default function DailySummary() {
       return apiRequest("GET", `/api/reports/daily-summary?date=${format(selectedDate, "yyyy-MM-dd")}`);
     },
     enabled: !!selectedDate,
+    staleTime: 0, // Always consider data stale to ensure fresh fetch
+    gcTime: 0, // Don't cache the data (replaces deprecated cacheTime)
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnWindowFocus: true, // Refetch when window regains focus
   });
 
   const handleGeneratePDF = async () => {
@@ -115,18 +137,18 @@ export default function DailySummary() {
       if (!token) {
         throw new Error('No authentication token found');
       }
-      
+
       // Use the correct backend URL
       const backendUrl = window.location.origin.replace(':5173', ':5000');
       const url = `${backendUrl}/api/reports/daily-summary/pdf?date=${format(selectedDate, "yyyy-MM-dd")}&token=${token}`;
-      
+
       // Open in new window for printing
       const printWindow = window.open(
-        url, 
-        '_blank', 
+        url,
+        '_blank',
         'width=800,height=600,scrollbars=yes,resizable=yes'
       );
-      
+
       if (!printWindow) {
         throw new Error('Popup blocked. Please allow popups for this site.');
       }
@@ -257,26 +279,10 @@ export default function DailySummary() {
                         <TableCell className="border text-right">{summaryData.totals.account_sales.toFixed(2)}</TableCell>
                         <TableCell className="border text-right">-</TableCell>
                         <TableCell className="border text-right">-</TableCell>
-                        <TableCell className="border text-right">-</TableCell>
+                        <TableCell className="border text-right">{(summaryData.totals.account_credits || 0).toFixed(2)}</TableCell>
                       </TableRow>
                     </TableBody>
                   </Table>
-                </div>
-                
-                {/* Simple Totals Display */}
-                <div className="mt-6 space-y-2 text-lg">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Cash Sales:</span>
-                    <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Card Sales:</span>
-                    <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Banking:</span>
-                    <span className="font-bold">£{summaryData.totals.banking_total.toFixed(2)}</span>
-                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -378,6 +384,45 @@ export default function DailySummary() {
                       )}
                     </TableBody>
                   </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Daily Summary Totals */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Daily Summary Totals</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-lg">
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Cash Sales:</span>
+                    <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Card Sales:</span>
+                    <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Cheque Account Payments/Customer Payments Cash:</span>
+                    <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Cash Carry Forward:</span>
+                    <span className="font-bold">£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Supplier Payment (Paid Out):</span>
+                    <span className="font-bold">£{summaryData.supplier_payments.filter(p => p.payment_mode.toLowerCase() === 'cash' || p.payment_mode.toLowerCase() === 'bank').reduce((sum, p) => sum + p.amount, 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Expense (Paid Out):</span>
+                    <span className="font-bold">£{(summaryData.expense_entries || []).filter(e => e.payment_mode.toLowerCase() === 'cash' || e.payment_mode.toLowerCase() === 'bank').reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Banking:</span>
+                    <span className="font-bold">£{summaryData.totals.banking_total.toFixed(2)}</span>
+                  </div>
                 </div>
               </CardContent>
             </Card>

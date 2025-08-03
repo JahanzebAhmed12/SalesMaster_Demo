@@ -76,6 +76,7 @@ export default function CustomerAdd() {
       settlement_days: 0,
       settlement_discount: 0,
       web_address: "",
+      others: "",
       is_active: "yes",
     },
     mode: "onChange",
@@ -499,6 +500,20 @@ export default function CustomerAdd() {
                       <FormLabel>Web Address</FormLabel>
                       <FormControl>
                         <Input {...field} value={field.value || ""} type="url" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="others"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Others/Gate</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value || ""} placeholder="Enter others/gate information" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

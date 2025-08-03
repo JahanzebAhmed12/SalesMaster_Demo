@@ -192,6 +192,7 @@ class CustomerSchema(BaseModel):
     settlement_days: int = 0
     settlement_discount: float = 0
     web_address: Optional[str] = None
+    others: Optional[str] = None
     is_active: str = 'yes'
 
     class Config:
