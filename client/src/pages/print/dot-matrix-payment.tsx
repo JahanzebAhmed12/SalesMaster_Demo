@@ -53,8 +53,8 @@ const FIELD_POSITIONS = {
     value: { left: '125mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '180mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '190mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
+    goods: { top: '177mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '187mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
     total: { top: '194mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
