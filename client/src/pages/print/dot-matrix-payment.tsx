@@ -36,12 +36,12 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '02mm', left: '3mm' }, // Position for account number (customer ID) - moved up 5mm
-  customerName: { top: '10mm', left: '2mm' }, // Position for customer name - moved up 5mm
-  customerAddress: { top: '15mm', left: '2mm', width: '48mm' }, // Position for customer address with wrapping - moved up 5mm
-  paymentId: { top: '45mm', left: '30mm' }, // Position for payment ID
-  date: { top: '45mm', left: '53mm' }, // Position for date
-  pageNumber: { top: '150mm', left: '30mm' }, // Position for page number (60mm right of date)
+  accountNo: { top: '01mm', left: '3mm' }, // Position for account number (customer ID) - moved up 5mm
+  customerName: { top: '10mm', left: '1mm' }, // Position for customer name - moved up 5mm
+  customerAddress: { top: '18mm', left: '1mm', width: '48mm' }, // Position for customer address with wrapping - moved up 5mm
+  paymentId: { top: '47mm', left: '25mm' }, // Position for payment ID
+  date: { top: '47mm', left: '50mm' }, // Position for date
+  pageNumber: { top: '140mm', left: '25mm' }, // Position for page number (60mm right of date)
   itemsStartTop: '65mm', // Starting position for items grid
   itemsRowHeight: '10mm', // Height between rows
   maxItemsPerPage: 6, // Maximum payment items that fit on one page (considering larger row height)
@@ -49,13 +49,13 @@ const FIELD_POSITIONS = {
   columns: {
     quantity: { left: '1mm', width: '15mm' } as ColumnConfig,
     description: { left: '10mm', width: '80mm' } as ColumnConfig,
-    price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '100mm', width: '25mm', align: 'right' } as ColumnConfig
+    price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '140mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '150mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '160mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '140mm', left: '97mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '146mm', left: '97mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '155mm', left: '97mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
