@@ -667,6 +667,7 @@ class SupplierPayment(db.Model):
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     payment_mode = db.Column(db.String(50), nullable=False) # e.g., 'cash', 'card', 'bank transfer'
     payment_date = db.Column(db.Date, nullable=False)
+    supplier_invoice_number = db.Column(db.String(100)) # Supplier's invoice number
     remarks = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -682,6 +683,7 @@ class SupplierPayment(db.Model):
             'amount': float(self.amount),
             'paymentMode': self.payment_mode,
             'paymentDate': self.payment_date.isoformat(),
+            'supplierInvoiceNumber': self.supplier_invoice_number,
             'remarks': self.remarks,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None

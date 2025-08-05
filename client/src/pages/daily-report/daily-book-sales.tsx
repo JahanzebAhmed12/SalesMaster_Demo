@@ -33,6 +33,7 @@ interface SalesEntry {
   invoiceNo: string;
   customerName: string;
   customerOthers?: string;
+  gateNumber?: string;
   customerId: number;
   vat: number;
   amount: number;
@@ -313,7 +314,7 @@ export default function DailyBookSales() {
       item.customerName + (item.customerOthers ? ` (${item.customerOthers})` : ''),
       item.amount,
       item.cash,
-      0, // Placeholder for bank transfer
+      item.bank || 0,
       item.credit || 0
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
@@ -931,6 +932,11 @@ export default function DailyBookSales() {
                               <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
                                 <span>
                                   {sale.customerName}
+                                  {sale.gateNumber && (
+                                    <span className="text-xs text-gray-500 font-normal ml-2">
+                                      [Gate: {sale.gateNumber}]
+                                    </span>
+                                  )}
                                   {sale.customerOthers && (
                                     <span className="text-xs text-gray-500 font-normal ml-2">
                                       ({sale.customerOthers})

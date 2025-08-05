@@ -35,6 +35,7 @@ export default function SupplierPayment() {
   const [paymentDate, setPaymentDate] = useState<Date>(new Date());
   const [amountPaid, setAmountPaid] = useState<string>("0");
   const [remarks, setRemarks] = useState<string>("");
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
 
@@ -64,6 +65,7 @@ export default function SupplierPayment() {
       // Reset form
       setAmountPaid("0");
       setRemarks("");
+      setSupplierInvoiceNumber("");
       setSelectedInvoices([]);
     },
     onError: (error: any) => {
@@ -117,6 +119,7 @@ export default function SupplierPayment() {
       paymentMode: paymentMode,
       paymentDate: format(paymentDate, "yyyy-MM-dd"),
       remarks: remarks || null,
+      supplierInvoiceNumber: supplierInvoiceNumber || null,
     };
 
     createPaymentMutation.mutate(paymentData);
@@ -154,6 +157,7 @@ export default function SupplierPayment() {
         paymentMode: paymentMode,
         paymentDate: format(paymentDate, "yyyy-MM-dd"),
         remarks: remarks || `Payment for invoice #${invoiceId}`,
+        supplierInvoiceNumber: supplierInvoiceNumber || null,
       };
       return apiRequest("POST", "/api/supplier-payments", paymentData);
     });
@@ -170,6 +174,7 @@ export default function SupplierPayment() {
         // Reset form
         setAmountPaid("0");
         setRemarks("");
+        setSupplierInvoiceNumber("");
         setSelectedInvoices([]);
       })
       .catch((error) => {
@@ -219,7 +224,7 @@ export default function SupplierPayment() {
         {/* Payment Form */}
         <Card>
           <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
               <div>
                 <Label htmlFor="supplier">Select Supplier :</Label>
                 <Select value={selectedSupplier} onValueChange={handleSupplierChange}>
@@ -240,6 +245,16 @@ export default function SupplierPayment() {
                     )}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="supplier-invoice-number">Supplier Invoice #:</Label>
+                <Input
+                  id="supplier-invoice-number"
+                  value={supplierInvoiceNumber}
+                  onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
+                  placeholder="Enter invoice number"
+                />
               </div>
 
               <div>

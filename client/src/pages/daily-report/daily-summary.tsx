@@ -37,7 +37,7 @@ interface DailySummaryData {
   }>;
   supplier_payments: Array<{
     supplier_name: string;
-    receipt_no: string;
+    supplier_invoice_number: string;
     amount: number;
     payment_mode: string;
     date: string;
@@ -283,11 +283,11 @@ export default function DailySummary() {
       yPosition += 5;
       
       autoTable(doc, {
-        head: [['Supplier Name', 'Receipt No', 'Amount', 'Payment Mode']],
+        head: [['Supplier Name', 'Supplier Invoice No', 'Amount', 'Payment Mode']],
         body: [
           ...summaryData.supplier_payments.map(payment => [
             payment.supplier_name,
-            payment.receipt_no,
+            payment.supplier_invoice_number || '-',
             payment.amount.toFixed(2),
             payment.payment_mode
           ]),
@@ -575,7 +575,7 @@ export default function DailySummary() {
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-semibold border">Supplier Name</TableHead>
-                        <TableHead className="font-semibold border">Receipt No</TableHead>
+                        <TableHead className="font-semibold border">Supplier Invoice No</TableHead>
                         <TableHead className="font-semibold border text-right">Amount</TableHead>
                         <TableHead className="font-semibold border">Payment Mode</TableHead>
                       </TableRow>
@@ -584,7 +584,7 @@ export default function DailySummary() {
                       {summaryData.supplier_payments.map((payment, index) => (
                         <TableRow key={index}>
                           <TableCell className="border">{payment.supplier_name}</TableCell>
-                          <TableCell className="border">{payment.receipt_no}</TableCell>
+                          <TableCell className="border">{payment.supplier_invoice_number || '-'}</TableCell>
                           <TableCell className="border text-right">{payment.amount.toFixed(2)}</TableCell>
                           <TableCell className="border capitalize">{payment.payment_mode}</TableCell>
                         </TableRow>

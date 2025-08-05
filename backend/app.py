@@ -3205,11 +3205,11 @@ def reset_business_date():
         return jsonify({'message': str(e)}), 500
 
 def get_next_business_date(current_date):
-    """Calculate next business date (skipping weekends)"""
+    """Calculate next business date (skipping only Sunday)"""
     next_date = current_date + timedelta(days=1)
     
-    # Skip weekends (Saturday = 5, Sunday = 6)
-    while next_date.weekday() >= 5:
+    # Skip only Sunday (Sunday = 6), Saturday is a working day
+    while next_date.weekday() == 6:
         next_date += timedelta(days=1)
     
     return next_date
@@ -4526,6 +4526,7 @@ def create_supplier_payment():
             amount=payment_data.amount,
             payment_mode=payment_data.payment_mode,
             payment_date=payment_data.payment_date,
+            supplier_invoice_number=payment_data.supplier_invoice_number,
             remarks=payment_data.remarks
         )
         
@@ -5722,7 +5723,9 @@ def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
             StockMovement.created_at <= to_date
         ).all()
         
-        total = sum(movement.quantity for movement in movements if movement.quantity > 0)
+        # Supplier returns are stored as negative quantities (stock reduction)
+        # But for stock check calculation, we need the absolute value
+        total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
         print(f"[DEBUG] Found {len(movements)} supplier return movements, total: {total}")
         return total
     except Exception as e:
@@ -8488,7 +8491,7 @@ def daily_summary_report():
     # 3. Supplier Payments
     supplier_payments = db.session.query(
         Supplier.supplier_name,
-        SupplierPayment.id,
+        SupplierPayment.supplier_invoice_number,
         SupplierPayment.amount,
         SupplierPayment.payment_mode,
         SupplierPayment.payment_date
@@ -8502,7 +8505,7 @@ def daily_summary_report():
     for payment in supplier_payments:
         supplier_payments_data.append({
             'supplier_name': payment.supplier_name,
-            'receipt_no': f"SUP{payment.id:06d}",  # Generate receipt number from ID
+            'supplier_invoice_number': payment.supplier_invoice_number or '',  # Use supplier invoice number
             'amount': float(payment.amount),
             'payment_mode': payment.payment_mode,
             'date': payment.payment_date.isoformat()
@@ -8730,7 +8733,7 @@ def daily_summary_pdf():
         # 3. Supplier Payments
         supplier_payments = db.session.query(
             Supplier.supplier_name,
-            SupplierPayment.id,
+            SupplierPayment.supplier_invoice_number,
             SupplierPayment.amount,
             SupplierPayment.payment_mode,
             SupplierPayment.payment_date
@@ -8744,7 +8747,7 @@ def daily_summary_pdf():
         for payment in supplier_payments:
             supplier_payments_data.append({
                 'supplier_name': payment.supplier_name,
-                'receipt_no': f"SUP{payment.id:06d}",
+                'supplier_invoice_number': payment.supplier_invoice_number or '',
                 'amount': float(payment.amount),
                 'payment_mode': payment.payment_mode
             })

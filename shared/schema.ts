@@ -486,6 +486,7 @@ export const supplierPaymentSchema = z.object({
   amount: z.number(),
   paymentMode: z.string(),
   paymentDate: z.string(),
+  supplierInvoiceNumber: z.string().nullable(),
   remarks: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string()

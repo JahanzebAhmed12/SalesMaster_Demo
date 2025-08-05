@@ -297,6 +297,7 @@ class SupplierPaymentSchema(BaseModel):
     amount: float
     payment_mode: str = Field(alias='paymentMode')
     payment_date: date = Field(alias='paymentDate')
+    supplier_invoice_number: Optional[str] = Field(default=None, alias='supplierInvoiceNumber')
     remarks: Optional[str] = None
 
     class Config:

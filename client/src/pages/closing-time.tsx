@@ -341,7 +341,7 @@ export default function ClosingTime() {
                 </div>
                 <div className="flex items-start gap-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
-                  <p>The system includes weekends - switching will move to the very next calendar day.</p>
+                  <p>Saturday is a working day. Only Sunday will be skipped when switching dates.</p>
                 </div>
                 <div className="flex items-start gap-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 flex-shrink-0"></div>
