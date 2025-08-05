@@ -82,8 +82,8 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
             <tr key={item.id || idx}>
               <td style={{ border: "1px solid #888", padding: 4 }}>{item.productName || item.description || "-"}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.quantity}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.totalPrice?.toFixed(2) ?? "-"}</td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}></td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}></td>
               <td style={{ border: "1px solid #888", padding: 4 }}>{item.remarks || "-"}</td>
             </tr>
           ))}

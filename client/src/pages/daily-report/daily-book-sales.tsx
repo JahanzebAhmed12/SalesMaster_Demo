@@ -21,7 +21,7 @@ import autoTable from 'jspdf-autotable';
 import { useLocation } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote } from "lucide-react";
+import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil } from "lucide-react";
 import classNames from 'classnames';
 
 interface SalesEntry {
@@ -940,6 +940,9 @@ export default function DailyBookSales() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
+                                <Pencil className="mr-2 h-5 w-5" /> Edit Invoice
+                              </DropdownMenuItem>
                               <DropdownMenuItem className="text-lg py-3" onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}>
                                 <Printer className="mr-2 h-5 w-5" /> Print Ticket
                               </DropdownMenuItem>

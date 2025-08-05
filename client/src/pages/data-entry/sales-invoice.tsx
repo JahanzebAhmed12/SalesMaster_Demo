@@ -97,7 +97,7 @@ const SalesInvoice = () => {
   const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [itemQuantity, setItemQuantity] = useState<number>(1);
-  const [itemUnitPrice, setItemUnitPrice] = useState<number>(0);
+  const [itemUnitPrice, setItemUnitPrice] = useState<string>("");
   const [itemNotes, setItemNotes] = useState<string>("");
   const [isCreatingSale, setIsCreatingSale] = useState(false);
   const [customerId, setCustomerId] = useState<string>("");
@@ -616,6 +616,15 @@ const SalesInvoice = () => {
       return;
     }
 
+    if (!itemUnitPrice || Number(itemUnitPrice) <= 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid unit price.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const actualStockLevel = getActualStock(parseInt(selectedProductId), selectedProductType);
 
     const existingQuantity = saleItems
@@ -669,8 +678,8 @@ const SalesInvoice = () => {
       productId: isRegular ? product.id : null,
       nonProductId: isRegular ? null : product.id,
       quantity: itemQuantity,
-      unitPrice: itemUnitPrice,
-      totalPrice: itemQuantity * itemUnitPrice,
+      unitPrice: Number(itemUnitPrice),
+      totalPrice: itemQuantity * Number(itemUnitPrice),
       productName: product.description || null,
       notes: itemNotes || null,
       addedBy: currentUser?.username || 'Unknown',
@@ -714,7 +723,7 @@ const SalesInvoice = () => {
     // For new invoices, stock will be reduced when the invoice is saved
     setSelectedProductId("");
     setItemQuantity(1);
-    setItemUnitPrice(0);
+    setItemUnitPrice("");
     setItemNotes("");
     setProductSearch("");
   };
@@ -1552,11 +1561,11 @@ const SalesInvoice = () => {
                         type="number"
                         step="0.01"
                         value={itemUnitPrice}
-                        onChange={(e) => setItemUnitPrice(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => setItemUnitPrice(e.target.value)}
                       />
                     </TableCell>
                     <TableCell className="text-center">
-                      £{(itemQuantity * itemUnitPrice).toFixed(2)}
+                      £{(itemQuantity * Number(itemUnitPrice || 0)).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-center">
                       <Button

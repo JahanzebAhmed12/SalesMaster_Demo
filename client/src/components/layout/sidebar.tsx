@@ -2,12 +2,12 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 
-import { 
-  LayoutDashboard, 
-  Edit, 
-  BarChart3, 
-  History, 
-  CreditCard, 
+import {
+  LayoutDashboard,
+  Edit,
+  BarChart3,
+  History,
+  CreditCard,
   Settings,
   ChevronRight,
   ShoppingCart,
@@ -46,7 +46,7 @@ const menuSections: MenuSection[] = [
       { title: "Return from Customer", path: "/data-entry/return-from-customer" },
       { title: "Return to Supplier", path: "/data-entry/return-to-supplier" },
       { title: "Dumps", path: "/data-entry/dumps" },
-      { title: "Cash C/F", path: "/data-entry/cash-cf" },
+      { title: "Till/Float(C/F)", path: "/data-entry/cash-cf" },
       { title: "Banking", path: "/data-entry/banking" },
       { title: "Expenses", path: "/data-entry/expenses" },
       { title: "On A/c Customer", path: "/data-entry/on-acc-customer" },
@@ -131,8 +131,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
 
   const toggleSection = (title: string) => {
-    setExpandedSections(prev => 
-      prev.includes(title) 
+    setExpandedSections(prev =>
+      prev.includes(title)
         ? prev.filter(s => s !== title)
         : [...prev, title]
     );
@@ -155,10 +155,9 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       </Button>
 
       {/* Sidebar */}
-      <div 
-        className={`fixed left-0 top-0 h-full w-64 bg-white shadow-lg transform transition-transform duration-300 z-40 flex flex-col ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0`}
+      <div
+        className={`fixed left-0 top-0 h-full w-64 bg-white shadow-lg transform transition-transform duration-300 z-40 flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'
+          } md:translate-x-0`}
       >
         {/* Header */}
         <div className="p-6 border-b border-gray-200 flex-shrink-0">
@@ -177,9 +176,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto py-4">
           {/* Dashboard Home */}
           <Link href="/dashboard">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${
-              location === '/dashboard' ? 'active' : ''
-            }`}>
+            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/dashboard' ? 'active' : ''
+              }`}>
               <LayoutDashboard size={20} />
               <span className="ml-3 font-medium">Dashboard</span>
             </a>
@@ -189,7 +187,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           {menuSections.map((section) => {
             const Icon = section.icon;
             const isExpanded = expandedSections.includes(section.title);
-            
+
             return (
               <div key={section.title} className="nav-section">
                 <button
@@ -200,20 +198,19 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                     <Icon size={20} />
                     <span className="ml-3 font-medium">{section.title}</span>
                   </div>
-                  <ChevronRight 
-                    size={16} 
-                    className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
+                  <ChevronRight
+                    size={16}
+                    className={`transform transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                   />
                 </button>
-                
+
                 {isExpanded && (
                   <div className="bg-gray-50">
                     {section.items.map((item) => (
                       <Link key={item.path} href={item.path}>
-                        <a 
-                          className={`nav-sub-item block px-12 py-2 text-sm text-gray-600 hover:text-primary ${
-                            location === item.path ? 'text-primary bg-blue-25' : ''
-                          }`}
+                        <a
+                          className={`nav-sub-item block px-12 py-2 text-sm text-gray-600 hover:text-primary ${location === item.path ? 'text-primary bg-blue-25' : ''
+                            }`}
                           onClick={() => {
                             if (window.innerWidth < 768) {
                               onToggle();
@@ -232,9 +229,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
           {/* Daily Attendance */}
           <Link href="/payroll/payroll">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${
-              location === '/payroll/payroll' ? 'active' : ''
-            }`}>
+            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/payroll/payroll' ? 'active' : ''
+              }`}>
               <Clock size={20} />
               <span className="ml-3 font-medium">Daily Attendance</span>
             </a>
@@ -242,9 +238,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
           {/* Closing Time */}
           <Link href="/closing-time">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${
-              location === '/closing-time' ? 'active' : ''
-            }`}>
+            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${location === '/closing-time' ? 'active' : ''
+              }`}>
               <Settings size={20} />
               <span className="ml-3 font-medium">Timings Setup</span>
             </a>
@@ -252,9 +247,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
           {/* Daily Summary */}
           <Link href="/daily-report/daily-summary">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${
-              location === '/daily-report/daily-summary' ? 'active' : ''
-            }`}>
+            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-report/daily-summary' ? 'active' : ''
+              }`}>
               <BarChart3 size={20} />
               <span className="ml-3 font-medium">Daily Summary</span>
             </a>
@@ -263,7 +257,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
         {/* Footer */}
         <div className="p-6 border-t border-gray-200 flex-shrink-0">
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full flex items-center text-gray-500 hover:text-gray-700"
           >
@@ -275,7 +269,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
       {/* Mobile overlay */}
       {isOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
           onClick={onToggle}
         />

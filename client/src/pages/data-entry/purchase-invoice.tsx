@@ -20,7 +20,7 @@ export default function PurchaseInvoice() {
   const queryClient = useQueryClient();
   const [selectedProductId, setSelectedProductId] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [unitPrice, setUnitPrice] = useState(0);
+  const [unitPrice, setUnitPrice] = useState("");
   const [items, setItems] = useState<any[]>([]);
   const [remarks, setRemarks] = useState("");
   const [productRemarks, setProductRemarks] = useState("");
@@ -152,7 +152,8 @@ export default function PurchaseInvoice() {
         const p = productOptions[highlightedProduct];
         setSelectedProductId(`${p.productType}-${p.id}`);
         setProductSearch(`${p.productCode} - ${p.description}`);
-        setUnitPrice(Number(p.sellingPrice));
+        // Keep unit price empty for manual entry
+        setUnitPrice("");
         setShowProductDropdown(false);
       }
     } else if (e.key === "Escape") {
@@ -165,7 +166,7 @@ export default function PurchaseInvoice() {
     setTimeout(() => setShowProductDropdown(false), 100);
   };
 
-  // When productId changes, update productSearch and unit price
+  // When productId changes, update productSearch but keep unit price empty
   useEffect(() => {
     if (!selectedProductId) return;
     let list = [
@@ -176,7 +177,8 @@ export default function PurchaseInvoice() {
     const p = list.find((x: any) => x.id.toString() === id && x.productType === type);
     if (p) {
       setProductSearch(`${p.productCode} - ${p.description}`);
-      setUnitPrice(Number(p.sellingPrice));
+      // Keep unit price empty for manual entry
+      setUnitPrice("");
     }
   }, [selectedProductId, regularProducts, nonProducts]);
 
@@ -242,7 +244,7 @@ export default function PurchaseInvoice() {
       product = nonProducts.find((p: any) => String(p.id) === productId);
     }
     
-    if (!product || quantity <= 0 || unitPrice <= 0) {
+    if (!product || quantity <= 0 || !unitPrice || Number(unitPrice) <= 0) {
       toast({
         title: "Error",
         description: "Please select a product and enter valid quantity and price",
@@ -251,7 +253,7 @@ export default function PurchaseInvoice() {
       return;
     }
 
-    const totalPrice = quantity * unitPrice;
+    const totalPrice = quantity * Number(unitPrice);
     console.log('Adding product:', {
       productId: product.id,
       productName: product.description,
@@ -272,7 +274,7 @@ export default function PurchaseInvoice() {
     setSelectedProductId("");
     setProductSearch(""); // Clear the product search field
     setQuantity(1);
-    setUnitPrice(0);
+    setUnitPrice(""); // Keep unit price empty for next product
     setProductRemarks(""); // Clear remarks after adding
   };
 
@@ -443,7 +445,8 @@ export default function PurchaseInvoice() {
                             onMouseDown={() => {
                               setSelectedProductId(`${p.productType}-${p.id}`);
                               setProductSearch(`${p.productCode} - ${p.description}`);
-                              setUnitPrice(Number(p.sellingPrice));
+                              // Keep unit price empty for manual entry
+                              setUnitPrice("");
                               setShowProductDropdown(false);
                             }}
                             onMouseEnter={() => setHighlightedProduct(idx)}
@@ -477,7 +480,7 @@ export default function PurchaseInvoice() {
                     step="0.01"
                     placeholder="£0.00"
                     value={unitPrice}
-                    onChange={e => setUnitPrice(Number(e.target.value))}
+                    onChange={e => setUnitPrice(e.target.value)}
                     className="mt-1"
                   />
                 </div>
@@ -520,8 +523,8 @@ export default function PurchaseInvoice() {
                         <TableCell className="font-medium">{item.productName}</TableCell>
                         <TableCell>{item.remarks || "-"}</TableCell>
                         <TableCell className="text-right">{item.quantity}</TableCell>
-                        <TableCell className="text-right">£{item.unitPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-medium">£{item.totalPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{(Number(item.unitPrice) || 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium">£{(Number(item.totalPrice) || 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="outline"

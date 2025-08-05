@@ -1054,6 +1054,7 @@ class ClosingStock(db.Model):
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     date = db.Column(db.Date, nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
+    manual_entry = db.Column(db.Boolean, nullable=False, default=True)  # True for manual entries, False for automatic
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -1064,6 +1065,7 @@ class ClosingStock(db.Model):
             'productType': self.product_type,
             'date': self.date.isoformat(),
             'quantity': self.quantity,
+            'manualEntry': self.manual_entry,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }

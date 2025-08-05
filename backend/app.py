@@ -102,6 +102,25 @@ with app.app_context():
         print("Warning: Database connection issues detected")
     
     db.create_all()
+    
+    # Run migration for closing_stock table
+    try:
+        # Check if manual_entry column exists
+        result = db.session.execute(db.text("PRAGMA table_info(closing_stock)"))
+        columns = [row[1] for row in result.fetchall()]
+        
+        if 'manual_entry' not in columns:
+            print("Adding manual_entry column to closing_stock table...")
+            db.session.execute(db.text("""
+                ALTER TABLE closing_stock 
+                ADD COLUMN manual_entry BOOLEAN NOT NULL DEFAULT 1
+            """))
+            db.session.commit()
+            print("Successfully added manual_entry column")
+    except Exception as e:
+        print(f"Migration warning: {str(e)}")
+        db.session.rollback()
+    
     create_admin_user()  # Create admin user if it doesn't exist
 
 # Configure Flask-JWT-Extended
@@ -5281,7 +5300,8 @@ def save_closing_stock_entries():
             product_id=item['productId'],
             product_type=item['productType'],
             date=date,
-            quantity=item['quantity']
+            quantity=item['quantity'],
+            manual_entry=True  # Mark as manual entry
         )
         db.session.add(entry)
     db.session.commit()
@@ -5365,8 +5385,10 @@ def stock_check_report():
         if not from_date or not to_date:
             return jsonify({'error': 'fromDate and toDate are required'}), 400
         
+        # Parse dates and make them inclusive for the full day
         from_dt = datetime.strptime(from_date, "%Y-%m-%d")
-        to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+        # Set to_dt to end of day (23:59:59) to include the entire day
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
         
         print(f"[DEBUG] Parsed dates - from_dt: {from_dt}, to_dt: {to_dt}")
         
@@ -5414,13 +5436,15 @@ def stock_check_report():
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
                 print(f"[DEBUG] Expected stock: {expected_stock}")
                 
-                # Get actual closing stock from manual entries
+                # Get actual closing stock from manual entries (prioritize manual entries)
                 closing_stock_entry = ClosingStock.query.filter(
                     ClosingStock.product_id == product.id,
                     ClosingStock.product_type == 'regular',
-                    ClosingStock.date == to_dt.date()
+                    ClosingStock.date == to_dt.date(),
+                    ClosingStock.manual_entry == True  # Only consider manual entries
                 ).first()
                 
+                # If manual entry exists, use it; otherwise use current stock
                 actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else product.current_stock
                 print(f"[DEBUG] Actual closing stock: {actual_closing_stock}")
                 
@@ -5489,13 +5513,15 @@ def stock_check_report():
                 # Calculate expected stock
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
                 
-                # Get actual closing stock from manual entries
+                # Get actual closing stock from manual entries (prioritize manual entries)
                 closing_stock_entry = ClosingStock.query.filter(
                     ClosingStock.product_id == product.id,
                     ClosingStock.product_type == 'non',
-                    ClosingStock.date == to_dt.date()
+                    ClosingStock.date == to_dt.date(),
+                    ClosingStock.manual_entry == True  # Only consider manual entries
                 ).first()
                 
+                # If manual entry exists, use it; otherwise use current stock
                 actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else product.current_stock
                 
                 # Calculate difference
@@ -5554,12 +5580,13 @@ def get_opening_stock(product_id, product_type, from_date):
     try:
         print(f"[DEBUG] Getting opening stock for product {product_id} ({product_type}) before {from_date}")
 
-        # 1. Check for previous day's manual closing stock entry
+        # 1. Check for previous day's manual closing stock entry (prioritize manual entries)
         prev_date = (from_date - timedelta(days=1)).date()
         closing_entry = ClosingStock.query.filter_by(
             product_id=product_id,
             product_type=product_type,
-            date=prev_date
+            date=prev_date,
+            manual_entry=True  # Only consider manual entries
         ).first()
         if closing_entry:
             print(f"[DEBUG] Found previous day's manual closing stock: {closing_entry.quantity}")
