@@ -27,6 +27,14 @@ function toLocalDateString(date: Date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function toEndOfDayDateString(date: Date) {
+  // Add one day to make the end date inclusive
+  const nextDay = new Date(date);
+  nextDay.setDate(nextDay.getDate() + 1);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;
+}
+
 export default function ProductHistory() {
   const [productLike, setProductLike] = useState("");
   const [productId, setProductId] = useState<string | undefined>(undefined);
@@ -85,7 +93,7 @@ export default function ProductHistory() {
       if (productId && productId !== "All") params.append("productId", productId);
       if (productLike) params.append("productLike", productLike);
       if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
-      if (toDate) params.append("toDate", toLocalDateString(toDate));
+      if (toDate) params.append("toDate", toEndOfDayDateString(toDate));
       if (customerId && customerId !== "All") params.append("customerId", customerId);
       if (supplierId && supplierId !== "All") params.append("supplierId", supplierId);
       return apiRequest("GET", `/api/reports/product-history?${params.toString()}`);

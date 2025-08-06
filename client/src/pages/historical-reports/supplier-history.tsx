@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, User, FileText, Download, Copy, Printer, Search, Mail, Save, User2 } from "lucide-react";
+import { CalendarIcon, User, FileText, Download, Copy, Printer, Search, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import React from 'react';
@@ -585,17 +585,6 @@ export default function SupplierHistory() {
                   }}
                 >
                   {loading ? "Loading..." : "Generate"}
-                </Button>
-                <Button className="bg-orange-500 hover:bg-orange-600 flex items-center gap-2 text-white">
-                  <Save size={16} />
-                  Save
-                </Button>
-                <Button className="bg-orange-500 hover:bg-orange-600 flex items-center gap-2 text-white">
-                  Full
-                </Button>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  <User2 size={16} />
-                  Statement
                 </Button>
               </div>
             </div>

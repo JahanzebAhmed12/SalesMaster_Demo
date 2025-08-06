@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { format, subDays, addDays } from "date-fns";
+import { format, subDays } from "date-fns";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,79 +11,67 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
-import { RotateCcw, FileText, Download, Search, Save, Edit, Trash2, CheckCircle, XCircle, AlertCircle, Copy, Printer } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CustomerReturn, InsertCustomerReturn, Customer, RegularProduct, NonProduct } from "@shared/schema";
+import { RotateCcw, Search, Save, Trash2 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { Customer, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
-// Zod schema for return form validation
+// Simplified schema for return form
 const returnSchema = z.object({
   date: z.string().min(1, "Date is required"),
   customerId: z.number().min(1, "Customer is required"),
-  saleId: z.number().optional().nullable(),
   productId: z.number().min(1, "Product is required"),
   productType: z.enum(["regular", "non"]),
-  description: z.string().min(1, "Description is required"),
+  invoiceId: z.number().optional().nullable(),
   invoiceNumber: z.string().optional().nullable(),
-  remarks: z.string().optional().nullable(),
   quantity: z.coerce.number().min(1, "Quantity must be at least 1"),
   unitPrice: z.coerce.number().min(0, "Unit price must be positive"),
-  returnReason: z.string().optional().nullable(),
-  creditNoteIssued: z.boolean().default(false),
-  creditNoteAmount: z.coerce.number().min(0, "Credit note amount must be positive").optional(),
-  status: z.string().default("pending")
+  remarks: z.string().optional().nullable(),
 });
 
 type ReturnFormData = z.infer<typeof returnSchema>;
 
-// API functions
-const fetchCustomerReturns = async (params: {
-  fromDate?: string;
-  toDate?: string;
-  customerId?: number;
-  search?: string;
-  status?: string;
-}): Promise<CustomerReturn[]> => {
-  const searchParams = new URLSearchParams();
-  if (params.fromDate) searchParams.append('fromDate', params.fromDate);
-  if (params.toDate) searchParams.append('toDate', params.toDate);
-  if (params.customerId) searchParams.append('customerId', params.customerId.toString());
-  if (params.search) searchParams.append('search', params.search);
-  if (params.status) searchParams.append('status', params.status);
-  return apiRequest('GET', `/api/customer-returns?${searchParams}`);
-};
+interface CustomerInvoice {
+  id: number;
+  invoiceNumber: string;
+  date: string;
+  totalAmount: number;
+  items: Array<{
+    id?: number;
+    productId: number;
+    productType: string;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    price?: number; // Alternative field name
+    product_id?: number; // Alternative field name
+    product_type?: string; // Alternative field name
+  }>;
+}
 
-const fetchCustomers = async (): Promise<Customer[]> => {
-  return apiRequest('GET', '/api/customers');
-};
-
-const fetchCustomerInvoices = async (customerId: number, fromDate: string, toDate: string): Promise<any[]> => {
-  return apiRequest('GET', `/api/customers/${customerId}/invoices?fromDate=${fromDate}&toDate=${toDate}`);
-};
-
-const fetchProducts = async (): Promise<{ regularProducts: RegularProduct[]; nonProducts: NonProduct[] }> => {
-  return apiRequest('GET', '/api/products');
-};
+interface CustomerReturn {
+  id: number;
+  date: string;
+  customerName: string;
+  productDescription: string;
+  invoiceNumber: string | null;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  remarks: string | null;
+}
 
 export default function ReturnFromCustomer() {
   const { toast } = useToast();
-  const [isAddingReturn, setIsAddingReturn] = useState(false);
-  const [editingReturn, setEditingReturn] = useState<CustomerReturn | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
-  const [fromDate, setFromDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
-  const [toDate, setToDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [invoiceFromDate, setInvoiceFromDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [invoiceToDate, setInvoiceToDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const tableRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+  
+  // State management
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+  const [searchFromDate, setSearchFromDate] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [customerSearched, setCustomerSearched] = useState(false);
+  const [selectedProductType, setSelectedProductType] = useState<"regular" | "non">("regular");
+  const [invoicesFetched, setInvoicesFetched] = useState(false);
 
   const form = useForm<ReturnFormData>({
     resolver: zodResolver(returnSchema),
@@ -92,63 +80,87 @@ export default function ReturnFromCustomer() {
       customerId: 0,
       productId: 0,
       productType: "regular",
-      description: "",
       quantity: 1,
       unitPrice: 0,
-      creditNoteIssued: false,
-      creditNoteAmount: 0,
-      status: "pending"
     },
   });
 
-  // Fetch data
-  const { data: returns = [], isLoading } = useQuery({
-    queryKey: ['customer-returns', fromDate, toDate, selectedCustomer, searchTerm, statusFilter],
-    queryFn: () => fetchCustomerReturns({ fromDate, toDate, customerId: selectedCustomer !== "all" ? parseInt(selectedCustomer) : undefined, search: searchTerm, status: statusFilter !== "all" ? statusFilter : undefined })
-  });
-
+  // Fetch customers
   const { data: customers = [] } = useQuery({
     queryKey: ['customers'],
-    queryFn: fetchCustomers
+    queryFn: () => apiRequest('GET', '/api/customers')
   });
 
+  // Fetch products
   const { data: products = { regularProducts: [], nonProducts: [] } } = useQuery({
     queryKey: ['products'],
-    queryFn: fetchProducts
+    queryFn: () => apiRequest('GET', '/api/products')
   });
 
-  const { data: summary } = useQuery({
-    queryKey: ['customer-returns-summary', fromDate, toDate, selectedCustomer],
-    queryFn: () => apiRequest('GET', `/api/customer-returns/reports/summary?fromDate=${fromDate}&toDate=${toDate}&customerId=${selectedCustomer !== "all" ? selectedCustomer : ""}`)
-  });
-
-  // Fetch customer invoices when customer or date range changes
-  const { data: customerInvoices = [] } = useQuery({
-    queryKey: ['customer-invoices', form.watch("customerId"), invoiceFromDate, invoiceToDate],
+  // Fetch customer returns (only after customer is searched)
+  const { data: returns = [], refetch: refetchReturns } = useQuery({
+    queryKey: ['customer-returns', selectedCustomerId, searchFromDate],
     queryFn: () => {
-      const customerId = form.watch("customerId");
-      if (customerId && customerId > 0) {
-        return fetchCustomerInvoices(customerId, invoiceFromDate, invoiceToDate);
-      }
-      return Promise.resolve([]);
+      if (!selectedCustomerId || !customerSearched) return [];
+      return apiRequest('GET', `/api/customer-returns?customerId=${selectedCustomerId}&fromDate=${searchFromDate}`);
     },
-    enabled: !!form.watch("customerId") && form.watch("customerId") > 0
+    enabled: !!selectedCustomerId && customerSearched
   });
 
-  // Fetch company details
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
+  // Fetch customer invoices (only when "Get Invoices" is clicked)
+  const { data: customerInvoices = [], refetch: refetchInvoices } = useQuery({
+    queryKey: ['customer-invoices', selectedCustomerId, searchFromDate],
+    queryFn: async () => {
+      if (!selectedCustomerId) return [];
+      const toDate = format(new Date(), "yyyy-MM-dd");
+      
+      // First get the invoice list
+      const invoices = await apiRequest('GET', `/api/customers/${selectedCustomerId}/invoices?fromDate=${searchFromDate}&toDate=${toDate}`);
+      
+      // Then fetch detailed data for each invoice to get items
+      const detailedInvoices = await Promise.all(
+        invoices.map(async (invoice: any) => {
+          try {
+            const details = await apiRequest('GET', `/api/sales/${invoice.id}`);
+            return {
+              id: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              date: invoice.date,
+              totalAmount: invoice.totalAmount || details.totalAmount || 0,
+              items: details.items || details.saleItems || []
+            };
+          } catch (error) {
+            console.error(`Failed to fetch details for invoice ${invoice.id}:`, error);
+            return {
+              id: invoice.id,
+              invoiceNumber: invoice.invoiceNumber,
+              date: invoice.date,
+              totalAmount: invoice.totalAmount || 0,
+              items: []
+            };
+          }
+        })
+      );
+      
+      console.log("Detailed invoices with items:", detailedInvoices);
+      return detailedInvoices;
+    },
+    enabled: false // Only fetch when manually triggered
   });
 
-  // Mutations
+  // Create return mutation
   const createReturnMutation = useMutation({
-    mutationFn: (data: InsertCustomerReturn) => apiRequest('POST', '/api/customer-returns', data),
+    mutationFn: (data: any) => apiRequest('POST', '/api/customer-returns', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-returns'], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['customer-returns-summary'], exact: false });
-      setIsAddingReturn(false);
-      form.reset();
+      refetchReturns();
+      form.reset({
+        date: format(new Date(), "yyyy-MM-dd"),
+        customerId: parseInt(selectedCustomerId),
+        productId: 0,
+        productType: selectedProductType,
+        quantity: 1,
+        unitPrice: 0,
+      });
       toast({
         title: "Success",
         description: "Customer return created successfully",
@@ -163,33 +175,11 @@ export default function ReturnFromCustomer() {
     }
   });
 
-  const updateReturnMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: InsertCustomerReturn }) => 
-      apiRequest('PUT', `/api/customer-returns/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-returns'], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['customer-returns-summary'], exact: false });
-      setEditingReturn(null);
-      form.reset();
-      toast({
-        title: "Success",
-        description: "Customer return updated successfully",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update customer return",
-        variant: "destructive",
-      });
-    }
-  });
-
+  // Delete return mutation
   const deleteReturnMutation = useMutation({
     mutationFn: (id: number) => apiRequest('DELETE', `/api/customer-returns/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-returns'], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['customer-returns-summary'], exact: false });
+      refetchReturns();
       toast({
         title: "Success",
         description: "Customer return deleted successfully",
@@ -204,368 +194,226 @@ export default function ReturnFromCustomer() {
     }
   });
 
-  const approveReturnMutation = useMutation({
-    mutationFn: (id: number) => apiRequest('POST', `/api/customer-returns/${id}/approve`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-returns'], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['customer-returns-summary'], exact: false });
-      toast({
-        title: "Success",
-        description: "Customer return approved successfully",
-      });
-    },
-    onError: (error: any) => {
+  // Handle customer search
+  const handleCustomerSearch = () => {
+    if (!selectedCustomerId) {
       toast({
         title: "Error",
-        description: error.message || "Failed to approve customer return",
+        description: "Please select a customer first",
+        variant: "destructive",
+      });
+      return;
+    }
+    setCustomerSearched(true);
+    form.setValue("customerId", parseInt(selectedCustomerId));
+  };
+
+  // Handle get invoices
+  const handleGetInvoices = async () => {
+    if (!selectedCustomerId) {
+      toast({
+        title: "Error",
+        description: "Please select a customer first",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
+      await refetchInvoices();
+      setInvoicesFetched(true);
+      toast({
+        title: "Success",
+        description: "Invoices fetched successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch invoices",
         variant: "destructive",
       });
     }
-  });
+  };
 
-  const rejectReturnMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: number; reason: string }) => 
-      apiRequest('POST', `/api/customer-returns/${id}/reject`, { rejectionReason: reason }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-returns'], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['customer-returns-summary'], exact: false });
-      toast({
-        title: "Success",
-        description: "Customer return rejected successfully",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to reject customer return",
-        variant: "destructive",
-      });
+  // Handle invoice selection
+  const handleInvoiceSelect = (invoiceId: string) => {
+    if (invoiceId === "none") {
+      form.setValue("invoiceId", null);
+      form.setValue("invoiceNumber", "");
+      return;
     }
-  });
 
-  const completeReturnMutation = useMutation({
-    mutationFn: (id: number) => apiRequest('POST', `/api/customer-returns/${id}/complete`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customer-returns'], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['customer-returns-summary'], exact: false });
-      toast({
-        title: "Success",
-        description: "Customer return completed successfully",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to complete customer return",
-        variant: "destructive",
-      });
+    // Check if customerInvoices exists and is an array
+    if (!customerInvoices || !Array.isArray(customerInvoices)) {
+      console.log("No customer invoices available");
+      return;
     }
-  });
 
-  // Filter products based on product type
-  const filteredProducts = form.watch("productType") === 'regular' 
+    const selectedInvoice = customerInvoices.find((inv: CustomerInvoice) => inv.id.toString() === invoiceId);
+    if (selectedInvoice) {
+      console.log("Selected invoice:", selectedInvoice);
+      form.setValue("invoiceId", selectedInvoice.id);
+      form.setValue("invoiceNumber", selectedInvoice.invoiceNumber);
+      
+      // If a product is selected, try to auto-fill quantity and price from invoice
+      const productId = form.watch("productId");
+      console.log("Current product ID:", productId, "Product type:", selectedProductType);
+      
+      if (productId > 0 && selectedInvoice.items && Array.isArray(selectedInvoice.items)) {
+        console.log("Invoice items:", selectedInvoice.items);
+        
+        const invoiceItem = selectedInvoice.items.find(item => {
+          console.log("Checking item:", item, "against productId:", productId, "productType:", selectedProductType);
+          
+          // Handle different possible field names from API
+          const itemProductId = item.productId || item.product_id;
+          
+          // Determine product type from the item structure
+          let itemProductType = item.productType || item.product_type;
+          if (!itemProductType) {
+            // If no explicit productType, infer from the data structure
+            if (item.productId && !item.nonProductId) {
+              itemProductType = "regular";
+            } else if (item.nonProductId && !item.productId) {
+              itemProductType = "non";
+            }
+          }
+          
+          console.log("Resolved item productId:", itemProductId, "productType:", itemProductType);
+          return itemProductId === productId && itemProductType === selectedProductType;
+        });
+        
+        if (invoiceItem) {
+          console.log("Found matching item:", invoiceItem);
+          const quantity = invoiceItem.quantity || 1;
+          const unitPrice = invoiceItem.unitPrice || invoiceItem.price || 0;
+          
+          form.setValue("quantity", quantity);
+          form.setValue("unitPrice", unitPrice);
+          toast({
+            title: "Auto-filled",
+            description: `Quantity (${quantity}) and price (£${unitPrice}) auto-filled from invoice`,
+          });
+        } else {
+          console.log("No matching item found in invoice");
+          toast({
+            title: "Info",
+            description: "No matching product found in selected invoice",
+          });
+        }
+      } else {
+        console.log("No product selected or no invoice items");
+      }
+    } else {
+      console.log("Invoice not found");
+    }
+  };
+
+  // Handle product selection
+  const handleProductSelect = (productId: string) => {
+    form.setValue("productId", parseInt(productId));
+    
+    // If an invoice is selected, try to auto-fill quantity and price
+    const invoiceId = form.watch("invoiceId");
+    console.log("Product selected:", productId, "Current invoice ID:", invoiceId);
+    
+    if (invoiceId && customerInvoices && Array.isArray(customerInvoices)) {
+      const selectedInvoice = customerInvoices.find((inv: CustomerInvoice) => inv.id === invoiceId);
+      if (selectedInvoice && selectedInvoice.items && Array.isArray(selectedInvoice.items)) {
+        console.log("Looking for product in invoice items:", selectedInvoice.items);
+        
+        const invoiceItem = selectedInvoice.items.find(item => {
+          console.log("Checking item:", item, "against productId:", parseInt(productId), "productType:", selectedProductType);
+          
+          // Handle different possible field names from API
+          const itemProductId = item.productId || item.product_id;
+          
+          // Determine product type from the item structure
+          let itemProductType = item.productType || item.product_type;
+          if (!itemProductType) {
+            // If no explicit productType, infer from the data structure
+            if (item.productId && !item.nonProductId) {
+              itemProductType = "regular";
+            } else if (item.nonProductId && !item.productId) {
+              itemProductType = "non";
+            }
+          }
+          
+          console.log("Resolved item productId:", itemProductId, "productType:", itemProductType);
+          return itemProductId === parseInt(productId) && itemProductType === selectedProductType;
+        });
+        
+        if (invoiceItem) {
+          console.log("Found matching item for product:", invoiceItem);
+          const quantity = invoiceItem.quantity || 1;
+          const unitPrice = invoiceItem.unitPrice || invoiceItem.price || 0;
+          
+          form.setValue("quantity", quantity);
+          form.setValue("unitPrice", unitPrice);
+          toast({
+            title: "Auto-filled",
+            description: `Quantity (${quantity}) and price (£${unitPrice}) auto-filled from invoice`,
+          });
+        } else {
+          console.log("No matching item found for product");
+        }
+      }
+    }
+  };
+
+  // Get filtered products based on type
+  const filteredProducts = selectedProductType === 'regular' 
     ? (products?.regularProducts || [])
     : (products?.nonProducts || []);
 
+  // Handle form submission
   const onSubmit = (data: ReturnFormData) => {
-    const returnData: InsertCustomerReturn = {
+    const selectedProduct = filteredProducts.find(p => p.id === data.productId);
+    
+    const returnData = {
       customerId: data.customerId,
-      saleId: data.saleId || null,
+      saleId: data.invoiceId,
       productId: data.productId,
       productType: data.productType,
-      description: data.description,
-      invoiceNumber: data.invoiceNumber || null,
-      remarks: data.remarks || null,
+      description: selectedProduct?.description || "",
+      invoiceNumber: data.invoiceNumber,
+      remarks: data.remarks,
       quantity: data.quantity,
       unitPrice: data.unitPrice,
-      returnReason: data.returnReason || null,
-      creditNoteIssued: data.creditNoteIssued,
-      creditNoteAmount: data.creditNoteAmount || 0,
-      status: data.status,
+      returnReason: data.remarks,
+      creditNoteIssued: false,
+      creditNoteAmount: 0,
+      status: "completed", // Directly set to completed as per requirement
       date: data.date,
       refNumber: "", // Will be generated by backend
       totalValue: data.quantity * data.unitPrice
     };
     
-    if (editingReturn) {
-      updateReturnMutation.mutate({ id: editingReturn.id, data: returnData });
-    } else {
-      createReturnMutation.mutate(returnData);
-    }
+    createReturnMutation.mutate(returnData);
   };
 
-  const handleEdit = (returnItem: CustomerReturn) => {
-    setEditingReturn(returnItem);
-    
-    // Set invoice date range to cover the return date
-    const returnDate = new Date(returnItem.date);
-    setInvoiceFromDate(format(subDays(returnDate, 30), "yyyy-MM-dd"));
-    setInvoiceToDate(format(addDays(returnDate, 30), "yyyy-MM-dd"));
-    
-    form.reset({
-      date: returnItem.date,
-      customerId: returnItem.customerId,
-      saleId: returnItem.saleId,
-      productId: returnItem.productId,
-      productType: returnItem.productType as "regular" | "non",
-      description: returnItem.description,
-      invoiceNumber: returnItem.invoiceNumber,
-      remarks: returnItem.remarks,
-      quantity: returnItem.quantity,
-      unitPrice: returnItem.unitPrice,
-      returnReason: returnItem.returnReason,
-      creditNoteIssued: returnItem.creditNoteIssued,
-      creditNoteAmount: returnItem.creditNoteAmount,
-      status: returnItem.status
-    });
-  };
-
-  const handleDelete = (id: number) => {
-    if (confirm("Are you sure you want to delete this return?")) {
-      deleteReturnMutation.mutate(id);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      pending: "secondary",
-      approved: "default",
-      rejected: "destructive",
-      completed: "default"
-    } as const;
-
-    return <Badge variant={variants[status as keyof typeof variants] || "secondary"}>{status}</Badge>;
-  };
-
-  // Export handlers
-  const cardTitle = `Customer Returns${companyDetails?.companyName ? ' - ' + companyDetails.companyName : ''}`;
-
-  const handlePrint = () => {
-    if (!tableRef.current) return;
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer Returns</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
-      printWindow.document.write('</head><body>');
-      
-      // Add company details header following the specific structure
-      printWindow.document.write('<div class="company-details">');
-      if (companyDetails) {
-        // Company name
-        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
-        
-        // Email
-        if (companyDetails.email) {
-          printWindow.document.write(`<p>${companyDetails.email}</p>`);
-        }
-        
-        // Bank details
-        if (companyDetails.bankDetails) {
-          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
-        }
-        
-        // VAT and Registration info
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
-      }
-      printWindow.document.write('</div>');
-      
-      // Add report title
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h3>RETURNS FROM CUSTOMER</h3>');
-      printWindow.document.write(`<p>Period: ${format(new Date(fromDate), "dd/MM/yyyy")} to ${format(new Date(toDate), "dd/MM/yyyy")}</p>`);
-      printWindow.document.write('</div>');
-      
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      const headers = ['Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'];
-      headers.forEach(h => {
-        printWindow.document.write(`<th>${h}</th>`);
-      });
-      printWindow.document.write('</tr></thead><tbody>');
-      returns.forEach(item => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${format(new Date(item.date), 'dd/MM/yyyy')}</td>`);
-        printWindow.document.write(`<td>${item.customerName}</td>`);
-        printWindow.document.write(`<td>${item.description}</td>`);
-        printWindow.document.write(`<td>${item.invoiceNumber || '-'}</td>`);
-        printWindow.document.write(`<td>${item.quantity}</td>`);
-        printWindow.document.write(`<td>£${item.unitPrice.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${item.totalValue.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${item.status}</td>`);
-        printWindow.document.write(`<td>${item.creditNoteIssued ? `£${item.creditNoteAmount.toFixed(2)}` : '-'}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
-    }
-  };
-
-  const handleExcel = () => {
-    const wsData = [
-      [cardTitle],
-      ['Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'],
-      ...returns.map((item: any) => ([
-        format(new Date(item.date), 'dd/MM/yyyy'),
-        item.customerName,
-        item.description,
-        item.invoiceNumber || '-',
-        item.quantity,
-        item.unitPrice,
-        item.totalValue,
-        item.status,
-        item.creditNoteIssued ? item.creditNoteAmount : '-',
-      ])),
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Customer Returns');
-    XLSX.writeFile(wb, 'customer-returns.xlsx');
-  };
-
-  const handlePDF = () => {
-    const doc = new jsPDF();
-    let yPosition = 20;
-    
-    // Add company details following the specific structure
-    if (companyDetails) {
-      // Company name
-      doc.setFontSize(16);
-      doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-      
-      doc.setFontSize(10);
-      
-      // Email
-      if (companyDetails.email) {
-        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      
-      // Bank details
-      if (companyDetails.bankDetails) {
-        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      
-      // VAT and Registration info
-      let regInfo = [];
-      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-      if (regInfo.length > 0) {
-        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
-        yPosition += 10;
-      } else {
-        yPosition += 5;
-      }
-    }
-    
-    // Add report title
-    doc.setFontSize(14);
-    doc.text('RETURNS FROM CUSTOMER', 105, yPosition, { align: 'center' });
-    yPosition += 8;
-    
-    doc.setFontSize(10);
-    doc.text(`Period: ${format(new Date(fromDate), "dd/MM/yyyy")} to ${format(new Date(toDate), "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-    yPosition += 10;
-    
-    // Add table
-    autoTable(doc, {
-      head: [[
-        'Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'
-      ]],
-      body: returns.map((item: any) => [
-        format(new Date(item.date), 'dd/MM/yyyy'),
-        item.customerName,
-        item.description,
-        item.invoiceNumber || '-',
-        item.quantity,
-        `£${item.unitPrice.toFixed(2)}`,
-        `£${item.totalValue.toFixed(2)}`,
-        item.status,
-        item.creditNoteIssued ? `£${item.creditNoteAmount.toFixed(2)}` : '-'
-      ]),
-      startY: yPosition,
-      styles: {
-        fontSize: 8,
-        cellPadding: 2
-      },
-      columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 30 },
-        2: { cellWidth: 35 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 15 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 20 },
-        7: { cellWidth: 15 },
-        8: { cellWidth: 20 }
-      }
-    });
-    
-    doc.save(`returns-from-customer-${format(new Date(fromDate), "yyyyMMdd")}-${format(new Date(toDate), "yyyyMMdd")}.pdf`);
-  };
-
-  const handleCopy = () => {
-    const header = ['Date', 'Customer', 'Product', 'Invoice', 'Quantity', 'Unit Price', 'Total', 'Status', 'Credit Note'];
-    const rows = returns.map((item: any) => [
-      format(new Date(item.date), 'dd/MM/yyyy'),
-      item.customerName,
-      item.description,
-      item.invoiceNumber || '-',
-      item.quantity,
-      item.unitPrice,
-      item.totalValue,
-      item.status,
-      item.creditNoteIssued ? item.creditNoteAmount : '-'
-    ]);
-    const tsv = [cardTitle, header.join('\t'), ...rows.map(row => row.join('\t'))].join('\n');
-    navigator.clipboard.writeText(tsv);
-    toast({ title: 'Copied', description: 'Table copied to clipboard!' });
-  };
-
-  if (isLoading) {
-    return <div className="flex items-center justify-center h-96">Loading returns...</div>;
-  }
+  const selectedCustomer = customers.find((c: Customer) => c.id.toString() === selectedCustomerId);
 
   return (
-    <PageLayout title="Returns from Customer" breadcrumb="Returns from Customer">
+    <PageLayout title="Returns from Customer" breadcrumb="Data Entry > Returns from Customer">
       <div className="space-y-6">
-        {/* Page Title and Company Details Row */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Returns from Customer</h1>
-          <div className="text-sm text-gray-600 text-right">
-            {companyDetails?.companyName || 'Company Name'}, {companyDetails?.address1 || ''}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ''}
-          </div>
-        </div>
-
-        {/* Summary Cards */}
-        {/* Removed summary cards as per user request */}
-
-        {/* Filters */}
+        {/* Step 1: Customer Selection */}
         <Card>
           <CardHeader>
-            <CardTitle>Filters</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <RotateCcw size={20} />
+              Step 1: Select Customer
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
-                <Label>Customer</Label>
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                <Label>Customer:</Label>
+                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="All Customers" />
+                    <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Customers</SelectItem>
                     {customers.map((customer: Customer) => (
                       <SelectItem key={customer.id} value={customer.id.toString()}>
                         {customer.customer_name}
@@ -574,415 +422,235 @@ export default function ReturnFromCustomer() {
                   </SelectContent>
                 </Select>
               </div>
-
+              
               <div>
-                <Label>From Date</Label>
+                <Label>Search from date:</Label>
                 <Input
                   type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
+                  value={searchFromDate}
+                  onChange={(e) => setSearchFromDate(e.target.value)}
                 />
               </div>
-
+              
               <div>
-                <Label>To Date</Label>
-                <Input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <Label>Status</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Search by description, invoice number, or customer name..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-full"
-                />
+                <Button 
+                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  onClick={handleCustomerSearch}
+                  disabled={!selectedCustomerId}
+                >
+                  <Search className="mr-2 h-4 w-4" />
+                  Search
+                </Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Returns Table */}
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Customer Returns</CardTitle>
-              <div className="flex items-center gap-2">
-                <Button onClick={() => setIsAddingReturn(!isAddingReturn)}>
-                  <Save className="h-4 w-4 mr-2" />
-                  {isAddingReturn ? "Cancel" : "Add Return"}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => window.location.href = "/dashboard"}
-                >
-                  Close
-                </Button>
-                <Button variant="outline" size="sm" onClick={handlePDF}>
-                  <FileText className="h-4 w-4 mr-1" /> PDF
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleExcel}>
-                  <Download className="h-4 w-4 mr-1" /> Excel
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleCopy}>
-                  <Copy className="h-4 w-4 mr-1" /> Copy
-                </Button>
-                <Button variant="outline" size="sm" onClick={handlePrint}>
-                  <Printer className="h-4 w-4 mr-1" /> Print
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto" ref={tableRef}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Invoice</TableHead>
-                    <TableHead className="text-center">Quantity</TableHead>
-                    <TableHead className="text-center">Unit Price</TableHead>
-                    <TableHead className="text-center">Total</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Credit Note</TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {returns.map((returnItem: CustomerReturn) => (
-                    <TableRow key={returnItem.id}>
-                      <TableCell>{format(new Date(returnItem.date), "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{returnItem.customerName}</TableCell>
-                      <TableCell>{returnItem.description}</TableCell>
-                      <TableCell>{returnItem.invoiceNumber || "-"}</TableCell>
-                      <TableCell className="text-center">{returnItem.quantity}</TableCell>
-                      <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
-                      <TableCell>{getStatusBadge(returnItem.status)}</TableCell>
-                      <TableCell>
-                        {returnItem.creditNoteIssued ? (
-                          <Badge variant="default">£{returnItem.creditNoteAmount.toFixed(2)}</Badge>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(returnItem)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {returnItem.status === 'pending' && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => approveReturnMutation.mutate(returnItem.id)}
-                              >
-                                <CheckCircle className="h-4 w-4 text-green-600" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => rejectReturnMutation.mutate({ 
-                                  id: returnItem.id, 
-                                  reason: "Return rejected" 
-                                })}
-                              >
-                                <XCircle className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </>
-                          )}
-                          {returnItem.status === 'approved' && (
+        {/* Step 2: Return Entry Form (shown after customer search) */}
+        {customerSearched && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 2: Add New Return</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Product Type:</Label>
+                    <Select
+                      value={selectedProductType}
+                      onValueChange={(value) => {
+                        setSelectedProductType(value as "regular" | "non");
+                        form.setValue("productType", value as "regular" | "non");
+                        form.setValue("productId", 0);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="regular">Regular Product</SelectItem>
+                        <SelectItem value="non">Non-Product</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label>Product:</Label>
+                    <Select
+                      value={form.watch("productId").toString()}
+                      onValueChange={handleProductSelect}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select product" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredProducts.map((product: RegularProduct | NonProduct) => (
+                          <SelectItem key={product.id} value={product.id.toString()}>
+                            {product.description}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Label>Invoice:</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleGetInvoices}
+                        disabled={!selectedCustomerId}
+                      >
+                        Get Invoices
+                      </Button>
+                    </div>
+                    <Select
+                      value={form.watch("invoiceId")?.toString() || "none"}
+                      onValueChange={handleInvoiceSelect}
+                      disabled={!invoicesFetched}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select invoice (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No Invoice</SelectItem>
+                        {customerInvoices.map((invoice: CustomerInvoice) => (
+                          <SelectItem key={invoice.id} value={invoice.id.toString()}>
+                            {invoice.invoiceNumber} - {format(new Date(invoice.date), "dd/MM/yyyy")} - £{invoice.totalAmount.toFixed(2)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <Label>Manual Invoice Number:</Label>
+                    <Input
+                      {...form.register("invoiceNumber")}
+                      placeholder="Enter invoice number manually"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Quantity:</Label>
+                    <Input
+                      type="number"
+                      {...form.register("quantity")}
+                      min="1"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label>Unit Price:</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      {...form.register("unitPrice")}
+                      min="0"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Remarks:</Label>
+                  <Textarea
+                    {...form.register("remarks")}
+                    placeholder="Enter any remarks or return reason"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => form.reset({
+                      date: format(new Date(), "yyyy-MM-dd"),
+                      customerId: parseInt(selectedCustomerId),
+                      productId: 0,
+                      productType: selectedProductType,
+                      quantity: 1,
+                      unitPrice: 0,
+                    })}
+                  >
+                    Reset
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    disabled={createReturnMutation.isPending}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    {createReturnMutation.isPending ? "Saving..." : "Save Return"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 3: Customer Returns Table (shown after customer search) */}
+        {customerSearched && selectedCustomer && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 3: Existing Returns - {selectedCustomer.customer_name}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Product</TableHead>
+                      <TableHead>Invoice No</TableHead>
+                      <TableHead className="text-center">Quantity</TableHead>
+                      <TableHead className="text-center">Unit Price</TableHead>
+                      <TableHead className="text-center">Total</TableHead>
+                      <TableHead>Remarks</TableHead>
+                      <TableHead className="text-center">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {returns.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-4">
+                          No returns found for this customer
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      returns.map((returnItem: CustomerReturn) => (
+                        <TableRow key={returnItem.id}>
+                          <TableCell>{format(new Date(returnItem.date), "dd/MM/yyyy")}</TableCell>
+                          <TableCell>{returnItem.productDescription}</TableCell>
+                          <TableCell>{returnItem.invoiceNumber || "-"}</TableCell>
+                          <TableCell className="text-center">{returnItem.quantity}</TableCell>
+                          <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
+                          <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
+                          <TableCell>{returnItem.remarks || "-"}</TableCell>
+                          <TableCell className="text-center">
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => completeReturnMutation.mutate(returnItem.id)}
+                              onClick={() => deleteReturnMutation.mutate(returnItem.id)}
                             >
-                              <CheckCircle className="h-4 w-4 text-blue-600" />
+                              <Trash2 className="h-4 w-4 text-red-600" />
                             </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(returnItem.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Add/Edit Return Dialog */}
-        <Dialog open={isAddingReturn || !!editingReturn} onOpenChange={() => {
-          setIsAddingReturn(false);
-          setEditingReturn(null);
-          form.reset();
-        }}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>
-                {editingReturn ? "Edit Customer Return" : "Add Customer Return"}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="date">Date *</Label>
-                  <Input
-                    type="date"
-                    {...form.register("date")}
-                  />
-                  {form.formState.errors.date && (
-                    <p className="text-sm text-red-500">{form.formState.errors.date.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <Label htmlFor="customerId">Customer *</Label>
-                  <Select
-                    value={form.watch("customerId").toString()}
-                    onValueChange={(value) => form.setValue("customerId", parseInt(value))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.customer_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {form.formState.errors.customerId && (
-                    <p className="text-sm text-red-500">{form.formState.errors.customerId.message}</p>
-                  )}
-                </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-
-              {/* Invoice Date Range */}
-              {form.watch("customerId") > 0 && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="invoiceFromDate">Invoice From Date</Label>
-                    <Input
-                      type="date"
-                      value={invoiceFromDate}
-                      onChange={(e) => setInvoiceFromDate(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="invoiceToDate">Invoice To Date</Label>
-                    <Input
-                      type="date"
-                      value={invoiceToDate}
-                      onChange={(e) => setInvoiceToDate(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="saleId">Invoice Number</Label>
-                  <Select
-                    value={form.watch("saleId")?.toString() || "none"}
-                    onValueChange={(value) => {
-                      const saleId = value && value !== "none" ? parseInt(value) : null;
-                      form.setValue("saleId", saleId);
-                      
-                      // Auto-fill invoice number if sale is selected
-                      if (saleId) {
-                        const selectedInvoice = customerInvoices.find(inv => inv.id === saleId);
-                        if (selectedInvoice) {
-                          form.setValue("invoiceNumber", selectedInvoice.invoiceNumber);
-                        }
-                      } else {
-                        form.setValue("invoiceNumber", "");
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select invoice (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No Invoice</SelectItem>
-                      {customerInvoices.map((invoice) => (
-                        <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                          {invoice.invoiceNumber} - {invoice.date} - £{invoice.totalAmount}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="invoiceNumber">Manual Invoice Number</Label>
-                  <Input
-                    {...form.register("invoiceNumber")}
-                    placeholder="Enter invoice number manually"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="productType">Product Type *</Label>
-                <Select
-                  value={form.watch("productType")}
-                  onValueChange={(value) => {
-                    form.setValue("productType", value as "regular" | "non");
-                    form.setValue("productId", 0);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="regular">Regular Product</SelectItem>
-                    <SelectItem value="non">Non-Product</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="productId">Product *</Label>
-                <Select
-                  value={form.watch("productId").toString()}
-                  onValueChange={(value) => form.setValue("productId", parseInt(value))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredProducts.map((product: RegularProduct | NonProduct) => (
-                      <SelectItem key={product.id} value={product.id.toString()}>
-                        {product.description}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {form.formState.errors.productId && (
-                  <p className="text-sm text-red-500">{form.formState.errors.productId.message}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="quantity">Quantity *</Label>
-                <Input
-                  type="number"
-                  {...form.register("quantity")}
-                  min="1"
-                />
-                {form.formState.errors.quantity && (
-                  <p className="text-sm text-red-500">{form.formState.errors.quantity.message}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="unitPrice">Unit Price *</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  {...form.register("unitPrice")}
-                  min="0"
-                />
-                {form.formState.errors.unitPrice && (
-                  <p className="text-sm text-red-500">{form.formState.errors.unitPrice.message}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="description">Description *</Label>
-                <Input {...form.register("description")} />
-                {form.formState.errors.description && (
-                  <p className="text-sm text-red-500">{form.formState.errors.description.message}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="returnReason">Return Reason</Label>
-                <Input {...form.register("returnReason")} />
-              </div>
-
-              <div>
-                <Label htmlFor="remarks">Remarks</Label>
-                <Textarea {...form.register("remarks")} />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Switch
-                  checked={form.watch("creditNoteIssued")}
-                  onCheckedChange={(checked) => form.setValue("creditNoteIssued", checked)}
-                />
-                <Label htmlFor="creditNoteIssued">Issue Credit Note</Label>
-              </div>
-
-              {form.watch("creditNoteIssued") && (
-                <div>
-                  <Label htmlFor="creditNoteAmount">Credit Note Amount</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    {...form.register("creditNoteAmount")}
-                    min="0"
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setIsAddingReturn(false);
-                    setEditingReturn(null);
-                    form.reset();
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createReturnMutation.isPending || updateReturnMutation.isPending}>
-                  {editingReturn ? "Update Return" : "Create Return"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </PageLayout>
   );

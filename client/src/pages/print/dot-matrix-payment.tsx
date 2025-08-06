@@ -54,7 +54,7 @@ const FIELD_POSITIONS = {
   },
   totals: {
     goods: { top: '172mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-    
+
   }
 };
 

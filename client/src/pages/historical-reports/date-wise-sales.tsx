@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Calendar as CalendarIconTwo, FileText, Download, Copy, Printer, Search, TrendingUp } from "lucide-react";
-import { format } from "date-fns";
+import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -54,8 +54,8 @@ function toLocalDateString(date: Date) {
 }
 
 export default function DateWiseSales() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 8));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [salesType, setSalesType] = useState("All Sales");
   const [groupBy, setGroupBy] = useState("Daily");
   const [searchTerm, setSearchTerm] = useState("");

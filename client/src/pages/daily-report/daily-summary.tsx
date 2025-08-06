@@ -15,11 +15,58 @@ import PageLayout from "@/components/common/page-layout";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// Add CSS for print page breaks
+const printStyles = `
+  @media print {
+    .print\\:page-break-before-always {
+      page-break-before: always !important;
+    }
+    .print\\:hidden {
+      display: none !important;
+    }
+  }
+`;
+
+// Inject styles
+if (typeof document !== 'undefined') {
+  const styleSheet = document.createElement("style");
+  styleSheet.innerText = printStyles;
+  document.head.appendChild(styleSheet);
+}
+
+interface StockItem {
+  id: number;
+  slNo: number;
+  productDescription: string;
+  os: number;
+  ns: number;
+  sales: number;
+  crtn: number;
+  dmps: number;
+  srtn: number;
+  stock: number;
+  clStock: number;
+  result: string;
+  status: 'correct' | 'short' | 'excess';
+  productType: 'regular' | 'non';
+}
+
+interface PurchaseEntry {
+  id: number;
+  slNo: number;
+  date: string;
+  supplier: string;
+  supplierId: number;
+  invNo: number;
+  invoiceAmt: number;
+}
+
 interface DailySummaryData {
   date: string;
   sales_summary: Array<{
     customer_name: string;
-    ticket_no: string;
+    payment_id: string; // Changed from ticket_no to payment_id
+    batch_id: string; // Added batch_id field
     cash_sales: number;
     card_paid: number;
     account_sales: number;
@@ -130,6 +177,39 @@ export default function DailySummary() {
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
+  // Fetch stock check data
+  const { data: stockData = [] } = useQuery<StockItem[]>({
+    queryKey: ["stock-check", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
+    queryFn: async () => {
+      if (!selectedDate) return [];
+      const params = new URLSearchParams({
+        fromDate: format(selectedDate, "yyyy-MM-dd"),
+        toDate: format(selectedDate, "yyyy-MM-dd"),
+        search: ""
+      });
+      return apiRequest("GET", `/api/reports/stock-check?${params}`);
+    },
+    enabled: !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  // Fetch purchase data
+  const { data: purchaseData = [] } = useQuery<PurchaseEntry[]>({
+    queryKey: ["/api/reports/daily-book-purchase", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
+    queryFn: () => {
+      if (!selectedDate) return [];
+      const params = new URLSearchParams();
+      params.append("fromDate", format(selectedDate, "yyyy-MM-dd"));
+      params.append("toDate", format(selectedDate, "yyyy-MM-dd"));
+      params.append("search", "");
+      return apiRequest("GET", `/api/reports/daily-book-purchase?${params.toString()}`);
+    },
+    enabled: !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
   const handleGeneratePDF = async () => {
     if (!selectedDate) {
       toast({
@@ -148,7 +228,7 @@ export default function DailySummary() {
 
       // Use the correct backend URL
       const backendUrl = window.location.origin.replace(':5173', ':5000');
-      const url = `${backendUrl}/api/reports/daily-summary/pdf?date=${format(selectedDate, "yyyy-MM-dd")}&token=${token}`;
+      const url = `${backendUrl}/api/reports/daily-summary/pdf?date=${format(selectedDate, "yyyy-MM-dd")}&token=${token}&includeStock=true&includePurchase=true`;
 
       // Open in new window for printing
       const printWindow = window.open(
@@ -163,7 +243,7 @@ export default function DailySummary() {
 
       toast({
         title: "Success",
-        description: "PDF opened in new window for printing",
+        description: "PDF opened in new window for printing (includes Stock Check and Purchase data)",
       });
     } catch (error) {
       toast({
@@ -227,11 +307,11 @@ export default function DailySummary() {
     yPosition += 5;
     
     autoTable(doc, {
-      head: [['Customer', 'TKT No', 'Cash Sales', 'Card Paid', 'Account Sales', 'Account Credits']],
+      head: [['Customer', 'Payment ID', 'Cash Sales', 'Card Paid', 'Account Sales', 'Account Credits']],
       body: [
         ...summaryData.sales_summary.map(sale => [
           sale.customer_name,
-          sale.ticket_no,
+          sale.payment_id || sale.batch_id || '-',
           sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
           sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
           sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-',
@@ -356,6 +436,155 @@ export default function DailySummary() {
       yPosition = (doc as any).lastAutoTable.finalY + 15;
     }
 
+    // Stock Check (only if has data) - NEW PAGE
+    if (stockData && stockData.length > 0) {
+      doc.addPage();
+      yPosition = 20;
+      
+      // Add company details header
+      if (companyDetails) {
+        doc.setFontSize(16);
+        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
+        yPosition += 8;
+        
+        doc.setFontSize(10);
+        if (companyDetails.email) {
+          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        if (companyDetails.bankDetails) {
+          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) {
+          doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+          yPosition += 10;
+        } else {
+          yPosition += 5;
+        }
+      }
+      
+      doc.setFontSize(14);
+      doc.text('STOCK CHECK', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+      yPosition += 15;
+      
+      const stockTotals = {
+        os: stockData.reduce((sum, item) => sum + item.os, 0),
+        ns: stockData.reduce((sum, item) => sum + item.ns, 0),
+        sales: stockData.reduce((sum, item) => sum + item.sales, 0),
+        crtn: stockData.reduce((sum, item) => sum + item.crtn, 0),
+        dmps: stockData.reduce((sum, item) => sum + item.dmps, 0),
+        srtn: stockData.reduce((sum, item) => sum + item.srtn, 0),
+        stock: stockData.reduce((sum, item) => sum + item.stock, 0),
+        clStock: stockData.reduce((sum, item) => sum + item.clStock, 0)
+      };
+      
+      autoTable(doc, {
+        head: [['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result']],
+        body: [
+          ...stockData.map((item: StockItem) => [
+            item.slNo,
+            item.productDescription,
+            item.os,
+            item.ns,
+            item.sales,
+            item.crtn,
+            item.dmps,
+            item.srtn,
+            item.stock,
+            item.clStock,
+            item.result
+          ]),
+          ['TOTAL', '', stockTotals.os, stockTotals.ns, stockTotals.sales, stockTotals.crtn, stockTotals.dmps, stockTotals.srtn, stockTotals.stock, stockTotals.clStock, '']
+        ],
+        startY: yPosition,
+        styles: { fontSize: 7, cellPadding: 1 },
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 12 },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 12 },
+          3: { cellWidth: 12 },
+          4: { cellWidth: 12 },
+          5: { cellWidth: 12 },
+          6: { cellWidth: 12 },
+          7: { cellWidth: 12 },
+          8: { cellWidth: 12 },
+          9: { cellWidth: 12 },
+          10: { cellWidth: 12 }
+        }
+      });
+    }
+
+    // Daily Book Purchase (only if has data) - NEW PAGE
+    if (purchaseData && purchaseData.length > 0) {
+      doc.addPage();
+      yPosition = 20;
+      
+      // Add company details header
+      if (companyDetails) {
+        doc.setFontSize(16);
+        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
+        yPosition += 8;
+        
+        doc.setFontSize(10);
+        if (companyDetails.email) {
+          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        if (companyDetails.bankDetails) {
+          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) {
+          doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+          yPosition += 10;
+        } else {
+          yPosition += 5;
+        }
+      }
+      
+      doc.setFontSize(14);
+      doc.text('DAILY BOOK PURCHASE', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+      yPosition += 15;
+      
+      const totalInvoiceAmount = purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0);
+      
+      autoTable(doc, {
+        head: [['Date', 'Supplier', 'Inv.No', 'Invoice Amt']],
+        body: [
+          ...purchaseData.map((item: PurchaseEntry) => [
+            item.date,
+            item.supplier,
+            item.invNo,
+            `£${item.invoiceAmt.toFixed(2)}`
+          ]),
+          ['TOTAL', `${purchaseData.length} Items`, '', `£${totalInvoiceAmount.toFixed(2)}`]
+        ],
+        startY: yPosition,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 50 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 30 }
+        }
+      });
+    }
+
     // Daily Summary Totals (always included)
     doc.setFontSize(12);
     doc.text('Daily Summary Totals', 14, yPosition);
@@ -468,7 +697,7 @@ export default function DailySummary() {
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-semibold border">Customer</TableHead>
-                        <TableHead className="font-semibold border">TKT No</TableHead>
+                        <TableHead className="font-semibold border">Payment ID</TableHead>
                         <TableHead className="font-semibold border text-right">Cash Sales</TableHead>
                         <TableHead className="font-semibold border text-right">Card Paid</TableHead>
                         <TableHead className="font-semibold border text-right">Account Sales</TableHead>
@@ -479,7 +708,7 @@ export default function DailySummary() {
                       {summaryData.sales_summary.map((sale, index) => (
                         <TableRow key={index}>
                           <TableCell className="border">{sale.customer_name}</TableCell>
-                          <TableCell className="border">{sale.ticket_no}</TableCell>
+                          <TableCell className="border">{sale.payment_id || sale.batch_id || '-'}</TableCell>
                           <TableCell className="border text-right">
                             {sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-'}
                           </TableCell>
@@ -761,6 +990,127 @@ export default function DailySummary() {
                           <TableCell className="border" colSpan={3}>TOTAL</TableCell>
                           <TableCell className="border text-right">{summaryData.totals.banking_total.toFixed(2)}</TableCell>
                           <TableCell className="border"></TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Stock Check */}
+            <Card className={`${stockData && stockData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
+              <CardHeader>
+                <CardTitle>Stock Check - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="font-semibold border">Sl.No</TableHead>
+                        <TableHead className="font-semibold border">Product Description</TableHead>
+                        <TableHead className="font-semibold border text-center">O.S</TableHead>
+                        <TableHead className="font-semibold border text-center">N.S</TableHead>
+                        <TableHead className="font-semibold border text-center">Sales</TableHead>
+                        <TableHead className="font-semibold border text-center">C.RTN</TableHead>
+                        <TableHead className="font-semibold border text-center">Dmps</TableHead>
+                        <TableHead className="font-semibold border text-center">S.RTN</TableHead>
+                        <TableHead className="font-semibold border text-center">Stock</TableHead>
+                        <TableHead className="font-semibold border text-center">Cl.Stock</TableHead>
+                        <TableHead className="font-semibold border text-center">Result</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {stockData.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="border">{item.slNo}</TableCell>
+                          <TableCell className="border">{item.productDescription}</TableCell>
+                          <TableCell className="border text-center">{item.os}</TableCell>
+                          <TableCell className="border text-center">{item.ns}</TableCell>
+                          <TableCell className="border text-center">{item.sales}</TableCell>
+                          <TableCell className="border text-center">{item.crtn}</TableCell>
+                          <TableCell className="border text-center">{item.dmps}</TableCell>
+                          <TableCell className="border text-center">{item.srtn}</TableCell>
+                          <TableCell className="border text-center">{item.stock}</TableCell>
+                          <TableCell className="border text-center">{item.clStock}</TableCell>
+                          <TableCell className="border text-center">
+                            {item.result === "✓" ? (
+                              <span className="text-green-600">✓</span>
+                            ) : (
+                              <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
+                                {item.result}
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {stockData.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={11} className="border text-center text-gray-500 py-4">
+                            No stock check data found
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {stockData.length > 0 && (
+                        <TableRow className="bg-gray-100 font-semibold">
+                          <TableCell className="border"></TableCell>
+                          <TableCell className="border">TOTAL</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.os, 0)}</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.ns, 0)}</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.sales, 0)}</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.crtn, 0)}</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.dmps, 0)}</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.srtn, 0)}</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.stock, 0)}</TableCell>
+                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.clStock, 0)}</TableCell>
+                          <TableCell className="border"></TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Daily Book Purchase */}
+            <Card className={`${purchaseData && purchaseData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
+              <CardHeader>
+                <CardTitle>Daily Book Purchase - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="font-semibold border">Date</TableHead>
+                        <TableHead className="font-semibold border">Supplier</TableHead>
+                        <TableHead className="font-semibold border text-center">Inv.No</TableHead>
+                        <TableHead className="font-semibold border text-center">Invoice Amt</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {purchaseData.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="border">{item.date}</TableCell>
+                          <TableCell className="border">{item.supplier}</TableCell>
+                          <TableCell className="border text-center">{item.invNo}</TableCell>
+                          <TableCell className="border text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
+                        </TableRow>
+                      ))}
+                      {purchaseData.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="border text-center text-gray-500 py-4">
+                            No purchase data found
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {purchaseData.length > 0 && (
+                        <TableRow className="bg-gray-100 font-semibold">
+                          <TableCell className="border"></TableCell>
+                          <TableCell className="border">{purchaseData.length} Items</TableCell>
+                          <TableCell className="border text-center"></TableCell>
+                          <TableCell className="border text-center">£{purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
                         </TableRow>
                       )}
                     </TableBody>

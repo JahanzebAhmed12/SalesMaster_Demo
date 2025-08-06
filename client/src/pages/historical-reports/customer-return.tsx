@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, RotateCcw, FileText, Download, Copy, Printer, Search } from "lucide-react";
-import { format } from "date-fns";
+import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -63,8 +63,8 @@ function toLocalDateString(date: Date) {
 }
 
 export default function CustomerReturn() {
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [customerFilter, setCustomerFilter] = useState("All Customer");
   const [returnTypeFilter, setReturnTypeFilter] = useState("All Returns");
   const [searchTerm, setSearchTerm] = useState("");
