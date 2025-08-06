@@ -523,7 +523,11 @@ export default function DailySalesFullView() {
                         return (
                           <TableRow key={idx} className="bg-white">
                             <TableCell></TableCell>
-                            <TableCell>{row.invoiceNo}</TableCell>
+                            <TableCell>
+                              <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}>
+                                {row.invoiceNo}
+                              </Button>
+                            </TableCell>
                             <TableCell>{row.customerName}</TableCell>
                             <TableCell>{row.productName}</TableCell>
                             <TableCell className="text-right">{row.quantity}</TableCell>

@@ -517,7 +517,15 @@ export default function ProductPurchaseFullView() {
                           <TableRow key={idx} className="bg-white">
                             <TableCell></TableCell>
                             <TableCell></TableCell>
-                            <TableCell>{row.invNo}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="link"
+                                className="p-0 text-blue-600 underline"
+                                onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invNo}&edit=true`, '_self')}
+                              >
+                                {row.invNo}
+                              </Button>
+                            </TableCell>
                             <TableCell>{row.awb}</TableCell>
                             <TableCell>{row.product}</TableCell>
                             <TableCell className="text-right">{row.quantity}</TableCell>

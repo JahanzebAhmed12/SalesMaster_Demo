@@ -52,8 +52,13 @@ function toLocalDateString(date: Date) {
 }
 
 export default function FullAnalysis() {
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
+  // Set default dates: from one month ago to today
+  const today = new Date();
+  const oneMonthAgo = new Date();
+  oneMonthAgo.setMonth(today.getMonth() - 1);
+  
+  const [fromDate, setFromDate] = useState<Date>(oneMonthAgo);
+  const [toDate, setToDate] = useState<Date>(today);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [searchClicked, setSearchClicked] = useState(false);
 

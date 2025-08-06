@@ -192,7 +192,7 @@ export default function DailyBookSales() {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${format(new Date(sale.date), "yyyy-MM-dd")}</td>`);
         printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
-        printWindow.document.write(`<td>${sale.customerName}${sale.customerOthers ? ` <small style="color: #666;">(${sale.customerOthers})</small>` : ''}</td>`);
+        printWindow.document.write(`<td>${sale.customerName}</td>`);
         printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.bank ?? 0).toFixed(2)}</td>`);
@@ -215,7 +215,7 @@ export default function DailyBookSales() {
       'Sl.No': item.slNo,
       'Date': item.date,
       'Invoice No': item.invoiceNo,
-      'Customer Name': item.customerName + (item.customerOthers ? ` (${item.customerOthers})` : ''),
+      'Customer Name': item.customerName,
       'Account': item.amount,
       'Cash': item.cash,
       'Bank Transfer': item.bank || 0,
@@ -280,7 +280,7 @@ export default function DailyBookSales() {
       body: salesData.map((item: SalesEntry) => [
         format(new Date(item.date), "yyyy-MM-dd"),
         item.invoiceNo,
-        item.customerName + (item.customerOthers ? ` (${item.customerOthers})` : ''),
+        item.customerName,
         `£${Number(item.amount ?? 0).toFixed(2)}`,
         `£${Number(item.cash ?? 0).toFixed(2)}`,
         `£${Number(item.bank ?? 0).toFixed(2)}`,
@@ -311,7 +311,7 @@ export default function DailyBookSales() {
       item.slNo,
       item.date,
       item.invoiceNo,
-      item.customerName + (item.customerOthers ? ` (${item.customerOthers})` : ''),
+      item.customerName,
       item.amount,
       item.cash,
       item.bank || 0,

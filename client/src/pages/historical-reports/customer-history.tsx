@@ -528,25 +528,7 @@ export default function CustomerHistory() {
               >
                 {loading ? "Loading..." : "Search"}
               </Button>
-              <Button 
-                className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
-                disabled={!selectedCustomer || historyData.length === 0}
-                onClick={handleSendSelected}
-              >
-                <Mail size={16} />
-                Send
-              </Button>
-              <Button className="bg-orange-500 hover:bg-orange-600 flex items-center gap-2 text-white">
-                <Save size={16} />
-                Save
-              </Button>
-              <Button className="bg-orange-500 hover:bg-orange-600 flex items-center gap-2 text-white">
-                Full
-              </Button>
-              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                <User2 size={16} />
-                Statement
-              </Button>
+
             </div>
           </CardContent>
         </Card>
@@ -626,7 +608,6 @@ export default function CustomerHistory() {
                     <TableHead className="text-center">Discount /Adj</TableHead>
                     <TableHead className="text-center">Balance</TableHead>
                     <TableHead className="text-center">Running Balance</TableHead>
-                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -641,7 +622,11 @@ export default function CustomerHistory() {
                       <TableRow key={row.id}>
                         <TableCell>{row.slNo}</TableCell>
                         <TableCell>{format(new Date(row.date), "yyyy-MM-dd")}</TableCell>
-                        <TableCell>{row.invoiceNo}</TableCell>
+                        <TableCell>
+                          <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}>
+                            {row.invoiceNo}
+                          </Button>
+                        </TableCell>
                         <TableCell className="text-center">
                           <input
                             type="checkbox"
@@ -653,20 +638,10 @@ export default function CustomerHistory() {
                         <TableCell className="text-center">£{(row.accountInv ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{(row.cashInv ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{(row.paid ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-center"></TableCell>
-                        <TableCell className="text-center"></TableCell>
+                        <TableCell className="text-center">£0.00</TableCell>
+                        <TableCell className="text-center">£0.00</TableCell>
                         <TableCell className="text-center font-medium">£{(row.balance ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center font-bold">£{(row.runningBalance ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center gap-2">
-                            <Button size="sm" variant="outline" className="h-6 w-6 p-0 bg-cyan-500 text-white" onClick={() => window.open(`/print/invoice/${row.invoiceNo}`, '_blank')} title="Print Invoice">
-                              <Printer size={14} />
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-6 w-6 p-0 bg-cyan-500 text-white" onClick={() => handleSendInvoice(row.invoiceNo)} title="Send Invoice">
-                              <Mail size={14} />
-                            </Button>
-                          </div>
-                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -703,7 +678,6 @@ export default function CustomerHistory() {
                     <TableCell className="text-center font-bold">£0.00</TableCell>
                     <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.runningBalance.toFixed(2)}</TableCell>
-                    <TableCell></TableCell>
                   </TableRow>
                 </TableBody>
               </Table>

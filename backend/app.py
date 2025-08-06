@@ -7933,12 +7933,16 @@ def full_analysis():
             returns = returns.join(Customer).filter(Customer.customer_name.ilike(f'%{search}%'))
         returns = returns.scalar() or 0
         net_sales = sales - returns
-        # Purchases
-        purchase = db.session.query(func.sum(PurchaseInvoice.amount)).filter(
+        # Purchases - calculate from PurchaseInvoiceItem total_price joined with PurchaseInvoice
+        purchase = db.session.query(func.sum(PurchaseInvoiceItem.total_price)).join(
+            PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id
+        ).filter(
             PurchaseInvoice.date >= m_start, PurchaseInvoice.date < m_end
         )
         if search:
-            purchase = purchase.join(Supplier).filter(Supplier.supplier_name.ilike(f'%{search}%'))
+            purchase = purchase.join(Purchase, PurchaseInvoice.purchase_id == Purchase.id).filter(
+                Purchase.supplier_name.ilike(f'%{search}%')
+            )
         purchase = purchase.scalar() or 0
         # Supplier Returns
         returns_sup = db.session.query(func.sum(SupplierReturn.total_value)).filter(
@@ -7963,18 +7967,28 @@ def full_analysis():
             expenses = expenses.join(Supplier).filter(Supplier.supplier_name.ilike(f'%{search}%'))
         expenses = expenses.scalar() or 0
         diff = net_sales - net_purchase - expenses
+        
+        # Handle NaN values by converting None to 0 and ensuring all values are numeric
+        def safe_round(value, decimals=2):
+            if value is None or str(value).lower() == 'nan':
+                return 0.0
+            try:
+                return round(float(value), decimals)
+            except (ValueError, TypeError):
+                return 0.0
+        
         results.append({
             'month': month_name(m_start),
             'year': year,
-            'sales': round(sales, 2),
-            'returns': round(returns, 2),
-            'netSales': round(net_sales, 2),
-            'purchase': round(purchase, 2),
-            'returnsSup': round(returns_sup, 2),
-            'dumps': round(dumps, 2),
-            'netPurchase': round(net_purchase, 2),
-            'expenses': round(expenses, 2),
-            'diff': round(diff, 2)
+            'sales': safe_round(sales),
+            'returns': safe_round(returns),
+            'netSales': safe_round(net_sales),
+            'purchase': safe_round(purchase),
+            'returnsSup': safe_round(returns_sup),
+            'dumps': safe_round(dumps),
+            'netPurchase': safe_round(net_purchase),
+            'expenses': safe_round(expenses),
+            'diff': safe_round(diff)
         })
     return jsonify(results)
 

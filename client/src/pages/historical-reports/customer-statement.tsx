@@ -43,10 +43,10 @@ interface StatementData {
   date: string;
   invoiceNo: string;
   description: string;
-  creditInv: number;
+  accountInv: number;  // Changed from creditInv to accountInv to match backend
   cashInv: number;
   paid: number;
-  creditAdj: number;
+  accountAdj: number;  // Changed from creditAdj to accountAdj to match backend
   discountAdj: number;
   balance: number;
   runningBalance: number;
@@ -75,12 +75,12 @@ export default function CustomerStatement() {
   });
 
   const totals = {
-    creditInv: statementData.reduce((sum, item) => sum + item.creditInv, 0),
-    cashInv: statementData.reduce((sum, item) => sum + item.cashInv, 0),
-    paid: statementData.reduce((sum, item) => sum + item.paid, 0),
-    creditAdj: statementData.reduce((sum, item) => sum + item.creditAdj, 0),
-    discountAdj: statementData.reduce((sum, item) => sum + item.discountAdj, 0),
-    balance: statementData.reduce((sum, item) => sum + item.balance, 0)
+    accountInv: statementData.reduce((sum, item) => sum + (item.accountInv || 0), 0),
+    cashInv: statementData.reduce((sum, item) => sum + (item.cashInv || 0), 0),
+    paid: statementData.reduce((sum, item) => sum + (item.paid || 0), 0),
+    accountAdj: statementData.reduce((sum, item) => sum + (item.accountAdj || 0), 0),
+    discountAdj: statementData.reduce((sum, item) => sum + (item.discountAdj || 0), 0),
+    balance: statementData.reduce((sum, item) => sum + (item.balance || 0), 0)
   };
 
   // Reset date fields to today every time the page is opened
@@ -218,10 +218,10 @@ export default function CustomerStatement() {
       'Date': row.date,
       'Invoice #': row.invoiceNo,
       'Description': row.description,
-      'Credit Inv.': row.creditInv,
+      'Credit Inv.': row.accountInv,
       'Cash Inv.': row.cashInv,
       'Paid': row.paid,
-      'Credit/Adj': row.creditAdj,
+      'Credit/Adj': row.accountAdj,
       'Discount/Adj': row.discountAdj,
       'Balance': row.balance,
       'Running Balance': row.runningBalance
@@ -279,10 +279,10 @@ export default function CustomerStatement() {
         row.date,
         row.invoiceNo,
         row.description,
-        row.creditInv,
+        row.accountInv,
         row.cashInv,
         row.paid,
-        row.creditAdj,
+        row.accountAdj,
         row.discountAdj,
         row.balance,
         row.runningBalance
@@ -300,10 +300,10 @@ export default function CustomerStatement() {
       row.date,
       row.invoiceNo,
       row.description,
-      row.creditInv,
+      row.accountInv,
       row.cashInv,
       row.paid,
-      row.creditAdj,
+      row.accountAdj,
       row.discountAdj,
       row.balance,
       row.runningBalance
@@ -539,16 +539,16 @@ export default function CustomerStatement() {
                       <TableCell>{format(new Date(statement.date), "dd/MM/yyyy")}</TableCell>
                       <TableCell>{statement.invoiceNo}</TableCell>
                       <TableCell>{statement.description}</TableCell>
-                      <TableCell className="text-center">£{statement.creditInv.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{statement.cashInv.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{statement.paid.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{statement.creditAdj.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{statement.discountAdj.toFixed(2)}</TableCell>
-                      <TableCell className={`text-center font-medium ${statement.balance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        £{statement.balance.toFixed(2)}
+                      <TableCell className="text-center">£{(statement.accountInv || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{(statement.cashInv || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{(statement.paid || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{(statement.accountAdj || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£{(statement.discountAdj || 0).toFixed(2)}</TableCell>
+                      <TableCell className={`text-center font-medium ${(statement.balance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        £{(statement.balance || 0).toFixed(2)}
                       </TableCell>
-                      <TableCell className={`text-center font-bold ${statement.runningBalance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        £{statement.runningBalance.toFixed(2)}
+                      <TableCell className={`text-center font-bold ${(statement.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        £{(statement.runningBalance || 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -559,13 +559,13 @@ export default function CustomerStatement() {
                     <TableCell className="font-bold">TOTAL</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
-                    <TableCell className="text-center font-bold">£{totals.creditInv.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.accountInv.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.cashInv.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.paid.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£{totals.creditAdj.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.accountAdj.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.discountAdj.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold text-red-600">£{statementData[statementData.length - 1]?.runningBalance.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell className="text-center font-bold text-red-600">£{(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -575,14 +575,14 @@ export default function CustomerStatement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="font-semibold mb-2">Summary:</div>
-                  <div>Total Credit Sales: £{totals.creditInv.toFixed(2)}</div>
+                  <div>Total Credit Sales: £{totals.accountInv.toFixed(2)}</div>
                   <div>Total Payments: £{totals.paid.toFixed(2)}</div>
-                  <div>Total Adjustments: £{(totals.creditAdj + totals.discountAdj).toFixed(2)}</div>
+                  <div>Total Adjustments: £{(totals.accountAdj + totals.discountAdj).toFixed(2)}</div>
                 </div>
                 <div className="text-right">
                   <div className="font-semibold mb-2 text-lg">Current Balance:</div>
-                  <div className={`text-2xl font-bold ${statementData[statementData.length - 1]?.runningBalance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    £{statementData[statementData.length - 1]?.runningBalance.toFixed(2) || '0.00'}
+                  <div className={`text-2xl font-bold ${(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    £{(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}
                   </div>
                 </div>
               </div>
