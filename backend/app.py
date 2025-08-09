@@ -3912,6 +3912,7 @@ def daily_sales_full_view():
                     'invoiceNo': sale.invoice_number,
                     'customerName': sale.customer.customer_name if sale.customer else '',
                     'productName': product_name,
+                    'productId': item.product_id if item.product_id else item.non_product_id,
                     'quantity': item.quantity,
                     'unitPrice': float(item.unit_price) if item.unit_price else 0,
                     'total': float(item.total_price) if item.total_price else 0,
@@ -4028,12 +4029,29 @@ def product_purchase_full_view():
                 total = float(item.total_price) if item.total_price else 0
                 total_qty += qty
                 total_amt += total
+                # Get product name and ID
+                product_name = ''
+                product_id = None
+                if hasattr(item, 'product_id') and item.product_id:
+                    product = RegularProduct.query.get(item.product_id)
+                    if product:
+                        product_name = product.description
+                        product_id = item.product_id
+                elif hasattr(item, 'non_product_id') and item.non_product_id:
+                    product = NonProduct.query.get(item.non_product_id)
+                    if product:
+                        product_name = product.description
+                        product_id = item.non_product_id
+                elif hasattr(item, 'product_name'):
+                    product_name = item.product_name
+                
                 result.append({
                     'date': '',
                     'supplier': '',
                     'invNo': invoice.id,
                     'awb': '',  # Add AWB if you have it
-                    'product': item.product_name if hasattr(item, 'product_name') else '',
+                    'product': product_name,
+                    'productId': product_id,
                     'quantity': qty,
                     'unitPrice': price,
                     'sellingPrice': 0,  # Add if you have it
@@ -7649,8 +7667,8 @@ def date_wise_sales():
         Sale.date < to_dt,
         Sale.status == 'finalized'
     )
-    if sales_type == 'Credit Sales':
-        query = query.filter(Sale.customer_type.ilike('credit'))
+    if sales_type == 'Account Sales':
+        query = query.filter(Sale.customer_type.ilike('account'))
     elif sales_type == 'Cash Sales':
         query = query.filter(Sale.customer_type.ilike('cash'))
     if search:
@@ -7681,7 +7699,7 @@ def date_wise_sales():
     sl_no = 1
     for group, group_sales in sorted(grouped.items()):
         total_sales = sum(float(s.total_amount) for s in group_sales)
-        credit_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'credit')
+        account_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'account')
         cash_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'cash')
         total_invoices = len(group_sales)
         average_sale = total_sales / total_invoices if total_invoices else 0
@@ -7709,7 +7727,7 @@ def date_wise_sales():
             'id': sl_no,
             'date': group,
             'totalSales': total_sales,
-            'creditSales': credit_sales,
+            'accountSales': account_sales,
             'cashSales': cash_sales,
             'totalInvoices': total_invoices,
             'averageSale': average_sale,
@@ -7853,8 +7871,8 @@ def daily_book_history():
         query = query.filter(User.username == user)
     if sale_type == 'Cash':
         query = query.filter(Sale.customer_type.ilike('cash'))
-    elif sale_type == 'Credit':
-        query = query.filter(Sale.customer_type.ilike('credit'))
+    elif sale_type == 'Account':
+        query = query.filter(Sale.customer_type.ilike('account'))
     if search:
         query = query.filter(
             or_(
@@ -7867,18 +7885,46 @@ def daily_book_history():
     sales = query.all()
     result = []
     for idx, sale in enumerate(sales, 1):
-        # Sum payments by mode for this sale
-        cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
-        credit_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'credit')
+        # Get current date for comparison
+        current_date = datetime.now().date()
+        sale_date = sale.date.date()
+        
+        # Sum payments by mode and date for this sale
+        cash_paid_today = sum(float(p.amount) for p in sale.payments 
+                             if p.payment_mode and p.payment_mode.lower() == 'cash' 
+                             and p.payment_date == current_date)
+        
+        # Account payments (backdate payments should go to cash if cash paid)
+        account_payments = [p for p in sale.payments 
+                           if p.payment_mode and p.payment_mode.lower() == 'account']
+        
+        account_paid = 0
+        cash_from_backdate = 0
+        
+        for payment in account_payments:
+            if payment.payment_date == current_date:
+                # Current day account payment goes to account paid
+                account_paid += float(payment.amount)
+            else:
+                # Backdate account payment goes to cash
+                cash_from_backdate += float(payment.amount)
+        
+        # Total cash includes cash payments today and backdate account payments
+        total_cash = cash_paid_today + cash_from_backdate
+        
+        # If sale is cash type, amount goes to cash column
+        if sale.customer_type.lower() == 'cash':
+            total_cash = float(sale.total_amount)
+        
         result.append({
             'slNo': idx,
             'date': sale.date.strftime('%Y-%m-%d'),
-            'user': sale.user.username if sale.user else '',  # changed from salesman
+            'user': sale.user.username if sale.user else '',
             'invoiceNo': sale.invoice_number,
             'customerName': sale.customer.customer_name if sale.customer else '',
-            'credit': float(sale.total_amount) if sale.customer_type.lower() == 'credit' else 0,
-            'crPaid': credit_paid,
-            'cash': float(sale.total_amount) if sale.customer_type.lower() == 'cash' else 0
+            'account': float(sale.total_amount) if sale.customer_type.lower() == 'account' else 0,
+            'accountPaid': account_paid,
+            'cash': total_cash
         })
     return jsonify(result)
 
@@ -8406,7 +8452,7 @@ def daily_summary_report():
         
         sales_summary.append({
             'customer_name': sale.customer_name,
-            'ticket_no': sale.invoice_number,
+            'invoice_no': sale.invoice_number,
             'cash_sales': cash_amount,
             'card_paid': card_amount,
             'account_sales': account_amount,
@@ -8427,7 +8473,7 @@ def daily_summary_report():
             
             sales_summary.append({
                 'customer_name': return_item.customer_name,
-                'ticket_no': f"CR-{return_item.invoice_number or 'RETURN'}",
+                'invoice_no': f"CR-{return_item.invoice_number or 'RETURN'}",
                 'cash_sales': 0,
                 'card_paid': 0,
                 'account_sales': 0,
@@ -8449,7 +8495,7 @@ def daily_summary_report():
             
             sales_summary.append({
                 'customer_name': neg_payment.customer_name,
-                'ticket_no': f"NP-{neg_payment.invoice_number or 'PAYMENT'}",
+                'invoice_no': f"NP-{neg_payment.invoice_number or 'PAYMENT'}",
                 'cash_sales': 0,
                 'card_paid': 0,
                 'account_sales': 0,
@@ -8459,33 +8505,31 @@ def daily_summary_report():
             })
             processed_neg_payments.add(neg_payment.customer_id)
     
-    # 2. Customer Payments (using sale_id relationship)
+    # 2. Customer Payments (using payment batch_id as payment_id)
     customer_payments = db.session.query(
         Customer.customer_name,
-        Sale.invoice_number,
-        Payment.sale_id,
+        Payment.id,
+        Payment.batch_id,
         Payment.payment_mode,
         Payment.amount,
         Payment.payment_date
     ).join(
         Customer, Payment.customer_id == Customer.id
-    ).outerjoin(
-        Sale, Payment.sale_id == Sale.id
     ).filter(
         Payment.payment_date == report_date
-    ).order_by(Customer.customer_name, Sale.invoice_number).all()
+    ).order_by(Customer.customer_name, Payment.batch_id).all()
     
-    # Group payments by customer and invoice using sale_id
+    # Group payments by customer and batch_id (payment_id)
     payment_groups = {}
     for payment in customer_payments:
-        # Use sale_id as the key, or 'on_account' if no sale_id
-        sale_key = payment.sale_id if payment.sale_id else 'on_account'
-        key = (payment.customer_name, sale_key)
+        # Use batch_id as payment_id, or payment.id if no batch_id
+        payment_id = str(payment.batch_id) if payment.batch_id else str(payment.id)
+        key = (payment.customer_name, payment_id)
         
         if key not in payment_groups:
             payment_groups[key] = {
                 'customer_name': payment.customer_name,
-                'invoice_no': payment.invoice_number if payment.sale_id else 'On Account',
+                'payment_id': payment_id,
                 'cash_amount': 0,
                 'card_amount': 0,
                 'total_amount': 0,
@@ -8793,6 +8837,76 @@ def daily_summary_pdf():
         
         banking_total = sum(float(r.amount) for r in banking_records)
         
+        # Check if stock and purchase data should be included
+        include_stock = request.args.get('includeStock', 'false').lower() == 'true'
+        include_purchase = request.args.get('includePurchase', 'false').lower() == 'true'
+        
+        # 5. Stock Check Data (if requested)
+        stock_data = []
+        if include_stock:
+            from sqlalchemy import text
+            stock_query = text("""
+                SELECT 
+                    ROW_NUMBER() OVER (ORDER BY p.id) as slNo,
+                    p.product_description,
+                    COALESCE(sc.opening_stock, 0) as os,
+                    COALESCE(sc.new_stock, 0) as ns,
+                    COALESCE(sc.sales, 0) as sales,
+                    COALESCE(sc.customer_return, 0) as crtn,
+                    COALESCE(sc.damages, 0) as dmps,
+                    COALESCE(sc.supplier_return, 0) as srtn,
+                    COALESCE(sc.stock, 0) as stock,
+                    COALESCE(sc.closing_stock, 0) as clStock,
+                    CASE 
+                        WHEN sc.closing_stock = sc.stock THEN '✓'
+                        WHEN sc.closing_stock > sc.stock THEN CONCAT('+', (sc.closing_stock - sc.stock))
+                        ELSE CONCAT('-', (sc.stock - sc.closing_stock))
+                    END as result
+                FROM products p
+                LEFT JOIN stock_check sc ON p.id = sc.product_id AND DATE(sc.date) = :report_date
+                WHERE p.product_type = 'regular'
+                ORDER BY p.id
+            """)
+            
+            stock_results = db.session.execute(stock_query, {'report_date': report_date}).fetchall()
+            for row in stock_results:
+                stock_data.append({
+                    'slNo': row.slNo,
+                    'productDescription': row.product_description,
+                    'os': row.os,
+                    'ns': row.ns,
+                    'sales': row.sales,
+                    'crtn': row.crtn,
+                    'dmps': row.dmps,
+                    'srtn': row.srtn,
+                    'stock': row.stock,
+                    'clStock': row.clStock,
+                    'result': row.result
+                })
+        
+        # 6. Daily Book Purchase Data (if requested)
+        purchase_data = []
+        if include_purchase:
+            purchase_query = db.session.query(
+                PurchaseInvoice.id,
+                PurchaseInvoice.date,
+                Supplier.supplier_name,
+                PurchaseInvoice.invoice_number,
+                PurchaseInvoice.total_amount
+            ).join(
+                Supplier, PurchaseInvoice.supplier_id == Supplier.id
+            ).filter(
+                func.date(PurchaseInvoice.date) == report_date
+            ).order_by(PurchaseInvoice.date, PurchaseInvoice.id).all()
+            
+            for purchase in purchase_query:
+                purchase_data.append({
+                    'date': purchase.date.strftime('%d-%m-%Y'),
+                    'supplier': purchase.supplier_name,
+                    'invNo': purchase.invoice_number,
+                    'invoiceAmt': float(purchase.total_amount)
+                })
+        
         # Format totals to avoid f-string decimal literal issues
         cash_total_str = f"{cash_total:.2f}"
         card_total_str = f"{card_total:.2f}"
@@ -8875,6 +8989,51 @@ def daily_summary_pdf():
                     <td>{bag_details_str}</td>
                 </tr>
             """
+        
+        # Generate stock check rows
+        stock_rows = ""
+        stock_totals = {'os': 0, 'ns': 0, 'sales': 0, 'crtn': 0, 'dmps': 0, 'srtn': 0, 'stock': 0, 'clStock': 0}
+        if include_stock and stock_data:
+            for item in stock_data:
+                stock_rows += f"""
+                    <tr>
+                        <td>{item['slNo']}</td>
+                        <td>{item['productDescription']}</td>
+                        <td class="text-center">{item['os']}</td>
+                        <td class="text-center">{item['ns']}</td>
+                        <td class="text-center">{item['sales']}</td>
+                        <td class="text-center">{item['crtn']}</td>
+                        <td class="text-center">{item['dmps']}</td>
+                        <td class="text-center">{item['srtn']}</td>
+                        <td class="text-center">{item['stock']}</td>
+                        <td class="text-center">{item['clStock']}</td>
+                        <td class="text-center">{item['result']}</td>
+                    </tr>
+                """
+                # Calculate totals
+                stock_totals['os'] += item['os']
+                stock_totals['ns'] += item['ns']
+                stock_totals['sales'] += item['sales']
+                stock_totals['crtn'] += item['crtn']
+                stock_totals['dmps'] += item['dmps']
+                stock_totals['srtn'] += item['srtn']
+                stock_totals['stock'] += item['stock']
+                stock_totals['clStock'] += item['clStock']
+        
+        # Generate purchase rows
+        purchase_rows = ""
+        purchase_total = 0
+        if include_purchase and purchase_data:
+            for item in purchase_data:
+                purchase_rows += f"""
+                    <tr>
+                        <td>{item['date']}</td>
+                        <td>{item['supplier']}</td>
+                        <td class="text-center">{item['invNo']}</td>
+                        <td class="text-center">£{item['invoiceAmt']:.2f}</td>
+                    </tr>
+                """
+                purchase_total += item['invoiceAmt']
         
 
         
@@ -9011,10 +9170,122 @@ def daily_summary_pdf():
                 </tbody>
             </table>
             
+            <div style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; background-color: #f9f9f9;">
+                <h4 style="margin-bottom: 10px;">Daily Summary Totals:</h4>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Cash Sales:</strong></span>
+                    <span><strong>£{cash_total_str}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Card Sales:</strong></span>
+                    <span><strong>£{card_total_str}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Cheque:</strong></span>
+                    <span><strong>£0.00</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Account Payments/Customer Cash Payments:</strong></span>
+                    <span><strong>£{sum(p["cash_amount"] for p in customer_payments_data):.2f}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Account Payment/Customer Card Payment (Backdate):</strong></span>
+                    <span><strong>£{sum(p["card_amount"] for p in customer_payments_data):.2f}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Till/Float(C/F):</strong></span>
+                    <span><strong>£0.00</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Supplier Payment (Paid Out):</strong></span>
+                    <span><strong>£{sum(p["amount"] for p in supplier_payments_data if p.get("payment_mode", "").lower() in ["cash", "bank"]):.2f}</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Expense (Paid Out):</strong></span>
+                    <span><strong>£0.00</strong></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span><strong>Total Banking:</strong></span>
+                    <span><strong>£{banking_total_str}</strong></span>
+                </div>
+            </div>"""
+        
+        # Add Stock Check section if requested and data exists
+        if include_stock and stock_data:
+            html_content += f"""
+            <div style="page-break-before: always;">
+                <h1>Stock Check</h1>
+                <h2>Date: {datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</h2>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sl.No</th>
+                            <th>Product Description</th>
+                            <th>O.S</th>
+                            <th>N.S</th>
+                            <th>Sales</th>
+                            <th>C.RTN</th>
+                            <th>Dmps</th>
+                            <th>S.RTN</th>
+                            <th>Stock</th>
+                            <th>Cl.Stock</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {stock_rows}
+                        <tr class="totals-row">
+                            <td></td>
+                            <td>TOTAL</td>
+                            <td class="text-center">{stock_totals['os']}</td>
+                            <td class="text-center">{stock_totals['ns']}</td>
+                            <td class="text-center">{stock_totals['sales']}</td>
+                            <td class="text-center">{stock_totals['crtn']}</td>
+                            <td class="text-center">{stock_totals['dmps']}</td>
+                            <td class="text-center">{stock_totals['srtn']}</td>
+                            <td class="text-center">{stock_totals['stock']}</td>
+                            <td class="text-center">{stock_totals['clStock']}</td>
+                            <td></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>"""
+        
+        # Add Purchase section if requested and data exists
+        if include_purchase and purchase_data:
+            html_content += f"""
+            <div style="page-break-before: always;">
+                <h1>Daily Book Purchase</h1>
+                <h2>Date: {datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</h2>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Supplier</th>
+                            <th>Inv.No</th>
+                            <th>Invoice Amt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {purchase_rows}
+                        <tr class="totals-row">
+                            <td></td>
+                            <td>{len(purchase_data)} Items</td>
+                            <td class="text-center"></td>
+                            <td class="text-center">£{purchase_total:.2f}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>"""
+        
+        # Close HTML
+        html_content += """
             <script>
-                window.onload = function() {{
+                window.onload = function() {
                     window.print();
-                }}
+                }
             </script>
         </body>
         </html>
@@ -9106,18 +9377,22 @@ def add_banking_entry():
     bag_number = data.get('bagNumber')  # For CHEQUE payments or backward compatibility
     bags = data.get('bags', [])  # New field for bag objects with number, payingNumber, and amount
     cheque_number = data.get('chequeNumber')
+    cheque_paying_number = data.get('chequePayingNumber')  # Paying number for CHEQUE payments
     # Use business date logic
     if date_str:
         date_obj = datetime.strptime(date_str, "%Y-%m-%d")
         business_date = get_business_date(date_obj)
     else:
         business_date = get_business_date()
+    # For CHEQUE payments, use the cheque paying number
+    final_paying_number = cheque_paying_number if payment_type == 'CHEQUE' else paying_number
+    
     entry = BankingEntry(
         date=business_date,
         remarks=remarks,
         payment_type=payment_type,
         amount=amount,
-        paying_number=paying_number,
+        paying_number=final_paying_number,
         bag_number=bag_number,  # Keep for backward compatibility and CHEQUE payments
         cheque_number=cheque_number
     )
@@ -9245,10 +9520,10 @@ def all_customer_history():
     sl_no = 1
     
     for customer in customers:
-        # Sales (Credit and Cash)
-        credit_sales_query = Sale.query.filter(
+        # Sales (Account and Cash)
+        account_sales_query = Sale.query.filter(
             Sale.customer_id == customer.id,
-            Sale.customer_type.ilike('credit'),
+            Sale.customer_type.ilike('account'),
             Sale.status == 'finalized'  # Only finalized sales
         )
         cash_sales_query = Sale.query.filter(
@@ -9258,13 +9533,13 @@ def all_customer_history():
         )
         
         if from_dt:
-            credit_sales_query = credit_sales_query.filter(Sale.date >= from_dt)
+            account_sales_query = account_sales_query.filter(Sale.date >= from_dt)
             cash_sales_query = cash_sales_query.filter(Sale.date >= from_dt)
         if to_dt:
-            credit_sales_query = credit_sales_query.filter(Sale.date <= to_dt)
+            account_sales_query = account_sales_query.filter(Sale.date <= to_dt)
             cash_sales_query = cash_sales_query.filter(Sale.date <= to_dt)
         
-        credit_invoice = sum(float(s.total_amount) for s in credit_sales_query.all())
+        account_invoice = sum(float(s.total_amount) for s in account_sales_query.all())
         cash_invoice = sum(float(s.total_amount) for s in cash_sales_query.all())
         
         # Payments
@@ -9297,9 +9572,9 @@ def all_customer_history():
             on_account_query = on_account_query.filter(Payment.payment_date <= to_dt.date())
         on_account = sum(float(p.amount) for p in on_account_query.all())
         
-        # Balance Outstanding: credit invoices - payments - returns/discounts
+        # Balance Outstanding: account invoices - payments - returns/discounts
         # Cash invoices are typically paid immediately, so they don't contribute to outstanding balance
-        balance_outstanding = credit_invoice - amount_received - returns_discount
+        balance_outstanding = account_invoice - amount_received - returns_discount
         
         # Check if this is bad debt (balance > credit limit)
         credit_limit = float(customer.credit_limit) if customer.credit_limit else 0
@@ -9315,7 +9590,7 @@ def all_customer_history():
             'id': customer.id,
             'slNo': sl_no,
             'customerName': customer.customer_name,
-            'creditInvoice': round(credit_invoice, 2),
+            'accountInvoice': round(account_invoice, 2),  # Changed from creditInvoice to accountInvoice
             'cashInvoice': round(cash_invoice, 2),
             'amountReceived': round(amount_received, 2),
             'returnsDiscount': round(returns_discount, 2),
@@ -9336,7 +9611,7 @@ def all_customer_history():
     
     # Calculate totals
     totals = {
-        'creditInvoice': sum(item['creditInvoice'] for item in result),
+        'accountInvoice': sum(item['accountInvoice'] for item in result),  # Changed from creditInvoice
         'cashInvoice': sum(item['cashInvoice'] for item in result),
         'amountReceived': sum(item['amountReceived'] for item in result),
         'returnsDiscount': sum(item['returnsDiscount'] for item in result),
@@ -9356,7 +9631,7 @@ def all_customer_history():
     currency_totals = {}
     for currency, items in currency_groups.items():
         currency_totals[currency] = {
-            'creditInvoice': sum(item['creditInvoice'] for item in items),
+            'accountInvoice': sum(item['accountInvoice'] for item in items),  # Changed from creditInvoice
             'cashInvoice': sum(item['cashInvoice'] for item in items),
             'amountReceived': sum(item['amountReceived'] for item in items),
             'returnsDiscount': sum(item['returnsDiscount'] for item in items),
@@ -10753,4 +11028,83 @@ def delete_holiday_request(id):
         return jsonify({'message': 'Holiday request deleted successfully'})
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/holiday-requests/<int:id>/upload-signed-form', methods=['POST'])
+@jwt_required()
+def upload_signed_form(id):
+    try:
+        holiday_request = HolidayRequest.query.get_or_404(id)
+        
+        if 'signedForm' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['signedForm']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Validate file type
+        allowed_extensions = {'pdf', 'jpg', 'jpeg', 'png'}
+        if not ('.' in file.filename and 
+                file.filename.rsplit('.', 1)[1].lower() in allowed_extensions):
+            return jsonify({'error': 'Invalid file type. Only PDF and image files are allowed'}), 400
+        
+        # Create uploads directory if it doesn't exist
+        upload_dir = os.path.join(app.root_path, 'uploads', 'holiday_forms')
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generate secure filename
+        filename = secure_filename(file.filename)
+        # Add timestamp to avoid conflicts
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        name, ext = os.path.splitext(filename)
+        filename = f"holiday_request_{id}_{timestamp}{ext}"
+        
+        file_path = os.path.join(upload_dir, filename)
+        file.save(file_path)
+        
+        # Update holiday request with file path
+        holiday_request.signed_form_path = os.path.join('uploads', 'holiday_forms', filename)
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Signed form uploaded successfully',
+            'filePath': holiday_request.signed_form_path
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/holiday-requests/<int:id>/signed-form', methods=['GET'])
+@jwt_required()
+def view_signed_form(id):
+    try:
+        holiday_request = HolidayRequest.query.get_or_404(id)
+        
+        if not holiday_request.signed_form_path:
+            return jsonify({'error': 'No signed form found for this request'}), 404
+        
+        file_path = os.path.join(app.root_path, holiday_request.signed_form_path)
+        
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'Signed form file not found'}), 404
+        
+        # Determine content type based on file extension
+        _, ext = os.path.splitext(file_path)
+        content_type = {
+            '.pdf': 'application/pdf',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png'
+        }.get(ext.lower(), 'application/octet-stream')
+        
+        return send_file(
+            file_path,
+            mimetype=content_type,
+            as_attachment=False,  # Display in browser instead of downloading
+            download_name=f"holiday_request_{id}_signed_form{ext}"
+        )
+        
+    except Exception as e:
         return jsonify({'error': str(e)}), 500

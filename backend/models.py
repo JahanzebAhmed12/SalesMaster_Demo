@@ -1122,6 +1122,9 @@ class HolidayRequest(db.Model):
     dated_by_manager = db.Column(db.Date)
     manager_comments = db.Column(db.Text)
     
+    # Signed form upload
+    signed_form_path = db.Column(db.String(500))  # Path to uploaded signed form
+    
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -1148,6 +1151,7 @@ class HolidayRequest(db.Model):
             'signedByManager': self.signed_by_manager,
             'datedByManager': self.dated_by_manager.isoformat() if self.dated_by_manager else None,
             'managerComments': self.manager_comments,
+            'signedFormPath': self.signed_form_path,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
         }

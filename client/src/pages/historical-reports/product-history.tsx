@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 
 type ProductsAPI = { regularProducts: RegularProduct[]; nonProducts: NonProduct[] };
@@ -40,8 +40,8 @@ export default function ProductHistory() {
   const [productId, setProductId] = useState<string | undefined>(undefined);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
   const [supplierId, setSupplierId] = useState<string | undefined>(undefined);
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchClicked, setSearchClicked] = useState(false);
 
   // Fetch all products

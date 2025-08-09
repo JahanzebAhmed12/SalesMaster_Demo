@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt } from "lucide-react";
+import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt, FileCheck } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -452,16 +452,31 @@ export default function CustomerPayment() {
                       <TableCell className="text-right">£{payment.amount.toFixed(2)}</TableCell>
                       <TableCell>{payment.remarks || '-'}</TableCell>
                       <TableCell>
-                        {payment.batchId && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => window.open(`/print/dot-matrix-payment/${payment.batchId}`, '_blank')}
-                            title="Print Payment Receipt"
-                          >
-                            <Receipt className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {payment.batchId && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => window.open(`/print/dot-matrix-payment/${payment.batchId}`, '_blank')}
+                                title="Print Dot Matrix Receipt"
+                              >
+                                <Receipt className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  const paymentType = payment.paymentMode === 'bank' ? 'card' : 'cash';
+                                  window.open(`/print/payment-receipt/${payment.batchId}/${paymentType}`, '_blank');
+                                }}
+                                title="Print Payment Receipt"
+                              >
+                                <FileCheck className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

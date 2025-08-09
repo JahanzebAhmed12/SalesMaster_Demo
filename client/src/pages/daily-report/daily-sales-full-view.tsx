@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ interface FullViewRow {
   invoiceNo: string;
   customerName: string;
   productName: string;
+  productId?: number;
   quantity: number;
   unitPrice: number;
   total: number;
@@ -34,6 +36,7 @@ export default function DailySalesFullView() {
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
+  const [, navigate] = useLocation();
 
   // Fetch all sales for the selected date range
   const { data, isLoading, refetch } = useQuery<FullViewRow[]>({
@@ -59,6 +62,22 @@ export default function DailySalesFullView() {
     refetch();
     // eslint-disable-next-line
   }, [fromDate, toDate]);
+
+  // Navigation handler for clickable product names
+  const handleProductClick = (row: FullViewRow) => {
+    const fromDateStr = format(fromDate, 'yyyy-MM-dd');
+    const toDateStr = format(toDate, 'yyyy-MM-dd');
+    const productType = 'regular'; // Default to regular since we don't have this info
+    
+    // Navigate to product sales history with date range and product info
+    if (row.productId) {
+      // If we have productId, include it in the URL (similar to product-sales-report.tsx)
+      navigate(`/reports/product-sales-history?productId=${row.productId}&productType=${productType}&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(row.productName)}`);
+    } else {
+      // Fallback without productId
+      navigate(`/reports/product-sales-history?productType=${productType}&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(row.productName)}`);
+    }
+  };
 
   // Print handler
   const handlePrint = () => {
@@ -529,7 +548,15 @@ export default function DailySalesFullView() {
                               </Button>
                             </TableCell>
                             <TableCell>{row.customerName}</TableCell>
-                            <TableCell>{row.productName}</TableCell>
+                            <TableCell>
+                              <button
+                                className="text-blue-600 underline cursor-pointer hover:text-blue-800 transition-colors"
+                                onClick={() => handleProductClick(row)}
+                                title="Click to view product sales history"
+                              >
+                                {row.productName}
+                              </button>
+                            </TableCell>
                             <TableCell className="text-right">{row.quantity}</TableCell>
                             <TableCell className="text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
                             <TableCell className="text-right">£{Number(row.total).toFixed(2)}</TableCell>

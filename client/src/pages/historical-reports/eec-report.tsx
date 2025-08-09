@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Printer } from "lucide-react";
-import { format } from "date-fns";
+import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -46,8 +46,8 @@ interface CompanyDetails {
 }
 
 export default function EecReport() {
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(new Date());
 
   const { data: eecData = [], isLoading } = useQuery<EECData[]>({
     queryKey: ["eec-report", fromDate, toDate],

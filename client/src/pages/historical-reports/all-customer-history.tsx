@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Users, FileText, Download, Copy, Printer, Search, Loader2 } from "lucide-react";
-import { format } from "date-fns";
+import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from 'xlsx';
@@ -21,7 +21,7 @@ interface CustomerData {
   id: number;
   slNo: number;
   customerName: string;
-  creditInvoice: number;
+  accountInvoice: number;  // Changed from creditInvoice to accountInvoice
   cashInvoice: number;
   amountReceived: number;
   returnsDiscount: number;
@@ -40,7 +40,7 @@ interface ExcelDataRow {
   'Sl.No': number | string;
   'Customer Name': string;
   'Customer Code': string;
-  'Credit Invoice': number;
+  'Account Invoice': number;  // Changed from 'Credit Invoice' to 'Account Invoice'
   'Cash Invoice': number;
   'Amount Received': number;
   'Returns/Discount': number;
@@ -53,7 +53,7 @@ interface ExcelDataRow {
 interface ApiResponse {
   data: CustomerData[];
   totals: {
-    creditInvoice: number;
+    accountInvoice: number;  // Changed from creditInvoice to accountInvoice
     cashInvoice: number;
     amountReceived: number;
     returnsDiscount: number;
@@ -61,7 +61,7 @@ interface ApiResponse {
     balanceOutstanding: number;
   };
   currencyTotals: Record<string, {
-    creditInvoice: number;
+    accountInvoice: number;  // Changed from creditInvoice to accountInvoice
     cashInvoice: number;
     amountReceived: number;
     returnsDiscount: number;
@@ -87,8 +87,8 @@ interface ApiResponse {
 
 export default function AllCustomerHistory() {
   const { toast } = useToast();
-  const [fromDate, setFromDate] = useState<Date>(new Date(2025, 5, 10));
-  const [toDate, setToDate] = useState<Date>(new Date(2025, 5, 10));
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [customerFilter, setCustomerFilter] = useState("All Customer");
   const [searchTerm, setSearchTerm] = useState("");
   const [currencyFilter, setCurrencyFilter] = useState("all");
@@ -97,7 +97,7 @@ export default function AllCustomerHistory() {
   // API state
   const [customerData, setCustomerData] = useState<CustomerData[]>([]);
   const [totals, setTotals] = useState({
-    creditInvoice: 0,
+    accountInvoice: 0,  // Changed from creditInvoice to accountInvoice
     cashInvoice: 0,
     amountReceived: 0,
     returnsDiscount: 0,
@@ -223,7 +223,7 @@ export default function AllCustomerHistory() {
       printWindow.document.write('<thead><tr>');
       printWindow.document.write('<th>Sl.No</th>');
       printWindow.document.write('<th>Customer Name</th>');
-      printWindow.document.write('<th>Credit Invoice</th>');
+      printWindow.document.write('<th>Account Invoice</th>');
       printWindow.document.write('<th>Cash Invoice</th>');
       printWindow.document.write('<th>Amount Received</th>');
       printWindow.document.write('<th>Returns/Discount</th>');
@@ -240,7 +240,7 @@ export default function AllCustomerHistory() {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${customer.slNo}</td>`);
         printWindow.document.write(`<td>${customer.customerName} (${customer.customerCode})</td>`);
-        printWindow.document.write(`<td>${customer.creditInvoice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.accountInvoice.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${customer.cashInvoice.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${customer.amountReceived.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${customer.returnsDiscount.toFixed(2)}</td>`);
@@ -256,7 +256,7 @@ export default function AllCustomerHistory() {
         printWindow.document.write('<tr class="totals">');
         printWindow.document.write('<td></td>');
         printWindow.document.write(`<td>TOTAL (${currency})</td>`);
-        printWindow.document.write(`<td>${currencyTotal.creditInvoice.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${currencyTotal.accountInvoice.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${currencyTotal.cashInvoice.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${currencyTotal.amountReceived.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${currencyTotal.returnsDiscount.toFixed(2)}</td>`);
@@ -271,7 +271,7 @@ export default function AllCustomerHistory() {
       printWindow.document.write('<tr class="totals">');
       printWindow.document.write('<td></td>');
       printWindow.document.write('<td>GRAND TOTAL</td>');
-      printWindow.document.write(`<td>${totals.creditInvoice.toFixed(2)}</td>`);
+      printWindow.document.write(`<td>${totals.accountInvoice.toFixed(2)}</td>`);
       printWindow.document.write(`<td>${totals.cashInvoice.toFixed(2)}</td>`);
       printWindow.document.write(`<td>${totals.amountReceived.toFixed(2)}</td>`);
       printWindow.document.write(`<td>${totals.returnsDiscount.toFixed(2)}</td>`);
@@ -298,7 +298,7 @@ export default function AllCustomerHistory() {
       'Sl.No': customer.slNo,
       'Customer Name': customer.customerName,
       'Customer Code': customer.customerCode,
-      'Credit Invoice': customer.creditInvoice,
+      'Account Invoice': customer.accountInvoice,  // Changed from 'Credit Invoice'
       'Cash Invoice': customer.cashInvoice,
       'Amount Received': customer.amountReceived,
       'Returns/Discount': customer.returnsDiscount,
@@ -646,7 +646,7 @@ export default function AllCustomerHistory() {
                     <TableRow className="bg-blue-100">
                       <TableHead>Sl.No</TableHead>
                       <TableHead>Customer name</TableHead>
-                      <TableHead className="text-center">Credit Invoice</TableHead>
+                      <TableHead className="text-center">Account Invoice</TableHead>
                       <TableHead className="text-center">Cash Invoice</TableHead>
                       <TableHead className="text-center">Amount Received</TableHead>
                       <TableHead className="text-center">Returns/ Discount</TableHead>
@@ -672,7 +672,7 @@ export default function AllCustomerHistory() {
                             <div className="text-sm text-gray-500">{customer.customerCode}</div>
                           </div>
                         </TableCell>
-                        <TableCell className="text-center">{customer.creditInvoice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{customer.accountInvoice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">{customer.cashInvoice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">{customer.amountReceived.toFixed(2)}</TableCell>
                         <TableCell className="text-center">{customer.returnsDiscount.toFixed(2)}</TableCell>
@@ -688,7 +688,7 @@ export default function AllCustomerHistory() {
                       <TableRow key={`currency-${currency}`} className="bg-gray-100 border-t">
                         <TableCell></TableCell>
                         <TableCell className="font-bold">{currency}</TableCell>
-                        <TableCell className="text-center font-bold">{currencyTotal.creditInvoice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center font-bold">{currencyTotal.accountInvoice.toFixed(2)}</TableCell>
                         <TableCell className="text-center font-bold">{currencyTotal.cashInvoice.toFixed(2)}</TableCell>
                         <TableCell className="text-center font-bold">{currencyTotal.amountReceived.toFixed(2)}</TableCell>
                         <TableCell className="text-center font-bold">{currencyTotal.returnsDiscount.toFixed(2)}</TableCell>
@@ -703,7 +703,7 @@ export default function AllCustomerHistory() {
                     <TableRow className="border-t-2 border-gray-300 bg-green-50">
                       <TableCell></TableCell>
                       <TableCell className="font-bold">TOTAL</TableCell>
-                      <TableCell className="text-center font-bold">{totals.creditInvoice.toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold">{totals.accountInvoice.toFixed(2)}</TableCell>
                       <TableCell className="text-center font-bold">{totals.cashInvoice.toFixed(2)}</TableCell>
                       <TableCell className="text-center font-bold">{totals.amountReceived.toFixed(2)}</TableCell>
                       <TableCell className="text-center font-bold">{totals.returnsDiscount.toFixed(2)}</TableCell>

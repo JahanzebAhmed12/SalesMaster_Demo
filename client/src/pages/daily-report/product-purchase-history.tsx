@@ -335,7 +335,15 @@ export default function ProductPurchaseHistoryPage() {
                   ) : (
                     purchases.map((row: any, idx: number) => (
                       <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="border-b px-4 py-2">{row.invoiceNo}</td>
+                        <td className="border-b px-4 py-2">
+                          <Button
+                            variant="link"
+                            className="p-0 text-blue-600 underline"
+                            onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invoiceNo}&edit=true`, '_self')}
+                          >
+                            {row.invoiceNo}
+                          </Button>
+                        </td>
                         <td className="border-b px-4 py-2">{row.date}</td>
                         <td className="border-b px-4 py-2">{row.supplierName}</td>
                         <td 

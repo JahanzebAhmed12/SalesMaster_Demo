@@ -31,7 +31,8 @@ export default function Banking() {
     payingNumber: "",
     bags: [{ number: "", payingNumber: "", amount: 0 }], // Array of bag objects with number, payingNumber and amount
     chequeNumber: "",
-    bagNumber: "" // Bag number for CHEQUE payments
+    bagNumber: "", // Bag number for CHEQUE payments
+    chequePayingNumber: "" // Paying number for CHEQUE payments
   });
   const queryClient = useQueryClient();
 
@@ -69,7 +70,7 @@ export default function Banking() {
 
   // Add new banking entry
   const addEntryMutation = useMutation({
-    mutationFn: async (data: InsertBankingEntry & { bags?: Array<{number: string, payingNumber: string, amount: number}>, bagNumber?: string }) => {
+    mutationFn: async (data: InsertBankingEntry & { bags?: Array<{number: string, payingNumber: string, amount: number}>, bagNumber?: string, chequePayingNumber?: string }) => {
       return apiRequest("POST", "/api/banking", data);
     },
     onSuccess: () => {
@@ -82,7 +83,8 @@ export default function Banking() {
         payingNumber: "", 
         bags: [{ number: "", payingNumber: "", amount: 0 }], // Reset to single empty bag
         chequeNumber: "",
-        bagNumber: ""
+        bagNumber: "",
+        chequePayingNumber: ""
       });
       refetch();
     },
@@ -112,18 +114,20 @@ export default function Banking() {
     if ((newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && newEntry.bags.every(bag => !bag.number.trim() || !bag.payingNumber.trim() || bag.amount <= 0)) {
       return toast({ title: "At least one bag with number, paying number and amount are required for CASH/COINS payments" });
     }
-    if (newEntry.paymentType === "CHEQUE" && (!newEntry.chequeNumber || !newEntry.bagNumber)) {
-      return toast({ title: "Cheque number and bag number are required for CHEQUE payments" });
+    if (newEntry.paymentType === "CHEQUE" && (!newEntry.chequeNumber || !newEntry.bagNumber || !newEntry.chequePayingNumber)) {
+      return toast({ title: "Cheque number, bag number, and paying number are required for CHEQUE payments" });
     }
-    const payload: InsertBankingEntry & { bags?: Array<{number: string, payingNumber: string, amount: number}>, bagNumber?: string } = {
+    const payload: InsertBankingEntry & { bags?: Array<{number: string, payingNumber: string, amount: number}>, bagNumber?: string, chequePayingNumber?: string } = {
       date: format(newEntry.date, "yyyy-MM-dd"),
       remarks: newEntry.remarks,
       paymentType: newEntry.paymentType,
       amount: totalAmount,
+      payingNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequePayingNumber : undefined,
       bags: (newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") ? 
         newEntry.bags.filter(bag => bag.number.trim() && bag.payingNumber.trim()) : undefined,
       chequeNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequeNumber : undefined,
-      bagNumber: newEntry.paymentType === "CHEQUE" ? newEntry.bagNumber : undefined
+      bagNumber: newEntry.paymentType === "CHEQUE" ? newEntry.bagNumber : undefined,
+      chequePayingNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequePayingNumber : undefined
     };
     addEntryMutation.mutate(payload);
   };
@@ -307,6 +311,7 @@ export default function Banking() {
                     bags: [{ number: "", payingNumber: "", amount: 0 }], // Reset bags when payment type changes
                     chequeNumber: "",
                     bagNumber: "", // Reset bag number when payment type changes
+                    chequePayingNumber: "", // Reset cheque paying number when payment type changes
                     amount: 0
                   })}
                 >
@@ -405,6 +410,16 @@ export default function Banking() {
                       required
                     />
                   </div>
+                  <div>
+                    <Label>PAYING NUMBER<span className="text-red-500">*</span></Label>
+                    <Input
+                      value={newEntry.chequePayingNumber}
+                      onChange={e => setNewEntry({...newEntry, chequePayingNumber: e.target.value})}
+                      placeholder="Enter paying number"
+                      className="w-full"
+                      required
+                    />
+                  </div>
                 </>
               )}
               {newEntry.paymentType !== "CASH" && newEntry.paymentType !== "COINS" && (
@@ -486,9 +501,15 @@ export default function Banking() {
                           </TableCell>
                           <TableCell>
                             {entry.paymentType === "CHEQUE" && entry.bagNumber ? (
-                              <span className="text-sm text-gray-600">
-                                Bag: <span className="font-medium">{entry.bagNumber}</span>
-                              </span>
+                              <div className="text-sm text-gray-600">
+                                <div>Bag: <span className="font-medium">{entry.bagNumber}</span></div>
+                                {entry.payingNumber && (
+                                  <div>Paying: <span className="font-medium">{entry.payingNumber}</span></div>
+                                )}
+                                {entry.chequeNumber && (
+                                  <div>Cheque: <span className="font-medium">{entry.chequeNumber}</span></div>
+                                )}
+                              </div>
                             ) : entry.bags && entry.bags.length > 0 ? (
                               <div className="text-sm text-gray-600">
                                 {entry.bags.map((bag, index) => (

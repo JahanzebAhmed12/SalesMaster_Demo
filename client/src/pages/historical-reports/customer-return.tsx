@@ -66,10 +66,15 @@ export default function CustomerReturn() {
   const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
   const [toDate, setToDate] = useState<Date>(new Date());
   const [customerFilter, setCustomerFilter] = useState("All Customer");
-  const [returnTypeFilter, setReturnTypeFilter] = useState("All Returns");
   const [searchTerm, setSearchTerm] = useState("");
   const [searchClicked, setSearchClicked] = useState(false);
   const tableRef = React.useRef<HTMLDivElement>(null);
+
+  // Fetch customers from database
+  const { data: customers = [], isLoading: loadingCustomers } = useQuery({
+    queryKey: ["customers"],
+    queryFn: () => apiRequest("GET", "/api/customers"),
+  });
 
   const { data: returnData = [], isLoading } = useQuery<CustomerReturnData[]>({
     queryKey: [
@@ -77,7 +82,6 @@ export default function CustomerReturn() {
       fromDate && toLocalDateString(fromDate),
       toDate && toLocalDateString(toDate),
       customerFilter,
-      returnTypeFilter,
       searchTerm,
       searchClicked
     ],
@@ -87,7 +91,6 @@ export default function CustomerReturn() {
       if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
       if (toDate) params.append("toDate", toLocalDateString(toDate));
       if (customerFilter && customerFilter !== "All Customer") params.append("customerId", customerFilter);
-      if (returnTypeFilter && returnTypeFilter !== "All Returns") params.append("status", returnTypeFilter);
       if (searchTerm) params.append("search", searchTerm);
       return apiRequest("GET", `/api/reports/customer-returns?${params.toString()}`);
     },
@@ -289,7 +292,7 @@ export default function CustomerReturn() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
                 <Label>From:</Label>
                 <Popover>
@@ -343,39 +346,27 @@ export default function CustomerReturn() {
               </div>
               
               <div>
-                <Select value={customerFilter} onValueChange={setCustomerFilter}>
+                <Label>Customer:</Label>
+                <Select value={customerFilter} onValueChange={setCustomerFilter} disabled={loadingCustomers}>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder={loadingCustomers ? "Loading..." : "All Customer"} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All Customer">All Customer</SelectItem>
-                    <SelectItem value="TROPIFRUIT STAND 100">TROPIFRUIT STAND 100</SelectItem>
-                    <SelectItem value="F&R ENTERPRISE LTD">F&R ENTERPRISE LTD</SelectItem>
+                    {customers.map((customer: any) => (
+                      <SelectItem key={customer.id} value={String(customer.id)}>
+                        {customer.customer_name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               
               <div>
-                <Select value={returnTypeFilter} onValueChange={setReturnTypeFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All Returns">All Returns</SelectItem>
-                    <SelectItem value="Processed">Processed</SelectItem>
-                    <SelectItem value="Pending">Pending</SelectItem>
-                    <SelectItem value="Rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setSearchClicked(v => !v)}>
-                  Search
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setSearchClicked(v => !v)} disabled={loadingCustomers}>
+                  {loadingCustomers ? "Loading..." : "Search"}
                 </Button>
               </div>
-              
-             
             </div>
           </CardContent>
         </Card>

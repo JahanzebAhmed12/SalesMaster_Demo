@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ interface PurchaseFullViewRow {
   invNo: string;
   awb: string;
   product: string;
+  productId?: number;
   quantity: number;
   unitPrice: number;
   sellingPrice: number;
@@ -35,6 +37,7 @@ export default function ProductPurchaseFullView() {
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
+  const [, navigate] = useLocation();
 
   const { data = [], isLoading, refetch } = useQuery<PurchaseFullViewRow[]>({
     queryKey: ['product-purchase-full-view', format(fromDate, 'yyyy-MM-dd'), format(toDate, 'yyyy-MM-dd'), search],
@@ -51,6 +54,22 @@ export default function ProductPurchaseFullView() {
     queryKey: ['/api/company-details'],
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
+
+  // Navigation handler for clickable product names
+  const handleProductClick = (row: PurchaseFullViewRow) => {
+    const fromDateStr = format(fromDate, 'yyyy-MM-dd');
+    const toDateStr = format(toDate, 'yyyy-MM-dd');
+    const productType = 'regular'; // Default to regular since we don't have this info
+    
+    // Navigate to product purchase history with date range and product info
+    if (row.productId) {
+      // If we have productId, include it in the URL
+      navigate(`/reports/product-purchase-history?productId=${row.productId}&productType=${productType}&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(row.product)}`);
+    } else {
+      // Fallback without productId
+      navigate(`/reports/product-purchase-history?productType=${productType}&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(row.product)}`);
+    }
+  };
 
   const handlePrint = () => {
     if (!tableRef.current) return;
@@ -527,7 +546,15 @@ export default function ProductPurchaseFullView() {
                               </Button>
                             </TableCell>
                             <TableCell>{row.awb}</TableCell>
-                            <TableCell>{row.product}</TableCell>
+                            <TableCell>
+                              <button
+                                className="text-blue-600 underline cursor-pointer hover:text-blue-800 transition-colors"
+                                onClick={() => handleProductClick(row)}
+                                title="Click to view product purchase history"
+                              >
+                                {row.product}
+                              </button>
+                            </TableCell>
                             <TableCell className="text-right">{row.quantity}</TableCell>
                             <TableCell className="text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
                             <TableCell className="text-right">£{Number(row.sellingPrice).toFixed(2)}</TableCell>

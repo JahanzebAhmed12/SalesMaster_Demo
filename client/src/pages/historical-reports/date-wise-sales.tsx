@@ -21,7 +21,7 @@ interface DateWiseSalesData {
   id: number;
   date: string;
   totalSales: number;
-  creditSales: number;
+  accountSales: number;
   cashSales: number;
   totalInvoices: number;
   averageSale: number;
@@ -91,7 +91,7 @@ export default function DateWiseSales() {
 
   const totals = {
     totalSales: salesData.reduce((sum, item) => sum + (item.totalSales || 0), 0),
-    creditSales: salesData.reduce((sum, item) => sum + (item.creditSales || 0), 0),
+    accountSales: salesData.reduce((sum, item) => sum + (item.accountSales || 0), 0),
     cashSales: salesData.reduce((sum, item) => sum + (item.cashSales || 0), 0),
     totalInvoices: salesData.reduce((sum, item) => sum + (item.totalInvoices || 0), 0),
     averageSale: salesData.length ? salesData.reduce((sum, item) => sum + (item.averageSale || 0), 0) / salesData.length : 0
@@ -115,7 +115,7 @@ export default function DateWiseSales() {
       printWindow.document.write('<thead><tr>');
       printWindow.document.write('<th>Date</th>');
       printWindow.document.write('<th>Total Sales</th>');
-      printWindow.document.write('<th>Credit Sales</th>');
+      printWindow.document.write('<th>Account Sales</th>');
       printWindow.document.write('<th>Cash Sales</th>');
       printWindow.document.write('<th>Total Invoices</th>');
       printWindow.document.write('<th>Average Sale</th>');
@@ -126,7 +126,7 @@ export default function DateWiseSales() {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${format(new Date(sale.date), "dd/MM/yyyy")}</td>`);
         printWindow.document.write(`<td>£${sale.totalSales.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${sale.creditSales.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${(sale.accountSales || 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${sale.cashSales.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${sale.totalInvoices}</td>`);
         printWindow.document.write(`<td>£${sale.averageSale.toFixed(2)}</td>`);
@@ -160,7 +160,7 @@ export default function DateWiseSales() {
     const ws = XLSX.utils.json_to_sheet(salesData.map((sale) => ({
       'Date': format(new Date(sale.date), "dd/MM/yyyy"),
       'Total Sales': sale.totalSales,
-      'Credit Sales': sale.creditSales,
+      'Account Sales': sale.accountSales || 0,
       'Cash Sales': sale.cashSales,
       'Total Invoices': sale.totalInvoices,
       'Average Sale': sale.averageSale,
@@ -181,7 +181,7 @@ export default function DateWiseSales() {
     const tableData = salesData.map((sale) => [
       format(new Date(sale.date), "dd/MM/yyyy"),
       `£${sale.totalSales.toFixed(2)}`,
-      `£${sale.creditSales.toFixed(2)}`,
+      `£${(sale.accountSales || 0).toFixed(2)}`,
       `£${sale.cashSales.toFixed(2)}`,
       sale.totalInvoices,
       `£${sale.averageSale.toFixed(2)}`,
@@ -190,7 +190,7 @@ export default function DateWiseSales() {
     ]);
     autoTable(doc, {
       head: [[
-        'Date', 'Total Sales', 'Credit Sales', 'Cash Sales', 'Total Invoices', 'Average Sale', 'Top Product', 'Top Customer'
+        'Date', 'Total Sales', 'Account Sales', 'Cash Sales', 'Total Invoices', 'Average Sale', 'Top Product', 'Top Customer'
       ]],
       body: tableData,
       startY: 50,
@@ -213,11 +213,11 @@ export default function DateWiseSales() {
   };
 
   const handleCopy = async () => {
-    let text = 'Date\tTotal Sales\tCredit Sales\tCash Sales\tTotal Invoices\tAverage Sale\tTop Product\tTop Customer\n';
+    let text = 'Date\tTotal Sales\tAccount Sales\tCash Sales\tTotal Invoices\tAverage Sale\tTop Product\tTop Customer\n';
     text += salesData.map((sale) => [
       format(new Date(sale.date), "dd/MM/yyyy"),
       sale.totalSales,
-      sale.creditSales,
+      sale.accountSales || 0,
       sale.cashSales,
       sale.totalInvoices,
       sale.averageSale,
@@ -311,7 +311,7 @@ export default function DateWiseSales() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All Sales">All Sales</SelectItem>
-                    <SelectItem value="Credit Sales">Credit Sales</SelectItem>
+                    <SelectItem value="Account Sales">Account Sales</SelectItem>
                     <SelectItem value="Cash Sales">Cash Sales</SelectItem>
                   </SelectContent>
                 </Select>
@@ -372,7 +372,7 @@ export default function DateWiseSales() {
                 <TableRow className="bg-purple-100">
                   <TableHead>Date</TableHead>
                   <TableHead className="text-center">Total Sales</TableHead>
-                  <TableHead className="text-center">Credit Sales</TableHead>
+                  <TableHead className="text-center">Account Sales</TableHead>
                   <TableHead className="text-center">Cash Sales</TableHead>
                   <TableHead className="text-center">Total Invoices</TableHead>
                   <TableHead className="text-center">Average Sale</TableHead>
@@ -388,24 +388,24 @@ export default function DateWiseSales() {
                 ) : salesData.map((sale) => (
                   <TableRow key={sale.id} className="hover:bg-gray-50">
                     <TableCell className="font-medium">{format(new Date(sale.date), "dd/MM/yyyy")}</TableCell>
-                    <TableCell className="text-center font-bold text-green-600">£{sale.totalSales.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£{sale.creditSales.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£{sale.cashSales.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">{sale.totalInvoices}</TableCell>
-                    <TableCell className="text-center">£{sale.averageSale.toFixed(2)}</TableCell>
-                    <TableCell>{sale.topProduct}</TableCell>
-                    <TableCell>{sale.topCustomer}</TableCell>
+                    <TableCell className="text-center font-bold text-green-600">£{(sale.totalSales || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£{(sale.accountSales || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£{(sale.cashSales || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-center">{sale.totalInvoices || 0}</TableCell>
+                    <TableCell className="text-center">£{(sale.averageSale || 0).toFixed(2)}</TableCell>
+                    <TableCell>{sale.topProduct || ''}</TableCell>
+                    <TableCell>{sale.topCustomer || ''}</TableCell>
                   </TableRow>
                 ))}
                 
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300 bg-pink-50">
                   <TableCell className="font-bold">TOTAL</TableCell>
-                  <TableCell className="text-center font-bold text-green-600">£{totals.totalSales.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.creditSales.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.cashSales.toFixed(2)}</TableCell>
-                  <TableCell className="text-center font-bold">{totals.totalInvoices}</TableCell>
-                  <TableCell className="text-center font-bold">£{totals.averageSale.toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold text-green-600">£{(totals.totalSales || 0).toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£{(totals.accountSales || 0).toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">£{(totals.cashSales || 0).toFixed(2)}</TableCell>
+                  <TableCell className="text-center font-bold">{totals.totalInvoices || 0}</TableCell>
+                  <TableCell className="text-center font-bold">£{(totals.averageSale || 0).toFixed(2)}</TableCell>
                   <TableCell className="font-bold">-</TableCell>
                   <TableCell className="font-bold">-</TableCell>
                 </TableRow>

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
+import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -43,8 +43,8 @@ export default function ProdCustomerHistory() {
   const [selectedCustomer, setSelectedCustomer] = useState<string | undefined>(undefined);
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
   const [productLike, setProductLike] = useState<string>("");
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchClicked, setSearchClicked] = useState(false);
 
   // Fetch customers

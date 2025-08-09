@@ -21,8 +21,8 @@ interface DailyBookData {
   user: string;
   invoiceNo: string;
   customerName: string;
-  credit: number;
-  crPaid: number;
+  account: number;
+  accountPaid: number;
   cash: number;
 }
 
@@ -88,8 +88,8 @@ export default function DailyBookHistory() {
   });
 
   const totals = {
-    credit: dailyBookData.reduce((sum, item) => sum + (item.credit || 0), 0),
-    crPaid: dailyBookData.reduce((sum, item) => sum + (item.crPaid || 0), 0),
+    account: dailyBookData.reduce((sum, item) => sum + (item.account || 0), 0),
+    accountPaid: dailyBookData.reduce((sum, item) => sum + (item.accountPaid || 0), 0),
     cash: dailyBookData.reduce((sum, item) => sum + (item.cash || 0), 0)
   };
 
@@ -119,8 +119,8 @@ export default function DailyBookHistory() {
       printWindow.document.write('<th>User</th>');
       printWindow.document.write('<th>Invoice No</th>');
       printWindow.document.write('<th>Customer Name</th>');
-      printWindow.document.write('<th>Credit</th>');
-      printWindow.document.write('<th>Cr. Paid</th>');
+      printWindow.document.write('<th>Account</th>');
+      printWindow.document.write('<th>Account Paid</th>');
       printWindow.document.write('<th>Cash</th>');
       printWindow.document.write('</tr></thead><tbody>');
       dailyBookData.forEach((item) => {
@@ -130,9 +130,9 @@ export default function DailyBookHistory() {
         printWindow.document.write(`<td>${item.user}</td>`);
         printWindow.document.write(`<td>${item.invoiceNo}</td>`);
         printWindow.document.write(`<td>${item.customerName}</td>`);
-        printWindow.document.write(`<td>£${item.credit.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${item.crPaid.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${item.cash.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${(item.account || 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${(item.accountPaid || 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${(item.cash || 0).toFixed(2)}</td>`);
         printWindow.document.write('</tr>');
       });
       printWindow.document.write('</tbody></table>');
@@ -164,9 +164,9 @@ export default function DailyBookHistory() {
       'User': item.user,
       'Invoice No': item.invoiceNo,
       'Customer Name': item.customerName,
-      'Credit': item.credit,
-      'Cr. Paid': item.crPaid,
-      'Cash': item.cash
+      'Account': item.account || 0,
+      'Account Paid': item.accountPaid || 0,
+      'Cash': item.cash || 0
     })));
     XLSX.utils.book_append_sheet(wb, ws, 'Daily Book History');
     XLSX.writeFile(wb, `daily_book_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
@@ -185,13 +185,13 @@ export default function DailyBookHistory() {
       item.user,
       item.invoiceNo,
       item.customerName,
-      `£${item.credit.toFixed(2)}`,
-      `£${item.crPaid.toFixed(2)}`,
-      `£${item.cash.toFixed(2)}`
+      `£${(item.account || 0).toFixed(2)}`,
+      `£${(item.accountPaid || 0).toFixed(2)}`,
+      `£${(item.cash || 0).toFixed(2)}`
     ]);
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'User', 'Invoice No', 'Customer Name', 'Credit', 'Cr. Paid', 'Cash'
+        'Sl.No', 'Date', 'User', 'Invoice No', 'Customer Name', 'Account', 'Account Paid', 'Cash'
       ]],
       body: tableData,
       startY: 50,
@@ -214,16 +214,16 @@ export default function DailyBookHistory() {
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tDate\tUser\tInvoice No\tCustomer Name\tCredit\tCr. Paid\tCash\n';
+    let text = 'Sl.No\tDate\tUser\tInvoice No\tCustomer Name\tAccount\tAccount Paid\tCash\n';
     text += dailyBookData.map((item) => [
       item.slNo,
       format(new Date(item.date), "dd-MM-yyyy"),
       item.user,
       item.invoiceNo,
       item.customerName,
-      item.credit,
-      item.crPaid,
-      item.cash
+      item.account || 0,
+      item.accountPaid || 0,
+      item.cash || 0
     ].join('\t')).join('\n');
     await navigator.clipboard.writeText(text);
   };
@@ -314,14 +314,14 @@ export default function DailyBookHistory() {
               </div>
 
               <div>
-                <Select defaultValue="All">
+                <Select value={reportType} onValueChange={setReportType}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All</SelectItem>
                     <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Credit">Credit</SelectItem>
+                    <SelectItem value="Account">Account</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -362,16 +362,34 @@ export default function DailyBookHistory() {
             <div className="mt-4 space-y-2">
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2">
-                  <input type="radio" name="reportType" value="All" defaultChecked />
+                  <input 
+                    type="radio" 
+                    name="reportType" 
+                    value="All" 
+                    checked={reportType === "All"}
+                    onChange={(e) => setReportType(e.target.value)}
+                  />
                   <span>All</span>
                 </label>
                 <label className="flex items-center gap-2">
-                  <input type="radio" name="reportType" value="Cash" />
+                  <input 
+                    type="radio" 
+                    name="reportType" 
+                    value="Cash" 
+                    checked={reportType === "Cash"}
+                    onChange={(e) => setReportType(e.target.value)}
+                  />
                   <span>Cash</span>
                 </label>
                 <label className="flex items-center gap-2">
-                  <input type="radio" name="reportType" value="Credit" />
-                  <span>Credit</span>
+                  <input 
+                    type="radio" 
+                    name="reportType" 
+                    value="Account" 
+                    checked={reportType === "Account"}
+                    onChange={(e) => setReportType(e.target.value)}
+                  />
+                  <span>Account</span>
                 </label>
               </div>
             </div>
@@ -423,8 +441,8 @@ export default function DailyBookHistory() {
                     <TableHead className="text-center min-w-[120px]">User</TableHead>
                     <TableHead className="text-center min-w-[120px]">Invoice No</TableHead>
                     <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Credit</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Cr. Paid</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Account</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Account Paid</TableHead>
                     <TableHead className="text-center min-w-[100px]">Cash</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -453,15 +471,15 @@ export default function DailyBookHistory() {
                         </div>
                       </TableCell>
                       <TableCell className="text-center">{item.customerName}</TableCell>
-                      <TableCell className="text-center">£ {item.credit.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£ {item.crPaid.toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£ {item.cash.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {(item.account || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {(item.accountPaid || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£ {(item.cash || 0).toFixed(2)}</TableCell>
                     </TableRow>
                   ))}
                   <TableRow className="bg-blue-100 font-semibold">
                     <TableCell className="text-center" colSpan={5}>{dailyBookData.length} Items</TableCell>
-                    <TableCell className="text-center">£ {totals.credit.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£ {totals.crPaid.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {totals.account.toFixed(2)}</TableCell>
+                    <TableCell className="text-center">£ {totals.accountPaid.toFixed(2)}</TableCell>
                     <TableCell className="text-center">£ {totals.cash.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>

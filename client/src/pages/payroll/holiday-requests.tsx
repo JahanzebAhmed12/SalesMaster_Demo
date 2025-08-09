@@ -1,17 +1,89 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { HolidayRequest } from "@shared/schema";
-import { Loader2, Plus, Eye, Edit, Trash2, Printer } from "lucide-react";
+import { Loader2, Plus, Eye, Edit, Trash2, Printer, Upload, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 const HolidayRequests = () => {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
   const { data: holidayRequests = [], isLoading, error } = useQuery({
-    queryKey: ["holiday-requests"],
+    queryKey: ["/api/holiday-requests"],
     queryFn: () => apiRequest("GET", "/api/holiday-requests"),
+  });
+
+  // File upload function using the same pattern as apiRequest
+  const uploadFile = async (id: number, file: File) => {
+    const formData = new FormData();
+    formData.append('signedForm', file);
+
+    // Use the same URL logic as apiRequest
+    const useRelativeUrls = () => {
+      return window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+    };
+
+    const API_BASE_URL = 'http://localhost:5000';
+    const url = useRelativeUrls() ? `/api/holiday-requests/${id}/upload-signed-form` : `${API_BASE_URL}/api/holiday-requests/${id}/upload-signed-form`;
+
+    const token = localStorage.getItem('jwt_token');
+    const headers: Record<string, string> = {};
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      body: formData,
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('jwt_token');
+        window.location.href = '/';
+        throw new Error('Session expired. Please login again.');
+      }
+      throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return responseData;
+  };
+
+  // Upload signed form mutation
+  const uploadFormMutation = useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => uploadFile(id, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] });
+      setUploadingId(null);
+      setSelectedFile(null);
+      toast({
+        title: "Success",
+        description: "Signed form uploaded successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload signed form",
+        variant: "destructive",
+      });
+    }
   });
 
   const getStatusBadge = (status: string) => {
@@ -22,6 +94,105 @@ const HolidayRequests = () => {
         return <Badge className="bg-red-100 text-red-800">Not Granted</Badge>;
       default:
         return <Badge className="bg-yellow-100 text-yellow-800">Pending</Badge>;
+    }
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type (PDF, images)
+      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+      if (!allowedTypes.includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please select a PDF or image file (JPG, PNG)",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please select a file smaller than 10MB",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUpload = (id: number) => {
+    if (!selectedFile) {
+      toast({
+        title: "No file selected",
+        description: "Please select a file to upload",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    uploadFormMutation.mutate({ id, file: selectedFile });
+  };
+
+  const handleViewSignedForm = async (request: HolidayRequest) => {
+    if (request.signedFormPath) {
+      try {
+        // Use the same URL logic as apiRequest
+        const useRelativeUrls = () => {
+          return window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+        };
+
+        const API_BASE_URL = 'http://localhost:5000';
+        const url = useRelativeUrls() ? `/api/holiday-requests/${request.id}/signed-form` : `${API_BASE_URL}/api/holiday-requests/${request.id}/signed-form`;
+
+        const token = localStorage.getItem('jwt_token');
+        const headers: Record<string, string> = {};
+
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        // Fetch the file with authorization
+        const response = await fetch(url, {
+          method: 'GET',
+          headers,
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            localStorage.removeItem('jwt_token');
+            window.location.href = '/';
+            throw new Error('Session expired. Please login again.');
+          }
+          throw new Error('Failed to load signed form');
+        }
+
+        // Create blob URL and open in new window
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const newWindow = window.open(blobUrl, '_blank');
+
+        // Clean up blob URL after a delay
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to load signed form",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "No signed form",
+        description: "No signed form has been uploaded for this request",
+        variant: "destructive",
+      });
     }
   };
 
@@ -88,6 +259,7 @@ const HolidayRequests = () => {
                       <th className="border border-gray-300 px-4 py-2 text-left">Status</th>
                       <th className="border border-gray-300 px-4 py-2 text-left">Days Granted</th>
                       <th className="border border-gray-300 px-4 py-2 text-left">Remaining Entitlement</th>
+                      <th className="border border-gray-300 px-4 py-2 text-left">Signed Form</th>
                       <th className="border border-gray-300 px-4 py-2 text-left">Actions</th>
                     </tr>
                   </thead>
@@ -114,6 +286,90 @@ const HolidayRequests = () => {
                         </td>
                         <td className="border border-gray-300 px-4 py-2">
                           <div className="flex space-x-2">
+                            {request.signedFormPath ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="View signed form"
+                                onClick={() => handleViewSignedForm(request)}
+                              >
+                                <FileText className="h-4 w-4 text-green-600" />
+                              </Button>
+                            ) : (
+                              <Dialog>
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Upload signed form"
+                                    onClick={() => setUploadingId(request.id)}
+                                  >
+                                    <Upload className="h-4 w-4 text-blue-600" />
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Upload Signed Holiday Form</DialogTitle>
+                                  </DialogHeader>
+                                  <div className="space-y-4">
+                                    <div>
+                                      <Label htmlFor="signedForm">Select signed form (PDF or Image)</Label>
+                                      <Input
+                                        id="signedForm"
+                                        type="file"
+                                        accept=".pdf,.jpg,.jpeg,.png"
+                                        onChange={handleFileSelect}
+                                        className="mt-2"
+                                      />
+                                      <p className="text-sm text-gray-500 mt-1">
+                                        Accepted formats: PDF, JPG, PNG (Max 10MB)
+                                      </p>
+                                    </div>
+                                    {selectedFile && (
+                                      <div className="p-3 bg-gray-50 rounded">
+                                        <p className="text-sm">
+                                          <strong>Selected file:</strong> {selectedFile.name}
+                                        </p>
+                                        <p className="text-sm text-gray-600">
+                                          Size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                                        </p>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-end space-x-2">
+                                      <Button
+                                        variant="outline"
+                                        onClick={() => {
+                                          setUploadingId(null);
+                                          setSelectedFile(null);
+                                        }}
+                                      >
+                                        Cancel
+                                      </Button>
+                                      <Button
+                                        onClick={() => handleUpload(request.id)}
+                                        disabled={!selectedFile || uploadFormMutation.isPending}
+                                      >
+                                        {uploadFormMutation.isPending ? (
+                                          <>
+                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            Uploading...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Upload className="h-4 w-4 mr-2" />
+                                            Upload
+                                          </>
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                            )}
+                          </div>
+                        </td>
+                        <td className="border border-gray-300 px-4 py-2">
+                          <div className="flex space-x-2">
                             <Link href={`/payroll/holiday-requests/view/${request.id}`}>
                               <Button variant="ghost" size="sm" title="View request">
                                 <Eye className="h-4 w-4" />
@@ -124,9 +380,9 @@ const HolidayRequests = () => {
                                 <Edit className="h-4 w-4" />
                               </Button>
                             </Link>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               title="Print form"
                               onClick={() => window.open(`/print/holiday-request/${request.id}`, '_blank')}
                             >

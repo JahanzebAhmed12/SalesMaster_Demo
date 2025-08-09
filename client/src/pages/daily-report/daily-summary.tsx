@@ -65,8 +65,7 @@ interface DailySummaryData {
   date: string;
   sales_summary: Array<{
     customer_name: string;
-    payment_id: string; // Changed from ticket_no to payment_id
-    batch_id: string; // Added batch_id field
+    invoice_no: string; // Changed to invoice_no for sales summary
     cash_sales: number;
     card_paid: number;
     account_sales: number;
@@ -76,7 +75,7 @@ interface DailySummaryData {
   }>;
   customer_payments: Array<{
     customer_name: string;
-    invoice_no: string;
+    payment_id: string; // Changed to payment_id for customer payments
     cash_amount: number;
     card_amount: number;
     total_amount: number;
@@ -307,11 +306,11 @@ export default function DailySummary() {
     yPosition += 5;
     
     autoTable(doc, {
-      head: [['Customer', 'Payment ID', 'Cash Sales', 'Card Paid', 'Account Sales', 'Account Credits']],
+      head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Account Sales', 'Account Credits']],
       body: [
         ...summaryData.sales_summary.map(sale => [
           sale.customer_name,
-          sale.payment_id || sale.batch_id || '-',
+          sale.invoice_no || '-',
           sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
           sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
           sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-',
@@ -333,11 +332,11 @@ export default function DailySummary() {
       yPosition += 5;
       
       autoTable(doc, {
-        head: [['Customer Name', 'Invoice No', 'Cash Amount', 'Card Amount', 'Total Amount']],
+        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Total Amount']],
         body: [
           ...summaryData.customer_payments.map(payment => [
             payment.customer_name,
-            payment.invoice_no,
+            payment.payment_id,
             payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-',
             payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-',
             payment.total_amount.toFixed(2)
@@ -435,6 +434,36 @@ export default function DailySummary() {
       
       yPosition = (doc as any).lastAutoTable.finalY + 15;
     }
+
+    // Get current Y position after banking records
+    yPosition = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : yPosition;
+
+    // Daily Summary Totals (always included) - Same page as banking records
+    doc.setFontSize(12);
+    doc.text('Daily Summary Totals', 14, yPosition);
+    yPosition += 5;
+    
+    const totalsData = [
+      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Total Cheque', `£${summaryData.sales_summary.reduce((sum, s) => sum + s.account_paid_cheque, 0).toFixed(2)}`],
+      ['Account Payments/Customer Cash Payments', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}`],
+      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
+      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Total Supplier Payment (Paid Out)', `£${summaryData.supplier_payments.filter(p => p.payment_mode.toLowerCase() === 'cash' || p.payment_mode.toLowerCase() === 'bank').reduce((sum, p) => sum + p.amount, 0).toFixed(2)}`],
+      ['Total Expense (Paid Out)', `£${(summaryData.expense_entries || []).filter(e => e.payment_mode.toLowerCase() === 'cash' || e.payment_mode.toLowerCase() === 'bank').reduce((sum, e) => sum + e.amount, 0).toFixed(2)}`],
+      ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]
+    ];
+    
+    autoTable(doc, {
+      body: totalsData,
+      startY: yPosition,
+      styles: { fontSize: 10, cellPadding: 3 },
+      columnStyles: {
+        0: { fontStyle: 'bold' },
+        1: { fontStyle: 'bold', halign: 'right' }
+      }
+    });
 
     // Stock Check (only if has data) - NEW PAGE
     if (stockData && stockData.length > 0) {
@@ -585,33 +614,6 @@ export default function DailySummary() {
       });
     }
 
-    // Daily Summary Totals (always included)
-    doc.setFontSize(12);
-    doc.text('Daily Summary Totals', 14, yPosition);
-    yPosition += 5;
-    
-    const totalsData = [
-      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `£${summaryData.sales_summary.reduce((sum, s) => sum + s.account_paid_cheque, 0).toFixed(2)}`],
-      ['Account Payments/Customer Cash Payments', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `£${summaryData.supplier_payments.filter(p => p.payment_mode.toLowerCase() === 'cash' || p.payment_mode.toLowerCase() === 'bank').reduce((sum, p) => sum + p.amount, 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `£${(summaryData.expense_entries || []).filter(e => e.payment_mode.toLowerCase() === 'cash' || e.payment_mode.toLowerCase() === 'bank').reduce((sum, e) => sum + e.amount, 0).toFixed(2)}`],
-      ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]
-    ];
-    
-    autoTable(doc, {
-      body: totalsData,
-      startY: yPosition,
-      styles: { fontSize: 10, cellPadding: 3 },
-      columnStyles: {
-        0: { fontStyle: 'bold' },
-        1: { fontStyle: 'bold', halign: 'right' }
-      }
-    });
-
     doc.save(`daily-summary-${format(selectedDate, "yyyy-MM-dd")}.pdf`);
     
     toast({
@@ -697,7 +699,7 @@ export default function DailySummary() {
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-semibold border">Customer</TableHead>
-                        <TableHead className="font-semibold border">Payment ID</TableHead>
+                        <TableHead className="font-semibold border">Invoice No</TableHead>
                         <TableHead className="font-semibold border text-right">Cash Sales</TableHead>
                         <TableHead className="font-semibold border text-right">Card Paid</TableHead>
                         <TableHead className="font-semibold border text-right">Account Sales</TableHead>
@@ -708,7 +710,7 @@ export default function DailySummary() {
                       {summaryData.sales_summary.map((sale, index) => (
                         <TableRow key={index}>
                           <TableCell className="border">{sale.customer_name}</TableCell>
-                          <TableCell className="border">{sale.payment_id || sale.batch_id || '-'}</TableCell>
+                          <TableCell className="border">{sale.invoice_no || '-'}</TableCell>
                           <TableCell className="border text-right">
                             {sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-'}
                           </TableCell>
@@ -748,7 +750,7 @@ export default function DailySummary() {
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-semibold border">Customer Name</TableHead>
-                        <TableHead className="font-semibold border">Invoice No</TableHead>
+                        <TableHead className="font-semibold border">Payment ID</TableHead>
                         <TableHead className="font-semibold border text-right">Cash Amount</TableHead>
                         <TableHead className="font-semibold border text-right">Card Amount</TableHead>
                         <TableHead className="font-semibold border text-right">Total Amount</TableHead>
@@ -758,7 +760,7 @@ export default function DailySummary() {
                       {summaryData.customer_payments.map((payment, index) => (
                         <TableRow key={index}>
                           <TableCell className="border">{payment.customer_name}</TableCell>
-                          <TableCell className="border">{payment.invoice_no}</TableCell>
+                          <TableCell className="border">{payment.payment_id}</TableCell>
                           <TableCell className="border text-right">
                             {payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-'}
                           </TableCell>
