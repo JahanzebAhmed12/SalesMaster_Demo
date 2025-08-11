@@ -1241,30 +1241,25 @@ const SalesInvoice = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
       
-      // Auto-hold on component unmount (capture current state at cleanup time)
-      const currentSaleItems = saleItems;
-      const currentCustomerId = customerId;
-      const currentVehicleDetails = vehicleDetails;
-      const currentGateNumber = gateNumber;
-      const currentNotes = notes;
-      const currentCurrentSale = currentSale;
+      // Auto-hold on component unmount (use refs for current state)
+      const state = stateRef.current;
       
       console.log('🧹 Cleanup function running - checking auto-hold conditions');
-      console.log('🧹 Cleanup state:', {
-        saleItemsLength: currentSaleItems.length,
-        hasCurrentSale: !!currentCurrentSale,
+      console.log('🧹 Cleanup state from refs:', {
+        saleItemsLength: state.saleItems.length,
+        hasCurrentSale: !!state.currentSale,
         skipAutoHold: skipAutoHoldRef.current
       });
       
       // Only auto-hold if there are products and invoice is not saved
-      if (currentSaleItems.length > 0 && !currentCurrentSale && !skipAutoHoldRef.current) {
-        // Create invoice data manually in cleanup since refs might be stale
+      if (state.saleItems.length > 0 && !state.currentSale && !skipAutoHoldRef.current) {
+        // Create invoice data using current state from refs
         const invoiceData = {
-          customerId: currentCustomerId,
-          vehicleDetails: currentVehicleDetails,
-          gateNumber: currentGateNumber,
-          notes: currentNotes,
-          saleItems: currentSaleItems,
+          customerId: state.customerId,
+          vehicleDetails: state.vehicleDetails,
+          gateNumber: state.gateNumber,
+          notes: state.notes,
+          saleItems: state.saleItems,
           holdId: Date.now().toString(),
           holdTime: new Date().toISOString(),
         };
@@ -1274,7 +1269,7 @@ const SalesInvoice = () => {
         if (!isDuplicateInvoice(invoiceData, held)) {
           held.push(invoiceData);
           localStorage.setItem('heldInvoices', JSON.stringify(held));
-          console.log('🚀 Auto-held invoice on unmount with', currentSaleItems.length, 'items');
+          console.log('🚀 Auto-held invoice on unmount with', state.saleItems.length, 'items');
           
           // Show toast notification (this might not show since component is unmounting)
           try {
@@ -1439,55 +1434,7 @@ const SalesInvoice = () => {
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
-                <Button 
-                  onClick={() => {
-                    console.log('🧪 Manual auto-hold test triggered');
-                    console.log('🧪 Current state:', {
-                      saleItemsLength: saleItems.length,
-                      customerId,
-                      hasCurrentSale: !!currentSale,
-                      skipAutoHold: skipAutoHoldRef.current
-                    });
-                    
-                    // Test the auto-hold logic manually
-                    if (saleItems.length > 0 && !currentSale && !skipAutoHoldRef.current) {
-                      const holdId = Date.now().toString();
-                      const invoiceData = {
-                        customerId,
-                        vehicleDetails,
-                        gateNumber,
-                        notes,
-                        saleItems,
-                        holdId,
-                        holdTime: new Date().toISOString(),
-                      };
-                      
-                      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-                      held.push(invoiceData);
-                      localStorage.setItem('heldInvoices', JSON.stringify(held));
-                      setHeldInvoices(held);
-                      
-                      toast({
-                        title: "Debug Auto-Hold",
-                        description: `Test auto-hold successful with ${saleItems.length} items`,
-                      });
-                      
-                      console.log('🧪 Manual auto-hold completed');
-                    } else {
-                      toast({
-                        title: "Debug Auto-Hold",
-                        description: "Auto-hold conditions not met",
-                        variant: "destructive"
-                      });
-                      console.log('🧪 Auto-hold conditions not met');
-                    }
-                  }} 
-                  variant="outline" 
-                  size="sm"
-                  className="bg-yellow-100 hover:bg-yellow-200"
-                >
-                  🧪 Test Auto-Hold
-                </Button>
+
                 <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Cancel Ticket</Button>
               </div>
             </div>
