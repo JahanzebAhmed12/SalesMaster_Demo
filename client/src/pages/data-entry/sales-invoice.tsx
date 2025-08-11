@@ -1074,73 +1074,174 @@ const SalesInvoice = () => {
     });
   }, []);
 
+  // Create refs to hold current state for event handlers
+  const stateRef = useRef({
+    saleItems,
+    customerId,
+    vehicleDetails,
+    gateNumber,
+    notes,
+    currentSale
+  });
+
+  // Update refs whenever state changes
+  useEffect(() => {
+    stateRef.current = {
+      saleItems,
+      customerId,
+      vehicleDetails,
+      gateNumber,
+      notes,
+      currentSale
+    };
+  }, [saleItems, customerId, vehicleDetails, gateNumber, notes, currentSale]);
+
   // --- AUTO-HOLD INVOICE ON NAVIGATION OR TAB CLOSE OR UNMOUNT ---
   useEffect(() => {
-    // Helper to check if invoice should be held
-    function shouldAutoHold() {
+    console.log('🔧 Auto-hold effect initialized');
+    
+    // Helper to check if invoice should be held (using refs for current state)
+    const shouldAutoHold = () => {
+      const state = stateRef.current;
+      const hasItems = state.saleItems.length > 0;
+      const isUnsaved = !state.currentSale;
+      const notSkipped = !skipAutoHoldRef.current;
+      
+      console.log('🔍 Auto-hold check:', {
+        hasItems,
+        isUnsaved,
+        notSkipped,
+        saleItemsCount: state.saleItems.length,
+        currentSale: !!state.currentSale,
+        skipAutoHold: skipAutoHoldRef.current
+      });
+      
       // Only auto-hold if there are products and invoice is not saved (no currentSale)
-      return saleItems.length > 0 && !currentSale && !skipAutoHoldRef.current;
-    }
+      return hasItems && isUnsaved && notSkipped;
+    };
 
-    // Function to hold the invoice
-    function autoHoldInvoice() {
-      if (!shouldAutoHold()) return;
-      
-      // Additional check to prevent holding empty or duplicate invoices
-      if (saleItems.length === 0) return;
-      
-      const holdId = Date.now().toString();
-      const invoiceData = {
-        customerId,
-        vehicleDetails,
-        gateNumber,
-        notes,
-        saleItems,
-        holdId,
+    // Function to create invoice data for holding (using current state from refs)
+    const createInvoiceData = () => {
+      const state = stateRef.current;
+      return {
+        customerId: state.customerId,
+        vehicleDetails: state.vehicleDetails,
+        gateNumber: state.gateNumber,
+        notes: state.notes,
+        saleItems: state.saleItems,
+        holdId: Date.now().toString(),
         holdTime: new Date().toISOString(),
       };
-      
-      // Check for duplicates before saving - more robust check
-      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-      const isDuplicate = held.some((existingInvoice: any) => 
-        existingInvoice.customerId === customerId &&
-        existingInvoice.vehicleDetails === vehicleDetails &&
-        existingInvoice.gateNumber === gateNumber &&
-        existingInvoice.saleItems.length === saleItems.length &&
-        // Check if all items match (more thorough comparison)
+    };
+
+    // Function to check for duplicate invoices
+    const isDuplicateInvoice = (newInvoice: any, existingInvoices: any[]) => {
+      return existingInvoices.some((existingInvoice: any) => 
+        existingInvoice.customerId === newInvoice.customerId &&
+        existingInvoice.vehicleDetails === newInvoice.vehicleDetails &&
+        existingInvoice.gateNumber === newInvoice.gateNumber &&
+        existingInvoice.saleItems.length === newInvoice.saleItems.length &&
         existingInvoice.saleItems.every((existingItem: any, index: number) => {
-          const currentItem = saleItems[index];
-          return existingItem.productId === currentItem.productId &&
-                 existingItem.nonProductId === currentItem.nonProductId &&
-                 existingItem.quantity === currentItem.quantity &&
-                 existingItem.unitPrice === currentItem.unitPrice;
+          const newItem = newInvoice.saleItems[index];
+          return existingItem.productId === newItem.productId &&
+                 existingItem.nonProductId === newItem.nonProductId &&
+                 existingItem.quantity === newItem.quantity &&
+                 existingItem.unitPrice === newItem.unitPrice;
         })
       );
+    };
+
+    // Function to save invoice to held list
+    const saveToHeldInvoices = (invoiceData: any) => {
+      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
       
-      if (!isDuplicate) {
+      console.log('💾 Attempting to save to held invoices:', {
+        invoiceData,
+        existingHeldCount: held.length
+      });
+      
+      if (!isDuplicateInvoice(invoiceData, held)) {
         held.push(invoiceData);
         localStorage.setItem('heldInvoices', JSON.stringify(held));
-        console.log('Auto-held invoice with', saleItems.length, 'items');
+        
+        // Update the state as well
+        setHeldInvoices(held);
+        
+        console.log('✅ Auto-held invoice with', invoiceData.saleItems.length, 'items');
+        console.log('📊 Total held invoices now:', held.length);
+        
+        // Clear current draft after successful hold
+        localStorage.removeItem('currentInvoiceDraft');
+        
+        // Show a toast notification
+        toast({
+          title: "Invoice Auto-Held",
+          description: `Invoice with ${invoiceData.saleItems.length} items has been automatically saved.`,
+        });
+        
+        return true;
       } else {
-        console.log('Duplicate invoice detected, not auto-holding');
+        console.log('⚠️ Duplicate invoice detected, not auto-holding');
+        return false;
       }
-      
-      // Clear current draft
-      localStorage.removeItem('currentInvoiceDraft');
-    }
+    };
 
-    // Handle browser/tab close
+    // Main auto-hold function
+    const autoHoldInvoice = () => {
+      if (!shouldAutoHold()) return false;
+      
+      const invoiceData = createInvoiceData();
+      return saveToHeldInvoices(invoiceData);
+    };
+
+    // Handle browser/tab close with confirmation
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      console.log('🚪 beforeunload event triggered');
       if (shouldAutoHold()) {
+        console.log('🚪 Auto-holding invoice before unload');
+        // Auto-hold the invoice
+        autoHoldInvoice();
+        
+        // Show confirmation dialog (browser will show generic message)
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+        return 'You have unsaved changes. Are you sure you want to leave?';
+      } else {
+        console.log('🚪 No auto-hold needed on beforeunload');
+      }
+    };
+
+    // Handle visibility change (tab switch, minimize, etc.)
+    const handleVisibilityChange = () => {
+      console.log('👁️ Visibility change event:', document.hidden ? 'hidden' : 'visible');
+      if (document.hidden && shouldAutoHold()) {
+        console.log('📱 Tab hidden - auto-holding invoice');
         autoHoldInvoice();
       }
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Cleanup: auto-hold on unmount (navigation away)
+    // Handle page focus loss (additional safety)
+    const handleBlur = () => {
+      console.log('🔄 Window blur event triggered');
+      if (shouldAutoHold()) {
+        console.log('🔄 Page lost focus - auto-holding invoice');
+        autoHoldInvoice();
+      }
+    };
+
+    // Add event listeners
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+
+    // Cleanup: auto-hold on unmount (SPA navigation)
     return () => {
+      // Remove event listeners
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      // Auto-hold on component unmount (SPA navigation) - capture current state
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+      
+      // Auto-hold on component unmount (capture current state at cleanup time)
       const currentSaleItems = saleItems;
       const currentCustomerId = customerId;
       const currentVehicleDetails = vehicleDetails;
@@ -1148,43 +1249,50 @@ const SalesInvoice = () => {
       const currentNotes = notes;
       const currentCurrentSale = currentSale;
       
+      console.log('🧹 Cleanup function running - checking auto-hold conditions');
+      console.log('🧹 Cleanup state:', {
+        saleItemsLength: currentSaleItems.length,
+        hasCurrentSale: !!currentCurrentSale,
+        skipAutoHold: skipAutoHoldRef.current
+      });
+      
       // Only auto-hold if there are products and invoice is not saved
       if (currentSaleItems.length > 0 && !currentCurrentSale && !skipAutoHoldRef.current) {
-        const holdId = Date.now().toString();
+        // Create invoice data manually in cleanup since refs might be stale
         const invoiceData = {
           customerId: currentCustomerId,
           vehicleDetails: currentVehicleDetails,
           gateNumber: currentGateNumber,
           notes: currentNotes,
           saleItems: currentSaleItems,
-          holdId,
+          holdId: Date.now().toString(),
           holdTime: new Date().toISOString(),
         };
         
-        // Check for duplicates before saving
         const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-        const isDuplicate = held.some((existingInvoice: any) => 
-          existingInvoice.customerId === currentCustomerId &&
-          existingInvoice.vehicleDetails === currentVehicleDetails &&
-          existingInvoice.gateNumber === currentGateNumber &&
-          existingInvoice.saleItems.length === currentSaleItems.length &&
-          existingInvoice.saleItems.every((existingItem: any, index: number) => {
-            const currentItem = currentSaleItems[index];
-            return existingItem.productId === currentItem.productId &&
-                   existingItem.nonProductId === currentItem.nonProductId &&
-                   existingItem.quantity === currentItem.quantity &&
-                   existingItem.unitPrice === currentItem.unitPrice;
-          })
-        );
         
-        if (!isDuplicate) {
+        if (!isDuplicateInvoice(invoiceData, held)) {
           held.push(invoiceData);
           localStorage.setItem('heldInvoices', JSON.stringify(held));
-          console.log('Auto-held invoice on unmount with', currentSaleItems.length, 'items');
+          console.log('🚀 Auto-held invoice on unmount with', currentSaleItems.length, 'items');
+          
+          // Show toast notification (this might not show since component is unmounting)
+          try {
+            toast({
+              title: "Invoice Auto-Held",
+              description: `Invoice with ${currentSaleItems.length} items has been automatically saved on navigation.`,
+            });
+          } catch (e) {
+            console.log('Toast failed during unmount (expected)');
+          }
+        } else {
+          console.log('🚀 Duplicate detected during unmount, not auto-holding');
         }
+      } else {
+        console.log('🚀 No auto-hold needed during unmount');
       }
     };
-  }, []); // Empty dependency array - only run on mount/unmount
+  }, []); // Empty dependency array - event listeners set once, use refs for current state
 
 
   if (isCreatingSale) {
@@ -1331,6 +1439,55 @@ const SalesInvoice = () => {
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
+                <Button 
+                  onClick={() => {
+                    console.log('🧪 Manual auto-hold test triggered');
+                    console.log('🧪 Current state:', {
+                      saleItemsLength: saleItems.length,
+                      customerId,
+                      hasCurrentSale: !!currentSale,
+                      skipAutoHold: skipAutoHoldRef.current
+                    });
+                    
+                    // Test the auto-hold logic manually
+                    if (saleItems.length > 0 && !currentSale && !skipAutoHoldRef.current) {
+                      const holdId = Date.now().toString();
+                      const invoiceData = {
+                        customerId,
+                        vehicleDetails,
+                        gateNumber,
+                        notes,
+                        saleItems,
+                        holdId,
+                        holdTime: new Date().toISOString(),
+                      };
+                      
+                      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
+                      held.push(invoiceData);
+                      localStorage.setItem('heldInvoices', JSON.stringify(held));
+                      setHeldInvoices(held);
+                      
+                      toast({
+                        title: "Debug Auto-Hold",
+                        description: `Test auto-hold successful with ${saleItems.length} items`,
+                      });
+                      
+                      console.log('🧪 Manual auto-hold completed');
+                    } else {
+                      toast({
+                        title: "Debug Auto-Hold",
+                        description: "Auto-hold conditions not met",
+                        variant: "destructive"
+                      });
+                      console.log('🧪 Auto-hold conditions not met');
+                    }
+                  }} 
+                  variant="outline" 
+                  size="sm"
+                  className="bg-yellow-100 hover:bg-yellow-200"
+                >
+                  🧪 Test Auto-Hold
+                </Button>
                 <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Cancel Ticket</Button>
               </div>
             </div>
