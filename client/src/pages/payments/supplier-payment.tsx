@@ -36,6 +36,7 @@ export default function SupplierPayment() {
   const [amountPaid, setAmountPaid] = useState<string>("0");
   const [remarks, setRemarks] = useState<string>("");
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState<string>("");
+  const [supplierInvoiceDate, setSupplierInvoiceDate] = useState<Date | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
 
@@ -66,6 +67,7 @@ export default function SupplierPayment() {
       setAmountPaid("0");
       setRemarks("");
       setSupplierInvoiceNumber("");
+      setSupplierInvoiceDate(undefined);
       setSelectedInvoices([]);
     },
     onError: (error: any) => {
@@ -120,6 +122,7 @@ export default function SupplierPayment() {
       paymentDate: format(paymentDate, "yyyy-MM-dd"),
       remarks: remarks || null,
       supplierInvoiceNumber: supplierInvoiceNumber || null,
+      supplierInvoiceDate: supplierInvoiceDate ? format(supplierInvoiceDate, "yyyy-MM-dd") : null,
     };
 
     createPaymentMutation.mutate(paymentData);
@@ -158,6 +161,7 @@ export default function SupplierPayment() {
         paymentDate: format(paymentDate, "yyyy-MM-dd"),
         remarks: remarks || `Payment for invoice #${invoiceId}`,
         supplierInvoiceNumber: supplierInvoiceNumber || null,
+        supplierInvoiceDate: supplierInvoiceDate ? format(supplierInvoiceDate, "yyyy-MM-dd") : null,
       };
       return apiRequest("POST", "/api/supplier-payments", paymentData);
     });
@@ -175,6 +179,7 @@ export default function SupplierPayment() {
         setAmountPaid("0");
         setRemarks("");
         setSupplierInvoiceNumber("");
+        setSupplierInvoiceDate(undefined);
         setSelectedInvoices([]);
       })
       .catch((error) => {
@@ -224,7 +229,7 @@ export default function SupplierPayment() {
         {/* Payment Form */}
         <Card>
           <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 mb-6">
               <div>
                 <Label htmlFor="supplier">Select Supplier :</Label>
                 <Select value={selectedSupplier} onValueChange={handleSupplierChange}>
@@ -258,6 +263,32 @@ export default function SupplierPayment() {
               </div>
 
               <div>
+                <Label>Supplier Invoice Date:</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !supplierInvoiceDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {supplierInvoiceDate ? format(supplierInvoiceDate, "dd/MM/yyyy") : "Select date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={supplierInvoiceDate}
+                      onSelect={(date) => setSupplierInvoiceDate(date)}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div>
                 <Label htmlFor="payment-mode">Payment Mode:</Label>
                 <Select value={paymentMode} onValueChange={setPaymentMode}>
                   <SelectTrigger>
@@ -266,7 +297,8 @@ export default function SupplierPayment() {
                   <SelectContent>
                     <SelectItem value="CASH">CASH</SelectItem>
                     <SelectItem value="CARD">CARD</SelectItem>
-                    <SelectItem value="BANK">BANK</SelectItem>
+                    <SelectItem value="BANK_TRANSFER">BANK TRANSFER</SelectItem>
+                    <SelectItem value="CHEQUE">CHEQUE</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

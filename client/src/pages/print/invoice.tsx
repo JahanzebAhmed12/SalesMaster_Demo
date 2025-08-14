@@ -225,7 +225,15 @@ export default function InvoicePrintPage() {
               <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
                 <span>PAID</span>
                 <span>
-                  {(data.sale?.payment_mode ?? data.sale?.paymentMode ?? "cash")} £{(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}
+                  {(() => {
+                    const paymentMode = data.sale?.payment_mode ?? data.sale?.paymentMode ?? "cash";
+                    const displayMode = paymentMode === 'cash' ? 'Cash' : 
+                                       paymentMode === 'bank' ? 'Card' :
+                                       paymentMode === 'bank_transfer' ? 'Bank Transfer' :
+                                       paymentMode === 'cheque' ? 'Cheque' :
+                                       paymentMode;
+                    return `${displayMode} £${(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}`;
+                  })()}
                 </span>
               </div>
             </>

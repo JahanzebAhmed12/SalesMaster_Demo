@@ -21,7 +21,7 @@ import autoTable from 'jspdf-autotable';
 import { useLocation } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil } from "lucide-react";
+import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt } from "lucide-react";
 import classNames from 'classnames';
 
 interface SalesEntry {
@@ -39,6 +39,8 @@ interface SalesEntry {
   amount: number;
   cash: number;
   bank?: number;
+  bankTransfer?: number;
+  cheque?: number;
   credit?: number;
 }
 
@@ -55,7 +57,7 @@ export default function DailyBookSales() {
   const [loadingUserType, setLoadingUserType] = useState(true);
   const [selectedSales, setSelectedSales] = useState<Set<number>>(new Set());
   const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
-  
+
   // Split payment dialog state
   const [splitPaymentDialog, setSplitPaymentDialog] = useState<{
     isOpen: boolean;
@@ -65,7 +67,7 @@ export default function DailyBookSales() {
     cashAmount: 0,
     cardAmount: 0
   });
-  
+
   // Fetch users for the salesman dropdown
   const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
     queryKey: ["/api/users"],
@@ -86,10 +88,10 @@ export default function DailyBookSales() {
       apiRequest(
         "GET",
         `/api/reports/daily-book-sales?fromDate=${fromDate ? format(fromDate, "yyyy-MM-dd") : ""}` +
-          `&toDate=${toDate ? format(toDate, "yyyy-MM-dd") : ""}` +
-          `&paymentType=${paymentType}` +
-          `&salesman=${userFilter}` +
-          `&search=${encodeURIComponent(searchTerm)}`
+        `&toDate=${toDate ? format(toDate, "yyyy-MM-dd") : ""}` +
+        `&paymentType=${paymentType}` +
+        `&salesman=${userFilter}` +
+        `&search=${encodeURIComponent(searchTerm)}`
       ),
     refetchInterval: 20000, // Auto-refresh every 20 seconds
     refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
@@ -107,6 +109,8 @@ export default function DailyBookSales() {
   const totalAmount = useMemo(() => salesData.reduce((sum, item) => sum + item.amount, 0), [salesData]);
   const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
   const totalBank = useMemo(() => salesData.reduce((sum, item) => sum + (item.bank || 0), 0), [salesData]);
+  const totalBankTransfer = useMemo(() => salesData.reduce((sum, item) => sum + (item.bankTransfer || 0), 0), [salesData]);
+  const totalCheque = useMemo(() => salesData.reduce((sum, item) => sum + (item.cheque || 0), 0), [salesData]);
   const totalCredit = useMemo(() => salesData.reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const tableRef = useRef<HTMLDivElement>(null);
@@ -149,23 +153,23 @@ export default function DailyBookSales() {
       printWindow.document.write('<html><head><title>Daily Book Sales</title>');
       printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      
+
       // Add company details header following the specific structure
       printWindow.document.write('<div class="company-details">');
       if (companyDetails) {
         // Company name
         printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
-        
+
         // Email
         if (companyDetails.email) {
           printWindow.document.write(`<p>${companyDetails.email}</p>`);
         }
-        
+
         // Bank details
         if (companyDetails.bankDetails) {
           printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
         }
-        
+
         // VAT and Registration info
         let regInfo = [];
         if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
@@ -173,17 +177,17 @@ export default function DailyBookSales() {
         if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
       }
       printWindow.document.write('</div>');
-      
+
       // Add report title
       printWindow.document.write('<div class="header">');
       printWindow.document.write('<h3>DAILY BOOK SALES</h3>');
       printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`);
       printWindow.document.write('</div>');
-      
+
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
-      const headers = ['Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'];
+      const headers = ['Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Bank Transfer', 'Cheque', 'Credit'];
       headers.forEach(h => {
         printWindow.document.write(`<th>${h}</th>`);
       });
@@ -196,6 +200,8 @@ export default function DailyBookSales() {
         printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.bank ?? 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(sale.bankTransfer ?? 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(sale.cheque ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.credit ?? 0).toFixed(2)}</td>`);
         printWindow.document.write('</tr>');
       });
@@ -218,7 +224,9 @@ export default function DailyBookSales() {
       'Customer Name': item.customerName,
       'Account': item.amount,
       'Cash': item.cash,
-      'Bank Transfer': item.bank || 0,
+      'Card Payment': item.bank || 0,
+      'Bank Transfer': item.bankTransfer || 0,
+      'Cheque': item.cheque || 0,
       'Credit': item.credit || 0
     })));
     const wb = XLSX.utils.book_new();
@@ -229,28 +237,28 @@ export default function DailyBookSales() {
   const handlePDF = () => {
     const doc = new jsPDF();
     let yPosition = 20;
-    
+
     // Add company details following the specific structure
     if (companyDetails) {
       // Company name
       doc.setFontSize(16);
       doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
       yPosition += 8;
-      
+
       doc.setFontSize(10);
-      
+
       // Email
       if (companyDetails.email) {
         doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // Bank details
       if (companyDetails.bankDetails) {
         doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // VAT and Registration info
       let regInfo = [];
       if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
@@ -262,20 +270,20 @@ export default function DailyBookSales() {
         yPosition += 5;
       }
     }
-    
+
     // Add report title
     doc.setFontSize(14);
     doc.text('DAILY BOOK SALES', 105, yPosition, { align: 'center' });
     yPosition += 8;
-    
+
     doc.setFontSize(10);
     doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}`, 105, yPosition, { align: 'center' });
     yPosition += 10;
-    
+
     // Add table
     autoTable(doc, {
       head: [[
-        'Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Credit'
+        'Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Bank Transfer', 'Cheque', 'Credit'
       ]],
       body: salesData.map((item: SalesEntry) => [
         format(new Date(item.date), "yyyy-MM-dd"),
@@ -284,6 +292,8 @@ export default function DailyBookSales() {
         `£${Number(item.amount ?? 0).toFixed(2)}`,
         `£${Number(item.cash ?? 0).toFixed(2)}`,
         `£${Number(item.bank ?? 0).toFixed(2)}`,
+        `£${Number(item.bankTransfer ?? 0).toFixed(2)}`,
+        `£${Number(item.cheque ?? 0).toFixed(2)}`,
         `£${Number(item.credit ?? 0).toFixed(2)}`
       ]),
       startY: yPosition,
@@ -301,12 +311,12 @@ export default function DailyBookSales() {
         6: { cellWidth: 25 }
       }
     });
-    
+
     doc.save(`daily-book-sales-${fromDate ? format(fromDate, "yyyyMMdd") : 'all'}-${toDate ? format(toDate, "yyyyMMdd") : 'all'}.pdf`);
   };
 
   const handleCopy = () => {
-    const header = ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Bank Transfer', 'Credit'];
+    const header = ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Card Payment', 'Bank Transfer', 'Cheque', 'Credit'];
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
       item.date,
@@ -315,6 +325,8 @@ export default function DailyBookSales() {
       item.amount,
       item.cash,
       item.bank || 0,
+      item.bankTransfer || 0,
+      item.cheque || 0,
       item.credit || 0
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
@@ -358,12 +370,12 @@ export default function DailyBookSales() {
     setIsUpdatingPayments(true);
     try {
       const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
-      
+
       // Process each selected sale
       for (const sale of selectedSalesData) {
         // Calculate the total invoice amount (account + cash + bank)
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
-        
+
         if (totalInvoiceAmount > 0) {
           // First, reverse any existing payments by creating negative payment entries
           if (sale.cash > 0) {
@@ -376,7 +388,7 @@ export default function DailyBookSales() {
               remarks: `Reversed cash payment via daily book sales`
             });
           }
-          
+
           if (sale.bank && sale.bank > 0) {
             await apiRequest('POST', '/api/payments', {
               customerId: sale.customerId,
@@ -387,7 +399,7 @@ export default function DailyBookSales() {
               remarks: `Reversed bank payment via daily book sales`
             });
           }
-          
+
           // Now create the new cash payment for the full amount
           const paymentData = {
             customerId: sale.customerId,
@@ -399,7 +411,7 @@ export default function DailyBookSales() {
           };
 
           await apiRequest('POST', '/api/payments', paymentData);
-          
+
           // Update the sale record to set customer_type to 'cash' using PATCH
           await apiRequest('PATCH', `/api/sales/${sale.id}`, {
             customer_type: 'cash'
@@ -432,12 +444,12 @@ export default function DailyBookSales() {
     setIsUpdatingPayments(true);
     try {
       const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
-      
+
       // Process each selected sale
       for (const sale of selectedSalesData) {
         // Calculate the total invoice amount (account + cash + bank)
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
-        
+
         if (totalInvoiceAmount > 0) {
           // First, reverse any existing payments by creating negative payment entries
           if (sale.cash > 0) {
@@ -450,7 +462,7 @@ export default function DailyBookSales() {
               remarks: `Reversed cash payment via daily book sales`
             });
           }
-          
+
           if (sale.bank && sale.bank > 0) {
             await apiRequest('POST', '/api/payments', {
               customerId: sale.customerId,
@@ -461,7 +473,7 @@ export default function DailyBookSales() {
               remarks: `Reversed bank payment via daily book sales`
             });
           }
-          
+
           // Now create the new card payment for the full amount
           const paymentData = {
             customerId: sale.customerId,
@@ -473,7 +485,7 @@ export default function DailyBookSales() {
           };
 
           await apiRequest('POST', '/api/payments', paymentData);
-          
+
           // Update the sale record to set customer_type to 'bank' using PATCH
           await apiRequest('PATCH', `/api/sales/${sale.id}`, {
             customer_type: 'bank'
@@ -506,12 +518,12 @@ export default function DailyBookSales() {
     setIsUpdatingPayments(true);
     try {
       const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
-      
+
       // Process each selected sale - reverse any existing payments back to account
       for (const sale of selectedSalesData) {
         // Calculate the total invoice amount (account + cash + bank)
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
-        
+
         if (totalInvoiceAmount > 0) {
           // First, reverse any existing payments by creating negative payment entries
           if (sale.cash > 0) {
@@ -524,7 +536,7 @@ export default function DailyBookSales() {
               remarks: `Reversed cash payment to account via daily book sales`
             });
           }
-          
+
           if (sale.bank && sale.bank > 0) {
             await apiRequest('POST', '/api/payments', {
               customerId: sale.customerId,
@@ -535,7 +547,7 @@ export default function DailyBookSales() {
               remarks: `Reversed bank payment to account via daily book sales`
             });
           }
-          
+
           // Update the sale record to set customer_type back to 'account' using PATCH
           await apiRequest('PATCH', `/api/sales/${sale.id}`, {
             customer_type: 'account'
@@ -549,6 +561,146 @@ export default function DailyBookSales() {
     } catch (error) {
       console.error('Error updating to account payment:', error);
       alert('Failed to update some sales to account payment. Check console for details.');
+    } finally {
+      setIsUpdatingPayments(false);
+    }
+  };
+
+  // Update selected sales to bank transfer payment
+  const handleUpdateToBankTransfer = async () => {
+    if (selectedSales.size === 0) {
+      alert('Please select at least one sale to update.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to bank transfer payment?`)) {
+      return;
+    }
+
+    setIsUpdatingPayments(true);
+    try {
+      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+
+      for (const sale of selectedSalesData) {
+        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
+
+        // Reverse existing payments
+        if (sale.cash > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.cash,
+            paymentMode: 'cash',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed cash payment via daily book sales`
+          });
+        }
+
+        if (sale.bank && sale.bank > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.bank,
+            paymentMode: 'bank',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed bank payment via daily book sales`
+          });
+        }
+
+        // Create new bank transfer payment
+        const paymentData = {
+          customerId: sale.customerId,
+          saleId: sale.id,
+          amount: totalInvoiceAmount,
+          paymentMode: 'bank_transfer',
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          remarks: `Updated to bank transfer payment via daily book sales`
+        };
+
+        await apiRequest('POST', '/api/payments', paymentData);
+
+        // Update the sale record to set customer_type to 'bank_transfer'
+        await apiRequest('PATCH', `/api/sales/${sale.id}`, {
+          customer_type: 'bank_transfer'
+        });
+      }
+
+      alert(`Successfully updated ${selectedSales.size} sales to bank transfer payment.`);
+      setSelectedSales(new Set());
+      refetchSales();
+    } catch (error) {
+      console.error('Error updating payments:', error);
+      alert('Error updating payments. Please try again.');
+    } finally {
+      setIsUpdatingPayments(false);
+    }
+  };
+
+  // Update selected sales to cheque payment
+  const handleUpdateToCheque = async () => {
+    if (selectedSales.size === 0) {
+      alert('Please select at least one sale to update.');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to cheque payment?`)) {
+      return;
+    }
+
+    setIsUpdatingPayments(true);
+    try {
+      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+
+      for (const sale of selectedSalesData) {
+        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
+
+        // Reverse existing payments
+        if (sale.cash > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.cash,
+            paymentMode: 'cash',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed cash payment via daily book sales`
+          });
+        }
+
+        if (sale.bank && sale.bank > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.bank,
+            paymentMode: 'bank',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed bank payment via daily book sales`
+          });
+        }
+
+        // Create new cheque payment
+        const paymentData = {
+          customerId: sale.customerId,
+          saleId: sale.id,
+          amount: totalInvoiceAmount,
+          paymentMode: 'cheque',
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          remarks: `Updated to cheque payment via daily book sales`
+        };
+
+        await apiRequest('POST', '/api/payments', paymentData);
+
+        // Update the sale record to set customer_type to 'cheque'
+        await apiRequest('PATCH', `/api/sales/${sale.id}`, {
+          customer_type: 'cheque'
+        });
+      }
+
+      alert(`Successfully updated ${selectedSales.size} sales to cheque payment.`);
+      setSelectedSales(new Set());
+      refetchSales();
+    } catch (error) {
+      console.error('Error updating payments:', error);
+      alert('Error updating payments. Please try again.');
     } finally {
       setIsUpdatingPayments(false);
     }
@@ -582,26 +734,91 @@ export default function DailyBookSales() {
       alert('Failed to send WhatsApp message.');
     }
   };
-  const pay = async (sale: SalesEntry, mode: 'cash' | 'bank') => {
+  const pay = async (sale: SalesEntry, mode: 'cash' | 'bank' | 'bank_transfer' | 'cheque') => {
     try {
-      await apiRequest('POST', '/api/payments', {
-        customer_id: sale.customerId,
-        sale_id: sale.id,
-        amount: sale.amount,
-        payment_mode: mode,
-        payment_date: format(new Date(), 'yyyy-MM-dd'),
-        remarks: `Paid via daily book sales (${mode})`
-      });
-      alert(`Payment (${mode}) successful!`);
+      const modeDisplayName = mode === 'cash' ? 'Cash' :
+        mode === 'bank' ? 'Card' :
+          mode === 'bank_transfer' ? 'Bank Transfer' :
+            mode === 'cheque' ? 'Cheque' : mode;
+
+      // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
+      const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
+
+      if (totalInvoiceAmount > 0) {
+        // First, reverse any existing payments by creating negative payment entries
+        if (sale.cash > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.cash,
+            paymentMode: 'cash',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed cash payment via daily book sales dropdown`
+          });
+        }
+
+        if (sale.bank && sale.bank > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.bank,
+            paymentMode: 'bank',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed bank payment via daily book sales dropdown`
+          });
+        }
+
+        if (sale.bankTransfer && sale.bankTransfer > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.bankTransfer,
+            paymentMode: 'bank_transfer',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed bank transfer payment via daily book sales dropdown`
+          });
+        }
+
+        if (sale.cheque && sale.cheque > 0) {
+          await apiRequest('POST', '/api/payments', {
+            customerId: sale.customerId,
+            saleId: sale.id,
+            amount: -sale.cheque,
+            paymentMode: 'cheque',
+            paymentDate: format(new Date(), 'yyyy-MM-dd'),
+            remarks: `Reversed cheque payment via daily book sales dropdown`
+          });
+        }
+
+        // Now create the new payment for the full amount
+        const paymentData = {
+          customerId: sale.customerId,
+          saleId: sale.id,
+          amount: totalInvoiceAmount,
+          paymentMode: mode,
+          paymentDate: format(new Date(), 'yyyy-MM-dd'),
+          remarks: `Updated to ${modeDisplayName.toLowerCase()} payment via daily book sales dropdown`
+        };
+
+        await apiRequest('POST', '/api/payments', paymentData);
+
+        // Update the sale record to set customer_type based on payment mode
+        const customerType = mode === 'cash' ? 'cash' :
+          mode === 'bank' ? 'bank' :
+            mode === 'bank_transfer' ? 'bank_transfer' :
+              mode === 'cheque' ? 'cheque' : 'cash';
+
+        await apiRequest('PATCH', `/api/sales/${sale.id}`, {
+          customer_type: customerType
+        });
+      }
+
+      alert(`Payment updated to ${modeDisplayName} successfully!`);
       refetchSales();
     } catch (e) {
-      alert('Payment failed.');
-      return; // Don't open receipt if payment failed
+      console.error('Payment failed:', e);
+      alert('Payment failed. Please try again.');
     }
-    
-    // Open payment receipt instead of invoice
-    const paymentType = mode === 'cash' ? 'cash' : 'card';
-    window.open(`/print/payment-receipt/${sale.id}/${paymentType}`, '_blank');
   };
 
   // Handle split payment
@@ -617,17 +834,17 @@ export default function DailyBookSales() {
   // Submit split payment
   const handleSplitPaymentSubmit = async () => {
     if (!splitPaymentDialog.sale) return;
-    
+
     const { cashAmount, cardAmount } = splitPaymentData;
     const sale = splitPaymentDialog.sale;
     const totalAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
-    
+
     // Validate amounts
     if (cashAmount + cardAmount !== totalAmount) {
       alert(`Total split amount (£${(cashAmount + cardAmount).toFixed(2)}) must equal the invoice total (£${totalAmount.toFixed(2)})`);
       return;
     }
-    
+
     if (cashAmount < 0 || cardAmount < 0) {
       alert('Payment amounts cannot be negative');
       return;
@@ -635,7 +852,7 @@ export default function DailyBookSales() {
 
     try {
       setIsUpdatingPayments(true);
-      
+
       // First, reverse any existing payments
       if (sale.cash > 0) {
         await apiRequest('POST', '/api/payments', {
@@ -647,7 +864,7 @@ export default function DailyBookSales() {
           remarks: `Reversed cash payment for split payment`
         });
       }
-      
+
       if (sale.bank && sale.bank > 0) {
         await apiRequest('POST', '/api/payments', {
           customerId: sale.customerId,
@@ -658,7 +875,7 @@ export default function DailyBookSales() {
           remarks: `Reversed bank payment for split payment`
         });
       }
-      
+
       // Create new split payments
       if (cashAmount > 0) {
         await apiRequest('POST', '/api/payments', {
@@ -670,7 +887,7 @@ export default function DailyBookSales() {
           remarks: `Split payment - Cash portion`
         });
       }
-      
+
       if (cardAmount > 0) {
         await apiRequest('POST', '/api/payments', {
           customerId: sale.customerId,
@@ -681,16 +898,16 @@ export default function DailyBookSales() {
           remarks: `Split payment - Card portion`
         });
       }
-      
+
       // Update sale customer type to mixed (or keep as is since it's split)
       await apiRequest('PATCH', `/api/sales/${sale.id}`, {
         customer_type: cashAmount > cardAmount ? 'cash' : 'bank' // Set to dominant payment type
       });
-      
+
       alert('Split payment applied successfully!');
       setSplitPaymentDialog({ isOpen: false, sale: null });
       refetchSales();
-      
+
     } catch (error) {
       console.error('Error applying split payment:', error);
       alert('Error applying split payment. Please try again.');
@@ -715,7 +932,7 @@ export default function DailyBookSales() {
           <CardHeader className="pb-3 sm:pb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-lg sm:text-xl">Daily Book Sales</CardTitle>
             <div className="flex gap-2 items-center">
-            
+
               <div className="text-sm text-gray-500">
                 TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
               </div>
@@ -748,7 +965,7 @@ export default function DailyBookSales() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
+
               <div className="w-full">
                 <Label>To Date:</Label>
                 <Popover>
@@ -774,7 +991,7 @@ export default function DailyBookSales() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
+
               <div className="w-full">
                 <Select value={paymentType} onValueChange={setPaymentType}>
                   <SelectTrigger>
@@ -783,11 +1000,14 @@ export default function DailyBookSales() {
                   <SelectContent>
                     <SelectItem value="All">All</SelectItem>
                     <SelectItem value="Cash">Cash</SelectItem>
+                    <SelectItem value="Card">Card</SelectItem>
+                    <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="Cheque">Cheque</SelectItem>
                     <SelectItem value="Credit">Credit</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="w-full">
                 <Select value={userFilter} onValueChange={setUserFilter} disabled={dailyBookType === 'own'}>
                   <SelectTrigger>
@@ -807,18 +1027,18 @@ export default function DailyBookSales() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div className="w-full">
                 <Button className="bg-blue-500 hover:bg-blue-600 w-full">
                   Search
                 </Button>
               </div>
-              
+
               <div className="flex gap-2 w-full md:w-auto">
                 <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full md:w-auto"
-                variant="default"
-                onClick={() => navigate("/daily-report/daily-sales-full-view")}>
-                  
+                  variant="default"
+                  onClick={() => navigate("/daily-report/daily-sales-full-view")}>
+
                   <Eye size={16} />
                   Full View
                 </Button>
@@ -863,6 +1083,20 @@ export default function DailyBookSales() {
                     Pay Card - {selectedSales.size}
                   </Button>
                   <Button
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                    onClick={handleUpdateToBankTransfer}
+                    disabled={selectedSales.size === 0}
+                  >
+                    Bank Transfer - {selectedSales.size}
+                  </Button>
+                  <Button
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    onClick={handleUpdateToCheque}
+                    disabled={selectedSales.size === 0}
+                  >
+                    Cheque - {selectedSales.size}
+                  </Button>
+                  <Button
                     className="bg-orange-600 hover:bg-orange-700 text-white"
                     onClick={handleUpdateToAccount}
                     disabled={selectedSales.size === 0}
@@ -888,8 +1122,8 @@ export default function DailyBookSales() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12 min-w-[48px]">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         className="rounded"
                         checked={selectedSales.size === salesData.length && salesData.length > 0}
                         onChange={(e) => handleSelectAll(e.target.checked)}
@@ -901,6 +1135,8 @@ export default function DailyBookSales() {
                     <TableHead className="min-w-[130px] text-right">Accounts</TableHead>
                     <TableHead className="min-w-[120px] text-right">Cash</TableHead>
                     <TableHead className="min-w-[120px] text-right">Card Payment</TableHead>
+                    <TableHead className="min-w-[120px] text-right">Bank Transfer</TableHead>
+                    <TableHead className="min-w-[120px] text-right">Cheque</TableHead>
                     <TableHead className="min-w-[120px] text-right">Credit</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -913,19 +1149,15 @@ export default function DailyBookSales() {
                     salesData.map((sale) => (
                       <TableRow key={sale.id}>
                         <TableCell>
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             className="rounded"
                             checked={selectedSales.has(sale.id)}
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
                         <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
-                        <TableCell>{/* Invoice No as link */}
-                          <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
-                            {sale.invoiceNo}
-                          </Button>
-                        </TableCell>
+                        <TableCell>{sale.invoiceNo}</TableCell>
                         <TableCell className="text-blue-600">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -965,7 +1197,13 @@ export default function DailyBookSales() {
                                 <Banknote className="mr-2 h-5 w-5" /> Pay (Cash)
                               </DropdownMenuItem>
                               <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'bank')}>
-                                <CreditCard className="mr-2 h-5 w-5" /> Pay (Bank)
+                                <CreditCard className="mr-2 h-5 w-5" /> Pay (Card)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'bank_transfer')}>
+                                <Building2 className="mr-2 h-5 w-5" /> Pay (Bank Transfer)
+                              </DropdownMenuItem>
+                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'cheque')}>
+                                <Receipt className="mr-2 h-5 w-5" /> Pay (Cheque)
                               </DropdownMenuItem>
                               <DropdownMenuItem className="text-lg py-3" onClick={() => handleSplitPayment(sale)}>
                                 <Split className="mr-2 h-5 w-5" /> Split Payment
@@ -976,11 +1214,13 @@ export default function DailyBookSales() {
                         <TableCell className="text-right">£{Number(sale.amount ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">£{Number(sale.cash ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right">£{Number(sale.bank ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{Number(sale.bankTransfer ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-right">£{Number(sale.cheque ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right text-red-600">{sale.credit?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00"}</TableCell>
                       </TableRow>
                     ))
                   )}
-                  
+
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
@@ -991,6 +1231,8 @@ export default function DailyBookSales() {
                     <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold">£{totalBank.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">£{totalBankTransfer.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold">£{totalCheque.toFixed(2)}</TableCell>
                     <TableCell className="text-right font-bold text-red-600">£{totalCredit.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
@@ -1013,7 +1255,7 @@ export default function DailyBookSales() {
                 <div>£{totalCredit.toFixed(2)}</div>
               </div>
             </div>
-            
+
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
               <div>Showing 1 to 1 of 1 entries</div>
               <div className="flex items-center gap-4">
@@ -1038,7 +1280,7 @@ export default function DailyBookSales() {
             <DialogHeader>
               <DialogTitle>Split Payment</DialogTitle>
             </DialogHeader>
-            
+
             {splitPaymentDialog.sale && (
               <div className="space-y-4">
                 <div className="text-sm text-gray-600">
@@ -1046,7 +1288,7 @@ export default function DailyBookSales() {
                   <p><strong>Customer:</strong> {splitPaymentDialog.sale.customerName}</p>
                   <p><strong>Total Amount:</strong> £{((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0)).toFixed(2)}</p>
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="cashAmount">Cash Amount</Label>
@@ -1063,7 +1305,7 @@ export default function DailyBookSales() {
                       placeholder="0.00"
                     />
                   </div>
-                  
+
                   <div>
                     <Label htmlFor="cardAmount">Card Amount</Label>
                     <Input
@@ -1080,23 +1322,22 @@ export default function DailyBookSales() {
                     />
                   </div>
                 </div>
-                
+
                 <div className="text-sm">
                   <p><strong>Total Split:</strong> £{(splitPaymentData.cashAmount + splitPaymentData.cardAmount).toFixed(2)}</p>
-                  <p className={`${
-                    (splitPaymentData.cashAmount + splitPaymentData.cardAmount) === 
+                  <p className={`${(splitPaymentData.cashAmount + splitPaymentData.cardAmount) ===
                     ((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0))
                     ? 'text-green-600' : 'text-red-600'
-                  }`}>
+                    }`}>
                     <strong>Difference:</strong> £{(
-                      ((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0)) - 
+                      ((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0)) -
                       (splitPaymentData.cashAmount + splitPaymentData.cardAmount)
                     ).toFixed(2)}
                   </p>
                 </div>
               </div>
             )}
-            
+
             <DialogFooter>
               <Button
                 variant="outline"

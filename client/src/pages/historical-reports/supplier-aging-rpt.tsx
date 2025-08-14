@@ -199,91 +199,218 @@ export default function SupplierAgingRpt() {
 
   // Export to Excel handler
   const handleExportExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(agingData.map((item) => ({
-      'Sl No': item.slNo,
+    // Prepare data for Excel
+    const excelData = agingData.map((item) => ({
+      'Sl.No': item.slNo,
       'Supplier Name': item.supplierName,
-      'Total Outstanding': Number(item.totalOutstanding).toFixed(2),
-      'Current': Number(item.current).toFixed(2),
-      '30 Days': Number(item.days30).toFixed(2),
-      '60 Days': Number(item.days60).toFixed(2),
-      '90 Days': Number(item.days90).toFixed(2),
-      '120 Days': Number(item.days120).toFixed(2),
-      '180 Days': Number(item.days180).toFixed(2),
-      'Over 180': Number(item.over180).toFixed(2),
-      'Currency': item.currency,
-      'Supplier Code': item.supplierCode,
-      'Address': item.address,
-      'Telephone': item.telephone,
-      'Email': item.email,
-    })));
+      'Total Outstanding': item.totalOutstanding,
+      'Current': item.current,
+      '1-30 Days': item.days30,
+      '31-60 Days': item.days60,
+      '61-90 Days': item.days90,
+      '91-120 Days': item.days120,
+      '121-180 Days': item.days180,
+      'Over 180 Days': item.over180,
+      'Currency': item.currency
+    }));
+    
+    // Add totals row
+    excelData.push({
+      'Sl.No': '',
+      'Supplier Name': 'TOTAL',
+      'Total Outstanding': totals.totalOutstanding,
+      'Current': totals.current,
+      '1-30 Days': totals.days30,
+      '31-60 Days': totals.days60,
+      '61-90 Days': totals.days90,
+      '91-120 Days': totals.days120,
+      '121-180 Days': totals.days180,
+      'Over 180 Days': totals.over180,
+      'Currency': ''
+    });
+    
+    // Create worksheet
+    const ws = XLSX.utils.json_to_sheet(excelData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Supplier Aging");
-    XLSX.writeFile(wb, "SupplierAgingReport.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Supplier Aging Report");
+    
+    // Save file
+    XLSX.writeFile(wb, `supplier-aging-report-${format(asOfDate, "yyyyMMdd")}.xlsx`);
   };
 
   // Export to PDF handler
   const handleExportPDF = () => {
-    const doc = new jsPDF();
-    doc.text(company?.companyName || '', 10, 10);
-    doc.text(company?.address1 || '', 10, 16);
+    // Use landscape orientation for better fit
+    const doc = new jsPDF('landscape', 'mm', 'a4');
+    let yPosition = 20;
+    
+    // Add report title
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text('SUPPLIER AGING REPORT', 148, yPosition, { align: 'center' }); // Center for landscape (297/2)
+    yPosition += 12;
+    
+    // Add company details
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
+    const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
+    doc.text(companyName + ', ' + address, 148, yPosition, { align: 'center' });
+    yPosition += 8;
+    
+    // Add as of date
+    doc.setFontSize(9);
+    doc.text(`As of Date: ${asOfDate ? format(asOfDate, "dd/MM/yyyy") : ""}`, 148, yPosition, { align: 'center' });
+    yPosition += 12;
+    
+    // Add table with optimized column widths for landscape
     autoTable(doc, {
       head: [[
-        'Sl No', 'Supplier Name', 'Total Outstanding', 'Current', '30 Days', '60 Days', '90 Days', '120 Days', '180 Days', 'Over 180', 'Currency', 'Supplier Code', 'Address', 'Telephone', 'Email'
+        "Sl.No", "Supplier Name", "Total Outstanding", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "91-120 Days", "121-180 Days", "Over 180 Days", "Curr"
       ]],
-      body: agingData.map((item) => [
-        item.slNo || '',
-        item.supplierName || '',
-        Number(item.totalOutstanding || 0).toFixed(2),
-        Number(item.current || 0).toFixed(2),
-        Number(item.days30 || 0).toFixed(2),
-        Number(item.days60 || 0).toFixed(2),
-        Number(item.days90 || 0).toFixed(2),
-        Number(item.days120 || 0).toFixed(2),
-        Number(item.days180 || 0).toFixed(2),
-        Number(item.over180 || 0).toFixed(2),
-        item.currency || '',
-        item.supplierCode || '',
-        item.address || '',
-        item.telephone || '',
-        item.email || '',
-      ]),
-      startY: 22,
+      body: [
+        ...agingData.map((row) => [
+          row.slNo,
+          row.supplierName.length > 25 ? row.supplierName.substring(0, 25) + '...' : row.supplierName,
+          row.totalOutstanding.toFixed(2),
+          row.current.toFixed(2),
+          row.days30.toFixed(2),
+          row.days60.toFixed(2),
+          row.days90.toFixed(2),
+          row.days120.toFixed(2),
+          row.days180.toFixed(2),
+          row.over180.toFixed(2),
+          row.currency
+        ]),
+        // Add totals row
+        [
+          '',
+          'TOTAL',
+          totals.totalOutstanding.toFixed(2),
+          totals.current.toFixed(2),
+          totals.days30.toFixed(2),
+          totals.days60.toFixed(2),
+          totals.days90.toFixed(2),
+          totals.days120.toFixed(2),
+          totals.days180.toFixed(2),
+          totals.over180.toFixed(2),
+          ''
+        ]
+      ],
+      startY: yPosition,
+      margin: { left: 10, right: 10 },
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        overflow: 'linebreak',
+        cellWidth: 'wrap'
+      },
+      columnStyles: {
+        0: { cellWidth: 15, halign: 'center' },   // Sl.No
+        1: { cellWidth: 50, halign: 'left' },     // Supplier Name
+        2: { cellWidth: 25, halign: 'right' },    // Total Outstanding
+        3: { cellWidth: 20, halign: 'right' },    // Current
+        4: { cellWidth: 20, halign: 'right' },    // 1-30 Days
+        5: { cellWidth: 20, halign: 'right' },    // 31-60 Days
+        6: { cellWidth: 20, halign: 'right' },    // 61-90 Days
+        7: { cellWidth: 20, halign: 'right' },    // 91-120 Days
+        8: { cellWidth: 20, halign: 'right' },    // 121-180 Days
+        9: { cellWidth: 20, halign: 'right' },    // Over 180 Days
+        10: { cellWidth: 15, halign: 'center' }   // Currency
+      },
+      headStyles: {
+        fillColor: [71, 85, 105],  // Slate color to match UI
+        textColor: 255,
+        fontSize: 8,
+        fontStyle: 'bold',
+        halign: 'center'
+      },
+      bodyStyles: {
+        fontSize: 8
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252]
+      },
+      // Style the totals row
+      didParseCell: function (data) {
+        if (data.row.index === agingData.length && data.cell.text[0] === 'TOTAL') {
+          data.cell.styles.fillColor = [254, 242, 242];  // Rose color to match UI
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
     });
-    doc.save("SupplierAgingReport.pdf");
+    
+    doc.save(`supplier-aging-report-${format(asOfDate, "yyyyMMdd")}.pdf`);
   };
 
   // Print only the table section
   const handlePrintTable = () => {
     const printWindow = window.open('', '', 'width=900,height=700');
-    if (!printWindow) return;
-    printWindow.document.write('<html><head><title>Supplier Aging Report</title></head><body>');
-    printWindow.document.write(`<h2>${company?.companyName || ''}</h2>`);
-    printWindow.document.write(`<div>${company?.address1 || ''}</div>`);
-    printWindow.document.write('<table border="1"><thead><tr>');
-    printWindow.document.write('<th>Sl No</th><th>Supplier Name</th><th>Total Outstanding</th><th>Current</th><th>30 Days</th><th>60 Days</th><th>90 Days</th><th>120 Days</th><th>180 Days</th><th>Over 180</th><th>Currency</th><th>Supplier Code</th><th>Address</th><th>Telephone</th><th>Email</th>');
-    printWindow.document.write('</tr></thead><tbody>');
-    agingData.forEach(item => {
-      printWindow.document.write('<tr>');
-      printWindow.document.write(`<td>${item.slNo}</td>`);
-      printWindow.document.write(`<td>${item.supplierName}</td>`);
-      printWindow.document.write(`<td>${Number(item.totalOutstanding).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${Number(item.current).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${Number(item.days30).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${Number(item.days60).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${Number(item.days90).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${Number(item.days120).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${Number(item.days180).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${Number(item.over180).toFixed(2)}</td>`);
-      printWindow.document.write(`<td>${item.currency}</td>`);
-      printWindow.document.write(`<td>${item.supplierCode}</td>`);
-      printWindow.document.write(`<td>${item.address}</td>`);
-      printWindow.document.write(`<td>${item.telephone}</td>`);
-      printWindow.document.write(`<td>${item.email}</td>`);
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Supplier Aging Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#475569;color:white;font-weight:bold;}');  // Slate color
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.totals{font-weight:bold;background-color:#fef2f2;}');  // Rose color
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+      
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2 style="font-size:24px;font-weight:bold;margin-bottom:10px;">SUPPLIER AGING REPORT</h2>');
+      const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
+      const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
+      printWindow.document.write(`<p style="font-size:16px;margin-bottom:5px;">${companyName}, ${address}</p>`);
+      printWindow.document.write(`<p style="font-size:14px;">As of Date: ${asOfDate ? format(asOfDate, "dd/MM/yyyy") : ""}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th><th>Supplier Name</th><th>Total Outstanding</th><th>Current</th><th>1-30 Days</th><th>31-60 Days</th><th>61-90 Days</th><th>91-120 Days</th><th>121-180 Days</th><th>Over 180 Days</th><th>Currency</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      
+      // Add supplier data
+      agingData.forEach(item => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${item.slNo}</td>`);
+        printWindow.document.write(`<td>${item.supplierName}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.totalOutstanding).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.current).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days30).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days60).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days90).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days120).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days180).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.over180).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:center;">${item.currency}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      
+      // Add totals row
+      printWindow.document.write('<tr class="totals">');
+      printWindow.document.write('<td></td>');
+      printWindow.document.write('<td><strong>TOTAL</strong></td>');
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.totalOutstanding.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.current.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days30.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days60.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days90.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days120.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days180.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.over180.toFixed(2)}</strong></td>`);
+      printWindow.document.write('<td></td>');
       printWindow.document.write('</tr>');
-    });
-    printWindow.document.write('</tbody></table></body></html>');
-    printWindow.document.close();
-    printWindow.print();
+      
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
   };
 
   return (
@@ -417,56 +544,64 @@ export default function SupplierAgingRpt() {
                 <span className="ml-2">Loading aging data...</span>
               </div>
             ) : (
-              <div ref={tableSectionRef} className="print-table">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-slate-100">
-                      <TableHead>Sl.No</TableHead>
-                      <TableHead>Supplier name</TableHead>
-                      <TableHead className="text-center">Total Outstanding</TableHead>
-                      <TableHead className="text-center">Current</TableHead>
-                      <TableHead className="text-center">1-30 Days</TableHead>
-                      <TableHead className="text-center">31-60 Days</TableHead>
-                      <TableHead className="text-center">61-90 Days</TableHead>
-                      <TableHead className="text-center">91-120 Days</TableHead>
-                      <TableHead className="text-center">121-180 Days</TableHead>
-                      <TableHead className="text-center">Over 180 Days</TableHead>
-                      <TableHead className="text-center">Curr</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {agingData.map((supplier) => (
-                      <TableRow key={supplier.id} className="hover:bg-gray-50">
-                        <TableCell>{supplier.slNo}</TableCell>
-                        <TableCell>{supplier.supplierName}</TableCell>
-                        <TableCell className="text-center font-medium">{supplier.totalOutstanding.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.current.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.days30.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.days60.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.days90.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.days120.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.days180.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.over180.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">{supplier.currency}</TableCell>
-                      </TableRow>
-                    ))}
+              <div ref={tableSectionRef} className="print-table w-full overflow-hidden">
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full min-w-[1200px] table-fixed border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="w-[50px] px-2 py-3 text-left text-xs font-medium text-gray-700 border-b">Sl.No</th>
+                        <th className="w-[200px] px-3 py-3 text-left text-xs font-medium text-gray-700 border-b">Supplier Name</th>
+                        <th className="w-[110px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">Total Outstanding</th>
+                        <th className="w-[90px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">Current</th>
+                        <th className="w-[90px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">1-30 Days</th>
+                        <th className="w-[90px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">31-60 Days</th>
+                        <th className="w-[90px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">61-90 Days</th>
+                        <th className="w-[90px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">91-120 Days</th>
+                        <th className="w-[90px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">121-180 Days</th>
+                        <th className="w-[90px] px-2 py-3 text-right text-xs font-medium text-gray-700 border-b">Over 180 Days</th>
+                        <th className="w-[50px] px-2 py-3 text-center text-xs font-medium text-gray-700 border-b">Curr</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agingData.map((supplier) => (
+                        <tr key={supplier.id} className="hover:bg-gray-50 border-b">
+                          <td className="px-2 py-2 text-center text-sm">{supplier.slNo}</td>
+                          <td className="px-3 py-2 text-sm font-medium truncate" title={supplier.supplierName}>
+                            {supplier.supplierName}
+                          </td>
+                          <td className="px-2 py-2 text-right text-sm font-medium">
+                            {supplier.totalOutstanding.toFixed(2)}
+                          </td>
+                          <td className="px-2 py-2 text-right text-sm">{supplier.current.toFixed(2)}</td>
+                          <td className="px-2 py-2 text-right text-sm">{supplier.days30.toFixed(2)}</td>
+                          <td className="px-2 py-2 text-right text-sm">{supplier.days60.toFixed(2)}</td>
+                          <td className="px-2 py-2 text-right text-sm">{supplier.days90.toFixed(2)}</td>
+                          <td className="px-2 py-2 text-right text-sm">{supplier.days120.toFixed(2)}</td>
+                          <td className="px-2 py-2 text-right text-sm">{supplier.days180.toFixed(2)}</td>
+                          <td className="px-2 py-2 text-right text-sm">{supplier.over180.toFixed(2)}</td>
+                          <td className="px-2 py-2 text-center text-sm">{supplier.currency}</td>
+                        </tr>
+                      ))}
 
-                    {/* Grand Total Row */}
-                    <TableRow className="border-t-2 border-gray-300 bg-rose-50">
-                      <TableCell></TableCell>
-                      <TableCell className="font-bold">TOTAL</TableCell>
-                      <TableCell className="text-center font-bold">{totals.totalOutstanding.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.current.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.days30.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.days60.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.days90.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.days120.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.days180.toFixed(2)}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.over180.toFixed(2)}</TableCell>
-                      <TableCell></TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
+                      {/* Grand Total Row */}
+                      <tr className="border-t-2 border-gray-300 bg-rose-50">
+                        <td className="px-2 py-2"></td>
+                        <td className="px-3 py-2 text-sm font-bold">TOTAL</td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">
+                          {totals.totalOutstanding.toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">{totals.current.toFixed(2)}</td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">{totals.days30.toFixed(2)}</td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">{totals.days60.toFixed(2)}</td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">{totals.days90.toFixed(2)}</td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">{totals.days120.toFixed(2)}</td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">{totals.days180.toFixed(2)}</td>
+                        <td className="px-2 py-2 text-right text-sm font-bold">{totals.over180.toFixed(2)}</td>
+                        <td className="px-2 py-2"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
 
                 <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
                   <div>

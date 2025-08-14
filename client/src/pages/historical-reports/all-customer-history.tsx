@@ -314,7 +314,7 @@ export default function AllCustomerHistory() {
         'Sl.No': '',
         'Customer Name': `TOTAL (${currency})`,
         'Customer Code': '',
-        'Credit Invoice': currencyTotal.creditInvoice,
+        'Account Invoice': currencyTotal.accountInvoice,
         'Cash Invoice': currencyTotal.cashInvoice,
         'Amount Received': currencyTotal.amountReceived,
         'Returns/Discount': currencyTotal.returnsDiscount,
@@ -330,7 +330,7 @@ export default function AllCustomerHistory() {
       'Sl.No': '',
       'Customer Name': 'GRAND TOTAL',
       'Customer Code': '',
-      'Credit Invoice': totals.creditInvoice,
+      'Account Invoice': totals.accountInvoice,
       'Cash Invoice': totals.cashInvoice,
       'Amount Received': totals.amountReceived,
       'Returns/Discount': totals.returnsDiscount,
@@ -366,7 +366,7 @@ export default function AllCustomerHistory() {
     const tableData = customerData.map(customer => [
       customer.slNo.toString(),
       `${customer.customerName} (${customer.customerCode})`,
-      customer.creditInvoice.toFixed(2),
+      customer.accountInvoice.toFixed(2),
       customer.cashInvoice.toFixed(2),
       customer.amountReceived.toFixed(2),
       customer.returnsDiscount.toFixed(2),
@@ -381,7 +381,7 @@ export default function AllCustomerHistory() {
       tableData.push([
         '',
         `TOTAL (${currency})`,
-        currencyTotal.creditInvoice.toFixed(2),
+        currencyTotal.accountInvoice.toFixed(2),
         currencyTotal.cashInvoice.toFixed(2),
         currencyTotal.amountReceived.toFixed(2),
         currencyTotal.returnsDiscount.toFixed(2),
@@ -396,7 +396,7 @@ export default function AllCustomerHistory() {
     tableData.push([
       '',
       'GRAND TOTAL',
-      totals.creditInvoice.toFixed(2),
+      totals.accountInvoice.toFixed(2),
       totals.cashInvoice.toFixed(2),
       totals.amountReceived.toFixed(2),
       totals.returnsDiscount.toFixed(2),
@@ -409,26 +409,34 @@ export default function AllCustomerHistory() {
     // Create table
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Customer Name', 'Credit Inv.', 'Cash Inv.', 'Amount Rec.', 
+        'Sl.No', 'Customer Name', 'Account Inv.', 'Cash Inv.', 'Amount Rec.', 
         'Returns/Disc.', 'On Account', 'Balance Out.', 'Credit Limit', 'Currency'
       ]],
       body: tableData,
       startY: 50,
       styles: {
-        fontSize: 8,
-        cellPadding: 2
+        fontSize: 7,
+        cellPadding: 1
       },
       columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 20 },
-        7: { cellWidth: 20 },
-        8: { cellWidth: 20 },
-        9: { cellWidth: 15 }
+        0: { cellWidth: 12 },  // Sl.No
+        1: { cellWidth: 35 },  // Customer Name
+        2: { cellWidth: 18 },  // Account Inv.
+        3: { cellWidth: 18 },  // Cash Inv.
+        4: { cellWidth: 18 },  // Amount Rec.
+        5: { cellWidth: 18 },  // Returns/Disc.
+        6: { cellWidth: 18 },  // On Account
+        7: { cellWidth: 18 },  // Balance Out.
+        8: { cellWidth: 18 },  // Credit Limit
+        9: { cellWidth: 12 }   // Currency
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontSize: 7
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
       }
     });
     
@@ -436,20 +444,20 @@ export default function AllCustomerHistory() {
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tCustomer Name\tCustomer Code\tCredit Invoice\tCash Invoice\tAmount Received\tReturns/Discount\tOn Account\tBalance Outstanding\tCredit Limit\tCurrency\n';
+    let text = 'Sl.No\tCustomer Name\tCustomer Code\tAccount Invoice\tCash Invoice\tAmount Received\tReturns/Discount\tOn Account\tBalance Outstanding\tCredit Limit\tCurrency\n';
     
     // Add customer data
     customerData.forEach(customer => {
-      text += `${customer.slNo}\t${customer.customerName}\t${customer.customerCode}\t${customer.creditInvoice.toFixed(2)}\t${customer.cashInvoice.toFixed(2)}\t${customer.amountReceived.toFixed(2)}\t${customer.returnsDiscount.toFixed(2)}\t${customer.onAccount.toFixed(2)}\t${customer.balanceOutstanding.toFixed(2)}\t${customer.creditLimit.toFixed(2)}\t${customer.currency}\n`;
+      text += `${customer.slNo}\t${customer.customerName}\t${customer.customerCode}\t${customer.accountInvoice.toFixed(2)}\t${customer.cashInvoice.toFixed(2)}\t${customer.amountReceived.toFixed(2)}\t${customer.returnsDiscount.toFixed(2)}\t${customer.onAccount.toFixed(2)}\t${customer.balanceOutstanding.toFixed(2)}\t${customer.creditLimit.toFixed(2)}\t${customer.currency}\n`;
     });
     
     // Add currency totals
     Object.entries(currencyTotals).forEach(([currency, currencyTotal]) => {
-      text += `\tTOTAL (${currency})\t\t${currencyTotal.creditInvoice.toFixed(2)}\t${currencyTotal.cashInvoice.toFixed(2)}\t${currencyTotal.amountReceived.toFixed(2)}\t${currencyTotal.returnsDiscount.toFixed(2)}\t${currencyTotal.onAccount.toFixed(2)}\t${currencyTotal.balanceOutstanding.toFixed(2)}\t\t${currency}\n`;
+      text += `\tTOTAL (${currency})\t\t${currencyTotal.accountInvoice.toFixed(2)}\t${currencyTotal.cashInvoice.toFixed(2)}\t${currencyTotal.amountReceived.toFixed(2)}\t${currencyTotal.returnsDiscount.toFixed(2)}\t${currencyTotal.onAccount.toFixed(2)}\t${currencyTotal.balanceOutstanding.toFixed(2)}\t\t${currency}\n`;
     });
     
     // Add grand total
-    text += `\tGRAND TOTAL\t\t${totals.creditInvoice.toFixed(2)}\t${totals.cashInvoice.toFixed(2)}\t${totals.amountReceived.toFixed(2)}\t${totals.returnsDiscount.toFixed(2)}\t${totals.onAccount.toFixed(2)}\t${totals.balanceOutstanding.toFixed(2)}\t\t\n`;
+    text += `\tGRAND TOTAL\t\t${totals.accountInvoice.toFixed(2)}\t${totals.cashInvoice.toFixed(2)}\t${totals.amountReceived.toFixed(2)}\t${totals.returnsDiscount.toFixed(2)}\t${totals.onAccount.toFixed(2)}\t${totals.balanceOutstanding.toFixed(2)}\t\t\n`;
     
     try {
       await navigator.clipboard.writeText(text);

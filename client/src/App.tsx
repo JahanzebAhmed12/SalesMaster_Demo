@@ -111,7 +111,7 @@ import ProtectedRoute from "@/components/protected-route";
 
 function AuthenticatedRoute({ component: Component, title, breadcrumb }: { component: React.ComponentType; title: string; breadcrumb: string }) {
   const { isAuthenticated } = useAuth();
-  
+
   if (!isAuthenticated) {
     return <Login />;
   }
@@ -130,7 +130,7 @@ function Router() {
       <Route path="/dashboard">
         <AuthenticatedRoute component={Dashboard} title="Dashboard" breadcrumb="Dashboard" />
       </Route>
-      
+
       {/* Data Entry Routes */}
       <Route path="/data-entry/sales-entry">
         <ProtectedRoute requiredSection="data_entry" title="Sales Entry" breadcrumb="Data Entry > Sales Entry">
@@ -197,7 +197,7 @@ function Router() {
           <OnAccSupplier />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Daily Report Routes */}
       <Route path="/daily-report/daily-summary">
         <ProtectedRoute requiredSection="daily_reports" title="Daily Summary" breadcrumb="Daily Report > Daily Summary">
@@ -258,13 +258,13 @@ function Router() {
       <Route path="/reports/product-purchase-history" component={ProductPurchaseHistoryPage} />
       <Route path="/daily-report/compare-with-purchase" component={CompareWithPurchasePage} />
       <Route path="/daily-report/supplier-purchase-history/:supplierId" component={SupplierPurchaseHistoryPage} />
-     
+
       <Route path="/daily-report/daily-accounts">
         <ProtectedRoute requiredSection="daily_reports" title="Daily Accounts" breadcrumb="Daily Report > Daily Accounts">
           <DailyAccounts />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Historical Reports Routes */}
       <Route path="/historical-reports/customer-history">
         <ProtectedRoute requiredSection="historical_reports" title="Customer History" breadcrumb="Historical Reports > Customer History">
@@ -351,7 +351,7 @@ function Router() {
           <SupplierReturn />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Payment Routes */}
       <Route path="/payments/customer-payment">
         <ProtectedRoute requiredSection="payments" title="Customer Payment" breadcrumb="Payments > Customer Payment">
@@ -404,7 +404,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       {/* Admin Pages */}
-     <Route path="/admin/products-database">
+      <Route path="/admin/products-database">
         <ProtectedRoute requiredSection="admin_setup" title="Products Database" breadcrumb="Products Database">
           <ProductsDatabase />
         </ProtectedRoute>
@@ -504,7 +504,7 @@ function Router() {
           <UserProfile />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Print Invoice Route (public) */}
       <Route path="/print/invoice/:invoiceNumber" component={InvoicePrintPage} />
       {/* A5 Print Invoice Route (public) */}
@@ -521,7 +521,7 @@ function Router() {
       <Route path="/print/holiday-request/:id" component={HolidayRequestPrint} />
       <Route path="/print/employee-contract/:id" component={EmployeeContractPrint} />
       <Route path="/print/payment-receipt/:saleId/:paymentType" component={PaymentReceiptPrint} />
-      
+
       {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>

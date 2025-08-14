@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Package, Calendar, FileText, Download, Copy, Printer, Search, Save, Plus, AlertTriangle, Loader2 } from "lucide-react";
+import { Package, Calendar, FileText, Download, Copy, Printer, Search, Save, Plus, AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from 'jspdf';
@@ -63,6 +63,7 @@ export default function ClosingStock() {
   const [highlightedProduct, setHighlightedProduct] = useState(-1);
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   // Fetch all products
   const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
@@ -121,6 +122,29 @@ export default function ClosingStock() {
       refetch();
     } catch (error) {
       toast({ title: "Error", description: "Failed to update entry.", variant: "destructive" });
+    }
+  };
+
+  // Delete closing stock entry
+  const handleDeleteEntry = async (productId: number) => {
+    try {
+      const items = closingStockEntries
+        .filter((e: any) => e.productId !== productId)
+        .map((e: any) => ({
+          productId: e.productId,
+          productType: e.productType,
+          quantity: e.quantity
+        }));
+      
+      console.log('Sending delete request:', { date: selectedDate, items });
+      
+      await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
+      toast({ title: "Deleted", description: "Closing stock entry deleted." });
+      setDeleteConfirm(null);
+      refetch();
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast({ title: "Error", description: error?.error || "Failed to delete entry.", variant: "destructive" });
     }
   };
 
@@ -500,9 +524,38 @@ export default function ClosingStock() {
                     <TableCell className="py-2 px-4 font-medium border-r border-gray-200">{product ? `${product.description} (${product.productCode})` : entry.productId}</TableCell>
                     <TableCell className="py-2 px-4 border-r border-gray-200 font-semibold">{entry.quantity}</TableCell>
                     <TableCell className="py-2 px-4">
-                      <Button size="sm" variant="outline" onClick={() => { setEditRowId(entry.productId); setEditQuantity(entry.quantity.toString()); }}>
-                        Edit
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => { setEditRowId(entry.productId); setEditQuantity(entry.quantity.toString()); }}>
+                          Edit
+                        </Button>
+                        {deleteConfirm === entry.productId ? (
+                          <div className="flex gap-1">
+                            <Button 
+                              size="sm" 
+                              variant="destructive" 
+                              onClick={() => handleDeleteEntry(entry.productId)}
+                            >
+                              Confirm
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => setDeleteConfirm(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => setDeleteConfirm(entry.productId)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );

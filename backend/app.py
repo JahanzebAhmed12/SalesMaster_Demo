@@ -121,6 +121,24 @@ with app.app_context():
         print(f"Migration warning: {str(e)}")
         db.session.rollback()
     
+    # Run migration for supplier_payment table
+    try:
+        # Check if supplier_invoice_date column exists
+        result = db.session.execute(db.text("PRAGMA table_info(supplier_payment)"))
+        columns = [row[1] for row in result.fetchall()]
+        
+        if 'supplier_invoice_date' not in columns:
+            print("Adding supplier_invoice_date column to supplier_payment table...")
+            db.session.execute(db.text("""
+                ALTER TABLE supplier_payment 
+                ADD COLUMN supplier_invoice_date DATE
+            """))
+            db.session.commit()
+            print("Successfully added supplier_invoice_date column")
+    except Exception as e:
+        print(f"Migration warning: {str(e)}")
+        db.session.rollback()
+    
     create_admin_user()  # Create admin user if it doesn't exist
 
 # Configure Flask-JWT-Extended
@@ -3473,9 +3491,15 @@ def create_payment():
                 if payment_data.payment_mode.lower() == "cash" and sale.customer_type != "cash":
                     print(f"[DEBUG] Updating sale {sale.id} customer_type from {sale.customer_type} to cash due to full cash payment.")
                     sale.customer_type = "cash"
-                elif payment_data.payment_mode.lower() in ["bank", "bank transfer"] and sale.customer_type != "bank":
+                elif payment_data.payment_mode.lower() in ["bank", "card"] and sale.customer_type != "bank":
                     print(f"[DEBUG] Updating sale {sale.id} customer_type from {sale.customer_type} to bank due to full bank payment.")
                     sale.customer_type = "bank"
+                elif payment_data.payment_mode.lower() == "bank_transfer" and sale.customer_type != "bank_transfer":
+                    print(f"[DEBUG] Updating sale {sale.id} customer_type from {sale.customer_type} to bank_transfer due to full bank transfer payment.")
+                    sale.customer_type = "bank_transfer"
+                elif payment_data.payment_mode.lower() == "cheque" and sale.customer_type != "cheque":
+                    print(f"[DEBUG] Updating sale {sale.id} customer_type from {sale.customer_type} to cheque due to full cheque payment.")
+                    sale.customer_type = "cheque"
             else:
                 sale.payment_status = "partial"
                 sale.paid_amount = new_paid
@@ -3558,8 +3582,12 @@ def create_bulk_payment():
                     # Update customer_type based on payment mode
                     if invoice_payment_mode.lower() == "cash":
                         sale.customer_type = "cash"
-                    elif invoice_payment_mode.lower() == "bank":
+                    elif invoice_payment_mode.lower() in ["bank", "card"]:
                         sale.customer_type = "bank"
+                    elif invoice_payment_mode.lower() == "bank_transfer":
+                        sale.customer_type = "bank_transfer"
+                    elif invoice_payment_mode.lower() == "cheque":
+                        sale.customer_type = "cheque"
                 else:
                     sale.payment_status = "partial"
                     sale.paid_amount = new_paid
@@ -3782,8 +3810,16 @@ def daily_book_sales():
     if payment_type and payment_type != 'All':
         if payment_type == 'Cash':
             query = query.filter(Sale.customer_type.ilike('cash'))
+        elif payment_type == 'Card':
+            query = query.filter(Sale.customer_type.ilike('bank'))
+        elif payment_type == 'Bank Transfer':
+            query = query.filter(Sale.customer_type.ilike('bank_transfer'))
+        elif payment_type == 'Cheque':
+            query = query.filter(Sale.customer_type.ilike('cheque'))
         elif payment_type == 'Account':
             query = query.filter(Sale.customer_type.ilike('account'))
+        elif payment_type == 'Credit':
+            query = query.filter(Sale.customer_type.ilike('credit'))
     if salesman and salesman != 'all':
         query = query.filter(User.username == salesman)
     if search:
@@ -3814,8 +3850,13 @@ def daily_book_sales():
             account_amount = 0
             credit_amount = 0
         
-        bank_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() in ['bank', 'bank transfer'])
+        bank_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() in ['bank', 'card'])
+        bank_transfer_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'bank_transfer')
+        cheque_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cheque')
+        
         bank_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank' else 0
+        bank_transfer_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank_transfer' else 0
+        cheque_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'cheque' else 0
         
         result.append({
             'id': sale.id,
@@ -3831,7 +3872,11 @@ def daily_book_sales():
             'amount': account_amount,
             'cash': cash_paid,
             'bank': bank_paid,
+            'bankTransfer': bank_transfer_paid,
+            'cheque': cheque_paid,
             'bankAmount': bank_amount,
+            'bankTransferAmount': bank_transfer_amount,
+            'chequeAmount': cheque_amount,
             'credit': credit_amount
         })
     return jsonify(result)
@@ -4425,6 +4470,8 @@ def update_purchase_invoice(invoice_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+
+
 @app.route('/api/purchase-invoices/<int:invoice_id>/print', methods=['GET'])
 def print_purchase_invoice(invoice_id):
     invoice = PurchaseInvoice.query.get_or_404(invoice_id)
@@ -4545,6 +4592,7 @@ def create_supplier_payment():
             payment_mode=payment_data.payment_mode,
             payment_date=payment_data.payment_date,
             supplier_invoice_number=payment_data.supplier_invoice_number,
+            supplier_invoice_date=payment_data.supplier_invoice_date,
             remarks=payment_data.remarks
         )
         
@@ -5463,8 +5511,8 @@ def stock_check_report():
                     ClosingStock.manual_entry == True  # Only consider manual entries
                 ).first()
                 
-                # If manual entry exists, use it; otherwise use current stock
-                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else product.current_stock
+                # If manual entry exists, use it; otherwise use 0
+                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else 0
                 print(f"[DEBUG] Actual closing stock: {actual_closing_stock}")
                 
                 # Calculate difference
@@ -5540,8 +5588,8 @@ def stock_check_report():
                     ClosingStock.manual_entry == True  # Only consider manual entries
                 ).first()
                 
-                # If manual entry exists, use it; otherwise use current stock
-                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else product.current_stock
+                # If manual entry exists, use it; otherwise use 0
+                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else 0
                 
                 # Calculate difference
                 difference = actual_closing_stock - expected_stock
@@ -8286,20 +8334,38 @@ def daily_accounts_report():
         ExpenseEntry.date <= to_dt.date()
     ).scalar() or 0)
     supplier_payments_cash = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
-        SupplierPayment.payment_mode.ilike('cash'),
+        SupplierPayment.payment_mode.in_(['cash', 'CASH']),
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date <= to_dt.date()
+    ).scalar() or 0)
+    supplier_payments_card = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+        SupplierPayment.payment_mode.in_(['bank', 'BANK', 'card', 'CARD']),  # Keep BANK for backward compatibility
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date <= to_dt.date()
+    ).scalar() or 0)
+    supplier_payments_bank_transfer = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+        SupplierPayment.payment_mode.in_(['bank_transfer', 'BANK_TRANSFER']),
+        SupplierPayment.payment_date >= from_dt.date(),
+        SupplierPayment.payment_date <= to_dt.date()
+    ).scalar() or 0)
+    supplier_payments_cheque = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+        SupplierPayment.payment_mode.in_(['cheque', 'CHEQUE']),
         SupplierPayment.payment_date >= from_dt.date(),
         SupplierPayment.payment_date <= to_dt.date()
     ).scalar() or 0)
     supplier_payments_onac = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
-        SupplierPayment.payment_mode.ilike('cash'),
+        SupplierPayment.payment_mode.in_(['cash', 'CASH']),
         SupplierPayment.purchase_invoice_id == None,
         SupplierPayment.payment_date >= from_dt.date(),
         SupplierPayment.payment_date <= to_dt.date()
     ).scalar() or 0)
-    total_payables_cash = misc_expenses_cash + supplier_payments_cash + supplier_payments_onac
+    total_payables_cash = misc_expenses_cash + supplier_payments_cash + supplier_payments_card + supplier_payments_bank_transfer + supplier_payments_cheque + supplier_payments_onac
     payables_cash = [
         {"item": "Misc Expenses", "amount": misc_expenses_cash},
         {"item": "Supplier Payments Cash", "amount": supplier_payments_cash},
+        {"item": "Supplier Payments Card", "amount": supplier_payments_card},
+        {"item": "Supplier Payments Bank Transfer", "amount": supplier_payments_bank_transfer},
+        {"item": "Supplier Payments Cheque", "amount": supplier_payments_cheque},
         {"item": "Supplier Payments On/Ac", "amount": supplier_payments_onac},
         {"item": "TOTAL", "amount": total_payables_cash}
     ]
@@ -8311,12 +8377,12 @@ def daily_accounts_report():
         ExpenseEntry.date <= to_dt.date()
     ).scalar() or 0)
     supplier_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
-        SupplierPayment.payment_mode.ilike('others'),
+        ~SupplierPayment.payment_mode.in_(['cash', 'CASH', 'bank', 'BANK', 'card', 'CARD', 'bank_transfer', 'BANK_TRANSFER', 'cheque', 'CHEQUE']),
         SupplierPayment.payment_date >= from_dt.date(),
         SupplierPayment.payment_date <= to_dt.date()
     ).scalar() or 0)
     onac_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
-        SupplierPayment.payment_mode.ilike('others'),
+        ~SupplierPayment.payment_mode.in_(['cash', 'CASH', 'bank', 'BANK', 'card', 'CARD', 'bank_transfer', 'BANK_TRANSFER', 'cheque', 'CHEQUE']),
         SupplierPayment.purchase_invoice_id == None,
         SupplierPayment.payment_date >= from_dt.date(),
         SupplierPayment.payment_date <= to_dt.date()
@@ -8512,11 +8578,18 @@ def daily_summary_report():
         Payment.batch_id,
         Payment.payment_mode,
         Payment.amount,
-        Payment.payment_date
+        Payment.payment_date,
+        Sale.date.label('sale_date')
     ).join(
         Customer, Payment.customer_id == Customer.id
+    ).outerjoin(
+        Sale, Payment.sale_id == Sale.id
     ).filter(
-        Payment.payment_date == report_date
+        Payment.payment_date == report_date,  # Payments made on the selected date
+        or_(
+            Payment.sale_id.is_(None),  # On-account payments (always backdate)
+            func.date(Sale.date) < report_date  # Payments for invoices from previous dates
+        )
     ).order_by(Customer.customer_name, Payment.batch_id).all()
     
     # Group payments by customer and batch_id (payment_id)
@@ -8550,6 +8623,7 @@ def daily_summary_report():
     supplier_payments = db.session.query(
         Supplier.supplier_name,
         SupplierPayment.supplier_invoice_number,
+        SupplierPayment.supplier_invoice_date,
         SupplierPayment.amount,
         SupplierPayment.payment_mode,
         SupplierPayment.payment_date
@@ -8564,6 +8638,7 @@ def daily_summary_report():
         supplier_payments_data.append({
             'supplier_name': payment.supplier_name,
             'supplier_invoice_number': payment.supplier_invoice_number or '',  # Use supplier invoice number
+            'supplier_invoice_date': payment.supplier_invoice_date.isoformat() if payment.supplier_invoice_date else '',
             'amount': float(payment.amount),
             'payment_mode': payment.payment_mode,
             'date': payment.payment_date.isoformat()
@@ -8761,7 +8836,11 @@ def daily_summary_pdf():
         ).outerjoin(
             Sale, Payment.sale_id == Sale.id
         ).filter(
-            Payment.payment_date == report_date
+            Payment.payment_date == report_date,  # Payments made on the selected date
+            or_(
+                Payment.sale_id.is_(None),  # On-account payments (always backdate)
+                func.date(Sale.date) < report_date  # Payments for invoices from previous dates
+            )
         ).order_by(Customer.customer_name, Sale.invoice_number).all()
         
         payment_groups = {}
@@ -8792,6 +8871,7 @@ def daily_summary_pdf():
         supplier_payments = db.session.query(
             Supplier.supplier_name,
             SupplierPayment.supplier_invoice_number,
+            SupplierPayment.supplier_invoice_date,
             SupplierPayment.amount,
             SupplierPayment.payment_mode,
             SupplierPayment.payment_date
@@ -8806,6 +8886,7 @@ def daily_summary_pdf():
             supplier_payments_data.append({
                 'supplier_name': payment.supplier_name,
                 'supplier_invoice_number': payment.supplier_invoice_number or '',
+                'supplier_invoice_date': payment.supplier_invoice_date.isoformat() if payment.supplier_invoice_date else '',
                 'amount': float(payment.amount),
                 'payment_mode': payment.payment_mode
             })
@@ -8845,26 +8926,27 @@ def daily_summary_pdf():
         stock_data = []
         if include_stock:
             from sqlalchemy import text
+            # Get regular products with their closing stock for the date
             stock_query = text("""
                 SELECT 
                     ROW_NUMBER() OVER (ORDER BY p.id) as slNo,
-                    p.product_description,
-                    COALESCE(sc.opening_stock, 0) as os,
-                    COALESCE(sc.new_stock, 0) as ns,
-                    COALESCE(sc.sales, 0) as sales,
-                    COALESCE(sc.customer_return, 0) as crtn,
-                    COALESCE(sc.damages, 0) as dmps,
-                    COALESCE(sc.supplier_return, 0) as srtn,
-                    COALESCE(sc.stock, 0) as stock,
-                    COALESCE(sc.closing_stock, 0) as clStock,
+                    p.description as product_description,
+                    p.current_stock as os,
+                    0 as ns,
+                    0 as sales,
+                    0 as crtn,
+                    0 as dmps,
+                    0 as srtn,
+                    p.current_stock as stock,
+                    COALESCE(cs.quantity, 0) as clStock,
                     CASE 
-                        WHEN sc.closing_stock = sc.stock THEN '✓'
-                        WHEN sc.closing_stock > sc.stock THEN CONCAT('+', (sc.closing_stock - sc.stock))
-                        ELSE CONCAT('-', (sc.stock - sc.closing_stock))
+                        WHEN COALESCE(cs.quantity, 0) = p.current_stock THEN '✓'
+                        WHEN COALESCE(cs.quantity, 0) > p.current_stock THEN '+' || (COALESCE(cs.quantity, 0) - p.current_stock)
+                        ELSE '-' || (p.current_stock - COALESCE(cs.quantity, 0))
                     END as result
-                FROM products p
-                LEFT JOIN stock_check sc ON p.id = sc.product_id AND DATE(sc.date) = :report_date
-                WHERE p.product_type = 'regular'
+                FROM regular_products p
+                LEFT JOIN closing_stock cs ON p.id = cs.product_id AND cs.product_type = 'regular' AND cs.date = :report_date
+                WHERE p.status = 'active'
                 ORDER BY p.id
             """)
             
@@ -8890,9 +8972,7 @@ def daily_summary_pdf():
             purchase_query = db.session.query(
                 PurchaseInvoice.id,
                 PurchaseInvoice.date,
-                Supplier.supplier_name,
-                PurchaseInvoice.invoice_number,
-                PurchaseInvoice.total_amount
+                Supplier.supplier_name
             ).join(
                 Supplier, PurchaseInvoice.supplier_id == Supplier.id
             ).filter(
@@ -8900,11 +8980,15 @@ def daily_summary_pdf():
             ).order_by(PurchaseInvoice.date, PurchaseInvoice.id).all()
             
             for purchase in purchase_query:
+                # Calculate total amount from items
+                invoice = PurchaseInvoice.query.get(purchase.id)
+                total_amount = sum(float(item.total_price) for item in invoice.items) if invoice.items else 0
+                
                 purchase_data.append({
                     'date': purchase.date.strftime('%d-%m-%Y'),
                     'supplier': purchase.supplier_name,
-                    'invNo': purchase.invoice_number,
-                    'invoiceAmt': float(purchase.total_amount)
+                    'invNo': purchase.id,  # Use invoice ID as invoice number
+                    'invoiceAmt': total_amount
                 })
         
         # Format totals to avoid f-string decimal literal issues
@@ -9198,7 +9282,7 @@ def daily_summary_pdf():
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <span><strong>Total Supplier Payment (Paid Out):</strong></span>
-                    <span><strong>£{sum(p["amount"] for p in supplier_payments_data if p.get("payment_mode", "").lower() in ["cash", "bank"]):.2f}</strong></span>
+                    <span><strong>£{sum(p["amount"] for p in supplier_payments_data if p.get("payment_mode", "").lower() in ["cash", "bank", "bank_transfer", "cheque"]):.2f}</strong></span>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <span><strong>Total Expense (Paid Out):</strong></span>

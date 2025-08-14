@@ -61,6 +61,9 @@ export default function ProductSalesReport() {
   console.log('Query State:', { formattedFromDate, formattedToDate, isLoading, dataLength: salesData?.length });
 
   const totalAmount = salesData.reduce((sum: number, item: SalesReportData) => sum + item.total, 0);
+  const totalQuantity = salesData.reduce((sum: number, item: SalesReportData) => sum + item.quantity, 0);
+  const averagePrice = salesData.length > 0 ? totalAmount / totalQuantity : 0;
+  const numberOfProducts = salesData.length;
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -138,6 +141,12 @@ export default function ProductSalesReport() {
         printWindow.document.write('</tr>');
       });
       printWindow.document.write('</tbody></table>');
+      
+      // Add summary
+      printWindow.document.write('<div style="margin-top:20px;padding:10px;background-color:#f9f9f9;border:1px solid #ccc;text-align:center;">');
+      printWindow.document.write(`<strong>Summary: Products: ${numberOfProducts} | Total Qty: ${totalQuantity} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}</strong>`);
+      printWindow.document.write('</div>');
+      
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -227,6 +236,11 @@ export default function ProductSalesReport() {
       }
     });
     
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || yPosition;
+    doc.setFontSize(10);
+    doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${totalQuantity} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
+    
     doc.save(`product-sales-report-${formattedFromDate || 'all'}-${formattedToDate || 'all'}.pdf`);
   };
 
@@ -312,6 +326,11 @@ export default function ProductSalesReport() {
       }
     });
     
+    // Add summary at the bottom (same format as regular PDF)
+    const finalY = (doc as any).lastAutoTable.finalY || yPosition;
+    doc.setFontSize(10);
+    doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${totalQuantity} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
+    
     return doc.output('blob');
   };
 
@@ -354,7 +373,7 @@ export default function ProductSalesReport() {
           const emailData = {
             to: emailList,
             subject: `Product Sales Report - ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}`,
-            body: `Dear Recipient,\n\nPlease find attached the Product Sales Report for the period from ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}.\n\nThis report contains detailed sales information including:\n- Product descriptions and quantities sold\n- Average selling prices\n- Total sales amounts per product\n- Overall sales summary\n\nReport Summary:\n- Total Products: ${salesData.length}\n- Total Sales Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}\n\nBest regards,\n${companyDetails?.name || 'Sales Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Product Sales Report for the period from ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}.\n\nThis report contains detailed sales information including:\n- Product descriptions and quantities sold\n- Average selling prices\n- Total sales amounts per product\n- Overall sales summary\n\nReport Summary:\n- Total Products: ${numberOfProducts}\n- Total Quantity Sold: ${totalQuantity}\n- Average Price: £${averagePrice.toFixed(2)}\n- Total Sales Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}\n\nBest regards,\n${companyDetails?.name || 'Sales Team'}`,
             attachment: {
               filename: `product-sales-report-${formattedFromDate || 'unknown'}-to-${formattedToDate || 'unknown'}.pdf`,
               content: base64PDF,
@@ -591,8 +610,16 @@ export default function ProductSalesReport() {
               </Table>
              {/* Summary below table, styled for print and screen */}
              <div className="summary-print flex flex-wrap items-center justify-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2 text-center">
-               <div>Date Range: {formattedFromDate || '-'} to {formattedToDate || '-'}</div>
-               <div>Total: £{totalAmount.toFixed(2)}</div>
+               <div className="flex items-center font-semibold mr-2">Date Range:</div>
+               <div className="mr-6">{formattedFromDate || '-'} to {formattedToDate || '-'}</div>
+               <div className="flex items-center font-semibold mr-2">Products:</div>
+               <div className="mr-4">{numberOfProducts}</div>
+               <div className="flex items-center font-semibold mr-2">Total Qty:</div>
+               <div className="mr-4">{totalQuantity}</div>
+               <div className="flex items-center font-semibold mr-2">Avg Price:</div>
+               <div className="mr-4">£{averagePrice.toFixed(2)}</div>
+               <div className="flex items-center font-semibold mr-2">Total Sales:</div>
+               <div>£{totalAmount.toFixed(2)}</div>
              </div>
             </div>
           </CardContent>

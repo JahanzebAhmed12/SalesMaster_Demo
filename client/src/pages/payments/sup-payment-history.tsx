@@ -433,7 +433,8 @@ export default function SupPaymentHistory() {
                     <SelectItem value="All">All</SelectItem>
                     <SelectItem value="CASH">Cash</SelectItem>
                     <SelectItem value="CARD">Card</SelectItem>
-                    <SelectItem value="BANK">Bank</SelectItem>
+                    <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
+                    <SelectItem value="CHEQUE">Cheque</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

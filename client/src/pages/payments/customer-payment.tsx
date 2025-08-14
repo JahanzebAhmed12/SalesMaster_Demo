@@ -58,14 +58,18 @@ export default function CustomerPayment() {
     onSuccess: (response) => {
       const cashAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cash').reduce((sum, inv) => sum + inv.balance, 0);
       const cardAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank').reduce((sum, inv) => sum + inv.balance, 0);
+      const bankTransferAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank_transfer').reduce((sum, inv) => sum + inv.balance, 0);
+      const chequeAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cheque').reduce((sum, inv) => sum + inv.balance, 0);
       
       let paymentSummary = `ID: ${response.paymentId}`;
-      if (cashAmount > 0 && cardAmount > 0) {
-        paymentSummary += ` (Cash: £${cashAmount.toFixed(2)}, Card: £${cardAmount.toFixed(2)})`;
-      } else if (cashAmount > 0) {
-        paymentSummary += ` (Cash: £${cashAmount.toFixed(2)})`;
-      } else if (cardAmount > 0) {
-        paymentSummary += ` (Card: £${cardAmount.toFixed(2)})`;
+      const paymentParts = [];
+      if (cashAmount > 0) paymentParts.push(`Cash: £${cashAmount.toFixed(2)}`);
+      if (cardAmount > 0) paymentParts.push(`Card: £${cardAmount.toFixed(2)}`);
+      if (bankTransferAmount > 0) paymentParts.push(`Bank Transfer: £${bankTransferAmount.toFixed(2)}`);
+      if (chequeAmount > 0) paymentParts.push(`Cheque: £${chequeAmount.toFixed(2)}`);
+      
+      if (paymentParts.length > 0) {
+        paymentSummary += ` (${paymentParts.join(', ')})`;
       }
       
       toast({
@@ -257,6 +261,8 @@ export default function CustomerPayment() {
                   <div className="text-sm">
                     <div>Cash: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cash').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
                     <div>Card: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
+                    <div>Bank Transfer: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank_transfer').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
+                    <div>Cheque: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cheque').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
                   </div>
                 </div>
               </div>
@@ -402,6 +408,8 @@ export default function CustomerPayment() {
                           <SelectContent>
                             <SelectItem value="cash">Cash</SelectItem>
                             <SelectItem value="bank">Card</SelectItem>
+                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                            <SelectItem value="cheque">Cheque</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (
@@ -467,7 +475,9 @@ export default function CustomerPayment() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                  const paymentType = payment.paymentMode === 'bank' ? 'card' : 'cash';
+                                  const paymentType = payment.paymentMode === 'bank' ? 'card' : 
+                                                     payment.paymentMode === 'bank_transfer' ? 'bank_transfer' :
+                                                     payment.paymentMode === 'cheque' ? 'cheque' : 'cash';
                                   window.open(`/print/payment-receipt/${payment.batchId}/${paymentType}`, '_blank');
                                 }}
                                 title="Print Payment Receipt"

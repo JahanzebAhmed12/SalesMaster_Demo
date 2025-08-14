@@ -271,7 +271,11 @@ export default function DotMatrixPaymentPrintPage() {
                 fontFamily: 'monospace',
                 fontSize: '12pt'
               }}>
-                {payment.paymentMode === 'cash' ? 'Cash Payment' : 'Card Payment'}
+                {payment.paymentMode === 'cash' ? 'Cash Payment' : 
+                 payment.paymentMode === 'bank' ? 'Card Payment' :
+                 payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
+                 payment.paymentMode === 'cheque' ? 'Cheque Payment' :
+                 'Payment'}
               </div>
 
               {/* Invoice Number - positioned 5mm below payment description */}

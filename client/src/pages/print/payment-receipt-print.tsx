@@ -137,7 +137,13 @@ const PaymentReceiptPrint = () => {
             <tr key={idx}>
               <td style={{ border: "1px solid #888", padding: 4 }}>1</td>
               <td style={{ border: "1px solid #888", padding: 4 }}>
-                <div>{payment.paymentMode === 'cash' ? 'Cash Payment' : 'Card Payment'}</div>
+                <div>
+                  {payment.paymentMode === 'cash' ? 'Cash Payment' : 
+                   payment.paymentMode === 'bank' ? 'Card Payment' :
+                   payment.paymentMode === 'bank_transfer' ? 'Bank Transfer Payment' :
+                   payment.paymentMode === 'cheque' ? 'Cheque Payment' :
+                   'Payment'}
+                </div>
                 {payment.invoiceNumber && (
                   <div style={{ fontSize: 12, color: '#666' }}>Inv: {payment.invoiceNumber}</div>
                 )}

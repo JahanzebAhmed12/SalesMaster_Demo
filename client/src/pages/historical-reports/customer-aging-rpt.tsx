@@ -222,64 +222,157 @@ export default function CustomerAgingRpt() {
   // Export to PDF handler
   const handleExportPDF = () => {
     const doc = new jsPDF();
-    doc.text(company?.companyName || '', 10, 10);
-    doc.text(company?.address1 || '', 10, 16);
+    let yPosition = 20;
+    
+    // Add report title
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('CUSTOMER AGING REPORT', 105, yPosition, { align: 'center' });
+    yPosition += 15;
+    
+    // Add company details
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'normal');
+    const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
+    const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
+    doc.text(companyName + ', ' + address, 105, yPosition, { align: 'center' });
+    yPosition += 10;
+    
+    // Add as of date
+    doc.setFontSize(10);
+    doc.text(`As of Date: ${asOfDate ? format(asOfDate, "dd/MM/yyyy") : ""}`, 105, yPosition, { align: 'center' });
+    yPosition += 15;
+    
+    // Add table
     autoTable(doc, {
       head: [[
         "Sl.No", "Customer Name", "Total Outstanding", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "91-120 Days", "121-180 Days", "Over 180 Days", "Currency"
       ]],
-      body: agingData.map((row) => [
-        row.slNo,
-        row.customerName,
-        row.totalOutstanding.toFixed(2),
-        row.current.toFixed(2),
-        row.days30.toFixed(2),
-        row.days60.toFixed(2),
-        row.days90.toFixed(2),
-        row.days120.toFixed(2),
-        row.days180.toFixed(2),
-        row.over180.toFixed(2),
-        row.currency
-      ]),
-      startY: 22,
+      body: [
+        ...agingData.map((row) => [
+          row.slNo,
+          row.customerName,
+          row.totalOutstanding.toFixed(2),
+          row.current.toFixed(2),
+          row.days30.toFixed(2),
+          row.days60.toFixed(2),
+          row.days90.toFixed(2),
+          row.days120.toFixed(2),
+          row.days180.toFixed(2),
+          row.over180.toFixed(2),
+          row.currency
+        ]),
+        // Add totals row
+        [
+          '',
+          'TOTAL',
+          totals.totalOutstanding.toFixed(2),
+          totals.current.toFixed(2),
+          totals.days30.toFixed(2),
+          totals.days60.toFixed(2),
+          totals.days90.toFixed(2),
+          totals.days120.toFixed(2),
+          totals.days180.toFixed(2),
+          totals.over180.toFixed(2),
+          ''
+        ]
+      ],
+      startY: yPosition,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      headStyles: {
+        fillColor: [220, 53, 69],
+        textColor: 255,
+        fontSize: 8,
+        fontStyle: 'bold'
+      },
+      bodyStyles: {
+        fontSize: 8
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
+      },
+      // Style the totals row
+      didParseCell: function (data) {
+        if (data.row.index === agingData.length && data.cell.text[0] === 'TOTAL') {
+          data.cell.styles.fillColor = [255, 243, 205];
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
     });
-    doc.save("customer-aging-report.pdf");
+    
+    doc.save(`customer-aging-report-${format(asOfDate, "yyyyMMdd")}.pdf`);
   };
 
   // Print only the table section
   const handlePrintTable = () => {
-    if (!tableSectionRef.current) return;
-    const printContents = tableSectionRef.current.innerHTML;
     const printWindow = window.open('', '', 'width=900,height=700');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer Aging Report</title></head><body>');
-      printWindow.document.write(`<h2>${company?.companyName || ''}</h2>`);
-      printWindow.document.write(`<div>${company?.address1 || ''}</div>`);
-      printWindow.document.write('<table border="1"><thead><tr>');
-      printWindow.document.write('<th>Sl No</th><th>Customer Name</th><th>Total Outstanding</th><th>Current</th><th>30 Days</th><th>60 Days</th><th>90 Days</th><th>120 Days</th><th>180 Days</th><th>Over 180</th><th>Currency</th><th>Customer Code</th><th>Address</th><th>Telephone</th><th>Email</th>');
+      printWindow.document.write('<html><head><title>Customer Aging Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#dc3545;color:white;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.totals{font-weight:bold;background-color:#fff3cd;}');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+      
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2 style="font-size:24px;font-weight:bold;margin-bottom:10px;">CUSTOMER AGING REPORT</h2>');
+      const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
+      const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
+      printWindow.document.write(`<p style="font-size:16px;margin-bottom:5px;">${companyName}, ${address}</p>`);
+      printWindow.document.write(`<p style="font-size:14px;">As of Date: ${asOfDate ? format(asOfDate, "dd/MM/yyyy") : ""}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th><th>Customer Name</th><th>Total Outstanding</th><th>Current</th><th>1-30 Days</th><th>31-60 Days</th><th>61-90 Days</th><th>91-120 Days</th><th>121-180 Days</th><th>Over 180 Days</th><th>Currency</th>');
       printWindow.document.write('</tr></thead><tbody>');
+      
+      // Add customer data
       agingData.forEach(item => {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${item.slNo}</td>`);
         printWindow.document.write(`<td>${item.customerName}</td>`);
-        printWindow.document.write(`<td>${Number(item.totalOutstanding).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${Number(item.current).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${Number(item.days30).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${Number(item.days60).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${Number(item.days90).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${Number(item.days120).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${Number(item.days180).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${Number(item.over180).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${item.currency}</td>`);
-        printWindow.document.write(`<td>${item.customerCode}</td>`);
-        printWindow.document.write(`<td>${item.address}</td>`);
-        printWindow.document.write(`<td>${item.telephone}</td>`);
-        printWindow.document.write(`<td>${item.email}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.totalOutstanding).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.current).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days30).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days60).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days90).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days120).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.days180).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:right;">${Number(item.over180).toFixed(2)}</td>`);
+        printWindow.document.write(`<td style="text-align:center;">${item.currency}</td>`);
         printWindow.document.write('</tr>');
       });
-      printWindow.document.write('</tbody></table></body></html>');
+      
+      // Add totals row
+      printWindow.document.write('<tr class="totals">');
+      printWindow.document.write('<td></td>');
+      printWindow.document.write('<td><strong>TOTAL</strong></td>');
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.totalOutstanding.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.current.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days30.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days60.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days90.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days120.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days180.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.over180.toFixed(2)}</strong></td>`);
+      printWindow.document.write('<td></td>');
+      printWindow.document.write('</tr>');
+      
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
       printWindow.document.close();
-      printWindow.print();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
     }
   };
 

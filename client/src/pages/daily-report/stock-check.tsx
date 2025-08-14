@@ -43,6 +43,7 @@ export default function StockCheck() {
   const [searchTerm, setSearchTerm] = useState("");
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
+  const [showZeroEntries, setShowZeroEntries] = useState(true);
   const { toast } = useToast();
   const tableRef = useRef<HTMLDivElement>(null);
   const [, setLocation] = useLocation();
@@ -98,9 +99,22 @@ export default function StockCheck() {
   };
 
   const filteredData = stockData.filter(item => {
-    if (stockFilter === "Short") return item.status === 'short';
-    if (stockFilter === "Excess") return item.status === 'excess';
-    return true; // Show All
+    // First apply stock status filter
+    let passesStatusFilter = true;
+    if (stockFilter === "Short") passesStatusFilter = item.status === 'short';
+    else if (stockFilter === "Excess") passesStatusFilter = item.status === 'excess';
+    
+    // Then apply zero entries filter
+    let passesZeroFilter = true;
+    if (!showZeroEntries) {
+      // Hide items where all values are zero (no activity)
+      const hasActivity = item.os > 0 || item.ns > 0 || item.sales > 0 || 
+                         item.crtn > 0 || item.dmps > 0 || item.srtn > 0 || 
+                         item.stock > 0 || item.clStock > 0;
+      passesZeroFilter = hasActivity;
+    }
+    
+    return passesStatusFilter && passesZeroFilter;
   });
 
   const totals = {
@@ -561,7 +575,7 @@ export default function StockCheck() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
               <div>
                 <Label>OS Date:</Label>
                 <Popover>
@@ -625,6 +639,17 @@ export default function StockCheck() {
                     <SelectItem value="Excess">Excess</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              
+              <div>
+                <Button
+                  variant={showZeroEntries ? "outline" : "default"}
+                  onClick={() => setShowZeroEntries(!showZeroEntries)}
+                  className="w-full"
+                  size="sm"
+                >
+                  {showZeroEntries ? "Hide Zero Entries" : "Show Zero Entries"}
+                </Button>
               </div>
               
               <div>
