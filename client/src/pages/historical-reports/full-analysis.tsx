@@ -102,7 +102,7 @@ export default function FullAnalysis() {
     const printWindow = window.open('', '', 'height=600,width=1200');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Full Analysis Report</title>');
-      printWindow.document.write('<style>@page { size: landscape; margin: 0.5in; } body{font-family:Arial,sans-serif;margin:10px;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:15px;table-layout:fixed;}th,td{border:1px solid #ccc;padding:4px;text-align:center;font-size:10px;word-wrap:break-word;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:15px;}.totals{font-weight:bold;background-color:#f9f9f9;}th:nth-child(1),td:nth-child(1){width:8%;}th:nth-child(2),td:nth-child(2){width:6%;}th:nth-child(3),td:nth-child(3){width:9%;}th:nth-child(4),td:nth-child(4){width:9%;}th:nth-child(5),td:nth-child(5){width:10%;}th:nth-child(6),td:nth-child(6){width:10%;}th:nth-child(7),td:nth-child(7){width:10%;}th:nth-child(8),td:nth-child(8){width:8%;}th:nth-child(9),td:nth-child(9){width:11%;}th:nth-child(10),td:nth-child(10){width:9%;}th:nth-child(11),td:nth-child(11){width:10%;}</style>');
+      printWindow.document.write('<style>@page { size: landscape; margin: 0.5in; } body{font-family:Arial,sans-serif;margin:10px;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:15px;table-layout:fixed;}th,td{border:1px solid #ccc;padding:4px;text-align:center;font-size:10px;word-wrap:break-word;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:15px;}.totals{font-weight:bold;background-color:#f9f9f9;}.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}th:nth-child(1),td:nth-child(1){width:8%;}th:nth-child(2),td:nth-child(2){width:6%;}th:nth-child(3),td:nth-child(3){width:9%;}th:nth-child(4),td:nth-child(4){width:9%;}th:nth-child(5),td:nth-child(5){width:10%;}th:nth-child(6),td:nth-child(6){width:10%;}th:nth-child(7),td:nth-child(7){width:10%;}th:nth-child(8),td:nth-child(8){width:8%;}th:nth-child(9),td:nth-child(9){width:11%;}th:nth-child(10),td:nth-child(10){width:9%;}th:nth-child(11),td:nth-child(11){width:10%;}</style>');
       printWindow.document.write('</head><body>');
       // Add header
       printWindow.document.write('<div class="header">');
@@ -141,6 +141,10 @@ export default function FullAnalysis() {
         printWindow.document.write('</tr>');
       });
       printWindow.document.write('</tbody></table>');
+      
+      // Add footer text
+      printWindow.document.write('<div class="footer">stand100</div>');
+      
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -225,6 +229,13 @@ export default function FullAnalysis() {
       },
       margin: { left: 10, right: 10 }
     });
+    
+    // Add footer text "stand100" on bottom right
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
+    doc.setFontSize(8);
+    doc.text('stand100', pageWidth - 30, pageHeight - 10, { align: 'right' });
+    
     doc.save(`full_analysis_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };
 

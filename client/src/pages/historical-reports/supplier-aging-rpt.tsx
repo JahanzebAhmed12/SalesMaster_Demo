@@ -340,6 +340,12 @@ export default function SupplierAgingRpt() {
       }
     });
     
+    // Add footer text "stand100" on bottom right
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
+    doc.setFontSize(8);
+    doc.text('stand100', pageWidth - 30, pageHeight - 10, { align: 'right' });
+    
     doc.save(`supplier-aging-report-${format(asOfDate, "yyyyMMdd")}.pdf`);
   };
 
@@ -355,6 +361,7 @@ export default function SupplierAgingRpt() {
       printWindow.document.write('th{background-color:#475569;color:white;font-weight:bold;}');  // Slate color
       printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
       printWindow.document.write('.totals{font-weight:bold;background-color:#fef2f2;}');  // Rose color
+      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
       printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
       
@@ -406,6 +413,10 @@ export default function SupplierAgingRpt() {
       printWindow.document.write('</tr>');
       
       printWindow.document.write('</tbody></table>');
+      
+      // Add footer text
+      printWindow.document.write('<div class="footer">stand100</div>');
+      
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();

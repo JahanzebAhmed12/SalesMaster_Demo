@@ -241,6 +241,7 @@ export default function CustomerHistory() {
       printWindow.document.write('.customer-info{margin-bottom:15px;}');
       printWindow.document.write('.period-info{margin-bottom:15px;font-weight:bold;}');
       printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
+      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
       printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
       
@@ -275,6 +276,10 @@ export default function CustomerHistory() {
       
       // Add the table content
       printWindow.document.write(printContents);
+      
+      // Add footer text
+      printWindow.document.write('<div class="footer">stand100</div>');
+      
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -379,6 +384,12 @@ export default function CustomerHistory() {
       ]),
       startY: 110,
     });
+    
+    // Add footer text "stand100" on bottom right
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
+    doc.setFontSize(8);
+    doc.text('stand100', pageWidth - 30, pageHeight - 10, { align: 'right' });
     
     doc.save('customer-history.pdf');
   };
