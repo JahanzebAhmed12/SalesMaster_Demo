@@ -134,6 +134,10 @@ export default function SupplierReturn() {
         printWindow.document.write('</tr>');
       });
       printWindow.document.write('</tbody></table>');
+      
+      // Add footer text
+      printWindow.document.write('<div class="footer">stand100</div>');
+      
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
