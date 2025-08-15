@@ -466,8 +466,21 @@ export default function PurchaseInvoice() {
                     type="number"
                     min="1"
                     placeholder="Qty"
-                    value={quantity}
-                    onChange={e => setQuantity(Number(e.target.value))}
+                    value={quantity === 1 ? "" : quantity}
+                    onChange={e => setQuantity(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
+                    onKeyPress={(e) => {
+                      // Only allow numbers, backspace, delete, and arrow keys
+                      if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                    }}
+                    onPaste={(e) => {
+                      // Prevent pasting non-numeric content
+                      const paste = e.clipboardData?.getData('text');
+                      if (paste && !/^\d+$/.test(paste)) {
+                        e.preventDefault();
+                      }
+                    }}
                     className="mt-1"
                   />
                 </div>

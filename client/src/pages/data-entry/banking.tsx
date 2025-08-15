@@ -344,7 +344,7 @@ export default function Banking() {
                           <Input
                             value={bag.payingNumber}
                             onChange={e => updateBagPayingNumber(index, e.target.value)}
-                            placeholder={`Paying Number ${index + 1}`}
+                            placeholder="Pay In #"
                             className="w-40"
                             required
                           />
@@ -415,7 +415,7 @@ export default function Banking() {
                     <Input
                       value={newEntry.chequePayingNumber}
                       onChange={e => setNewEntry({...newEntry, chequePayingNumber: e.target.value})}
-                      placeholder="Enter paying number"
+                      placeholder="Pay In #"
                       className="w-full"
                       required
                     />
@@ -504,7 +504,7 @@ export default function Banking() {
                               <div className="text-sm text-gray-600">
                                 <div>Bag: <span className="font-medium">{entry.bagNumber}</span></div>
                                 {entry.payingNumber && (
-                                  <div>Paying: <span className="font-medium">{entry.payingNumber}</span></div>
+                                  <div>PayInNo: <span className="font-medium">{entry.payingNumber}</span></div>
                                 )}
                                 {entry.chequeNumber && (
                                   <div>Cheque: <span className="font-medium">{entry.chequeNumber}</span></div>

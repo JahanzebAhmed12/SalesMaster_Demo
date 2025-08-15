@@ -99,10 +99,10 @@ export default function FullAnalysis() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
+    const printWindow = window.open('', '', 'height=600,width=1200');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Full Analysis Report</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('<style>@page { size: landscape; margin: 0.5in; } body{font-family:Arial,sans-serif;margin:10px;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:15px;table-layout:fixed;}th,td{border:1px solid #ccc;padding:4px;text-align:center;font-size:10px;word-wrap:break-word;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:15px;}.totals{font-weight:bold;background-color:#f9f9f9;}th:nth-child(1),td:nth-child(1){width:8%;}th:nth-child(2),td:nth-child(2){width:6%;}th:nth-child(3),td:nth-child(3){width:9%;}th:nth-child(4),td:nth-child(4){width:9%;}th:nth-child(5),td:nth-child(5){width:10%;}th:nth-child(6),td:nth-child(6){width:10%;}th:nth-child(7),td:nth-child(7){width:10%;}th:nth-child(8),td:nth-child(8){width:8%;}th:nth-child(9),td:nth-child(9){width:11%;}th:nth-child(10),td:nth-child(10){width:9%;}th:nth-child(11),td:nth-child(11){width:10%;}</style>');
       printWindow.document.write('</head><body>');
       // Add header
       printWindow.document.write('<div class="header">');
@@ -181,12 +181,12 @@ export default function FullAnalysis() {
   };
 
   const handlePDF = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF('landscape'); // Use landscape orientation for better fit
     doc.setFontSize(16);
-    doc.text('MONTH WISE PURCHASE / SALES', 105, 20, { align: 'center' });
+    doc.text('MONTH WISE PURCHASE / SALES', 148, 20, { align: 'center' }); // Adjust center for landscape
     doc.setFontSize(10);
-    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
-    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 148, 30, { align: 'center' });
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 148, 40, { align: 'center' });
     const tableData = analysisData.map((item) => [
       item.month,
       item.year,
@@ -207,22 +207,23 @@ export default function FullAnalysis() {
       body: tableData,
       startY: 50,
       styles: {
-        fontSize: 8,
-        cellPadding: 2
+        fontSize: 7,
+        cellPadding: 1.5
       },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 20 },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 25 },
-        5: { cellWidth: 25 },
-        6: { cellWidth: 25 },
-        7: { cellWidth: 25 },
-        8: { cellWidth: 30 },
-        9: { cellWidth: 25 },
-        10: { cellWidth: 25 }
-      }
+        0: { cellWidth: 18 },
+        1: { cellWidth: 15 },
+        2: { cellWidth: 22 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 24 },
+        5: { cellWidth: 24 },
+        6: { cellWidth: 24 },
+        7: { cellWidth: 20 },
+        8: { cellWidth: 26 },
+        9: { cellWidth: 22 },
+        10: { cellWidth: 22 }
+      },
+      margin: { left: 10, right: 10 }
     });
     doc.save(`full_analysis_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };

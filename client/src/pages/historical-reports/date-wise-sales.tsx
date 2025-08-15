@@ -190,24 +190,33 @@ export default function DateWiseSales() {
     ]);
     autoTable(doc, {
       head: [[
-        'Date', 'Total Sales', 'Account Sales', 'Cash Sales', 'Total Invoices', 'Average Sale', 'Top Product', 'Top Customer'
+        'Date', 'Total Sales', 'Account Sales', 'Cash Sales', 'Invoices', 'Avg Sale', 'Top Product', 'Top Customer'
       ]],
       body: tableData,
       startY: 50,
       styles: {
-        fontSize: 8,
-        cellPadding: 2
+        fontSize: 7,
+        cellPadding: 1.5,
+        halign: 'center'
+      },
+      headStyles: {
+        fillColor: [147, 51, 234], // Purple color to match the theme
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 7,
+        halign: 'center'
       },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 25 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 25 },
-        6: { cellWidth: 30 },
-        7: { cellWidth: 30 }
-      }
+        0: { cellWidth: 18, halign: 'center' }, // Date
+        1: { cellWidth: 22, halign: 'center' }, // Total Sales
+        2: { cellWidth: 22, halign: 'center' }, // Account Sales
+        3: { cellWidth: 22, halign: 'center' }, // Cash Sales
+        4: { cellWidth: 16, halign: 'center' }, // Total Invoices
+        5: { cellWidth: 20, halign: 'center' }, // Average Sale
+        6: { cellWidth: 25, halign: 'center' }, // Top Product
+        7: { cellWidth: 25, halign: 'center' }  // Top Customer
+      },
+      margin: { left: 10, right: 10 }
     });
     doc.save(`date_wise_sales_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };

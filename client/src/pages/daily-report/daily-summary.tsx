@@ -212,6 +212,27 @@ export default function DailySummary() {
     gcTime: 0,
   });
 
+  // Fetch cheque payments data
+  const { data: chequePaymentsData = [] } = useQuery<any[]>({
+    queryKey: ["/api/reports/daily-book-sales-cheque", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
+    queryFn: () => {
+      if (!selectedDate) return [];
+      const params = new URLSearchParams();
+      params.append("fromDate", format(selectedDate, "yyyy-MM-dd"));
+      params.append("toDate", format(selectedDate, "yyyy-MM-dd"));
+      params.append("paymentType", "cheque");
+      params.append("salesman", "all");
+      params.append("search", "");
+      return apiRequest("GET", `/api/reports/daily-book-sales?${params.toString()}`);
+    },
+    enabled: !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  // Calculate total cheque payments
+  const totalChequePayments = chequePaymentsData.reduce((sum, payment) => sum + (payment.cheque || 0), 0);
+
   const handleGeneratePDF = async () => {
     if (!selectedDate) {
       toast({
@@ -448,15 +469,15 @@ export default function DailySummary() {
     yPosition += 5;
 
     const totalsData = [
-      ['Total Cash Sales', `Â£${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `Â£${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `Â£${summaryData.sales_summary.reduce((sum, s) => sum + s.account_paid_cheque, 0).toFixed(2)}`],
-      ['Account Payments/Customer Cash Payments', `Â£${summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `Â£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `Â£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `Â£${summaryData.supplier_payments.filter(p => p.payment_mode.toLowerCase() === 'cash' || p.payment_mode.toLowerCase() === 'bank').reduce((sum, p) => sum + p.amount, 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `Â£${(summaryData.expense_entries || []).filter(e => e.payment_mode.toLowerCase() === 'cash' || e.payment_mode.toLowerCase() === 'bank').reduce((sum, e) => sum + e.amount, 0).toFixed(2)}`],
-      ['Total Banking', `Â£${summaryData.totals.banking_total.toFixed(2)}`]
+      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Total Cheque', `£${summaryData.sales_summary.reduce((sum, s) => sum + (s.account_paid_cheque || 0), 0).toFixed(2)}`],
+      ['Account Payments/Customer Cash Payments', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}`],
+      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
+      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Total Supplier Payment (Paid Out)', `£${summaryData.supplier_payments.filter(p => p.payment_mode.toLowerCase() === 'cash' || p.payment_mode.toLowerCase() === 'bank').reduce((sum, p) => sum + p.amount, 0).toFixed(2)}`],
+      ['Total Expense (Paid Out)', `£${(summaryData.expense_entries || []).filter(e => e.payment_mode.toLowerCase() === 'cash' || e.payment_mode.toLowerCase() === 'bank').reduce((sum, e) => sum + e.amount, 0).toFixed(2)}`],
+      ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]
     ];
 
     autoTable(doc, {
@@ -602,9 +623,9 @@ export default function DailySummary() {
             item.date,
             item.supplier,
             item.invNo,
-            `Â£${item.invoiceAmt.toFixed(2)}`
+            `£${item.invoiceAmt.toFixed(2)}`
           ]),
-          ['TOTAL', `${purchaseData.length} Items`, '', `Â£${totalInvoiceAmount.toFixed(2)}`]
+          ['TOTAL', `${purchaseData.length} Items`, '', `£${totalInvoiceAmount.toFixed(2)}`]
         ],
         startY: yPosition,
         styles: { fontSize: 8, cellPadding: 2 },
@@ -733,9 +754,9 @@ export default function DailySummary() {
     yPosition += 5;
 
     const totalsData = [
-      ['Total Cash Sales', `Â£${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `Â£${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Banking', `Â£${summaryData.totals.banking_total.toFixed(2)}`]
+      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]
     ];
 
     autoTable(doc, {
@@ -806,7 +827,7 @@ export default function DailySummary() {
           const emailData = {
             to: emailList,
             subject: `Daily Summary Report - ${format(selectedDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n\nReport Summary:\n- Total Cash Sales: Â£${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: Â£${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: Â£${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
             attachment: {
               filename: `daily-summary-${format(selectedDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -1180,31 +1201,31 @@ export default function DailySummary() {
                 <div className="space-y-3 text-lg">
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Cash Sales:</span>
-                    <span className="font-bold">Â£{summaryData.totals.cash_sales.toFixed(2)}</span>
+                    <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Cheque :</span>
-                    <span className="font-bold">Â£{summaryData.sales_summary.reduce((sum, s) => sum + s.account_paid_cheque, 0).toFixed(2)}</span>
+                    <span className="font-bold">£{totalChequePayments.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Account Paid Cash(Backdate):</span>
-                    <span className="font-bold">Â£{summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}</span>
+                    <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Till/Float(C/F):</span>
-                    <span className="font-bold">Â£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
+                    <span className="font-bold">£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Supplier Payment (Paid Out):</span>
-                    <span className="font-bold">Â£{summaryData.supplier_payments.filter(p => p.payment_mode.toLowerCase() === 'cash' || p.payment_mode.toLowerCase() === 'bank').reduce((sum, p) => sum + p.amount, 0).toFixed(2)}</span>
+                    <span className="font-bold">£{summaryData.supplier_payments.filter(p => p.payment_mode.toLowerCase() === 'cash' || p.payment_mode.toLowerCase() === 'bank').reduce((sum, p) => sum + p.amount, 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Expense (Paid Out):</span>
-                    <span className="font-bold">Â£{(summaryData.expense_entries || []).filter(e => e.payment_mode.toLowerCase() === 'cash' || e.payment_mode.toLowerCase() === 'bank').reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</span>
+                    <span className="font-bold">£{(summaryData.expense_entries || []).filter(e => e.payment_mode.toLowerCase() === 'cash' || e.payment_mode.toLowerCase() === 'bank').reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Banking:</span>
-                    <span className="font-bold">Â£{summaryData.totals.banking_total.toFixed(2)}</span>
+                    <span className="font-bold">£{summaryData.totals.banking_total.toFixed(2)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -1219,11 +1240,11 @@ export default function DailySummary() {
                 <div className="space-y-3 text-lg">
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Card Sales:</span>
-                    <span className="font-bold">Â£{summaryData.totals.card_sales.toFixed(2)}</span>
+                    <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Account Paid Card(Backdate):</span>
-                    <span className="font-bold">Â£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
+                    <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -1390,7 +1411,7 @@ export default function DailySummary() {
                           <TableCell className="border">{item.date}</TableCell>
                           <TableCell className="border">{item.supplier}</TableCell>
                           <TableCell className="border text-center">{item.invNo}</TableCell>
-                          <TableCell className="border text-center">Â£{item.invoiceAmt.toFixed(2)}</TableCell>
+                          <TableCell className="border text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
                         </TableRow>
                       ))}
                       {purchaseData.length === 0 && (
@@ -1405,7 +1426,7 @@ export default function DailySummary() {
                           <TableCell className="border"></TableCell>
                           <TableCell className="border">{purchaseData.length} Items</TableCell>
                           <TableCell className="border text-center"></TableCell>
-                          <TableCell className="border text-center">Â£{purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
+                          <TableCell className="border text-center">£{purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
                         </TableRow>
                       )}
                     </TableBody>

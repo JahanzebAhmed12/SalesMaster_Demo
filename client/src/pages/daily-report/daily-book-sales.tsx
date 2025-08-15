@@ -373,8 +373,8 @@ export default function DailyBookSales() {
 
       // Process each selected sale
       for (const sale of selectedSalesData) {
-        // Calculate the total invoice amount (account + cash + bank)
-        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
+        // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
+        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
 
         if (totalInvoiceAmount > 0) {
           // First, reverse any existing payments by creating negative payment entries
@@ -397,6 +397,28 @@ export default function DailyBookSales() {
               paymentMode: 'bank',
               paymentDate: format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed bank payment via daily book sales`
+            });
+          }
+
+          if (sale.bankTransfer && sale.bankTransfer > 0) {
+            await apiRequest('POST', '/api/payments', {
+              customerId: sale.customerId,
+              saleId: sale.id,
+              amount: -sale.bankTransfer,
+              paymentMode: 'bank_transfer',
+              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              remarks: `Reversed bank transfer payment via daily book sales`
+            });
+          }
+
+          if (sale.cheque && sale.cheque > 0) {
+            await apiRequest('POST', '/api/payments', {
+              customerId: sale.customerId,
+              saleId: sale.id,
+              amount: -sale.cheque,
+              paymentMode: 'cheque',
+              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              remarks: `Reversed cheque payment via daily book sales`
             });
           }
 
@@ -447,8 +469,8 @@ export default function DailyBookSales() {
 
       // Process each selected sale
       for (const sale of selectedSalesData) {
-        // Calculate the total invoice amount (account + cash + bank)
-        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
+        // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
+        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
 
         if (totalInvoiceAmount > 0) {
           // First, reverse any existing payments by creating negative payment entries
@@ -471,6 +493,28 @@ export default function DailyBookSales() {
               paymentMode: 'bank',
               paymentDate: format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed bank payment via daily book sales`
+            });
+          }
+
+          if (sale.bankTransfer && sale.bankTransfer > 0) {
+            await apiRequest('POST', '/api/payments', {
+              customerId: sale.customerId,
+              saleId: sale.id,
+              amount: -sale.bankTransfer,
+              paymentMode: 'bank_transfer',
+              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              remarks: `Reversed bank transfer payment via daily book sales`
+            });
+          }
+
+          if (sale.cheque && sale.cheque > 0) {
+            await apiRequest('POST', '/api/payments', {
+              customerId: sale.customerId,
+              saleId: sale.id,
+              amount: -sale.cheque,
+              paymentMode: 'cheque',
+              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              remarks: `Reversed cheque payment via daily book sales`
             });
           }
 

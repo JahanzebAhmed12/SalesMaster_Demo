@@ -187,16 +187,25 @@ export default function ProdCustomerHistory() {
       body: tableData,
       startY: 50,
       styles: {
-        fontSize: 8,
-        cellPadding: 2
+        fontSize: 10,
+        cellPadding: 3,
+        halign: 'center'
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+        halign: 'center'
       },
       columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 20 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 25 }
-      }
+        0: { cellWidth: 20, halign: 'center' }, // Sl.No
+        1: { cellWidth: 60, halign: 'center' }, // Product
+        2: { cellWidth: 25, halign: 'center' }, // Quantity
+        3: { cellWidth: 25, halign: 'center' }, // Avg Price
+        4: { cellWidth: 25, halign: 'center' }  // Total
+      },
+      tableWidth: 'wrap',
+      margin: { left: 'auto', right: 'auto' }
     });
     doc.save(`prod_customer_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };

@@ -210,26 +210,33 @@ export default function PurchaseHistory() {
     ]);
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Supplier Name', 'Invoice No', 'Delivery No', 'Product Name', 'Quantity', 'Unit Price', 'Total Amount', 'Payment Status'
+        'Sl.No', 'Date', 'Supplier Name', 'Invoice No', 'Delivery No', 'Product Name', 'Qty', 'Unit Price', 'Total Amount', 'Status'
       ]],
       body: tableData,
       startY: 50,
       styles: {
-        fontSize: 8,
-        cellPadding: 2
+        fontSize: 7,
+        cellPadding: 1.5
       },
       columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 20 },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 30 },
-        6: { cellWidth: 15 },
-        7: { cellWidth: 20 },
-        8: { cellWidth: 25 },
-        9: { cellWidth: 20 }
-      }
+        0: { cellWidth: 12 }, // Sl.No
+        1: { cellWidth: 18 }, // Date
+        2: { cellWidth: 25 }, // Supplier Name
+        3: { cellWidth: 18 }, // Invoice No
+        4: { cellWidth: 18 }, // Delivery No
+        5: { cellWidth: 30 }, // Product Name
+        6: { cellWidth: 12 }, // Quantity
+        7: { cellWidth: 18 }, // Unit Price
+        8: { cellWidth: 20 }, // Total Amount
+        9: { cellWidth: 15 }  // Payment Status
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 7
+      },
+      margin: { left: 10, right: 10 }
     });
     doc.save(`purchase_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.pdf`);
   };

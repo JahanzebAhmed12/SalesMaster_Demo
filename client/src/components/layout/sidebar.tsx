@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { cn } from "@/lib/utils";
 
 import {
   LayoutDashboard,
@@ -16,7 +15,6 @@ import {
   X,
   Users,
   Clock,
-  Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";

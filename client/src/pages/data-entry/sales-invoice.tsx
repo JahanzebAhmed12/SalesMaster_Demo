@@ -1503,7 +1503,14 @@ const SalesInvoice = () => {
                         <TableCell>{item.productName}</TableCell>
                         <TableCell></TableCell>
 
-                        <TableCell className="text-center">{item.notes}</TableCell>
+                        <TableCell className="text-center">
+                          <Input
+                            className="text-center"
+                            placeholder="Notes"
+                            value={editItem?.notes ?? item.notes ?? ""}
+                            onChange={e => setEditItem({ ...item, notes: e.target.value, createdAt: item.createdAt })}
+                          />
+                        </TableCell>
                         <TableCell className="text-center">
                           <Input
                             type="number"
@@ -1655,8 +1662,22 @@ const SalesInvoice = () => {
                       <Input
                         className="text-center"
                         type="number"
-                        value={itemQuantity}
-                        onChange={(e) => setItemQuantity(parseInt(e.target.value) || 0)}
+                        placeholder="Qty"
+                        value={itemQuantity === 1 ? "" : itemQuantity}
+                        onChange={(e) => setItemQuantity(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
+                        onKeyPress={(e) => {
+                          // Only allow numbers, backspace, delete, and arrow keys
+                          if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                            e.preventDefault();
+                          }
+                        }}
+                        onPaste={(e) => {
+                          // Prevent pasting non-numeric content
+                          const paste = e.clipboardData?.getData('text');
+                          if (paste && !/^\d+$/.test(paste)) {
+                            e.preventDefault();
+                          }
+                        }}
                       />
                     </TableCell>
                     <TableCell>

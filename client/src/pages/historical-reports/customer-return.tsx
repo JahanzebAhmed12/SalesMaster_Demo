@@ -122,18 +122,16 @@ export default function CustomerReturn() {
         if (companyDetails.address1) printWindow.document.write(`<p>${companyDetails.address1}</p>`);
         if (companyDetails.address2) printWindow.document.write(`<p>${companyDetails.address2}</p>`);
         
+        // Only include mobile and fax, exclude telephone
         let contactInfo = [];
-        if (companyDetails.telephone) contactInfo.push(`Tel: ${companyDetails.telephone}`);
         if (companyDetails.mobile) contactInfo.push(`Mobile: ${companyDetails.mobile}`);
         if (companyDetails.fax) contactInfo.push(`Fax: ${companyDetails.fax}`);
         if (contactInfo.length > 0) printWindow.document.write(`<p>${contactInfo.join(' | ')}</p>`);
         
-        if (companyDetails.email) printWindow.document.write(`<p>Email: ${companyDetails.email}</p>`);
-        if (companyDetails.website) printWindow.document.write(`<p>Website: ${companyDetails.website}</p>`);
+        // Removed email and website
         
+        // Only keep EINL if needed, removed VAT No and Reg No
         let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
         if (companyDetails.einlNumber) regInfo.push(`EINL: ${companyDetails.einlNumber}`);
         if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
         
