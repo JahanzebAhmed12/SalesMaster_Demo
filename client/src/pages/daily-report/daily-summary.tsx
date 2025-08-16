@@ -68,6 +68,8 @@ interface DailySummaryData {
     invoice_no: string; // Changed to invoice_no for sales summary
     cash_sales: number;
     card_paid: number;
+    bank_transfer: number;
+    cheque: number;
     account_sales: number;
     account_paid_cash: number;
     account_paid_cheque: number;
@@ -120,6 +122,8 @@ interface DailySummaryData {
   totals: {
     cash_sales: number;
     card_sales: number;
+    bank_transfer_sales: number;
+    cheque_sales: number;
     account_sales: number;
     account_credits: number;
     total_sales: number;
@@ -128,6 +132,7 @@ interface DailySummaryData {
     expense_total: number;
     cash_cf_total: number;
     banking_total: number;
+    bank_transfer_payments: number;
   };
 }
 
@@ -230,8 +235,29 @@ export default function DailySummary() {
     gcTime: 0,
   });
 
+  // Fetch bank transfer payments data
+  const { data: bankTransferPaymentsData = [] } = useQuery<any[]>({
+    queryKey: ["/api/reports/daily-book-sales-bank-transfer", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
+    queryFn: () => {
+      if (!selectedDate) return [];
+      const params = new URLSearchParams();
+      params.append("fromDate", format(selectedDate, "yyyy-MM-dd"));
+      params.append("toDate", format(selectedDate, "yyyy-MM-dd"));
+      params.append("paymentType", "bank_transfer");
+      params.append("salesman", "all");
+      params.append("search", "");
+      return apiRequest("GET", `/api/reports/daily-book-sales?${params.toString()}`);
+    },
+    enabled: !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
   // Calculate total cheque payments
   const totalChequePayments = chequePaymentsData.reduce((sum, payment) => sum + (payment.cheque || 0), 0);
+
+  // Calculate total bank transfer payments
+  const totalBankTransferPayments = bankTransferPaymentsData.reduce((sum, payment) => sum + (payment.bank_transfer || 0), 0);
 
   const handleGeneratePDF = async () => {
     if (!selectedDate) {
@@ -330,17 +356,19 @@ export default function DailySummary() {
     yPosition += 5;
 
     autoTable(doc, {
-      head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Account Sales', 'Account Credits']],
+      head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
       body: [
         ...summaryData.sales_summary.map(sale => [
           sale.customer_name,
           sale.invoice_no || '-',
           sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
           sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
+          sale.bank_transfer > 0 ? sale.bank_transfer.toFixed(2) : '-',
+          sale.cheque > 0 ? sale.cheque.toFixed(2) : '-',
           sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-',
           sale.account_credits > 0 ? sale.account_credits.toFixed(2) : '-'
         ]),
-        ['TOTALS', '', summaryData.totals.cash_sales.toFixed(2), summaryData.totals.card_sales.toFixed(2), summaryData.totals.account_sales.toFixed(2), (summaryData.totals.account_credits || 0).toFixed(2)]
+        ['TOTALS', '', summaryData.totals.cash_sales.toFixed(2), summaryData.totals.card_sales.toFixed(2), (summaryData.totals.bank_transfer_sales || 0).toFixed(2), (summaryData.totals.cheque_sales || 0).toFixed(2), summaryData.totals.account_sales.toFixed(2), (summaryData.totals.account_credits || 0).toFixed(2)]
       ],
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
@@ -696,17 +724,19 @@ export default function DailySummary() {
     yPosition += 5;
 
     autoTable(doc, {
-      head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Account Sales', 'Account Credits']],
+      head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
       body: [
         ...summaryData.sales_summary.map(sale => [
           sale.customer_name,
           sale.invoice_no || '-',
           sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
           sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
+          sale.bank_transfer > 0 ? sale.bank_transfer.toFixed(2) : '-',
+          sale.cheque > 0 ? sale.cheque.toFixed(2) : '-',
           sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-',
           sale.account_credits > 0 ? sale.account_credits.toFixed(2) : '-'
         ]),
-        ['TOTALS', '', summaryData.totals.cash_sales.toFixed(2), summaryData.totals.card_sales.toFixed(2), summaryData.totals.account_sales.toFixed(2), (summaryData.totals.account_credits || 0).toFixed(2)]
+        ['TOTALS', '', summaryData.totals.cash_sales.toFixed(2), summaryData.totals.card_sales.toFixed(2), (summaryData.totals.bank_transfer_sales || 0).toFixed(2), (summaryData.totals.cheque_sales || 0).toFixed(2), summaryData.totals.account_sales.toFixed(2), (summaryData.totals.account_credits || 0).toFixed(2)]
       ],
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
@@ -1003,6 +1033,8 @@ export default function DailySummary() {
                         <TableHead className="font-semibold border">Invoice No</TableHead>
                         <TableHead className="font-semibold border text-right">Cash Sales</TableHead>
                         <TableHead className="font-semibold border text-right">Card Paid</TableHead>
+                        <TableHead className="font-semibold border text-right">Bank Transfer</TableHead>
+                        <TableHead className="font-semibold border text-right">Cheque</TableHead>
                         <TableHead className="font-semibold border text-right">Account Sales</TableHead>
                         <TableHead className="font-semibold border text-right">Account Credits</TableHead>
                       </TableRow>
@@ -1019,6 +1051,12 @@ export default function DailySummary() {
                             {sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-'}
                           </TableCell>
                           <TableCell className="border text-right">
+                            {sale.bank_transfer > 0 ? sale.bank_transfer.toFixed(2) : '-'}
+                          </TableCell>
+                          <TableCell className="border text-right">
+                            {sale.cheque > 0 ? sale.cheque.toFixed(2) : '-'}
+                          </TableCell>
+                          <TableCell className="border text-right">
                             {sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-'}
                           </TableCell>
                           <TableCell className="border text-right">
@@ -1031,6 +1069,8 @@ export default function DailySummary() {
                         <TableCell className="border" colSpan={2}>TOTALS</TableCell>
                         <TableCell className="border text-right">{summaryData.totals.cash_sales.toFixed(2)}</TableCell>
                         <TableCell className="border text-right">{summaryData.totals.card_sales.toFixed(2)}</TableCell>
+                        <TableCell className="border text-right">{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</TableCell>
+                        <TableCell className="border text-right">{(summaryData.totals.cheque_sales || 0).toFixed(2)}</TableCell>
                         <TableCell className="border text-right">{summaryData.totals.account_sales.toFixed(2)}</TableCell>
                         <TableCell className="border text-right">{(summaryData.totals.account_credits || 0).toFixed(2)}</TableCell>
                       </TableRow>
@@ -1192,10 +1232,52 @@ export default function DailySummary() {
               </CardContent>
             </Card>
 
+            {/* Card Sales & Customer Card Payments */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Card Sales & Customer Card Payments</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-lg">
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Card Sales:</span>
+                    <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Account Paid Card(Backdate):</span>
+                    <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payment Received via Bank Transfer */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Received via Bank Transfer</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-lg">
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Bank Transfer Sales:</span>
+                    <span className="font-bold">£{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Customer Bank Transfer Payments:</span>
+                    <span className="font-bold">£{(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="font-medium">Total Bank Transfer Received:</span>
+                    <span className="font-bold">£{((summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0)).toFixed(2)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Daily Summary Totals */}
             <Card>
               <CardHeader>
-                <CardTitle>Daily Summary Totals</CardTitle>
+                <CardTitle>Total Banking</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 text-lg">
@@ -1204,8 +1286,8 @@ export default function DailySummary() {
                     <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Cheque :</span>
-                    <span className="font-bold">£{totalChequePayments.toFixed(2)}</span>
+                    <span className="font-medium">Total Cheque:</span>
+                    <span className="font-bold">£{(summaryData.totals.cheque_sales || 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Account Paid Cash(Backdate):</span>
@@ -1226,25 +1308,6 @@ export default function DailySummary() {
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Banking:</span>
                     <span className="font-bold">£{summaryData.totals.banking_total.toFixed(2)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Card Sales & Customer Card Payments */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Card Sales & Customer Card Payments</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-lg">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Card Sales:</span>
-                    <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Account Paid Card(Backdate):</span>
-                    <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
                   </div>
                 </div>
               </CardContent>

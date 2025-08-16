@@ -28,26 +28,25 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '30mm', left: '2mm' }, // Position for account number (customer ID) - moved up 5mm
-  customerName: { top: '40mm', left: '2mm' }, // Position for customer name - moved up 5mm
-  customerAddress: { top: '47mm', left: '2mm', width: '80mm' }, // Position for customer address with wrapping - moved up 5mm
-  ticketNo: { top: '65mm', left: '35mm' }, // Position for invoice number - moved down 4mm
-  date: { top: '65mm', left: '63mm' }, // Position for date - moved down 4mm
-  pageNumber: { top: '65mm', left: '120mm' }, // Position for page number (60mm right of date)
-  itemsStartTop: '80mm', // Starting position for items grid - moved down 5mm
+  accountNo: { top: '30mm', left: '5mm' }, // Position for account number (customer ID) - added 3mm margin
+  customerName: { top: '40mm', left: '5mm' }, // Position for customer name - added 3mm margin
+  customerAddress: { top: '47mm', left: '5mm', width: '75mm' }, // Position for customer address with wrapping - added margin, reduced width
+  ticketNo: { top: '65mm', left: '38mm' }, // Position for invoice number - adjusted for margin
+  date: { top: '65mm', left: '66mm' }, // Position for date - adjusted for margin
+  pageNumber: { top: '65mm', left: '120mm' }, // Position for page number
+  itemsStartTop: '80mm', // Starting position for items grid
   itemsRowHeight: '6mm', // Height between rows
-  maxItemsPerPage: 12, // Maximum items that fit on one page (before totals area)
-  // pageEndPosition: '170mm', // Page should end 15mm above totals (185mm - 15mm)
+  maxItemsPerPage: 11, // Reduced by 1 to account for margins
   columns: {
-    quantity: { left: '4mm', width: '15mm' } as ColumnConfig,
-    description: { left: '20mm', width: '80mm' } as ColumnConfig,
+    quantity: { left: '7mm', width: '15mm' } as ColumnConfig, // added 3mm margin
+    description: { left: '23mm', width: '75mm' } as ColumnConfig, // adjusted for margin, reduced width
     price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '120mm', width: '25mm', align: 'right' } as ColumnConfig
+    value: { left: '122mm', width: '25mm', align: 'right' } as ColumnConfig // adjusted for margin
   },
   totals: {
-    goods: { top: '130mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    vat: { top: '140mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    total: { top: '150mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
+    goods: { top: '125mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    vat: { top: '135mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    total: { top: '145mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
   }
 };
 
@@ -104,7 +103,7 @@ export default function DotMatrixInvoicePrintPage() {
   const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const pages = [];
-  
+
   for (let i = 0; i < totalPages; i++) {
     const startIndex = i * itemsPerPage;
     const endIndex = Math.min(startIndex + itemsPerPage, items?.length || 0);
@@ -120,8 +119,8 @@ export default function DotMatrixInvoicePrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 176mm 190mm; 
-            margin: 0; 
+            size: 186mm 200mm; 
+            margin: 3mm; 
             padding: 0;
           }
           body { 
@@ -142,8 +141,8 @@ export default function DotMatrixInvoicePrintPage() {
             box-shadow: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 176mm !important;
-            height: 200mm !important;
+            width: 180mm !important;
+            height: 194mm !important;
           }
         }
       `}</style>
@@ -164,8 +163,8 @@ export default function DotMatrixInvoicePrintPage() {
       {pages.map((page, pageIndex) => (
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
-          width: '176mm',
-          height: '200mm',
+          width: '180mm',
+          height: '194mm',
           margin: '0 auto',
           fontFamily: 'monospace',
           color: '#000',
