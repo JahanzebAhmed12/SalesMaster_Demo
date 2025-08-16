@@ -33,11 +33,11 @@ const FIELD_POSITIONS = {
   customerAddress: { top: '47mm', left: '2mm', width: '80mm' }, // Position for customer address with wrapping - moved up 5mm
   ticketNo: { top: '65mm', left: '35mm' }, // Position for invoice number - moved down 4mm
   date: { top: '65mm', left: '63mm' }, // Position for date - moved down 4mm
-  pageNumber: { top: '65mm', left: '123mm' }, // Position for page number (60mm right of date)
-  itemsStartTop: '85mm', // Starting position for items grid - moved down 5mm
+  pageNumber: { top: '65mm', left: '120mm' }, // Position for page number (60mm right of date)
+  itemsStartTop: '80mm', // Starting position for items grid - moved down 5mm
   itemsRowHeight: '6mm', // Height between rows
   maxItemsPerPage: 12, // Maximum items that fit on one page (before totals area)
-  pageEndPosition: '170mm', // Page should end 15mm above totals (185mm - 15mm)
+  // pageEndPosition: '170mm', // Page should end 15mm above totals (185mm - 15mm)
   columns: {
     quantity: { left: '4mm', width: '15mm' } as ColumnConfig,
     description: { left: '20mm', width: '80mm' } as ColumnConfig,
@@ -45,9 +45,9 @@ const FIELD_POSITIONS = {
     value: { left: '120mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '170mm', left: '120mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    vat: { top: '180mm', left: '120mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    total: { top: '150mm', left: '120mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
+    goods: { top: '130mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    vat: { top: '140mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    total: { top: '150mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
   }
 };
 
@@ -120,7 +120,7 @@ export default function DotMatrixInvoicePrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 186mm 200mm; 
+            size: 176mm 190mm; 
             margin: 0; 
             padding: 0;
           }
