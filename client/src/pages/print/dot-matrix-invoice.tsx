@@ -39,15 +39,15 @@ const FIELD_POSITIONS = {
   maxItemsPerPage: 12, // Maximum items that fit on one page (before totals area)
   pageEndPosition: '170mm', // Page should end 15mm above totals (185mm - 15mm)
   columns: {
-    quantity: { left: '2mm', width: '15mm' } as ColumnConfig,
+    quantity: { left: '4mm', width: '15mm' } as ColumnConfig,
     description: { left: '20mm', width: '80mm' } as ColumnConfig,
     price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '120mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '170mm', left: '123mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    vat: { top: '180mm', left: '123mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
-    total: { top: '190mm', left: '123mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
+    goods: { top: '170mm', left: '120mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    vat: { top: '180mm', left: '120mm', width: '25mm', align: 'right' } as TotalConfig, // moved down 5mm
+    total: { top: '150mm', left: '120mm', width: '25mm', align: 'right' } as TotalConfig // moved down 5mm
   }
 };
 
@@ -120,7 +120,7 @@ export default function DotMatrixInvoicePrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 176mm 200mm; 
+            size: 186mm 200mm; 
             margin: 0; 
             padding: 0;
           }
