@@ -28,25 +28,25 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '15mm', left: '1mm' }, // Position for account number (customer ID) - added 3mm margin
-  customerName: { top: '30mm', left: '3mm' }, // Position for customer name - added 3mm margin
-  customerAddress: { top: '47mm', left: '5mm', width: '75mm' }, // Position for customer address with wrapping - added margin, reduced width
-  ticketNo: { top: '75mm', left: '28mm' }, // Position for invoice number - adjusted for margin
-  date: { top: '75mm', left: '56mm' }, // Position for date - adjusted for margin
-  pageNumber: { top: '75mm', left: '112mm' }, // Position for page number
+  accountNo: { top: '25mm', left: '1mm' }, // Position for account number (customer ID) - added 3mm margin
+  customerName: { top: '35mm', left: '1mm' }, // Position for customer name - added 3mm margin
+  customerAddress: { top: '40mm', left: '1mm', width: '50mm' }, // Position for customer address with wrapping - added margin, reduced width
+  ticketNo: { top: '75mm', left: '23mm' }, // Position for invoice number - adjusted for margin
+  date: { top: '75mm', left: '50mm' }, // Position for date - adjusted for margin
+  pageNumber: { top: '75mm', left: '118mm' }, // Position for page number
   itemsStartTop: '95mm', // Starting position for items grid
   itemsRowHeight: '6mm', // Height between rows
   maxItemsPerPage: 11, // Reduced by 1 to account for margins
   columns: {
-    quantity: { left: '3mm', width: '15mm' } as ColumnConfig, // added 3mm margin
+    quantity: { left: '1mm', width: '15mm' } as ColumnConfig, // added 3mm margin
     description: { left: '13mm', width: '75mm' } as ColumnConfig, // adjusted for margin, reduced width
     price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig // adjusted for margin
   },
   totals: {
-    goods: { top: '165mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
-    vat: { top: '175mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
-    total: { top: '185mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
+    goods: { top: '167mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    vat: { top: '177mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    total: { top: '185mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
   }
 };
 
