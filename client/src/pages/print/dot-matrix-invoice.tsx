@@ -114,6 +114,14 @@ export default function DotMatrixInvoicePrintPage() {
     });
   }
 
+  // Helper function to determine if page break is needed
+  const shouldBreakPage = (pageIndex: number) => {
+    // Only break if there are more pages AND the next page has actual content
+    const hasNextPage = pageIndex < pages.length - 1;
+    const nextPageHasContent = hasNextPage && pages[pageIndex + 1]?.items?.length > 0;
+    return hasNextPage && nextPageHasContent;
+  };
+
   return (
     <div className="min-h-screen">
       <style>{`
@@ -147,6 +155,13 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-inside: avoid !important;
             overflow: hidden !important;
           }
+          
+          /* Mobile-specific height reduction to prevent false overflow */
+          @media print and (max-width: 768px) {
+            .dot-matrix-print {
+              height: 185mm !important;
+            }
+          }
         }
       `}</style>
 
@@ -174,7 +189,7 @@ export default function DotMatrixInvoicePrintPage() {
           fontFamily: 'monospace',
           color: '#000',
           backgroundColor: '#fff',
-          pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'avoid',
+          pageBreakAfter: shouldBreakPage(pageIndex) ? 'always' : 'avoid',
           pageBreakInside: 'avoid',
           overflow: 'hidden'
         }}>
