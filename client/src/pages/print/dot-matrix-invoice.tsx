@@ -28,7 +28,7 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '25mm', left: '3mm' }, // Position for account number (customer ID) - added 3mm margin
+  accountNo: { top: '15mm', left: '1mm' }, // Position for account number (customer ID) - added 3mm margin
   customerName: { top: '30mm', left: '3mm' }, // Position for customer name - added 3mm margin
   customerAddress: { top: '47mm', left: '5mm', width: '75mm' }, // Position for customer address with wrapping - added margin, reduced width
   ticketNo: { top: '75mm', left: '28mm' }, // Position for invoice number - adjusted for margin
@@ -120,7 +120,7 @@ export default function DotMatrixInvoicePrintPage() {
         @media print {
           @page { 
             size: 186mm 200mm; 
-            margin: 3mm; 
+            margin: 0mm; 
             padding: 0;
           }
           body { 
@@ -140,7 +140,7 @@ export default function DotMatrixInvoicePrintPage() {
             background: none !important; 
             box-shadow: none !important;
             margin: 0 !important;
-            padding: 3mm !important;
+            padding: 0mm !important;
             width: 186mm !important;
             height: 200mm !important;
             box-sizing: border-box !important;
