@@ -28,25 +28,25 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '30mm', left: '5mm' }, // Position for account number (customer ID) - added 3mm margin
-  customerName: { top: '40mm', left: '5mm' }, // Position for customer name - added 3mm margin
+  accountNo: { top: '25mm', left: '3mm' }, // Position for account number (customer ID) - added 3mm margin
+  customerName: { top: '30mm', left: '3mm' }, // Position for customer name - added 3mm margin
   customerAddress: { top: '47mm', left: '5mm', width: '75mm' }, // Position for customer address with wrapping - added margin, reduced width
-  ticketNo: { top: '65mm', left: '38mm' }, // Position for invoice number - adjusted for margin
-  date: { top: '65mm', left: '66mm' }, // Position for date - adjusted for margin
-  pageNumber: { top: '65mm', left: '120mm' }, // Position for page number
-  itemsStartTop: '80mm', // Starting position for items grid
+  ticketNo: { top: '75mm', left: '28mm' }, // Position for invoice number - adjusted for margin
+  date: { top: '75mm', left: '56mm' }, // Position for date - adjusted for margin
+  pageNumber: { top: '75mm', left: '112mm' }, // Position for page number
+  itemsStartTop: '95mm', // Starting position for items grid
   itemsRowHeight: '6mm', // Height between rows
   maxItemsPerPage: 11, // Reduced by 1 to account for margins
   columns: {
-    quantity: { left: '7mm', width: '15mm' } as ColumnConfig, // added 3mm margin
-    description: { left: '23mm', width: '75mm' } as ColumnConfig, // adjusted for margin, reduced width
-    price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '122mm', width: '25mm', align: 'right' } as ColumnConfig // adjusted for margin
+    quantity: { left: '3mm', width: '15mm' } as ColumnConfig, // added 3mm margin
+    description: { left: '13mm', width: '75mm' } as ColumnConfig, // adjusted for margin, reduced width
+    price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig // adjusted for margin
   },
   totals: {
-    goods: { top: '125mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
-    vat: { top: '135mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
-    total: { top: '145mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
+    goods: { top: '165mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    vat: { top: '175mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    total: { top: '185mm', left: '100mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
   }
 };
 
@@ -140,9 +140,10 @@ export default function DotMatrixInvoicePrintPage() {
             background: none !important; 
             box-shadow: none !important;
             margin: 0 !important;
-            padding: 0 !important;
-            width: 180mm !important;
-            height: 194mm !important;
+            padding: 3mm !important;
+            width: 186mm !important;
+            height: 200mm !important;
+            box-sizing: border-box !important;
           }
         }
       `}</style>
@@ -163,9 +164,11 @@ export default function DotMatrixInvoicePrintPage() {
       {pages.map((page, pageIndex) => (
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
-          width: '180mm',
-          height: '194mm',
+          width: '186mm',
+          height: '200mm',
           margin: '0 auto',
+          padding: '3mm',
+          boxSizing: 'border-box',
           fontFamily: 'monospace',
           color: '#000',
           backgroundColor: '#fff',
