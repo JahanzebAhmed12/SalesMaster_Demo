@@ -144,6 +144,8 @@ export default function DotMatrixInvoicePrintPage() {
             width: 186mm !important;
             height: 190mm !important;
             box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+            overflow: hidden !important;
           }
         }
       `}</style>
@@ -172,7 +174,9 @@ export default function DotMatrixInvoicePrintPage() {
           fontFamily: 'monospace',
           color: '#000',
           backgroundColor: '#fff',
-          pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto'
+          pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'avoid',
+          pageBreakInside: 'avoid',
+          overflow: 'hidden'
         }}>
           {/* Account Number (Customer ID) */}
           <div style={{
