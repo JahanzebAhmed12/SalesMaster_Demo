@@ -46,7 +46,7 @@ const FIELD_POSITIONS = {
   totals: {
     goods: { top: '167mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
     vat: { top: '177mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
-    total: { top: '182mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
+    total: { top: '180mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
   }
 };
 
@@ -127,7 +127,7 @@ export default function DotMatrixInvoicePrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 186mm 200mm; 
+            size: 186mm 190mm; 
             margin: 3mm; 
             padding: 0;
           }
