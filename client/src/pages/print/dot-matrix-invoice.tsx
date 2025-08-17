@@ -161,7 +161,7 @@ export default function DotMatrixInvoicePrintPage() {
           /* Mobile-specific height reduction to prevent false overflow */
           @media print and (max-width: 768px) {
             .dot-matrix-print {
-              height: 185mm !important;
+              height: 200mm !important;
             }
           }
         }
