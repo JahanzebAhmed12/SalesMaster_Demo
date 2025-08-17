@@ -134,7 +134,7 @@ export default function DotMatrixInvoicePrintPage() {
           html, body { 
             margin: 0; 
             padding: 0;
-            width: 186mm !important;    /* match your layout width */
+            width: 186mm !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -151,16 +151,62 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 3mm !important;
             width: 186mm !important;
-            min-height: 200mm !important;
-            max-height: 200mm !important;
+            height: 200mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
             overflow: hidden !important;
           }
-          
-       
         }
       `}</style>
+
+      <script dangerouslySetInnerHTML={{
+        __html: `
+          function isMobileDevice() {
+            return /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+          }
+          
+          function injectMobileStyles() {
+            if (isMobileDevice()) {
+              let existingStyle = document.getElementById('mobile-print-fix');
+              if (!existingStyle) {
+                let style = document.createElement("style");
+                style.id = 'mobile-print-fix';
+                style.innerHTML = \`
+                  @media print {
+                    @page { 
+                      size: 186mm 199mm; 
+                      margin: 3mm; 
+                    }
+                    .dot-matrix-print {
+                      height: 199mm !important;
+                      max-height: 199mm !important;
+                      min-height: 199mm !important;
+                    }
+                  }
+                \`;
+                document.head.appendChild(style);
+              }
+            }
+          }
+          
+          // Apply mobile styles immediately if on mobile
+          if (isMobileDevice()) {
+            injectMobileStyles();
+          }
+          
+          // Also apply before printing
+          window.onbeforeprint = function() {
+            injectMobileStyles();
+          }
+          
+          // Handle print preview detection
+          window.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+              setTimeout(injectMobileStyles, 100);
+            }
+          });
+        `
+      }} />
 
       {/* Print Preview Header - hidden during print */}
       <div className="p-4 bg-gray-100 print:hidden">
@@ -181,7 +227,7 @@ export default function DotMatrixInvoicePrintPage() {
           width: '186mm',
           height: '200mm',
           margin: '0 auto',
-          padding: '0mm',
+          padding: '3mm',
           boxSizing: 'border-box',
           fontFamily: 'monospace',
           color: '#000',
