@@ -84,9 +84,76 @@ export default function DotMatrixInvoicePrintPage() {
     fetchInvoice();
   }, [invoiceNumber]);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     console.log('Print button clicked');
-    window.print();
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      console.log('Mobile detected - using server PDF...');
+      await handleServerPDF();
+    } else {
+      console.log('Desktop detected - using browser print...');
+      window.print();
+    }
+  };
+
+  const handleServerPDF = async () => {
+    try {
+      console.log('Generating server PDF for invoice:', invoiceNumber);
+
+      const response = await fetch('/api/generate-invoice-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          invoiceNumber: invoiceNumber
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Convert response to blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      console.log('PDF generated, opening print window...');
+
+      // Open PDF in new window and auto-print
+      const printWindow = window.open(url, '_blank', 'width=800,height=600');
+
+      if (printWindow) {
+        printWindow.onload = () => {
+          setTimeout(() => {
+            console.log('Auto-printing PDF...');
+            printWindow.print();
+          }, 1000);
+        };
+
+        // Clean up blob URL after 10 seconds
+        setTimeout(() => {
+          window.URL.revokeObjectURL(url);
+        }, 10000);
+      } else {
+        console.error('Failed to open print window - popup blocked?');
+        // Fallback: download the PDF
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `invoice-${invoiceNumber}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }
+
+    } catch (error) {
+      console.error('Server PDF generation failed:', error);
+      console.log('Falling back to browser print...');
+      // Fallback to browser print if server PDF fails
+      window.print();
+    }
   };
 
   if (loading) return <div className="p-4 print:hidden">Loading invoice...</div>;
@@ -141,8 +208,6 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0; 
             padding: 0;
             width: 186mm !important;
-            height: 200mm !important;
-            overflow: hidden !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -163,30 +228,7 @@ export default function DotMatrixInvoicePrintPage() {
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
             page-break-after: never !important;
-            page-break-before: avoid !important;
-            break-after: avoid !important;
-            break-before: avoid !important;
-            break-inside: avoid !important;
             overflow: hidden !important;
-          }
-          
-          /* Android-specific nuclear option */
-          @media print and (max-width: 768px) {
-            @page { 
-              size: 186mm 180mm !important;
-              margin: 2mm !important;
-            }
-            html, body {
-              height: 180mm !important;
-            }
-            .dot-matrix-print {
-              height: 180mm !important;
-              max-height: 180mm !important;
-              min-height: 180mm !important;
-              padding: 2mm !important;
-              transform: scale(0.9) !important;
-              transform-origin: top left !important;
-            }
           }
         }
       `}</style>
@@ -197,12 +239,20 @@ export default function DotMatrixInvoicePrintPage() {
       <div className="p-4 bg-gray-100 print:hidden">
         <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
         <p className="text-sm text-gray-600 mb-4">Invoice: {sale?.invoice_number}</p>
-        <button
-          onClick={handlePrint}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          Print Invoice
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handlePrint}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Print Invoice
+          </button>
+          <button
+            onClick={handleServerPDF}
+            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            Server PDF
+          </button>
+        </div>
       </div>
 
       {/* Dot Matrix Content - only this shows during print */}
@@ -210,7 +260,7 @@ export default function DotMatrixInvoicePrintPage() {
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
           width: '186mm',
-          height: isMobile ? '180mm' : '200mm',
+          height: '200mm',
           margin: '0 auto',
           padding: '3mm',
           boxSizing: 'border-box',

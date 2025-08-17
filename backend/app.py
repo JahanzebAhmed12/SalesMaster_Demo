@@ -28,7 +28,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from flask import render_template
 from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email, send_purchase_invoice_email, send_supplier_statement_email, load_email_config, save_email_config
-
+from invoice_pdf_routes import add_pdf_routes
 # Load environment variables
 load_dotenv()
 
@@ -8147,6 +8147,50 @@ def get_invoice_data(invoice_number):
         print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
+# Create a wrapper function that returns dict instead of Flask response
+def get_invoice_data_for_pdf(invoice_number):
+    """Return invoice data as dictionary for PDF generation"""
+    try:
+        # Get sale
+        sale = Sale.query.filter_by(invoice_number=invoice_number).first()
+        if not sale:
+            return None
+        
+        # Get company info
+        company = Company.query.first()
+        company_info = company.to_dict() if company else {}
+        
+        # Get customer info
+        customer = sale.customer.to_dict() if sale.customer else {}
+        
+        # Get sale items
+        items = [item.to_dict() for item in sale.items]
+        
+        # Payment info
+        paid_amount = float(sale.paid_amount or 0)
+        balance = float(sale.total_amount) - paid_amount
+        
+        # Notes
+        notes = (
+            "NO COMPLAINTS OR RETURNS CONSIDERED AFTER 24 HOURS\n"
+            "Make payments to:TROPIFRUIT UK LTD SORT CODE 20-26-53 ACC# 33378292"
+        )
+        
+        # Return dictionary (not Flask response)
+        return {
+            'company': company_info,
+            'customer': customer,
+            'sale': sale.to_dict(),
+            'items': items,
+            'paidAmount': paid_amount,
+            'balance': balance,
+            'notes': notes
+        }
+    except Exception as e:
+        print(f'[ERROR] Exception in get_invoice_data_for_pdf: {str(e)}')
+        return None
+
+add_pdf_routes(app, get_invoice_data_for_pdf)
 @app.route('/api/reports/profit-loss', methods=['GET'])
 @jwt_required()
 def profit_loss_report():
