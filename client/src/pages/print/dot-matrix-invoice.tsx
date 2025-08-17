@@ -152,7 +152,7 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 3mm !important;
             width: 186mm !important;
-            height: 190mm !important;
+            height: 200mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
             overflow: hidden !important;
@@ -184,9 +184,9 @@ export default function DotMatrixInvoicePrintPage() {
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
           width: '186mm',
-          height: '190mm',
+          height: '200mm',
           margin: '0 auto',
-          padding: '3mm',
+          padding: '0mm',
           boxSizing: 'border-box',
           fontFamily: 'monospace',
           color: '#000',
