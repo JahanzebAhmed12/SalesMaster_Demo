@@ -114,9 +114,15 @@ export default function DotMatrixInvoicePrintPage() {
     });
   }
 
+  // Mobile detection
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
   // Helper function to determine if page break is needed
   const shouldBreakPage = (pageIndex: number) => {
-    // Only break if there are more pages AND the next page has actual content
+    // On mobile, never break pages to prevent extra blank pages
+    if (isMobile) return false;
+
+    // On desktop, use normal logic
     const hasNextPage = pageIndex < pages.length - 1;
     const nextPageHasContent = hasNextPage && pages[pageIndex + 1]?.items?.length > 0;
     return hasNextPage && nextPageHasContent;
@@ -154,59 +160,13 @@ export default function DotMatrixInvoicePrintPage() {
             height: 200mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
+            page-break-after: never !important;
             overflow: hidden !important;
           }
         }
       `}</style>
 
-      <script dangerouslySetInnerHTML={{
-        __html: `
-          function isMobileDevice() {
-            return /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-          }
-          
-          function injectMobileStyles() {
-            if (isMobileDevice()) {
-              let existingStyle = document.getElementById('mobile-print-fix');
-              if (!existingStyle) {
-                let style = document.createElement("style");
-                style.id = 'mobile-print-fix';
-                style.innerHTML = \`
-                  @media print {
-                    @page { 
-                      size: 186mm 199mm; 
-                      margin: 3mm; 
-                    }
-                    .dot-matrix-print {
-                      height: 199mm !important;
-                      max-height: 199mm !important;
-                      min-height: 199mm !important;
-                    }
-                  }
-                \`;
-                document.head.appendChild(style);
-              }
-            }
-          }
-          
-          // Apply mobile styles immediately if on mobile
-          if (isMobileDevice()) {
-            injectMobileStyles();
-          }
-          
-          // Also apply before printing
-          window.onbeforeprint = function() {
-            injectMobileStyles();
-          }
-          
-          // Handle print preview detection
-          window.addEventListener('keydown', function(e) {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
-              setTimeout(injectMobileStyles, 100);
-            }
-          });
-        `
-      }} />
+
 
       {/* Print Preview Header - hidden during print */}
       <div className="p-4 bg-gray-100 print:hidden">
