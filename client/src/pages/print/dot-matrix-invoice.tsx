@@ -121,31 +121,78 @@ export default function DotMatrixInvoicePrintPage() {
 
       console.log('PDF generated, opening print window...');
 
-      // Open PDF in new window and auto-print
-      const printWindow = window.open(url, '_blank', 'width=800,height=600');
-
-      if (printWindow) {
-        printWindow.onload = () => {
+      // Try multiple approaches for mobile PDF printing
+      const isMobileSafari = /iPhone|iPad/.test(navigator.userAgent);
+      const isAndroid = /Android/.test(navigator.userAgent);
+      
+      if (isMobileSafari) {
+        // iOS Safari: Open PDF directly and let user print manually
+        console.log('iOS detected - opening PDF for manual printing...');
+        window.open(url, '_blank');
+        
+        // Show user instruction
+        alert('PDF opened in new tab. Tap the Share button and select Print to print the invoice.');
+        
+        setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        
+      } else if (isAndroid) {
+        // Android: Try multiple approaches
+        console.log('Android detected - trying multiple print approaches...');
+        
+        // Approach 1: Try opening with print intent
+        const printWindow = window.open(url, '_blank', 'width=800,height=600');
+        
+        if (printWindow) {
+          // Wait for PDF to load, then try to trigger print
           setTimeout(() => {
-            console.log('Auto-printing PDF...');
-            printWindow.print();
-          }, 1000);
-        };
-
-        // Clean up blob URL after 10 seconds
-        setTimeout(() => {
+            try {
+              printWindow.print();
+            } catch (e) {
+              console.log('Auto-print failed, showing manual instruction');
+              // If auto-print fails, show instruction
+              alert('PDF opened in new tab. Use your browser menu (⋮) and select Print to print the invoice.');
+            }
+          }, 2000); // Longer delay for Android
+          
+          setTimeout(() => window.URL.revokeObjectURL(url), 15000);
+        } else {
+          // Popup blocked - download instead
+          console.log('Popup blocked - downloading PDF...');
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `invoice-${invoiceNumber}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
           window.URL.revokeObjectURL(url);
-        }, 10000);
+          
+          alert('PDF downloaded. Open the downloaded file and use your device\'s print option.');
+        }
+        
       } else {
-        console.error('Failed to open print window - popup blocked?');
-        // Fallback: download the PDF
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `invoice-${invoiceNumber}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
+        // Desktop or other mobile browsers
+        console.log('Desktop/other browser - using standard approach...');
+        const printWindow = window.open(url, '_blank', 'width=800,height=600');
+        
+        if (printWindow) {
+          printWindow.onload = () => {
+            setTimeout(() => {
+              console.log('Auto-printing PDF...');
+              printWindow.print();
+            }, 1000);
+          };
+          
+          setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        } else {
+          // Fallback: download the PDF
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `invoice-${invoiceNumber}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        }
       }
 
     } catch (error) {
@@ -239,7 +286,7 @@ export default function DotMatrixInvoicePrintPage() {
       <div className="p-4 bg-gray-100 print:hidden">
         <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
         <p className="text-sm text-gray-600 mb-4">Invoice: {sale?.invoice_number}</p>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button
             onClick={handlePrint}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -252,6 +299,21 @@ export default function DotMatrixInvoicePrintPage() {
           >
             Server PDF
           </button>
+          {isMobile && (
+            <button
+              onClick={() => {
+                // Direct download for mobile users who prefer it
+                handleServerPDF().then(() => {
+                  setTimeout(() => {
+                    alert('If print dialog didn\'t open automatically, check your Downloads folder for the PDF file and print it from there.');
+                  }, 3000);
+                });
+              }}
+              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              Download PDF
+            </button>
+          )}
         </div>
       </div>
 
