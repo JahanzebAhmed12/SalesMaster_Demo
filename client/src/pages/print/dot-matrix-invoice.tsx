@@ -127,13 +127,15 @@ export default function DotMatrixInvoicePrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 186mm 190mm; 
+            size: 186mm 200mm; 
             margin: 3mm; 
             padding: 0;
           }
-          body { 
+          html, body { 
             margin: 0; 
             padding: 0;
+            height: 200mm !important;   /* force 1-page height */
+            width: 186mm !important;    /* match your layout width */
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
