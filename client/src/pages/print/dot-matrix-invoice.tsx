@@ -134,7 +134,6 @@ export default function DotMatrixInvoicePrintPage() {
           html, body { 
             margin: 0; 
             padding: 0;
-            height: 200mm !important;   /* force 1-page height */
             width: 186mm !important;    /* match your layout width */
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -152,7 +151,8 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 3mm !important;
             width: 186mm !important;
-            height: 200mm !important;
+            min-height: 200mm !important;
+            max-height: 200mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
             overflow: hidden !important;
