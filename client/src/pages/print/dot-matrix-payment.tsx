@@ -36,25 +36,25 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '08mm', left: '4mm' }, // Position for account number (customer ID) - moved up 5mm
-  customerName: { top: '20mm', left: '4mm' }, // Position for customer name - moved up 5mm
-  customerAddress: { top: '28mm', left: '4mm', width: '50mm' }, // Position for customer address with wrapping - moved up 5mm
-  paymentId: { top: '65mm', left: '35mm' }, // Position for payment ID
-  date: { top: '65mm', left: '63mm' }, // Position for date
-  pageNumber: { top: '175mm', left: '50mm' }, // Position for page number (60mm right of date)
-  itemsStartTop: '85mm', // Starting position for items grid
-  itemsRowHeight: '12mm', // Height between rows
-  maxItemsPerPage: 6, // Maximum payment items that fit on one page (considering larger row height)
-  pageEndPosition: '170mm', // Page should end 15mm above totals (185mm - 15mm)
+  accountNo: { top: '25mm', left: '1mm' }, // Position for account number (customer ID) - added 3mm margin
+  customerName: { top: '35mm', left: '1mm' }, // Position for customer name - added 3mm margin
+  customerAddress: { top: '40mm', left: '1mm', width: '50mm' }, // Position for customer address with wrapping - added margin, reduced width
+  ticketNo: { top: '75mm', left: '23mm' }, // Position for payment batch ID - adjusted for margin
+  date: { top: '75mm', left: '50mm' }, // Position for date - adjusted for margin
+  pageNumber: { top: '75mm', left: '118mm' }, // Position for page number
+  itemsStartTop: '95mm', // Starting position for items grid
+  itemsRowHeight: '6mm', // Height between rows
+  maxItemsPerPage: 11, // Reduced by 1 to account for margins
   columns: {
-    quantity: { left: '4mm', width: '15mm' } as ColumnConfig,
-    description: { left: '20mm', width: '80mm' } as ColumnConfig,
-    price: { left: '100mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '125mm', width: '25mm', align: 'right' } as ColumnConfig
+    quantity: { left: '1mm', width: '15mm' } as ColumnConfig, // added 3mm margin
+    description: { left: '13mm', width: '75mm' } as ColumnConfig, // adjusted for margin, reduced width
+    price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig // adjusted for margin
   },
   totals: {
-    goods: { top: '172mm', left: '125mm', width: '25mm', align: 'right' } as TotalConfig,
-
+    goods: { top: '167mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    vat: { top: '177mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig, // moved up to fit in bounds
+    total: { top: '187mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig // moved up to fit in bounds
   }
 };
 
@@ -98,9 +98,123 @@ export default function DotMatrixPaymentPrintPage() {
     fetchPayment();
   }, [batchId]);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     console.log('Print button clicked');
-    window.print();
+    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      console.log('Mobile detected - using server PDF...');
+      await handleServerPDF();
+    } else {
+      console.log('Desktop detected - using browser print...');
+      window.print();
+    }
+  };
+
+  const handleServerPDF = async () => {
+    try {
+      console.log('Generating server PDF for payment batch:', batchId);
+
+      const response = await fetch('/api/generate-payment-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          batchId: batchId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      // Convert response to blob
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      console.log('PDF generated, opening print window...');
+
+      // Try multiple approaches for mobile PDF printing
+      const isMobileSafari = /iPhone|iPad/.test(navigator.userAgent);
+      const isAndroid = /Android/.test(navigator.userAgent);
+
+      if (isMobileSafari) {
+        // iOS Safari: Open PDF directly and let user print manually
+        console.log('iOS detected - opening PDF for manual printing...');
+        window.open(url, '_blank');
+
+        // Show user instruction
+        alert('PDF opened in new tab. Tap the Share button and select Print to print the payment receipt.');
+
+        setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+
+      } else if (isAndroid) {
+        // Android: Try multiple approaches
+        console.log('Android detected - trying multiple print approaches...');
+
+        // Approach 1: Try opening with print intent
+        const printWindow = window.open(url, '_blank', 'width=800,height=600');
+
+        if (printWindow) {
+          // Wait for PDF to load, then try to trigger print
+          setTimeout(() => {
+            try {
+              printWindow.print();
+            } catch (e) {
+              console.log('Auto-print failed, showing manual instruction');
+              // If auto-print fails, show instruction
+              alert('PDF opened in new tab. Use your browser menu (⋮) and select Print to print the payment receipt.');
+            }
+          }, 2000); // Longer delay for Android
+
+          setTimeout(() => window.URL.revokeObjectURL(url), 15000);
+        } else {
+          // Popup blocked - download instead
+          console.log('Popup blocked - downloading PDF...');
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `payment-receipt-${batchId}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+
+          alert('PDF downloaded. Open the downloaded file and use your device\'s print option.');
+        }
+
+      } else {
+        // Desktop or other mobile browsers
+        console.log('Desktop/other browser - using standard approach...');
+        const printWindow = window.open(url, '_blank', 'width=800,height=600');
+
+        if (printWindow) {
+          printWindow.onload = () => {
+            setTimeout(() => {
+              console.log('Auto-printing PDF...');
+              printWindow.print();
+            }, 1000);
+          };
+
+          setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        } else {
+          // Fallback: download the PDF
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `payment-receipt-${batchId}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        }
+      }
+
+    } catch (error) {
+      console.error('Server PDF generation failed:', error);
+      console.log('Falling back to browser print...');
+      // Fallback to browser print if server PDF fails
+      window.print();
+    }
   };
 
   if (loading) return <div className="p-4 print:hidden">Loading payment receipt...</div>;
@@ -125,19 +239,33 @@ export default function DotMatrixPaymentPrintPage() {
     });
   }
 
+  // Mobile detection
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+  // Helper function to determine if page break is needed
+  const shouldBreakPage = (pageIndex: number) => {
+    // On mobile, never break pages to prevent extra blank pages
+    if (isMobile) return false;
+
+    // On desktop, use normal logic
+    const hasNextPage = pageIndex < pages.length - 1;
+    const nextPageHasContent = hasNextPage && pages[pageIndex + 1]?.payments?.length > 0;
+    return hasNextPage && nextPageHasContent;
+  };
+
   return (
     <div className="min-h-screen">
       <style>{`
         @media print {
           @page { 
-            
-            size: 176mm 190mm; 
-            margin: 0; 
+            size: 186mm 200mm; 
+            margin: 3mm; 
             padding: 0;
           }
-          body { 
+          html, body { 
             margin: 0; 
             padding: 0;
+            width: 186mm !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
@@ -152,23 +280,50 @@ export default function DotMatrixPaymentPrintPage() {
             background: none !important; 
             box-shadow: none !important;
             margin: 0 !important;
-            padding: 0 !important;
-            width: 176mm !important;
+            padding: 3mm !important;
+            width: 186mm !important;
             height: 200mm !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+            page-break-after: never !important;
+            overflow: hidden !important;
           }
         }
       `}</style>
 
       {/* Print Preview Header - hidden during print */}
       <div className="p-4 bg-gray-100 print:hidden">
-        <h1 className="text-xl font-bold mb-2">Payment Receipt - Dot Matrix Print Preview</h1>
-        <p className="text-sm text-gray-600 mb-4">Payment ID: {batchId}</p>
-        <button
-          onClick={handlePrint}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          Print Payment Receipt
-        </button>
+        <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
+        <p className="text-sm text-gray-600 mb-4">Payment Receipt: {batchId}</p>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={handlePrint}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            Print Payment Receipt
+          </button>
+          <button
+            onClick={handleServerPDF}
+            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            Server PDF
+          </button>
+          {isMobile && (
+            <button
+              onClick={() => {
+                // Direct download for mobile users who prefer it
+                handleServerPDF().then(() => {
+                  setTimeout(() => {
+                    alert('If print dialog didn\'t open automatically, check your Downloads folder for the PDF file and print it from there.');
+                  }, 3000);
+                });
+              }}
+              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            >
+              Download PDF
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Dot Matrix Content - only this shows during print */}
@@ -178,10 +333,14 @@ export default function DotMatrixPaymentPrintPage() {
           width: '186mm',
           height: '200mm',
           margin: '0 auto',
+          padding: '3mm',
+          boxSizing: 'border-box',
           fontFamily: 'monospace',
           color: '#000',
           backgroundColor: '#fff',
-          pageBreakAfter: pageIndex < pages.length - 1 ? 'always' : 'auto'
+          pageBreakAfter: shouldBreakPage(pageIndex) ? 'always' : 'avoid',
+          pageBreakInside: 'avoid',
+          overflow: 'hidden'
         }}>
           {/* Account Number (Customer ID) */}
           <div style={{
@@ -220,7 +379,7 @@ export default function DotMatrixPaymentPrintPage() {
           {/* Payment ID */}
           <div style={{
             position: 'absolute',
-            ...FIELD_POSITIONS.paymentId,
+            ...FIELD_POSITIONS.ticketNo,
             fontFamily: 'monospace',
             fontSize: '12pt'
           }}>
@@ -271,11 +430,11 @@ export default function DotMatrixPaymentPrintPage() {
                 fontFamily: 'monospace',
                 fontSize: '12pt'
               }}>
-                {payment.paymentMode === 'cash' ? 'Cash Payment' : 
-                 payment.paymentMode === 'bank' ? 'Card Payment' :
-                 payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
-                 payment.paymentMode === 'cheque' ? 'Cheque Payment' :
-                 'Payment'}
+                {payment.paymentMode === 'cash' ? 'Cash Payment' :
+                  payment.paymentMode === 'bank' ? 'Card Payment' :
+                    payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
+                      payment.paymentMode === 'cheque' ? 'Cheque Payment' :
+                        'Payment'}
               </div>
 
               {/* Invoice Number - positioned 5mm below payment description */}
