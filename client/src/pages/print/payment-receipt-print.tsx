@@ -44,16 +44,23 @@ const PaymentReceiptPrint = () => {
   useEffect(() => {
     if (!paymentId) return;
     
-    // Fetch payment data instead of sale data
-    apiRequest("GET", `/api/payments/batch/${paymentId}`)
-      .then(async (res) => {
+    // Fetch payment data and company details
+    Promise.all([
+      apiRequest("GET", `/api/payments/batch/${paymentId}`),
+      publicApiRequest("GET", "/api/company-details")
+    ])
+      .then(async ([paymentRes, companyRes]) => {
         // Get customer details from the first payment
-        if (res.payments && res.payments.length > 0) {
-          const customerId = res.payments[0].customerId;
+        if (paymentRes.payments && paymentRes.payments.length > 0) {
+          const customerId = paymentRes.payments[0].customerId;
           const customerResponse = await apiRequest("GET", `/api/customers/${customerId}`);
-          res.customer = customerResponse;
+          paymentRes.customer = customerResponse;
         }
-        setData(res);
+        
+        // Add company details to the response
+        paymentRes.company = companyRes;
+        
+        setData(paymentRes);
         setLoading(false);
       })
       .catch((err) => {
@@ -87,38 +94,44 @@ const PaymentReceiptPrint = () => {
   const paymentDate = payments?.[0]?.paymentDate;
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
-      {/* Header: Logo and Receipt Number */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        {/* Logo and Company Info */}
+    <div className="invoice-container" style={{ maxWidth: 700, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
+      {/* Header: Company Details and Logo */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        {/* Company Info on Left */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-          <img src={logo} alt="Logo" style={{ height: 60, marginBottom: 8 }} />
           <div style={{ fontWeight: "bold", fontSize: 18 }}>{data.company?.companyName || "Company Name"}</div>
           <div style={{ fontSize: 14 }}>{data.company?.address1}{data.company?.address2 ? ", " + data.company.address2 : ""}</div>
           {data.company?.compRegNo && <div style={{ fontSize: 14 }}>Company Reg No: {data.company.compRegNo}</div>}
           {data.company?.vatNo && <div style={{ fontSize: 14 }}>VAT No: {data.company.vatNo}</div>}
         </div>
-        {/* Receipt Number and Title */}
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: "bold", fontSize: 26, color: '#1a237e', marginBottom: 4 }}>
-            Receipt No: {paymentId || "-"}
-          </div>
+        {/* Logo on Right */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          <img src={logo} alt="Logo" style={{ height: 80, marginBottom: 8 }} />
           <div style={{ fontWeight: "bold", fontSize: 28, letterSpacing: 1 }}>PAYMENT RECEIPT</div>
-          <div style={{ fontWeight: 400, fontSize: 16, marginTop: 8 }}>Date: {paymentDate ? new Date(paymentDate).toLocaleDateString() : todayStr}</div>
         </div>
       </div>
       <hr style={{ margin: "16px 0" }} />
       
-      {/* Bill To and Customer Info */}
+      {/* Bill To and Receipt Details Side by Side */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        {/* Bill To Section - Left Side */}
         <div>
           <div style={{ fontWeight: "bold", marginBottom: 4 }}>Bill to :</div>
-          <div style={{ border: "1px solid #888", padding: 8, minWidth: 200, fontWeight: "bold" }}>
-            {customer?.customer_name || customer?.customerName || payments?.[0]?.customerName || "CUSTOMER"}
+          <div style={{ border: "1px solid #888", padding: 8, minWidth: 200 }}>
+            <div style={{ fontWeight: "bold" }}>{customer?.customer_name || customer?.customerName || payments?.[0]?.customerName || "CUSTOMER"}</div>
+            {customer?.address && <div style={{ fontSize: 14, marginTop: 2 }}>{customer.address}</div>}
           </div>
-          {customer?.address && <div style={{ fontSize: 14, marginTop: 2 }}>{customer.address}</div>}
-          {customer?.vat_number && <div style={{ fontSize: 14 }}>VAT No: {customer.vat_number}</div>}
+          {customer?.vat_number && <div style={{ fontSize: 14, marginTop: 2 }}>VAT No: {customer.vat_number}</div>}
           <div style={{ fontSize: 14, marginTop: 2 }}><b>Account No:</b> C-{customer?.id || payments?.[0]?.customerId || ''}</div>
+        </div>
+
+        {/* Receipt Details - Right Side */}
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontWeight: 400, fontSize: 16 }}>Date: {todayStr}</div>
+          <div style={{ fontWeight: "bold", fontSize: 18, color: '#1a237e', marginTop: 4 }}>
+            Receipt No: {paymentId || "-"}
+          </div>
+          <div style={{ fontSize: 14, marginTop: 4 }}>Payment Receipt</div>
         </div>
       </div>
       
@@ -126,16 +139,15 @@ const PaymentReceiptPrint = () => {
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 15 }}>
         <thead>
           <tr style={{ background: "#f5f5f5" }}>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left" }}>Qty</th>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left" }}>Description</th>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>Unit Price</th>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>Total</th>
+            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left" }}>Payment</th>
+            <th style={{ border: "1px solid #888", padding: 4 }}>Qty</th>
+            <th style={{ border: "1px solid #888", padding: 4 }}>U.Price</th>
+            <th style={{ border: "1px solid #888", padding: 4 }}>Total</th>
           </tr>
         </thead>
         <tbody>
           {payments?.map((payment: any, idx: number) => (
             <tr key={idx}>
-              <td style={{ border: "1px solid #888", padding: 4 }}>1</td>
               <td style={{ border: "1px solid #888", padding: 4 }}>
                 <div>
                   {payment.paymentMode === 'cash' ? 'Cash Payment' : 
@@ -145,16 +157,19 @@ const PaymentReceiptPrint = () => {
                    'Payment'}
                 </div>
                 {payment.invoiceNumber && (
-                  <div style={{ fontSize: 12, color: '#666' }}>Inv: {payment.invoiceNumber}</div>
+                  <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>Inv: {payment.invoiceNumber}</div>
                 )}
               </td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>£{payment.amount.toFixed(2)}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>£{payment.amount.toFixed(2)}</td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>1</td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{payment.amount.toFixed(2)}</td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{payment.amount.toFixed(2)}</td>
             </tr>
           ))}
-          <tr style={{ fontWeight: "bold", background: "#f5f5f5" }}>
-            <td style={{ border: "1px solid #888", padding: 4 }} colSpan={3}>TOTAL PAID</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>£{totalAmount?.toFixed(2) || "0.00"}</td>
+          <tr style={{ fontWeight: "bold" }}>
+            <td style={{ border: "1px solid #888", padding: 4 }}>SUB TOTAL</td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{payments?.length || 0}</td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{totalAmount?.toFixed(2) || "0.00"}</td>
           </tr>
         </tbody>
       </table>
@@ -222,8 +237,18 @@ const PaymentReceiptPrint = () => {
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }
+          .footer-text {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 8px;
+            color: #666;
+          }
         }
       `}</style>
+      
+      {/* Footer text for print */}
+      <div className="footer-text">aa stand 100</div>
     </div>
   );
 };

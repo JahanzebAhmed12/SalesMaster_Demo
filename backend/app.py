@@ -8519,6 +8519,8 @@ def daily_summary_report():
     sales_summary = []
     cash_total = 0
     card_total = 0
+    bank_transfer_total = 0
+    cheque_total = 0
     account_total = 0
     
     # Track processed returns and negative payments to avoid duplicates
@@ -8528,6 +8530,8 @@ def daily_summary_report():
     for sale in sales_query:
         cash_amount = 0
         card_amount = 0
+        bank_transfer_amount = 0
+        cheque_amount = 0
         account_amount = 0
         account_credits = 0
         
@@ -8541,6 +8545,10 @@ def daily_summary_report():
                 cash_amount += float(payment.amount)
             elif payment.payment_mode == 'bank':  # Card payments are stored as 'bank' in backend
                 card_amount += float(payment.amount)
+            elif payment.payment_mode == 'bank_transfer':
+                bank_transfer_amount += float(payment.amount)
+            elif payment.payment_mode == 'cheque':
+                cheque_amount += float(payment.amount)
         
         # If it's an account sale and no payments, add to account total
         if sale.customer_type == 'account' and not sale_payments:
@@ -8558,6 +8566,8 @@ def daily_summary_report():
         
         cash_total += cash_amount
         card_total += card_amount
+        bank_transfer_total += bank_transfer_amount
+        cheque_total += cheque_amount
         account_total += account_amount
         
         sales_summary.append({
@@ -8565,6 +8575,8 @@ def daily_summary_report():
             'invoice_no': sale.invoice_number,
             'cash_sales': cash_amount,
             'card_paid': card_amount,
+            'bank_transfer': bank_transfer_amount,
+            'cheque': cheque_amount,
             'account_sales': account_amount,
             'account_paid_cash': 0,  # Will be calculated separately
             'account_paid_cheque': 0,  # Will be calculated separately
@@ -8586,6 +8598,8 @@ def daily_summary_report():
                 'invoice_no': f"CR-{return_item.invoice_number or 'RETURN'}",
                 'cash_sales': 0,
                 'card_paid': 0,
+                'bank_transfer': 0,
+                'cheque': 0,
                 'account_sales': 0,
                 'account_paid_cash': 0,
                 'account_paid_cheque': 0,
@@ -8608,6 +8622,8 @@ def daily_summary_report():
                 'invoice_no': f"NP-{neg_payment.invoice_number or 'PAYMENT'}",
                 'cash_sales': 0,
                 'card_paid': 0,
+                'bank_transfer': 0,
+                'cheque': 0,
                 'account_sales': 0,
                 'account_paid_cash': 0,
                 'account_paid_cheque': 0,
@@ -8649,6 +8665,8 @@ def daily_summary_report():
                 'payment_id': payment_id,
                 'cash_amount': 0,
                 'card_amount': 0,
+                'bank_transfer_amount': 0,
+                'cheque_amount': 0,
                 'total_amount': 0,
                 'date': payment.payment_date.isoformat()
             }
@@ -8658,6 +8676,10 @@ def daily_summary_report():
             payment_groups[key]['cash_amount'] += amount
         elif payment.payment_mode.lower() == 'bank':  # Card payments are stored as 'bank' in backend
             payment_groups[key]['card_amount'] += amount
+        elif payment.payment_mode.lower() == 'bank_transfer':
+            payment_groups[key]['bank_transfer_amount'] += amount
+        elif payment.payment_mode.lower() == 'cheque':
+            payment_groups[key]['cheque_amount'] += amount
         
         payment_groups[key]['total_amount'] += amount
     
@@ -8764,17 +8786,56 @@ def daily_summary_report():
         sale['account_credits'] for sale in sales_summary if sale['account_credits'] > 0
     )
     
+    # Calculate customer cash payments (backdate)
+    customer_cash_payments = sum(
+        float(p.amount) for p in customer_payments 
+        if p.payment_mode.lower() == 'cash'
+    )
+    
+    # Calculate supplier payments (paid out) - only cash and bank payments
+    supplier_payments_paid_out = sum(
+        float(p.amount) for p in supplier_payments 
+        if p.payment_mode.lower() in ['cash', 'bank']
+    )
+    
+    # Calculate expense payments (paid out) - only cash and bank payments
+    expense_payments_paid_out = sum(
+        float(e.amount) for e in expense_entries 
+        if e.payment_mode.lower() in ['cash', 'bank']
+    )
+    
+    # Calculate Total Banking using the specified formula:
+    # Total Cash Sales + Total Cheque + Account Paid Cash(Backdate) + Till/Float(C/F) 
+    # - Total Supplier Payment (Paid Out) - Total Expense (Paid Out)
+    calculated_banking_total = (
+        cash_total +  # Total Cash Sales
+        cheque_total +  # Total Cheque
+        customer_cash_payments +  # Account Paid Cash(Backdate)
+        cash_cf_data['total'] -  # Till/Float(C/F)
+        supplier_payments_paid_out -  # Total Supplier Payment (Paid Out)
+        expense_payments_paid_out  # Total Expense (Paid Out)
+    )
+    
     totals = {
         'cash_sales': cash_total,
         'card_sales': card_total,
+        'bank_transfer_sales': bank_transfer_total,
+        'cheque_sales': cheque_total,
         'account_sales': account_total,
         'account_credits': account_credits_total,
-        'total_sales': cash_total + card_total + account_total,
+        'total_sales': cash_total + card_total + bank_transfer_total + cheque_total + account_total,
         'customer_payments_total': sum(float(p.amount) for p in customer_payments),
+        'customer_cash_payments': customer_cash_payments,
         'supplier_payments_total': sum(float(p.amount) for p in supplier_payments),
+        'supplier_payments_paid_out': supplier_payments_paid_out,
         'expense_total': sum(float(e.amount) for e in expense_entries),
+        'expense_payments_paid_out': expense_payments_paid_out,
         'cash_cf_total': cash_cf_data['total'],
-        'banking_total': sum(float(r.amount) for r in banking_records)
+        'banking_total': calculated_banking_total,  # Use calculated value instead of database value
+        'bank_transfer_payments': sum(
+            float(p.amount) for p in customer_payments 
+            if p.payment_mode.lower() == 'bank_transfer'
+        )
     }
     
     return jsonify({
@@ -8898,6 +8959,8 @@ def daily_summary_pdf():
                     'invoice_no': payment.invoice_number if payment.sale_id else 'On Account',
                     'cash_amount': 0,
                     'card_amount': 0,
+                    'bank_transfer_amount': 0,
+                    'cheque_amount': 0,
                     'total_amount': 0
                 }
             
@@ -8906,6 +8969,10 @@ def daily_summary_pdf():
                 payment_groups[key]['cash_amount'] += amount
             elif payment.payment_mode.lower() == 'bank':  # Card payments are stored as 'bank' in backend
                 payment_groups[key]['card_amount'] += amount
+            elif payment.payment_mode.lower() == 'bank_transfer':
+                payment_groups[key]['bank_transfer_amount'] += amount
+            elif payment.payment_mode.lower() == 'cheque':
+                payment_groups[key]['cheque_amount'] += amount
             
             payment_groups[key]['total_amount'] += amount
         
