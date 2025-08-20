@@ -1,0 +1,111 @@
+/* Print Styles - Add this to your main CSS file */
+@media print {
+    * {
+      -webkit-print-color-adjust: exact !important;
+      color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    
+    @page {
+      margin: 0.5in;
+      size: A4;
+    }
+    
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    
+    /* Hide everything except the report content */
+    body * {
+      visibility: hidden;
+    }
+    
+    .print-content, .print-content * {
+      visibility: visible;
+    }
+    
+    .print-content {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      background: white !important;
+    }
+    
+    /* Remove card borders and shadows from NON-TABLE elements */
+    div:not(table):not(th):not(td), 
+    section:not(table):not(th):not(td), 
+    article:not(table):not(th):not(td) {
+      box-shadow: none !important;
+      border: none !important;
+      border-radius: 0 !important;
+    }
+    
+    /* Remove Tailwind card/shadow classes but NOT from tables */
+    .shadow:not(table):not(th):not(td), 
+    .shadow-sm:not(table):not(th):not(td), 
+    .shadow-md:not(table):not(th):not(td), 
+    .shadow-lg:not(table):not(th):not(td), 
+    .shadow-xl:not(table):not(th):not(td),
+    .border:not(table):not(th):not(td), 
+    .border-t:not(table):not(th):not(td), 
+    .border-r:not(table):not(th):not(td), 
+    .border-b:not(table):not(th):not(td), 
+    .border-l:not(table):not(th):not(td),
+    .rounded:not(table):not(th):not(td), 
+    .rounded-sm:not(table):not(th):not(td), 
+    .rounded-md:not(table):not(th):not(td), 
+    .rounded-lg:not(table):not(th):not(td), 
+    .rounded-xl:not(table):not(th):not(td) {
+      box-shadow: none !important;
+      border: none !important;
+      border-radius: 0 !important;
+    }
+    
+    /* KEEP Table borders - these should show */
+    table {
+      width: 100% !important;
+      border-collapse: collapse !important;
+      page-break-inside: avoid;
+      border: 1px solid #666 !important; /* Outer table border */
+    }
+    
+    th, td {
+      border: 1px solid #666 !important;
+      padding: 4px 8px !important;
+      font-size: 10px !important;
+      line-height: 1.2 !important;
+    }
+    
+    th {
+      background-color: #f3f4f6 !important;
+      font-weight: 600 !important;
+      border: 1px solid #666 !important;
+    }
+    
+    .totals-row {
+      background-color: #f3f4f6 !important;
+      font-weight: 600 !important;
+    }
+    
+    .totals-row td {
+      background-color: #f3f4f6 !important;
+      border: 1px solid #666 !important;
+    }
+    
+    h1 {
+      font-size: 18px !important;
+      margin-bottom: 4px !important;
+    }
+    
+    h2 {
+      font-size: 12px !important;
+      margin-bottom: 8px !important;
+    }
+    
+    .page-number {
+      background-color: #4b5563 !important;
+      color: white !important;
+    }
+}

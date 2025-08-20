@@ -29,6 +29,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 from flask import render_template
 from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email, send_purchase_invoice_email, send_supplier_statement_email, load_email_config, save_email_config
 from invoice_pdf_routes import add_pdf_routes
+from datetime import datetime, timedelta
+from sqlalchemy import func, and_, or_
+from flask import make_response
+import json
 # Load environment variables
 load_dotenv()
 
@@ -8866,10 +8870,7 @@ def daily_summary_pdf():
             verify_jwt_in_request()
         except:
             return jsonify({'error': 'Authentication required'}), 401
-    from datetime import datetime, timedelta
-    from sqlalchemy import func, and_, or_
-    from flask import make_response
-    import json
+   
     
     date_str = request.args.get('date')
     if not date_str:
@@ -8896,12 +8897,17 @@ def daily_summary_pdf():
         sales_summary = []
         cash_total = 0
         card_total = 0
+        bank_transfer_total = 0
+        cheque_total = 0
         account_total = 0
         
         for sale in sales_query:
             cash_amount = 0
             card_amount = 0
+            bank_transfer_amount = 0
+            cheque_amount = 0
             account_amount = 0
+            account_credits = 0
             
             sale_payments = db.session.query(Payment).filter(
                 Payment.sale_id == sale.id
@@ -8912,27 +8918,39 @@ def daily_summary_pdf():
                     cash_amount += float(payment.amount)
                 elif payment.payment_mode == 'bank':  # Card payments are stored as 'bank' in backend
                     card_amount += float(payment.amount)
+                elif payment.payment_mode == 'bank_transfer':
+                    bank_transfer_amount += float(payment.amount)
+                elif payment.payment_mode == 'cheque':
+                    cheque_amount += float(payment.amount)
             
             if sale.customer_type == 'account' and not sale_payments:
                 account_amount = float(sale.total_amount or 0)
             
             cash_total += cash_amount
             card_total += card_amount
+            bank_transfer_total += bank_transfer_amount
+            cheque_total += cheque_amount
             account_total += account_amount
             
             sales_summary.append({
-                'customer_name': sale.customer_name,
-                'ticket_no': sale.invoice_number,
-                'cash_sales': cash_amount,
-                'card_paid': card_amount,
-                'account_sales': account_amount
-            })
+            'customer_name': sale.customer_name,
+            'ticket_no': sale.invoice_number,
+            'cash_sales': cash_amount,
+            'card_paid': card_amount,
+            'bank_transfer': bank_transfer_amount,
+            'cheque': cheque_amount,
+            'account_sales': account_amount,
+            'account_paid_cash': 0,
+            'account_paid_cheque': 0,
+            'account_credits': account_credits
+        })
         
         # 2. Customer Payments
         customer_payments = db.session.query(
             Customer.customer_name,
             Sale.invoice_number,
             Payment.sale_id,
+            Payment.id,
             Payment.payment_mode,
             Payment.amount,
             Payment.payment_date
@@ -8957,6 +8975,7 @@ def daily_summary_pdf():
                 payment_groups[key] = {
                     'customer_name': payment.customer_name,
                     'invoice_no': payment.invoice_number if payment.sale_id else 'On Account',
+                    'payment_id': str(payment.id),
                     'cash_amount': 0,
                     'card_amount': 0,
                     'bank_transfer_amount': 0,
@@ -9002,7 +9021,54 @@ def daily_summary_pdf():
                 'payment_mode': payment.payment_mode
             })
         
-        # 4. Banking Records
+        # 4. Expense Entries
+        expense_entries = db.session.query(
+            ExpenseEntry.ref_number,
+            ExpenseEntry.description,
+            ExpenseEntry.amount,
+            ExpenseEntry.payment_mode,
+            ExpenseEntry.date,
+            Supplier.supplier_name,
+            Expense.expense_name
+        ).join(
+            Supplier, ExpenseEntry.supplier_id == Supplier.id
+        ).join(
+            Expense, ExpenseEntry.expense_id == Expense.id
+        ).filter(
+            ExpenseEntry.date == report_date
+        ).order_by(ExpenseEntry.id).all()
+        
+        expense_data = []
+        for expense in expense_entries:
+            expense_data.append({
+                'ref_number': expense.ref_number,
+                'description': expense.description,
+                'supplier_name': expense.supplier_name,
+                'expense_name': expense.expense_name,
+                'amount': float(expense.amount),
+                'payment_mode': expense.payment_mode,
+                'date': expense.date.isoformat()
+            })
+        
+        expense_total = sum(float(e.amount) for e in expense_entries)
+        expense_payments_paid_out = sum(
+            float(e.amount) for e in expense_entries 
+            if e.payment_mode.lower() in ['cash', 'bank']
+        )
+        
+        # 5. Cash Carry Forward
+        cash_cf = db.session.query(CashCarryForward).filter(
+            CashCarryForward.date == report_date
+        ).first()
+        
+        cash_cf_data = {
+            'pounds': float(cash_cf.pounds) if cash_cf else 0,
+            'coins': float(cash_cf.coins) if cash_cf else 0,
+            'total': float(cash_cf.pounds + cash_cf.coins) if cash_cf else 0,
+            'date': report_date.isoformat()
+        }
+        
+        # 6. Banking Records
         banking_records = db.session.query(BankingEntry).filter(
             BankingEntry.date == report_date
         ).order_by(BankingEntry.id).all()
@@ -9028,6 +9094,29 @@ def daily_summary_pdf():
             })
         
         banking_total = sum(float(r.amount) for r in banking_records)
+        
+        # Calculate additional totals for banking calculations
+        customer_cash_payments = sum(
+            float(p.amount) for p in customer_payments 
+            if p.payment_mode.lower() == 'cash'
+        )
+        
+        supplier_payments_paid_out = sum(
+            float(p.amount) for p in supplier_payments 
+            if p.payment_mode.lower() in ['cash', 'bank']
+        )
+        
+        # Calculate Total Banking using the specified formula:
+        # Total Cash Sales + Total Cheque + Account Paid Cash(Backdate) + Till/Float(C/F) 
+        # - Total Supplier Payment (Paid Out) - Total Expense (Paid Out)
+        calculated_banking_total = (
+            cash_total +  # Total Cash Sales
+            cheque_total +  # Total Cheque
+            customer_cash_payments +  # Account Paid Cash(Backdate)
+            cash_cf_data['total'] -  # Till/Float(C/F)
+            supplier_payments_paid_out -  # Total Supplier Payment (Paid Out)
+            expense_payments_paid_out  # Total Expense (Paid Out)
+        )
         
         # Check if stock and purchase data should be included
         include_stock = request.args.get('includeStock', 'false').lower() == 'true'
@@ -9107,13 +9196,19 @@ def daily_summary_pdf():
         card_total_str = f"{card_total:.2f}"
         account_total_str = f"{account_total:.2f}"
         banking_total_str = f"{banking_total:.2f}"
+        cheque_total_str = f"{cheque_total:.2f}"
         
         # Generate HTML with actual data
         sales_rows = ""
         for sale in sales_summary:
             cash_sales_str = f"{sale['cash_sales']:.2f}" if sale['cash_sales'] > 0 else '-'
             card_paid_str = f"{sale['card_paid']:.2f}" if sale['card_paid'] > 0 else '-'
+            bank_transfer_str = f"{sale.get('bank_transfer', 0):.2f}" if sale.get('bank_transfer', 0) > 0 else '-'
+            cheque_str = f"{sale.get('cheque', 0):.2f}" if sale.get('cheque', 0) > 0 else '-'
             account_sales_str = f"{sale['account_sales']:.2f}" if sale['account_sales'] > 0 else '-'
+            account_paid_cash_str = f"{sale.get('account_paid_cash', 0):.2f}" if sale.get('account_paid_cash', 0) > 0 else '-'
+            account_paid_cheque_str = f"{sale.get('account_paid_cheque', 0):.2f}" if sale.get('account_paid_cheque', 0) > 0 else '-'
+            account_credits_str = f"{sale.get('account_credits', 0):.2f}" if sale.get('account_credits', 0) > 0 else '-'
             
             sales_rows += f"""
                 <tr>
@@ -9121,10 +9216,10 @@ def daily_summary_pdf():
                     <td>{sale['ticket_no']}</td>
                     <td class="text-right">{cash_sales_str}</td>
                     <td class="text-right">{card_paid_str}</td>
+                    <td class="text-right">{bank_transfer_str}</td>
+                    <td class="text-right">{cheque_str}</td>
                     <td class="text-right">{account_sales_str}</td>
-                    <td class="text-right">-</td>
-                    <td class="text-right">-</td>
-                    <td class="text-right">-</td>
+                    <td class="text-right">{account_credits_str}</td>
                 </tr>
             """
         
@@ -9137,7 +9232,7 @@ def daily_summary_pdf():
             customer_payment_rows += f"""
                 <tr>
                     <td>{payment['customer_name']}</td>
-                    <td>{payment['invoice_no']}</td>
+                    <td>{payment['payment_id']}</td>
                     <td class="text-right">{cash_amount_str}</td>
                     <td class="text-right">{card_amount_str}</td>
                     <td class="text-right">{total_amount_str}</td>
@@ -9152,9 +9247,26 @@ def daily_summary_pdf():
             supplier_payment_rows += f"""
                 <tr>
                     <td>{payment['supplier_name']}</td>
-                    <td>{payment['receipt_no']}</td>
+                    <td>{payment['supplier_invoice_number']}</td>
+                    <td>{payment['supplier_invoice_date']}</td>
                     <td class="text-right">{amount_str}</td>
                     <td class="capitalize">{payment['payment_mode']}</td>
+                </tr>
+            """
+        
+        # Generate expense entry rows
+        expense_rows = ""
+        for expense in expense_data:
+            amount_str = f"{expense['amount']:.2f}"
+            
+            expense_rows += f"""
+                <tr>
+                    <td>{expense['ref_number']}</td>
+                    <td>{expense['description']}</td>
+                    <td>{expense['supplier_name']}</td>
+                    <td>{expense['expense_name']}</td>
+                    <td class="text-right">{amount_str}</td>
+                    <td class="capitalize">{expense['payment_mode']}</td>
                 </tr>
             """
         
@@ -9263,12 +9375,12 @@ def daily_summary_pdf():
                 <thead>
                     <tr>
                         <th>Customer</th>
-                        <th>TKT No</th>
+                        <th>Invoice No</th>
                         <th>Cash Sales</th>
                         <th>Card Paid</th>
+                        <th>Bank Transfer</th>
+                        <th>Cheque</th>
                         <th>Account Sales</th>
-                        <th>Account Paid Cash</th>
-                        <th>Account Paid Cheque</th>
                         <th>Account Credits</th>
                     </tr>
                 </thead>
@@ -9278,10 +9390,10 @@ def daily_summary_pdf():
                         <td colspan="2">TOTALS</td>
                         <td class="text-right">{cash_total_str}</td>
                         <td class="text-right">{card_total_str}</td>
+                        <td class="text-right">{sum(sale.get('bank_transfer', 0) for sale in sales_summary):.2f}</td>
+                        <td class="text-right">{cheque_total_str}</td>
                         <td class="text-right">{account_total_str}</td>
-                        <td class="text-right">-</td>
-                        <td class="text-right">-</td>
-                        <td class="text-right">-</td>
+                        <td class="text-right">{sum(sale.get('account_credits', 0) for sale in sales_summary):.2f}</td>
                     </tr>
                 </tbody>
             </table>
@@ -9302,12 +9414,98 @@ def daily_summary_pdf():
                 </div>
             </div>
             
-            <h3>Customer Payments</h3>
+            <h3>Expense Entries</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ref Number</th>
+                        <th>Description</th>
+                        <th>Supplier Name</th>
+                        <th>Expense Name</th>
+                        <th>Amount</th>
+                        <th>Payment Mode</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {expense_rows if expense_rows else '<tr><td colspan="6" class="text-center">No expense entries found</td></tr>'}
+                    {f'''<tr class="totals-row">
+                        <td colspan="4">TOTAL</td>
+                        <td class="text-right">{expense_total:.2f}</td>
+                        <td></td>
+                    </tr>''' if expense_data else ''}
+                </tbody>
+            </table>
+            
+            <h3>Cash Carry Forward (Till/Float)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Pounds</th>
+                        <th>Coins</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</td>
+                        <td class="text-right">£{cash_cf_data['pounds']:.2f}</td>
+                        <td class="text-right">£{cash_cf_data['coins']:.2f}</td>
+                        <td class="text-right">£{cash_cf_data['total']:.2f}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h3>Card Sales & Customer Card Payments</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Total Card Sales</td>
+                        <td class="text-right">£{card_total_str}</td>
+                    </tr>
+                    <tr>
+                        <td>Account Paid Card(Backdate)</td>
+                        <td class="text-right">£{sum(p["card_amount"] for p in customer_payments_data):.2f}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h3>Payment Received via Bank Transfer</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Total Bank Transfer Sales</td>
+                        <td class="text-right">£{sum(sale.get('bank_transfer', 0) for sale in sales_summary):.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>Customer Bank Transfer Payments</td>
+                        <td class="text-right">£{sum(p.get('bank_transfer_amount', 0) for p in customer_payments_data):.2f}</td>
+                    </tr>
+                    <tr class="totals-row">
+                        <td>Total Bank Transfer Received</td>
+                        <td class="text-right">£{(sum(sale.get('bank_transfer', 0) for sale in sales_summary) + sum(p.get('bank_transfer_amount', 0) for p in customer_payments_data)):.2f}</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <h3>Customer Payments (Backdate Only)</h3>
             <table>
                 <thead>
                     <tr>
                         <th>Customer Name</th>
-                        <th>Invoice No</th>
+                        <th>Payment ID</th>
                         <th>Cash Amount</th>
                         <th>Card Amount</th>
                         <th>Total Amount</th>
@@ -9329,15 +9527,16 @@ def daily_summary_pdf():
                 <thead>
                     <tr>
                         <th>Supplier Name</th>
-                        <th>Receipt No</th>
+                        <th>Supplier Invoice No</th>
+                        <th>Supplier Invoice Date</th>
                         <th>Amount</th>
                         <th>Payment Mode</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {supplier_payment_rows if supplier_payment_rows else '<tr><td colspan="4" class="text-center">No supplier payments found</td></tr>'}
+                    {supplier_payment_rows if supplier_payment_rows else '<tr><td colspan="5" class="text-center">No supplier payments found</td></tr>'}
                     {f'''<tr class="totals-row">
-                        <td colspan="2">TOTAL</td>
+                        <td colspan="3">TOTAL</td>
                         <td class="text-right">{sum(p["amount"] for p in supplier_payments_data):.2f}</td>
                         <td></td>
                     </tr>''' if supplier_payments_data else ''}
@@ -9365,45 +9564,45 @@ def daily_summary_pdf():
                 </tbody>
             </table>
             
-            <div style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; background-color: #f9f9f9;">
-                <h4 style="margin-bottom: 10px;">Daily Summary Totals:</h4>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Total Cash Sales:</strong></span>
-                    <span><strong>£{cash_total_str}</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Total Card Sales:</strong></span>
-                    <span><strong>£{card_total_str}</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Total Cheque:</strong></span>
-                    <span><strong>£0.00</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Account Payments/Customer Cash Payments:</strong></span>
-                    <span><strong>£{sum(p["cash_amount"] for p in customer_payments_data):.2f}</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Account Payment/Customer Card Payment (Backdate):</strong></span>
-                    <span><strong>£{sum(p["card_amount"] for p in customer_payments_data):.2f}</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Till/Float(C/F):</strong></span>
-                    <span><strong>£0.00</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Total Supplier Payment (Paid Out):</strong></span>
-                    <span><strong>£{sum(p["amount"] for p in supplier_payments_data if p.get("payment_mode", "").lower() in ["cash", "bank", "bank_transfer", "cheque"]):.2f}</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Total Expense (Paid Out):</strong></span>
-                    <span><strong>£0.00</strong></span>
-                </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span><strong>Total Banking:</strong></span>
-                    <span><strong>£{banking_total_str}</strong></span>
-                </div>
-            </div>"""
+            <h3>Total Banking</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Total Cash Sales</td>
+                        <td class="text-right">£{cash_total_str}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Cheque</td>
+                        <td class="text-right">£{sum(sale.get('cheque', 0) for sale in sales_summary):.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>Account Paid Cash(Backdate)</td>
+                        <td class="text-right">£{customer_cash_payments:.2f}</td>
+                    </tr>
+                    <tr>
+                        <td>Till/Float(C/F)</td>
+                        <td class="text-right">£{cash_cf_data['total']:.2f}</td>
+                    </tr>
+                    <tr style="color: red;">
+                        <td>Total Supplier Payment (Paid Out)</td>
+                        <td class="text-right">-£{supplier_payments_paid_out:.2f}</td>
+                    </tr>
+                    <tr style="color: red;">
+                        <td>Total Expense (Paid Out)</td>
+                        <td class="text-right">-£{expense_payments_paid_out:.2f}</td>
+                    </tr>
+                    <tr style="background-color: #e3f2fd; border: 2px solid #1976d2; font-weight: bold; font-size: 18px;">
+                        <td>Total Banking</td>
+                        <td class="text-right">£{calculated_banking_total:.2f}</td>
+                    </tr>
+                </tbody>
+            </table>"""
         
         # Add Stock Check section if requested and data exists
         if include_stock and stock_data:

@@ -104,6 +104,7 @@ import DotMatrixPaymentPrintPage from "@/pages/print/dot-matrix-payment";
 import PurchaseInvoicePrintPage from "@/pages/print/purchase-invoice";
 import DeliveryNotePrintPage from "./pages/print/delivery-note";
 import PackingListPrintPage from "./pages/print/packing-list";
+import DailySummaryPrintPage from "@/pages/print/daily-summary-print";
 
 // User Profile
 import UserProfile from "./pages/profile/user-profile";
@@ -507,6 +508,8 @@ function Router() {
 
       {/* Print Invoice Route (public) */}
       <Route path="/print/invoice/:invoiceNumber" component={InvoicePrintPage} />
+      {/* Daily Summary Print (public) */}
+      <Route path="/print/daily-summary" component={DailySummaryPrintPage} />
       {/* A5 Print Invoice Route (public) */}
       <Route path="/print/a5-invoice/:invoiceNumber" component={A5InvoicePrintPage} />
       {/* Dot Matrix Print Invoice Route (public) */}

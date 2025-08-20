@@ -14,7 +14,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import PageLayout from "@/components/common/page-layout";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-
+import "./styles.css";
 // Add CSS for print page breaks
 const printStyles = `
   @media print {
@@ -47,6 +47,8 @@ if (typeof document !== 'undefined') {
   styleSheet.innerText = printStyles;
   document.head.appendChild(styleSheet);
 }
+
+// Utility: small class to hide elements during print; used via Tailwind-like class names already injected
 
 interface StockItem {
   id: number;
@@ -168,6 +170,21 @@ interface DailySummaryData {
   };
 }
 
+function PrintButton() {
+  const handlePrint = () => {
+    window.print();
+  };
+  
+  return (
+    <button 
+      onClick={handlePrint}
+      className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors print:hidden"
+    >
+      <Printer className="w-4 h-4" />
+      Print Report
+    </button>
+  );
+}
 export default function DailySummary() {
   const { currentDate: businessDate } = useBusinessDate();
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
@@ -199,15 +216,12 @@ export default function DailySummary() {
   // Fetch daily summary data with fresh data on mount and date changes
   const { data: summaryData, isLoading, error } = useQuery<DailySummaryData>({
     queryKey: ["/api/reports/daily-summary", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
-    queryFn: () => {
-      if (!selectedDate) return Promise.resolve(null);
-      return apiRequest("GET", `/api/reports/daily-summary?date=${format(selectedDate, "yyyy-MM-dd")}`);
-    },
+    queryFn: () => apiRequest("GET", `/api/reports/daily-summary?date=${format(selectedDate, "yyyy-MM-dd")}`),
     enabled: !!selectedDate,
-    staleTime: 0, // Always consider data stale to ensure fresh fetch
-    gcTime: 0, // Don't cache the data (replaces deprecated cacheTime)
-    refetchOnMount: true, // Always refetch when component mounts
-    refetchOnWindowFocus: true, // Refetch when window regains focus
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   // Debug: Log the sales summary data to understand the structure
@@ -386,7 +400,7 @@ export default function DailySummary() {
         doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-
+      yPosition += 5;
     }
 
     // Add report title
@@ -523,7 +537,7 @@ export default function DailySummary() {
             record.amount.toFixed(2),
             record.bag_details.length > 0
               ? record.bag_details.map(bag => `Bag: ${bag.bag_number}`).join(', ')
-              : `${record.paying_number ? `Pay: ${record.paying_number}` : ''}${record.cheque_number ? ` | Cheque: ${record.cheque_number}` : ''}`
+              : `${record.paying_number ? `Pay In: ${record.paying_number}` : ''}${record.cheque_number ? ` | Cheque: ${record.cheque_number}` : ''}`
           ]),
           ['TOTAL', '', '', summaryData.totals.banking_total.toFixed(2), '']
         ],
@@ -603,15 +617,7 @@ export default function DailySummary() {
           doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
           yPosition += 5;
         }
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) {
-          doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
-          yPosition += 10;
-        } else {
-          yPosition += 5;
-        }
+        yPosition += 5;
       }
 
       doc.setFontSize(14);
@@ -654,17 +660,17 @@ export default function DailySummary() {
         styles: { fontSize: 7, cellPadding: 1 },
         headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
-          0: { cellWidth: 12 },
-          1: { cellWidth: 40 },
-          2: { cellWidth: 12 },
-          3: { cellWidth: 12 },
-          4: { cellWidth: 12 },
-          5: { cellWidth: 12 },
-          6: { cellWidth: 12 },
-          7: { cellWidth: 12 },
-          8: { cellWidth: 12 },
-          9: { cellWidth: 12 },
-          10: { cellWidth: 12 }
+          0: { cellWidth: 15 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 15 },
+          3: { cellWidth: 15 },
+          4: { cellWidth: 15 },
+          5: { cellWidth: 15 },
+          6: { cellWidth: 15 },
+          7: { cellWidth: 15 },
+          8: { cellWidth: 15 },
+          9: { cellWidth: 15 },
+          10: { cellWidth: 15 }
         }
       });
     }
@@ -689,15 +695,7 @@ export default function DailySummary() {
           doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
           yPosition += 5;
         }
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) {
-          doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
-          yPosition += 10;
-        } else {
-          yPosition += 5;
-        }
+        yPosition += 5;
       }
 
       doc.setFontSize(14);
@@ -739,7 +737,6 @@ export default function DailySummary() {
         startY: yPosition,
         styles: { fontSize: 7, cellPadding: 1 },
         headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [245, 245, 245] },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 35 },
@@ -752,12 +749,10 @@ export default function DailySummary() {
         didParseCell: function (data) {
           if (data.row.index < processedData.length) {
             const rowData = processedData[data.row.index];
-            if (rowData[0] && rowData[1] && !rowData[4]) {
-              data.cell.styles.fillColor = [220, 220, 220];
+            if (rowData[0] && rowData[1] && !rowData[3]) {
               data.cell.styles.fontStyle = 'bold';
             }
             if (rowData[3] && rowData[6] && !rowData[0] && !rowData[1]) {
-              data.cell.styles.fillColor = [200, 200, 200];
               data.cell.styles.fontStyle = 'bold';
             }
           }
@@ -769,7 +764,7 @@ export default function DailySummary() {
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(8);
-    doc.text('aa stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
+    doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
 
     doc.save(`daily-summary-${format(selectedDate, "yyyy-MM-dd")}.pdf`);
 
@@ -803,15 +798,7 @@ export default function DailySummary() {
         doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      let regInfo = [];
-      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-      if (regInfo.length > 0) {
-        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
-        yPosition += 10;
-      } else {
-        yPosition += 5;
-      }
+      yPosition += 5;
     }
 
     // Add report title
@@ -947,15 +934,8 @@ export default function DailySummary() {
           doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
           yPosition += 5;
         }
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) {
-          doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
-          yPosition += 10;
-        } else {
-          yPosition += 5;
-        }
+        yPosition += 5;
+
       }
 
       doc.setFontSize(14);
@@ -997,7 +977,6 @@ export default function DailySummary() {
         startY: yPosition,
         styles: { fontSize: 7, cellPadding: 1 },
         headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
-        alternateRowStyles: { fillColor: [245, 245, 245] },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 35 },
@@ -1165,6 +1144,7 @@ export default function DailySummary() {
     <PageLayout title="Daily Summary" breadcrumb="Daily Report / Daily Summary">
       <div className="space-y-6">
         {/* Header */}
+        <div className="print-content">
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -1172,7 +1152,7 @@ export default function DailySummary() {
                 <FileText className="w-5 h-5" />
                 Daily Summary Report
               </CardTitle>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 print:hidden">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">Date:</span>
                   <Popover>
@@ -1199,14 +1179,16 @@ export default function DailySummary() {
                   </Popover>
                 </div>
                 <div className="flex gap-2 items-center">
-                  <Button onClick={handleGeneratePDF} className="bg-red-600 hover:bg-red-700">
+                  {/* <Button onClick={handleGeneratePDF} className="bg-red-600 hover:bg-red-700">
                     <Printer className="w-4 h-4 mr-2" />
                     Print PDF
-                  </Button>
+                  </Button> */}
+                  <PrintButton />
                   <Button onClick={handleGenerateCleanPDF} className="bg-blue-600 hover:bg-blue-700">
                     <Download className="w-4 h-4 mr-2" />
-                    Clean PDF
+                    Download PDF
                   </Button>
+                  {/* <PrintButton /> */}
 
                   {/* Email Section */}
                   <div className="flex items-center gap-2 ml-2">
@@ -1502,14 +1484,14 @@ export default function DailySummary() {
                     <span className="font-medium">Total Bank Transfer Sales:</span>
                     <span className="font-bold">£{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between items-center py-2 border-b">
+                  {/* <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Customer Bank Transfer Payments:</span>
                     <span className="font-bold">£{(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Bank Transfer Received:</span>
                     <span className="font-bold">£{((summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0)).toFixed(2)}</span>
-                  </div>
+                  </div> */}
                 </div>
               </CardContent>
             </Card>
@@ -1584,13 +1566,13 @@ export default function DailySummary() {
                               <div className="space-y-1">
                                 {record.bag_details.map((bag, bagIndex) => (
                                   <div key={bagIndex} className="text-sm">
-                                    Bag: {bag.bag_number} | Pay: {bag.paying_number} | {bag.amount.toFixed(2)}
+                                    Bag: {bag.bag_number} | Pay In: {bag.paying_number} | {bag.amount.toFixed(2)}
                                   </div>
                                 ))}
                               </div>
                             ) : (
                               <div className="text-sm">
-                                {record.paying_number && `Pay: ${record.paying_number}`}
+                                {record.paying_number && `Pay In: ${record.paying_number}`}
                                 {record.cheque_number && ` | Cheque: ${record.cheque_number}`}
                               </div>
                             )}
@@ -1772,8 +1754,9 @@ export default function DailySummary() {
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </div>  
         ) : null}
+        </div>
       </div>
 
       {/* Footer text for print */}
