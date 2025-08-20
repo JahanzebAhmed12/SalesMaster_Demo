@@ -1,5 +1,0 @@
-# Additional requirements for PDF generation
-# Add these to your existing requirements.txt
-
-reportlab>=4.0.0
-Pillow>=10.0.0  # Required by reportlab for image handling

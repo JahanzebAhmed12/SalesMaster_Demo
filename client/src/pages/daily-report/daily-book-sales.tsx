@@ -151,7 +151,7 @@ export default function DailyBookSales() {
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Daily Book Sales</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:10px;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:20px;table-layout:fixed;}th,td{border:1px solid #ccc;padding:4px;text-align:left;word-wrap:break-word;overflow:hidden;}th{background-color:#f0f0f0;font-weight:bold;font-size:11px;}td{font-size:10px;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}th:nth-child(1),td:nth-child(1){width:8%;}th:nth-child(2),td:nth-child(2){width:10%;}th:nth-child(3),td:nth-child(3){width:20%;}th:nth-child(4),td:nth-child(4){width:12%;}th:nth-child(5),td:nth-child(5){width:10%;}th:nth-child(6),td:nth-child(6){width:10%;}th:nth-child(7),td:nth-child(7){width:12%;}th:nth-child(8),td:nth-child(8){width:10%;}th:nth-child(9),td:nth-child(9){width:8%;}</style>');
       printWindow.document.write('</head><body>');
 
       // Add company details header following the specific structure
@@ -171,10 +171,7 @@ export default function DailyBookSales() {
         }
 
         // VAT and Registration info
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+
       }
       printWindow.document.write('</div>');
 
@@ -187,14 +184,14 @@ export default function DailyBookSales() {
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
-      const headers = ['Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Bank Transfer', 'Cheque', 'Credit'];
+      const headers = ['Date', 'Invoice', 'Customer Name', 'Accounts', 'Cash', 'Card', 'Transfer', 'Cheque', 'Credit'];
       headers.forEach(h => {
         printWindow.document.write(`<th>${h}</th>`);
       });
       printWindow.document.write('</tr></thead><tbody>');
       salesData.forEach(sale => {
         printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${format(new Date(sale.date), "yyyy-MM-dd")}</td>`);
+        printWindow.document.write(`<td>${format(new Date(sale.date), "MM-dd")}</td>`);
         printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
         printWindow.document.write(`<td>${sale.customerName}</td>`);
         printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
@@ -260,33 +257,25 @@ export default function DailyBookSales() {
       }
 
       // VAT and Registration info
-      let regInfo = [];
-      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-      if (regInfo.length > 0) {
-        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
-        yPosition += 10;
-      } else {
-        yPosition += 5;
-      }
+
     }
 
     // Add report title
     doc.setFontSize(14);
     doc.text('DAILY BOOK SALES', 105, yPosition, { align: 'center' });
-    yPosition += 8;
+    yPosition += 10;
 
     doc.setFontSize(10);
     doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}`, 105, yPosition, { align: 'center' });
-    yPosition += 10;
+    yPosition += 12;
 
-    // Add table
+    // Add table with proper column widths that fit on page
     autoTable(doc, {
       head: [[
-        'Date', 'Invoice No', 'Customer Name', 'Accounts', 'Cash', 'Card Payment', 'Bank Transfer', 'Cheque', 'Credit'
+        'Date', 'Invoice', 'Customer Name', 'Accounts', 'Cash', 'Card', 'Transfer', 'Cheque', 'Credit'
       ]],
       body: salesData.map((item: SalesEntry) => [
-        format(new Date(item.date), "yyyy-MM-dd"),
+        format(new Date(item.date), "MM-dd"),
         item.invoiceNo,
         item.customerName,
         `£${Number(item.amount ?? 0).toFixed(2)}`,
@@ -298,18 +287,27 @@ export default function DailyBookSales() {
       ]),
       startY: yPosition,
       styles: {
-        fontSize: 8,
-        cellPadding: 2
+        fontSize: 7,
+        cellPadding: 1.5
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 7
       },
       columnStyles: {
-        0: { cellWidth: 25 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 45 },
-        3: { cellWidth: 25 },
-        4: { cellWidth: 25 },
-        5: { cellWidth: 25 },
-        6: { cellWidth: 25 }
-      }
+        0: { cellWidth: 18 }, // Date - shorter
+        1: { cellWidth: 18 }, // Invoice
+        2: { cellWidth: 35 }, // Customer Name - wider
+        3: { cellWidth: 20 }, // Accounts
+        4: { cellWidth: 18 }, // Cash
+        5: { cellWidth: 18 }, // Card
+        6: { cellWidth: 20 }, // Transfer
+        7: { cellWidth: 18 }, // Cheque
+        8: { cellWidth: 18 }  // Credit
+      },
+      margin: { left: 14, right: 14 }
     });
 
     doc.save(`daily-book-sales-${fromDate ? format(fromDate, "yyyyMMdd") : 'all'}-${toDate ? format(toDate, "yyyyMMdd") : 'all'}.pdf`);
@@ -973,25 +971,24 @@ export default function DailyBookSales() {
       <div className="space-y-6">
         {/* Header Section */}
         <Card>
-          <CardHeader className="pb-3 sm:pb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-lg sm:text-xl">Daily Book Sales</CardTitle>
-            <div className="flex gap-2 items-center">
-
-              <div className="text-sm text-gray-500">
+          <CardHeader className="pb-3 sm:pb-6">
+            <div className="flex flex-col space-y-2">
+              <CardTitle className="text-lg sm:text-xl">Daily Book Sales</CardTitle>
+              <div className="text-xs sm:text-sm text-gray-500 break-words">
                 TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col md:grid md:grid-cols-6 gap-4 items-end">
-              <div className="w-full">
-                <Label>From Date:</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+              <div className="w-full space-y-2">
+                <Label className="text-sm font-medium">From Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full justify-start text-left font-normal",
+                        "w-full justify-start text-left font-normal h-10",
                         !fromDate && "text-muted-foreground"
                       )}
                     >
@@ -1010,14 +1007,14 @@ export default function DailyBookSales() {
                 </Popover>
               </div>
 
-              <div className="w-full">
-                <Label>To Date:</Label>
+              <div className="w-full space-y-2">
+                <Label className="text-sm font-medium">To Date:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
                       className={cn(
-                        "w-full justify-start text-left font-normal",
+                        "w-full justify-start text-left font-normal h-10",
                         !toDate && "text-muted-foreground"
                       )}
                     >
@@ -1036,9 +1033,10 @@ export default function DailyBookSales() {
                 </Popover>
               </div>
 
-              <div className="w-full">
+              <div className="w-full space-y-2">
+                <Label className="text-sm font-medium">Payment Type:</Label>
                 <Select value={paymentType} onValueChange={setPaymentType}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-10">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1052,9 +1050,10 @@ export default function DailyBookSales() {
                 </Select>
               </div>
 
-              <div className="w-full">
+              <div className="w-full space-y-2">
+                <Label className="text-sm font-medium">Salesman:</Label>
                 <Select value={userFilter} onValueChange={setUserFilter} disabled={dailyBookType === 'own'}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-10">
                     <SelectValue placeholder="All Salesmen" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1072,19 +1071,21 @@ export default function DailyBookSales() {
                 </Select>
               </div>
 
-              <div className="w-full">
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full">
+              <div className="w-full space-y-2">
+                <Label className="text-sm font-medium invisible">Action:</Label>
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full h-10">
                   Search
                 </Button>
               </div>
 
-              <div className="flex gap-2 w-full md:w-auto">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full md:w-auto"
+              <div className="col-span-1 sm:col-span-2 lg:col-span-3 xl:col-span-1 space-y-2">
+                <Label className="text-sm font-medium invisible">View:</Label>
+                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full h-10"
                   variant="default"
                   onClick={() => navigate("/daily-report/daily-sales-full-view")}>
-
                   <Eye size={16} />
-                  Full View
+                  <span className="hidden sm:inline">Full View</span>
+                  <span className="sm:hidden">View</span>
                 </Button>
               </div>
             </div>
@@ -1094,67 +1095,93 @@ export default function DailyBookSales() {
         {/* Sales Table */}
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
-                  <FileText size={14} /> PDF
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
-                  <Download size={14} /> Excel
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
-                  <Copy size={14} /> Copy
-                </Button>
-                <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
-                  <Printer size={14} /> Print
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Action bar above table */}
-                <div className="flex items-center gap-2">
+            <div className="space-y-4">
+              {/* Combined buttons row - Export buttons on left, Payment buttons on right */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                {/* Export buttons */}
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                    <FileText size={14} />
+                    <span className="hidden sm:inline">PDF</span>
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                    <Download size={14} />
+                    <span className="hidden sm:inline">Excel</span>
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                    <Copy size={14} />
+                    <span className="hidden sm:inline">Copy</span>
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                    <Printer size={14} />
+                    <span className="hidden sm:inline">Print</span>
+                  </Button>
+                </div>
+
+                {/* Payment action buttons - smaller and on the right */}
+                <div className="flex flex-wrap gap-1">
                   <Button
-                    className="bg-green-600 hover:bg-green-700 text-white"
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 h-7"
                     onClick={handleUpdateToCash}
                     disabled={selectedSales.size === 0}
                   >
-                    Paid (Cash) - {selectedSales.size}
+                    <span className="hidden sm:inline">Paid (Cash) - </span>
+                    <span className="sm:hidden">Cash - </span>
+                    {selectedSales.size}
                   </Button>
                   <Button
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 h-7"
                     onClick={handleUpdateToCard}
                     disabled={selectedSales.size === 0}
                   >
-                    Pay Card - {selectedSales.size}
+                    <span className="hidden sm:inline">Pay Card - </span>
+                    <span className="sm:hidden">Card - </span>
+                    {selectedSales.size}
                   </Button>
                   <Button
-                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                    size="sm"
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-2 py-1 h-7"
                     onClick={handleUpdateToBankTransfer}
                     disabled={selectedSales.size === 0}
                   >
-                    Bank Transfer - {selectedSales.size}
+                    <span className="hidden sm:inline">Transfer - </span>
+                    <span className="sm:hidden">Trans - </span>
+                    {selectedSales.size}
                   </Button>
                   <Button
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                    size="sm"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1 h-7"
                     onClick={handleUpdateToCheque}
                     disabled={selectedSales.size === 0}
                   >
-                    Cheque - {selectedSales.size}
+                    <span className="hidden sm:inline">Cheque - </span>
+                    <span className="sm:hidden">Chq - </span>
+                    {selectedSales.size}
                   </Button>
                   <Button
-                    className="bg-orange-600 hover:bg-orange-700 text-white"
+                    size="sm"
+                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs px-2 py-1 h-7"
                     onClick={handleUpdateToAccount}
                     disabled={selectedSales.size === 0}
                   >
-                    Paid Account - {selectedSales.size}
+                    <span className="hidden sm:inline">Account - </span>
+                    <span className="sm:hidden">Acc - </span>
+                    {selectedSales.size}
                   </Button>
                 </div>
-                <div className="relative">
+              </div>
+
+              {/* Search row */}
+              <div className="flex justify-end">
+                <div className="relative w-full sm:w-48">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                   <Input
                     placeholder="Search:"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 w-48"
+                    className="pl-10 w-full"
                   />
                 </div>
               </div>
@@ -1162,10 +1189,10 @@ export default function DailyBookSales() {
           </CardHeader>
           <CardContent>
             <div className="w-full overflow-x-auto" ref={tableRef}>
-              <Table className="min-w-[800px]">
+              <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12 min-w-[48px]">
+                    <TableHead className="w-8 sm:w-12">
                       <input
                         type="checkbox"
                         className="rounded"
@@ -1173,15 +1200,27 @@ export default function DailyBookSales() {
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
                     </TableHead>
-                    <TableHead className="min-w-[120px]">Date</TableHead>
-                    <TableHead className="min-w-[140px]">Invoice No</TableHead>
-                    <TableHead className="min-w-[220px]">Customer Name</TableHead>
-                    <TableHead className="min-w-[130px] text-right">Accounts</TableHead>
-                    <TableHead className="min-w-[120px] text-right">Cash</TableHead>
-                    <TableHead className="min-w-[120px] text-right">Card Payment</TableHead>
-                    <TableHead className="min-w-[120px] text-right">Bank Transfer</TableHead>
-                    <TableHead className="min-w-[120px] text-right">Cheque</TableHead>
-                    <TableHead className="min-w-[120px] text-right">Credit</TableHead>
+                    <TableHead className="min-w-[80px] sm:min-w-[100px]">Date</TableHead>
+                    <TableHead className="min-w-[90px] sm:min-w-[120px]">Invoice</TableHead>
+                    <TableHead className="min-w-[120px] sm:min-w-[200px]">Customer</TableHead>
+                    <TableHead className="min-w-[80px] sm:min-w-[100px] text-right">
+                      <span className="hidden sm:inline">Accounts</span>
+                      <span className="sm:hidden">Acc</span>
+                    </TableHead>
+                    <TableHead className="min-w-[70px] sm:min-w-[90px] text-right">Cash</TableHead>
+                    <TableHead className="min-w-[70px] sm:min-w-[90px] text-right">
+                      <span className="hidden sm:inline">Card</span>
+                      <span className="sm:hidden">Card</span>
+                    </TableHead>
+                    <TableHead className="min-w-[70px] sm:min-w-[90px] text-right">
+                      <span className="hidden sm:inline">Transfer</span>
+                      <span className="sm:hidden">Trans</span>
+                    </TableHead>
+                    <TableHead className="min-w-[70px] sm:min-w-[90px] text-right">
+                      <span className="hidden sm:inline">Cheque</span>
+                      <span className="sm:hidden">Chq</span>
+                    </TableHead>
+                    <TableHead className="min-w-[70px] sm:min-w-[90px] text-right">Credit</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1200,9 +1239,9 @@ export default function DailyBookSales() {
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
-                        <TableCell>{format(new Date(sale.date), "yyyy-MM-dd")}</TableCell>
-                        <TableCell>{sale.invoiceNo}</TableCell>
-                        <TableCell className="text-blue-600">
+                        <TableCell className="text-xs sm:text-sm">{format(new Date(sale.date), "MM-dd")}</TableCell>
+                        <TableCell className="text-xs sm:text-sm">{sale.invoiceNo}</TableCell>
+                        <TableCell className="text-blue-600 text-xs sm:text-sm">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
@@ -1221,46 +1260,58 @@ export default function DailyBookSales() {
                                 </span>
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
-                                <Pencil className="mr-2 h-5 w-5" /> Edit Invoice
+                            <DropdownMenuContent align="start" className="w-48">
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
+                                <Pencil className="mr-2 h-4 w-4" /> Edit Invoice
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}>
-                                <Printer className="mr-2 h-5 w-5" /> Print Ticket
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}>
+                                <Printer className="mr-2 h-4 w-4" /> Print Ticket
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => window.open(`/print/packing-list/${sale.invoiceNo}`, '_blank')}>
-                                <Package className="mr-2 h-5 w-5" /> Print Pickingticket
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/packing-list/${sale.invoiceNo}`, '_blank')}>
+                                <Package className="mr-2 h-4 w-4" /> Print Pickingticket
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => sendInvoiceEmail(sale)}>
-                                <Mail className="mr-2 h-5 w-5" /> Email
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => sendInvoiceEmail(sale)}>
+                                <Mail className="mr-2 h-4 w-4" /> Email
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => sendWhatsApp(sale)}>
-                                <MessageCircle className="mr-2 h-5 w-5" /> WhatsApp
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => sendWhatsApp(sale)}>
+                                <MessageCircle className="mr-2 h-4 w-4" /> WhatsApp
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'cash')}>
-                                <Banknote className="mr-2 h-5 w-5" /> Pay (Cash)
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'cash')}>
+                                <Banknote className="mr-2 h-4 w-4" /> Pay (Cash)
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'bank')}>
-                                <CreditCard className="mr-2 h-5 w-5" /> Pay (Card)
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'bank')}>
+                                <CreditCard className="mr-2 h-4 w-4" /> Pay (Card)
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'bank_transfer')}>
-                                <Building2 className="mr-2 h-5 w-5" /> Pay (Bank Transfer)
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'bank_transfer')}>
+                                <Building2 className="mr-2 h-4 w-4" /> Pay (Transfer)
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => pay(sale, 'cheque')}>
-                                <Receipt className="mr-2 h-5 w-5" /> Pay (Cheque)
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'cheque')}>
+                                <Receipt className="mr-2 h-4 w-4" /> Pay (Cheque)
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-lg py-3" onClick={() => handleSplitPayment(sale)}>
-                                <Split className="mr-2 h-5 w-5" /> Split Payment
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => handleSplitPayment(sale)}>
+                                <Split className="mr-2 h-4 w-4" /> Split Payment
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
-                        <TableCell className="text-right">£{Number(sale.amount ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">£{Number(sale.cash ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">£{Number(sale.bank ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">£{Number(sale.bankTransfer ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">£{Number(sale.cheque ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right text-red-600">{sale.credit?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? "0.00"}</TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          <span className="hidden sm:inline">£</span>{Number(sale.amount ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          <span className="hidden sm:inline">£</span>{Number(sale.cash ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          <span className="hidden sm:inline">£</span>{Number(sale.bank ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          <span className="hidden sm:inline">£</span>{Number(sale.bankTransfer ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs sm:text-sm">
+                          <span className="hidden sm:inline">£</span>{Number(sale.cheque ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right text-red-600 text-xs sm:text-sm">
+                          <span className="hidden sm:inline">£</span>{sale.credit?.toFixed(2) ?? "0.00"}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -1268,46 +1319,75 @@ export default function DailyBookSales() {
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
-                    <TableCell className="font-bold">{salesData.length} Items</TableCell>
-                    <TableCell className="text-center font-bold">{totalBoxes}</TableCell>
+                    <TableCell className="font-bold text-xs sm:text-sm">{salesData.length} Items</TableCell>
+                    <TableCell className="text-center font-bold text-xs sm:text-sm">{totalBoxes}</TableCell>
                     <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold">£{totalCash.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold">£{totalBank.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold">£{totalBankTransfer.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold">£{totalCheque.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold text-red-600">£{totalCredit.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-bold text-xs sm:text-sm">
+                      <span className="hidden sm:inline">£</span>{totalAmount.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-xs sm:text-sm">
+                      <span className="hidden sm:inline">£</span>{totalCash.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-xs sm:text-sm">
+                      <span className="hidden sm:inline">£</span>{totalBank.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-xs sm:text-sm">
+                      <span className="hidden sm:inline">£</span>{totalBankTransfer.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-xs sm:text-sm">
+                      <span className="hidden sm:inline">£</span>{totalCheque.toFixed(2)}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-red-600 text-xs sm:text-sm">
+                      <span className="hidden sm:inline">£</span>{totalCredit.toFixed(2)}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
               {/* Summary moved below table, styled for print and screen */}
-              <div className="flex flex-wrap items-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2">
-                <div className="flex items-center font-semibold mr-2">Date Range:</div>
-                <div className="mr-6">{fromDate ? format(fromDate, 'yyyy-MM-dd') : '-'} to {toDate ? format(toDate, 'yyyy-MM-dd') : '-'}</div>
-                <div className="flex items-center font-semibold mr-2">Total Boxes:</div>
-                <div className="mr-6">{totalBoxes}</div>
-                <div className="flex items-center font-semibold mr-2">Total VAT:</div>
-                <div className="mr-6">£{totalVAT.toFixed(2)}</div>
-                <div className="flex items-center font-semibold mr-2">Total Amount:</div>
-                <div className="mr-6">£{totalAmount.toFixed(2)}</div>
-                <div className="flex items-center font-semibold mr-2">Total Cash:</div>
-                <div>£{totalCash.toFixed(2)}</div>
-                <div className="flex items-center font-semibold mr-2">Total Bank:</div>
-                <div>£{totalBank.toFixed(2)}</div>
-                <div className="flex items-center font-semibold mr-2">Total Credit:</div>
-                <div>£{totalCredit.toFixed(2)}</div>
+              <div className="mt-6 p-4 bg-gray-50 rounded-lg border space-y-2 sm:space-y-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Date Range:</span>
+                    <span className="sm:block">{fromDate ? format(fromDate, 'MM-dd') : '-'} to {toDate ? format(toDate, 'MM-dd') : '-'}</span>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Total Boxes:</span>
+                    <span className="sm:block">{totalBoxes}</span>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Total VAT:</span>
+                    <span className="sm:block">£{totalVAT.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Total Amount:</span>
+                    <span className="sm:block">£{totalAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Total Cash:</span>
+                    <span className="sm:block">£{totalCash.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Total Bank:</span>
+                    <span className="sm:block">£{totalBank.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Total Transfer:</span>
+                    <span className="sm:block">£{totalBankTransfer.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="font-semibold">Total Credit:</span>
+                    <span className="sm:block text-red-600">£{totalCredit.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 1 to 1 of 1 entries</div>
-              <div className="flex items-center gap-4">
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm">Previous</Button>
-                  <Button variant="outline" size="sm" className="bg-blue-500 text-white">1</Button>
-                  <Button variant="outline" size="sm">Next</Button>
-                </div>
+            <div className="flex flex-col sm:flex-row justify-between items-center mt-4 text-sm text-gray-600 gap-2">
+              <div className="text-center sm:text-left">Showing {salesData.length} entries</div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="text-xs">Previous</Button>
+                <Button variant="outline" size="sm" className="bg-blue-500 text-white text-xs">1</Button>
+                <Button variant="outline" size="sm" className="text-xs">Next</Button>
               </div>
             </div>
           </CardContent>

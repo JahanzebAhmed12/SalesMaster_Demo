@@ -75,6 +75,21 @@ interface PurchaseEntry {
   invoiceAmt: number;
 }
 
+interface PurchaseFullViewRow {
+  date: string;
+  supplier: string;
+  invNo: string;
+  awb: string;
+  product: string;
+  productId?: number;
+  quantity: number;
+  unitPrice: number;
+  sellingPrice: number;
+  total: number;
+  isHeader?: boolean;
+  isTotal?: boolean;
+}
+
 interface DailySummaryData {
   date: string;
   sales_summary: Array<{
@@ -226,7 +241,7 @@ export default function DailySummary() {
     gcTime: 0,
   });
 
-  // Fetch purchase data
+  // Fetch purchase data (legacy - keeping for backward compatibility)
   const { data: purchaseData = [] } = useQuery<PurchaseEntry[]>({
     queryKey: ["/api/reports/daily-book-purchase", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
     queryFn: () => {
@@ -236,6 +251,21 @@ export default function DailySummary() {
       params.append("toDate", format(selectedDate, "yyyy-MM-dd"));
       params.append("search", "");
       return apiRequest("GET", `/api/reports/daily-book-purchase?${params.toString()}`);
+    },
+    enabled: !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  // Fetch product purchase full view data
+  const { data: productPurchaseData = [] } = useQuery<PurchaseFullViewRow[]>({
+    queryKey: ['product-purchase-full-view', selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
+    queryFn: async () => {
+      if (!selectedDate) return [];
+      const fromDateStr = format(selectedDate, "yyyy-MM-dd");
+      const toDateStr = format(selectedDate, "yyyy-MM-dd");
+      const response = await apiRequest('GET', `/api/reports/product-purchase-full-view?fromDate=${fromDateStr}&toDate=${toDateStr}&search=`);
+      return response;
     },
     enabled: !!selectedDate,
     staleTime: 0,
@@ -356,15 +386,7 @@ export default function DailySummary() {
         doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      let regInfo = [];
-      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-      if (regInfo.length > 0) {
-        doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
-        yPosition += 10;
-      } else {
-        yPosition += 5;
-      }
+
     }
 
     // Add report title
@@ -647,8 +669,8 @@ export default function DailySummary() {
       });
     }
 
-    // Daily Book Purchase (only if has data) - NEW PAGE
-    if (purchaseData && purchaseData.length > 0) {
+    // Product Purchase Full View (only if has data) - NEW PAGE
+    if (productPurchaseData && productPurchaseData.length > 0) {
       doc.addPage();
       yPosition = 20;
 
@@ -679,33 +701,66 @@ export default function DailySummary() {
       }
 
       doc.setFontSize(14);
-      doc.text('DAILY BOOK PURCHASE', 105, yPosition, { align: 'center' });
+      doc.text('PRODUCT PURCHASE FULL VIEW', 105, yPosition, { align: 'center' });
       yPosition += 8;
       doc.setFontSize(10);
       doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
       yPosition += 15;
 
-      const totalInvoiceAmount = purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0);
+      // Process data for grouped display
+      const processedData: any[] = [];
+      const displayData = Array.isArray(productPurchaseData) ? productPurchaseData : [];
+
+      displayData.forEach((row, index) => {
+        if (row.isHeader) {
+          processedData.push([
+            row.date, row.supplier, row.invNo, 
+            '', '', '', '', ''
+          ]);
+        } else if (row.isTotal) {
+          processedData.push([
+            '', '', '',  row.product, row.quantity.toString(),
+            '', Number(row.total).toFixed(2)
+          ]);
+          if (index < displayData.length - 1) {
+            processedData.push(['', '', '', '', '', '', '']);
+          }
+        } else {
+          processedData.push([
+            '', '', row.invNo,  row.product, row.quantity.toString(),
+            Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
+          ]);
+        }
+      });
 
       autoTable(doc, {
-        head: [['Date', 'Supplier', 'Inv.No', 'Invoice Amt']],
-        body: [
-          ...purchaseData.map((item: PurchaseEntry) => [
-            item.date,
-            item.supplier,
-            item.invNo,
-            `£${item.invoiceAmt.toFixed(2)}`
-          ]),
-          ['TOTAL', `${purchaseData.length} Items`, '', `£${totalInvoiceAmount.toFixed(2)}`]
-        ],
+        head: [['Date', 'Supplier', 'Inv.No', 'Product', 'Quantity', 'Unit Price', 'Total']],
+        body: processedData,
         startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 7, cellPadding: 1 },
         headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
         columnStyles: {
-          0: { cellWidth: 30 },
-          1: { cellWidth: 50 },
-          2: { cellWidth: 30 },
-          3: { cellWidth: 30 }
+          0: { cellWidth: 25 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 25 },
+        },
+        didParseCell: function (data) {
+          if (data.row.index < processedData.length) {
+            const rowData = processedData[data.row.index];
+            if (rowData[0] && rowData[1] && !rowData[4]) {
+              data.cell.styles.fillColor = [220, 220, 220];
+              data.cell.styles.fontStyle = 'bold';
+            }
+            if (rowData[3] && rowData[6] && !rowData[0] && !rowData[1]) {
+              data.cell.styles.fillColor = [200, 200, 200];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
         }
       });
     }
@@ -872,6 +927,102 @@ export default function DailySummary() {
       }
     });
 
+    // Product Purchase Full View (only if has data) - NEW PAGE
+    if (productPurchaseData && productPurchaseData.length > 0) {
+      doc.addPage();
+      yPosition = 20;
+
+      // Add company details header
+      if (companyDetails) {
+        doc.setFontSize(16);
+        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
+        yPosition += 8;
+
+        doc.setFontSize(10);
+        if (companyDetails.email) {
+          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        if (companyDetails.bankDetails) {
+          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        let regInfo = [];
+        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+        if (regInfo.length > 0) {
+          doc.text(regInfo.join(' | '), 105, yPosition, { align: 'center' });
+          yPosition += 10;
+        } else {
+          yPosition += 5;
+        }
+      }
+
+      doc.setFontSize(14);
+      doc.text('PRODUCT PURCHASE FULL VIEW', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+      yPosition += 15;
+
+      // Process data for grouped display
+      const processedData: any[] = [];
+      const displayData = Array.isArray(productPurchaseData) ? productPurchaseData : [];
+
+      displayData.forEach((row, index) => {
+        if (row.isHeader) {
+          processedData.push([
+            row.date, row.supplier, row.invNo, 
+            '', '', '', ''
+          ]);
+        } else if (row.isTotal) {
+          processedData.push([
+            '', '', '', row.product, row.quantity.toString(),
+            '', Number(row.total).toFixed(2)
+          ]);
+          if (index < displayData.length - 1) {
+            processedData.push(['', '', '', '', '', '', '']);
+          }
+        } else {
+          processedData.push([
+            '', '', row.invNo, row.product, row.quantity.toString(),
+            Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
+          ]);
+        }
+      });
+
+      autoTable(doc, {
+        head: [['Date', 'Supplier', 'Inv.No', 'Product', 'Quantity', 'Unit Price', 'Total']],
+        body: processedData,
+        startY: yPosition,
+        styles: { fontSize: 7, cellPadding: 1 },
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        columnStyles: {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 25 },
+        },
+        didParseCell: function (data) {
+          if (data.row.index < processedData.length) {
+            const rowData = processedData[data.row.index];
+            if (rowData[0] && rowData[1] && !rowData[3]) {
+              data.cell.styles.fillColor = [220, 220, 220];
+              data.cell.styles.fontStyle = 'bold';
+            }
+            if (rowData[3] && rowData[6] && !rowData[0] && !rowData[1]) {
+              data.cell.styles.fillColor = [200, 200, 200];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        }
+      });
+    }
+
     // Add footer text "aa stand 100" on bottom right
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
@@ -936,7 +1087,7 @@ export default function DailySummary() {
           const emailData = {
             to: emailList,
             subject: `Daily Summary Report - ${format(selectedDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
             attachment: {
               filename: `daily-summary-${format(selectedDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -1541,10 +1692,10 @@ export default function DailySummary() {
               </CardContent>
             </Card>
 
-            {/* Daily Book Purchase */}
-            <Card className={`${purchaseData && purchaseData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
+            {/* Product Purchase Full View */}
+            <Card className={`${productPurchaseData && productPurchaseData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
               <CardHeader>
-                <CardTitle>Daily Book Purchase - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
+                <CardTitle>Product Purchase Full View - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -1553,33 +1704,68 @@ export default function DailySummary() {
                       <TableRow className="bg-gray-50">
                         <TableHead className="font-semibold border">Date</TableHead>
                         <TableHead className="font-semibold border">Supplier</TableHead>
-                        <TableHead className="font-semibold border text-center">Inv.No</TableHead>
-                        <TableHead className="font-semibold border text-center">Invoice Amt</TableHead>
+                        <TableHead className="font-semibold border">Inv.No</TableHead>
+                        <TableHead className="font-semibold border">Product</TableHead>
+                        <TableHead className="font-semibold border text-right">Quantity</TableHead>
+                        <TableHead className="font-semibold border text-right">Unit Price</TableHead>
+                        <TableHead className="font-semibold border text-right">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {purchaseData.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="border">{item.date}</TableCell>
-                          <TableCell className="border">{item.supplier}</TableCell>
-                          <TableCell className="border text-center">{item.invNo}</TableCell>
-                          <TableCell className="border text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
-                        </TableRow>
-                      ))}
-                      {purchaseData.length === 0 && (
+                      {productPurchaseData.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={4} className="border text-center text-gray-500 py-4">
-                            No purchase data found
+                          <TableCell colSpan={7} className="border text-center text-gray-500 py-4">
+                            No product purchase data found
                           </TableCell>
                         </TableRow>
-                      )}
-                      {purchaseData.length > 0 && (
-                        <TableRow className="bg-gray-100 font-semibold">
-                          <TableCell className="border"></TableCell>
-                          <TableCell className="border">{purchaseData.length} Items</TableCell>
-                          <TableCell className="border text-center"></TableCell>
-                          <TableCell className="border text-center">£{purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
-                        </TableRow>
+                      ) : (
+                        productPurchaseData.map((row, idx) => {
+                          if (row.isHeader) {
+                            return (
+                              <TableRow key={idx} className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+                                <TableCell className="border">{row.date}</TableCell>
+                                <TableCell className="border">{row.supplier}</TableCell>
+                                <TableCell className="border">{row.invNo}</TableCell>
+                                <TableCell className="border" colSpan={3}></TableCell>
+                                <TableCell className="border"></TableCell>
+                              </TableRow>
+                            );
+                          } else if (row.isTotal) {
+                            return (
+                              <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
+                                <TableCell className="border" colSpan={3}></TableCell>
+                                <TableCell className="border text-right">{row.product}</TableCell>
+                                <TableCell className="border text-right">{row.quantity}</TableCell>
+                                <TableCell className="border"></TableCell>
+                                <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                              </TableRow>
+                            );
+                          } else {
+                            return (
+                              <TableRow key={idx} className="bg-white">
+                                <TableCell className="border"></TableCell>
+                                <TableCell className="border"></TableCell>
+                                <TableCell className="border">
+                                  <Button
+                                    variant="link"
+                                    className="p-0 text-blue-600 underline"
+                                    onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invNo}&edit=true`, '_self')}
+                                  >
+                                    {row.invNo}
+                                  </Button>
+                                </TableCell>
+                                <TableCell className="border">
+                                  <span className="text-blue-600 cursor-pointer hover:text-blue-800 transition-colors">
+                                    {row.product}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="border text-right">{row.quantity}</TableCell>
+                                <TableCell className="border text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
+                                <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                              </TableRow>
+                            );
+                          }
+                        })
                       )}
                     </TableBody>
                   </Table>
