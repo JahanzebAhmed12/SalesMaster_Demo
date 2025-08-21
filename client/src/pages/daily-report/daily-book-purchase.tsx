@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
+import { useBackdatePermissions } from "@/hooks/usePermissions";
+import { isPastDate } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +47,9 @@ export default function DailyBookPurchase() {
   const [loadingUserType, setLoadingUserType] = useState(true);
   const [filteredPurchaseData, setFilteredPurchaseData] = useState<PurchaseEntry[]>([]);
   const [, navigate] = useLocation();
+
+  // Backdate permissions
+  const { canEditBackdate } = useBackdatePermissions();
 
   // Fetch purchase data
   const {
@@ -452,13 +457,17 @@ export default function DailyBookPurchase() {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            <Button
-                              variant="link"
-                              className="p-0 text-blue-600 underline"
-                              onClick={() => navigate(`/data-entry/purchase-invoice?purchaseId=${item.invNo}&edit=true`)}
-                            >
-                              {item.invNo}
-                            </Button>
+                            {(!isPastDate(item.date) || canEditBackdate) ? (
+                              <Button
+                                variant="link"
+                                className="p-0 text-blue-600 underline"
+                                onClick={() => navigate(`/data-entry/purchase-invoice?purchaseId=${item.invNo}&edit=true`)}
+                              >
+                                {item.invNo}
+                              </Button>
+                            ) : (
+                              <span className="text-gray-500">{item.invNo}</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
                         </TableRow>

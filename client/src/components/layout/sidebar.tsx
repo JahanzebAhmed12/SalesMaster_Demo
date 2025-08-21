@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -127,6 +128,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const [location] = useLocation();
   const { logout } = useAuth();
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
+  const permissions = usePermissions();
 
   const toggleSection = (title: string) => {
     setExpandedSections(prev =>
@@ -139,6 +141,21 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const handleLogout = () => {
     logout();
   };
+
+  // Helper function to check if user has permission for a section
+  const hasPermission = (sectionKey: string) => {
+    // If no permissions are loaded yet, allow access (fallback)
+    if (!permissions || Object.keys(permissions).length === 0) {
+      return true;
+    }
+    return permissions[sectionKey] !== false; // Default to true if not explicitly set to false
+  };
+
+  // Filter menu sections based on permissions
+  const filteredMenuSections = menuSections.filter(section => {
+    const sectionKey = section.title.toLowerCase().replace(/\s+/g, '_');
+    return hasPermission(sectionKey);
+  });
 
   return (
     <>
@@ -182,7 +199,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           </Link>
 
           {/* Menu Sections */}
-          {menuSections.map((section) => {
+          {filteredMenuSections.map((section) => {
             const Icon = section.icon;
             const isExpanded = expandedSections.includes(section.title);
 
@@ -226,31 +243,37 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           })}
 
           {/* Daily Attendance */}
-          <Link href="/payroll/payroll">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/payroll/payroll' ? 'active' : ''
-              }`}>
-              <Clock size={20} />
-              <span className="ml-3 font-medium">Daily Attendance</span>
-            </a>
-          </Link>
+          {hasPermission('daily_attendance') && (
+            <Link href="/payroll/payroll">
+              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/payroll/payroll' ? 'active' : ''
+                }`}>
+                <Clock size={20} />
+                <span className="ml-3 font-medium">Daily Attendance</span>
+              </a>
+            </Link>
+          )}
 
           {/* Closing Time */}
-          <Link href="/closing-time">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${location === '/closing-time' ? 'active' : ''
-              }`}>
-              <Settings size={20} />
-              <span className="ml-3 font-medium">Timings Setup</span>
-            </a>
-          </Link>
+          {hasPermission('setup') && (
+            <Link href="/closing-time">
+              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${location === '/closing-time' ? 'active' : ''
+                }`}>
+                <Settings size={20} />
+                <span className="ml-3 font-medium">Timings Setup</span>
+              </a>
+            </Link>
+          )}
 
           {/* Daily Summary */}
-          <Link href="/daily-report/daily-summary">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-report/daily-summary' ? 'active' : ''
-              }`}>
-              <BarChart3 size={20} />
-              <span className="ml-3 font-medium">Daily Summary</span>
-            </a>
-          </Link>
+          {hasPermission('daily_summary') && (
+            <Link href="/daily-report/daily-summary">
+              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-report/daily-summary' ? 'active' : ''
+                }`}>
+                <BarChart3 size={20} />
+                <span className="ml-3 font-medium">Daily Summary</span>
+              </a>
+            </Link>
+          )}
         </nav>
 
         {/* Footer */}

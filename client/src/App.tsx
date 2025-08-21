@@ -201,7 +201,7 @@ function Router() {
 
       {/* Daily Report Routes */}
       <Route path="/daily-report/daily-summary">
-        <ProtectedRoute requiredSection="daily_reports" title="Daily Summary" breadcrumb="Daily Report > Daily Summary">
+        <ProtectedRoute requiredSection="daily_summary" title="Daily Summary" breadcrumb="Daily Report > Daily Summary">
           <DailySummary />
         </ProtectedRoute>
       </Route>
@@ -382,7 +382,9 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/payroll/payroll">
-        <AuthenticatedRoute component={Payroll} title="Daily Attendance" breadcrumb="Daily Attendance" />
+        <ProtectedRoute requiredSection="daily_attendance" title="Daily Attendance" breadcrumb="Daily Attendance">
+          <Payroll />
+        </ProtectedRoute>
       </Route>
       <Route path="/payroll/holiday-requests">
         <ProtectedRoute requiredSection="payroll" title="Holiday Requests" breadcrumb="Payroll > Holiday Requests">
@@ -494,7 +496,7 @@ function Router() {
 
       {/* Admin Setup */}
       <Route path="/closing-time">
-        <ProtectedRoute requiredSection="admin_setup" title="Closing Time" breadcrumb="Closing Time">
+        <ProtectedRoute requiredSection="setup" title="Closing Time" breadcrumb="Closing Time">
           <ClosingTime />
         </ProtectedRoute>
       </Route>

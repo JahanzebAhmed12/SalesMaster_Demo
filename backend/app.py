@@ -565,6 +565,20 @@ def create_sale():
             # Commit everything at once
             db.session.commit()
             
+            # Update customer running balance
+            try:
+                customer = Customer.query.get(new_sale.customer_id)
+                if customer:
+                    # Add the sale total to the customer's running balance
+                    current_balance = float(customer.running_balance or 0)
+                    new_balance = current_balance + float(new_sale.total_amount)
+                    customer.running_balance = new_balance
+                    db.session.commit()
+                    print(f"Updated customer {customer.customer_name} running balance: {current_balance} + {new_sale.total_amount} = {new_balance}")
+            except Exception as e:
+                print(f"Warning: Failed to update customer running balance: {str(e)}")
+                # Don't fail the sale creation if running balance update fails
+            
             # Return the result
             result = new_sale.to_dict()
             if stock_warnings:
@@ -1570,21 +1584,91 @@ def validate_multiple_emails(email_string):
 @app.route('/api/customers', methods=['POST'])
 def create_customer():
     data = request.get_json()
+    
+    # Helper function to get value with fallback to different field name formats
+    def get_field_value(data, field_name, default=None):
+        # Try camelCase first, then snake_case
+        if field_name == 'customer_code':
+            return data.get('customerCode') or data.get('customer_code') or default
+        elif field_name == 'customer_name':
+            return data.get('customerName') or data.get('customer_name') or default
+        elif field_name == 'sage_code':
+            return data.get('sageCode') or data.get('sage_code') or default
+        elif field_name == 'customer_city':
+            return data.get('customerCity') or data.get('customer_city') or default
+        elif field_name == 'customer_country':
+            return data.get('customerCountry') or data.get('customer_country') or default
+        elif field_name == 'customer_currency':
+            return data.get('customerCurrency') or data.get('customer_currency') or default
+        elif field_name == 'own_branch':
+            return data.get('ownBranch') or data.get('own_branch') or default
+        elif field_name == 'vat_number':
+            return data.get('vatNumber') or data.get('vat_number') or default
+        elif field_name == 'credit_limit':
+            return data.get('creditLimit') or data.get('credit_limit') or default
+        elif field_name == 'settlement_days':
+            return data.get('settlementDays') or data.get('settlement_days') or default
+        elif field_name == 'settlement_discount':
+            return data.get('settlementDiscount') or data.get('settlement_discount') or default
+        elif field_name == 'web_address':
+            return data.get('webAddress') or data.get('web_address') or default
+        elif field_name == 'is_active':
+            return data.get('isActive') or data.get('is_active') or default
+        elif field_name == 'running_balance':
+            return data.get('runningBalance') or data.get('running_balance') or default
+        else:
+            # For other fields, try both formats
+            return data.get(field_name) or data.get(field_name.replace('_', '').lower()) or default
+    
+    # Validate required fields
+    customer_code = get_field_value(data, 'customer_code')
+    customer_name = get_field_value(data, 'customer_name')
+    
+    if not customer_code or not customer_name:
+        return jsonify({'error': 'Customer code and name are required'}), 400
+    
+    # Validate email format if provided
+    email = get_field_value(data, 'email')
+    if email:
+        if not validate_multiple_emails(email):
+            return jsonify({'error': 'Invalid email format'}), 400
+    
     try:
-        # Validate multiple emails if provided
-        if data.get('email'):
-            is_valid, error_msg = validate_multiple_emails(data['email'])
-            if not is_valid:
-                return jsonify({'message': error_msg}), 400
+        customer = Customer(
+            customer_code=customer_code,
+            sage_code=get_field_value(data, 'sage_code', ''),
+            customer_name=customer_name,
+            address=get_field_value(data, 'address', ''),
+            telephone=get_field_value(data, 'telephone', ''),
+            fax=get_field_value(data, 'fax', ''),
+            email=email or '',
+            customer_city=get_field_value(data, 'customer_city', ''),
+            customer_country=get_field_value(data, 'customer_country', ''),
+            customer_currency=get_field_value(data, 'customer_currency', 'GBP'),
+            remarks=get_field_value(data, 'remarks', ''),
+            own_branch=get_field_value(data, 'own_branch', 'no'),
+            vat_number=get_field_value(data, 'vat_number', ''),
+            credit_limit=get_field_value(data, 'credit_limit', 0),
+            terms=get_field_value(data, 'terms', ''),
+            settlement_days=get_field_value(data, 'settlement_days', 0),
+            settlement_discount=get_field_value(data, 'settlement_discount', 0),
+            web_address=get_field_value(data, 'web_address', ''),
+            others=get_field_value(data, 'others', ''),
+            running_balance=get_field_value(data, 'running_balance', 0),
+            is_active=get_field_value(data, 'is_active', 'yes')
+        )
         
-        customer_data = CustomerSchema(**data)
-        customer = Customer(**customer_data.dict())
         db.session.add(customer)
         db.session.commit()
-        return jsonify(customer.to_dict())
+        
+        return jsonify(customer.to_dict()), 201
+        
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'error': 'Customer code already exists'}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': str(e)}), 400
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/customers/<int:id>', methods=['GET'])
 def get_customer(id):
@@ -3521,6 +3605,21 @@ def create_payment():
         
         db.session.add(new_payment)
         db.session.commit()
+        
+        # Update customer running balance
+        try:
+            customer = Customer.query.get(payment_data.customer_id)
+            if customer:
+                # Subtract the payment amount from the customer's running balance
+                current_balance = float(customer.running_balance or 0)
+                new_balance = current_balance - float(payment_data.amount)
+                customer.running_balance = new_balance
+                db.session.commit()
+                print(f"Updated customer {customer.customer_name} running balance: {current_balance} - {payment_data.amount} = {new_balance}")
+        except Exception as e:
+            print(f"Warning: Failed to update customer running balance: {str(e)}")
+            # Don't fail the payment creation if running balance update fails
+        
         return jsonify(new_payment.to_dict()), 201
     except Exception as e:
         db.session.rollback()

@@ -21,6 +21,10 @@ const restrictionSections = [
   { key: "historical_reports", label: "HISTORICAL REPORTS" },
   { key: "payments", label: "PAYMENTS" },
   { key: "admin_setup", label: "ADMIN SET UP" },
+  { key: "daily_attendance", label: "DAILY ATTENDANCE" },
+  { key: "setup", label: "SETUP" },
+  { key: "daily_summary", label: "DAILY SUMMARY" },
+  { key: "payroll", label: "PAYROLL" },
 ];
 
 const AdminFunctions = () => {

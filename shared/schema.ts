@@ -64,6 +64,7 @@ export const customerSchema = z.object({
   settlement_discount: z.number().nullable(),
   web_address: z.string().nullable(),
   others: z.string().nullable(),
+  runningBalance: z.number().default(0),
   is_active: z.string(),
   created_at: z.string(),
   updated_at: z.string()

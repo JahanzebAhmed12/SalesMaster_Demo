@@ -25,4 +25,22 @@ export function usePermissions() {
   );
 
   return restrictionMap;
+}
+
+export function useBackdatePermissions() {
+  const { user } = useAuth();
+
+  const { data: backdateOptions } = useQuery({
+    queryKey: ["/api/user-backdate-options", user?.id],
+    queryFn: () =>
+      user?.id
+        ? apiRequest("GET", `/api/user-backdate-options/${user.id}`)
+        : Promise.resolve({ editing: false, deleting: false }),
+    enabled: !!user?.id,
+  });
+
+  return {
+    canEditBackdate: backdateOptions?.editing ?? false,
+    canDeleteBackdate: backdateOptions?.deleting ?? false,
+  };
 } 

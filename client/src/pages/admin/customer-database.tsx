@@ -32,6 +32,7 @@ interface Customer {
   email?: string;
   telephone?: string;
   is_active: "yes" | "no";
+  runningBalance?: number;
 }
 
 interface InsertCustomer {
@@ -106,7 +107,7 @@ export default function Customers() {
   const handleExport = (format: string) => {
     if (format === "excel" && customers) {
       const csvContent = [
-        ["Customer Code", "Customer Name", "City", "Country", "Currency", "Email", "Telephone", "Status"].join(","),
+        ["Customer Code", "Customer Name", "City", "Country", "Currency", "Running Balance", "Email", "Telephone", "Status"].join(","),
         ...customers.map((c) =>
           [
             c.customer_code,
@@ -114,6 +115,7 @@ export default function Customers() {
             c.customer_city || "",
             c.customer_country || "",
             c.customer_currency,
+            c.runningBalance || 0,
             c.email ? c.email.replace(/,/g, ';') : "",
             c.telephone || "",
             c.is_active === "yes" ? "Active" : "Inactive",
@@ -151,6 +153,7 @@ export default function Customers() {
                   <th>City</th>
                   <th>Country</th>
                   <th>Currency</th>
+                  <th>Running Balance</th>
                   <th>Email</th>
                   <th>Telephone</th>
                   <th>Status</th>
@@ -166,6 +169,7 @@ export default function Customers() {
                     <td>${c.customer_city || "-"}</td>
                     <td>${c.customer_country || "-"}</td>
                     <td>${c.customer_currency}</td>
+                    <td>£${(c.runningBalance || 0).toFixed(2)}</td>
                     <td>${c.email || "-"}</td>
                     <td>${c.telephone || "-"}</td>
                     <td>${c.is_active === "yes" ? "Active" : "Inactive"}</td>
@@ -211,6 +215,7 @@ export default function Customers() {
                   <th>City</th>
                   <th>Country</th>
                   <th>Currency</th>
+                  <th>Running Balance</th>
                   <th>Email</th>
                   <th>Telephone</th>
                   <th>Status</th>
@@ -226,6 +231,7 @@ export default function Customers() {
                     <td>${c.customer_city || "-"}</td>
                     <td>${c.customer_country || "-"}</td>
                     <td>${c.customer_currency}</td>
+                    <td>£${(c.runningBalance || 0).toFixed(2)}</td>
                     <td>${c.email || "-"}</td>
                     <td>${c.telephone || "-"}</td>
                     <td>${c.is_active === "yes" ? "Active" : "Inactive"}</td>
@@ -330,6 +336,7 @@ export default function Customers() {
                         <th className="text-left p-3 border-r">City</th>
                         <th className="text-left p-3 border-r">Country</th>
                         <th className="text-left p-3 border-r">Currency</th>
+                        <th className="text-left p-3 border-r">Running Balance</th>
                         <th className="text-left p-3 border-r">Email</th>
                         <th className="text-left p-3 border-r">Telephone</th>
                         <th className="text-left p-3 border-r">Edit</th>
@@ -346,6 +353,7 @@ export default function Customers() {
                           <td className="p-3 border-r">{customer.customer_city || "-"}</td>
                           <td className="p-3 border-r">{customer.customer_country || "-"}</td>
                           <td className="p-3 border-r">{customer.customer_currency}</td>
+                          <td className="p-3 border-r">£{(customer.runningBalance || 0).toFixed(2)}</td>
                           <td className="p-3 border-r" title={customer.email || ""}>
                             {formatEmails(customer.email || "")}
                           </td>

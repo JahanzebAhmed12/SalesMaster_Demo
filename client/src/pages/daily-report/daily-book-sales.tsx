@@ -23,6 +23,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt } from "lucide-react";
 import classNames from 'classnames';
+import { useBackdatePermissions } from "@/hooks/usePermissions";
+import { isPastDate } from "@/lib/utils";
 
 interface SalesEntry {
   id: number;
@@ -115,6 +117,9 @@ export default function DailyBookSales() {
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
+
+  // Backdate permissions
+  const { canEditBackdate } = useBackdatePermissions();
 
   useEffect(() => {
     async function fetchUserAndType() {
@@ -1261,9 +1266,11 @@ export default function DailyBookSales() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" className="w-48">
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
-                                <Pencil className="mr-2 h-4 w-4" /> Edit Invoice
-                              </DropdownMenuItem>
+                              {(!isPastDate(sale.date) || canEditBackdate) && (
+                                <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
+                                  <Pencil className="mr-2 h-4 w-4" /> Edit Invoice
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}>
                                 <Printer className="mr-2 h-4 w-4" /> Print Ticket
                               </DropdownMenuItem>

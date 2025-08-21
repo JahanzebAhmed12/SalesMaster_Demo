@@ -17,6 +17,8 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { useBackdatePermissions } from "@/hooks/usePermissions";
+import { isPastDate } from "@/lib/utils";
 
 
 interface StockItem {
@@ -53,6 +55,9 @@ interface ClosingStockData {
 export default function ClosingStock() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Backdate permissions
+  const { canEditBackdate, canDeleteBackdate } = useBackdatePermissions();
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [addProductId, setAddProductId] = useState("");
   const [addQuantity, setAddQuantity] = useState("");
@@ -80,6 +85,12 @@ export default function ClosingStock() {
 
   // Add new closing stock entry
   const handleAddEntry = async () => {
+    // Check backdate permissions
+    if (isPastDate(selectedDate) && !canEditBackdate) {
+      toast({ title: "Error", description: "You don't have permission to add entries for past dates.", variant: "destructive" });
+      return;
+    }
+    
     if (!addProductId || !addQuantity) {
       toast({ title: "Error", description: "Select a product and enter quantity.", variant: "destructive" });
       return;
@@ -105,6 +116,12 @@ export default function ClosingStock() {
 
   // Edit closing stock entry
   const handleEditSave = async (entry: any) => {
+    // Check backdate permissions
+    if (isPastDate(selectedDate) && !canEditBackdate) {
+      toast({ title: "Error", description: "You don't have permission to edit past date stock entries.", variant: "destructive" });
+      return;
+    }
+    
     if (!editQuantity) {
       toast({ title: "Error", description: "Enter a valid quantity.", variant: "destructive" });
       return;
@@ -127,6 +144,12 @@ export default function ClosingStock() {
 
   // Delete closing stock entry
   const handleDeleteEntry = async (productId: number) => {
+    // Check backdate permissions
+    if (isPastDate(selectedDate) && !canDeleteBackdate) {
+      toast({ title: "Error", description: "You don't have permission to delete past date stock entries.", variant: "destructive" });
+      return;
+    }
+    
     try {
       const items = closingStockEntries
         .filter((e: any) => e.productId !== productId)
@@ -483,7 +506,11 @@ export default function ClosingStock() {
                 />
               </TableCell>
               <TableCell className="py-2 px-4">
-                <Button onClick={() => { handleAddEntry(); setSearchTerm(""); }}>Save</Button>
+                {(!isPastDate(selectedDate) || canEditBackdate) ? (
+                  <Button onClick={() => { handleAddEntry(); setSearchTerm(""); }}>Save</Button>
+                ) : (
+                  <Button disabled className="opacity-50">Save</Button>
+                )}
               </TableCell>
             </TableRow>
             {/* Existing Entries */}
@@ -525,9 +552,11 @@ export default function ClosingStock() {
                     <TableCell className="py-2 px-4 border-r border-gray-200 font-semibold">{entry.quantity}</TableCell>
                     <TableCell className="py-2 px-4">
                       <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => { setEditRowId(entry.productId); setEditQuantity(entry.quantity.toString()); }}>
-                          Edit
-                        </Button>
+                        {(!isPastDate(selectedDate) || canEditBackdate) && (
+                          <Button size="sm" variant="outline" onClick={() => { setEditRowId(entry.productId); setEditQuantity(entry.quantity.toString()); }}>
+                            Edit
+                          </Button>
+                        )}
                         {deleteConfirm === entry.productId ? (
                           <div className="flex gap-1">
                             <Button 
@@ -546,14 +575,16 @@ export default function ClosingStock() {
                             </Button>
                           </div>
                         ) : (
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            onClick={() => setDeleteConfirm(entry.productId)}
-                            className="text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          (!isPastDate(selectedDate) || canDeleteBackdate) && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => setDeleteConfirm(entry.productId)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )
                         )}
                       </div>
                     </TableCell>

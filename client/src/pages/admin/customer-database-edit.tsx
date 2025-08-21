@@ -72,6 +72,7 @@ export default function CustomerAdd() {
       own_branch: "no",
       vat_number: "",
       credit_limit: 0,
+      runningBalance: 0,
       terms: "",
       settlement_days: 0,
       settlement_discount: 0,
@@ -141,6 +142,7 @@ export default function CustomerAdd() {
       const formData = {
         ...data,
         credit_limit: Number(data.credit_limit) || 0,
+        runningBalance: Number(data.runningBalance) || 0,
         settlement_discount: Number(data.settlement_discount) || 0,
         settlement_days: Number(data.settlement_days) || 0,
       };
@@ -437,6 +439,27 @@ export default function CustomerAdd() {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="runningBalance"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Running Balance</FormLabel>
+                      <FormControl>
+                        <Input 
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          value={field.value?.toString() || "0"}
+                          onChange={(e) => field.onChange(Number(e.target.value) || 0)}
+                          placeholder="Enter initial running balance"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}

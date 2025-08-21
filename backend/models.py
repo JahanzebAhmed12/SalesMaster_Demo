@@ -288,6 +288,7 @@ class Customer(db.Model):
     web_address = db.Column(db.String(200))
     others = db.Column(db.String(100))  # Others/Gate field for sales entry
     is_active = db.Column(db.String(3), default='yes')
+    running_balance = db.Column(db.Numeric(12, 2), default=0)  # Running balance field
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -317,6 +318,7 @@ class Customer(db.Model):
             'web_address': self.web_address,
             'others': self.others,
             'is_active': self.is_active,
+            'runningBalance': float(self.running_balance) if self.running_balance else 0,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
         }
