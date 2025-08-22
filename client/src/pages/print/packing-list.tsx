@@ -48,14 +48,7 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
     <div style={{ maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
       {/* Header: Logo and Company Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-          <img src={logo} alt="Logo" style={{ height: 60, marginBottom: 8 }} />
-          <div style={{ fontWeight: "bold", fontSize: 24 }}>{company?.companyName || "Company Name"}</div>
-          <div style={{ fontSize: 16 }}>{company?.address1}{company?.address2 ? ", " + company.address2 : ""}</div>
-          {company?.compRegNo && <div style={{ fontSize: 14 }}>Comp.Reg.No: {company.compRegNo} VAT No: {company.vatNo}</div>}
-          {company?.telephone && <div style={{ fontSize: 14 }}>T: {company.telephone}{company?.mobile ? ` | M: ${company.mobile}` : ""}</div>}
-          {company?.email && <div style={{ fontSize: 14 }}>E: {company.email}</div>}
-        </div>
+     
         <div style={{ textAlign: "right" }}>
           <div style={{ fontWeight: "bold", fontSize: 28, color: '#1a237e', marginBottom: 4 }}>PACKING LIST</div>
           <div style={{ fontWeight: 400, fontSize: 18, marginTop: 8 }}>Date: {sale?.date ? new Date(sale.date).toLocaleDateString() : "-"}</div>
