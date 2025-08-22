@@ -152,10 +152,21 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   };
 
   // Filter menu sections based on permissions
-  const filteredMenuSections = menuSections.filter(section => {
+  const filteredMenuSections = menuSections
+  .map(section => {
     const sectionKey = section.title.toLowerCase().replace(/\s+/g, '_');
-    return hasPermission(sectionKey);
-  });
+
+    if (!hasPermission(sectionKey)) return null;
+
+    const filteredItems = section.items.filter(item => {
+      const itemKey = item.title.toLowerCase().replace(/\s+/g, '_');
+      return hasPermission(itemKey);
+    });
+
+    return { ...section, items: filteredItems };
+  })
+  .filter(Boolean);
+
 
   return (
     <>

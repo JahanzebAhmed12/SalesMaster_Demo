@@ -14,18 +14,121 @@ import Header from "@/components/layout/header";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { UserRestriction, User } from "@shared/schema";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 
-const restrictionSections = [
-  { key: "data_entry", label: "DATA ENTRY" },
-  { key: "daily_reports", label: "DAILY REPORTS" },
-  { key: "historical_reports", label: "HISTORICAL REPORTS" },
-  { key: "payments", label: "PAYMENTS" },
-  { key: "admin_setup", label: "ADMIN SET UP" },
-  { key: "daily_attendance", label: "DAILY ATTENDANCE" },
-  { key: "setup", label: "SETUP" },
-  { key: "daily_summary", label: "DAILY SUMMARY" },
-  { key: "payroll", label: "PAYROLL" },
+
+// Generate restrictionSections dynamically
+const menuSections: MenuSection[] = [
+  {
+    title: "Dashboard",
+    items: [
+      { title: "Dashboard", path: "/dashboard" },
+    ] // ✅ direct page, no items
+  },
+  {
+    title: "Data Entry",
+    items: [
+      { title: "Sales Entry", path: "/data-entry/sales-entry" },
+      { title: "Purchase Entry", path: "/data-entry/purchase-entry" },
+      { title: "Closing Stock", path: "/data-entry/closing-stock" },
+      { title: "Return from Customer", path: "/data-entry/return-from-customer" },
+      { title: "Return to Supplier", path: "/data-entry/return-to-supplier" },
+      { title: "Dumps", path: "/data-entry/dumps" },
+      { title: "Till/Float(C/F)", path: "/data-entry/cash-cf" },
+      { title: "Banking", path: "/data-entry/banking" },
+      { title: "Expenses", path: "/data-entry/expenses" },
+      { title: "On A/c Customer", path: "/data-entry/on-acc-customer" },
+      { title: "On A/c Supplier", path: "/data-entry/on-acc-supplier" },
+    ],
+  },
+  {
+    title: "Daily Report",
+
+    items: [
+      { title: "Daily Book Sales", path: "/daily-report/daily-book-sales" },
+      { title: "Daily Book Purchase", path: "/daily-report/daily-book-purchase" },
+      { title: "Stock Check", path: "/daily-report/stock-check" },
+      { title: "Stock Template", path: "/daily-report/stock-template" },
+      { title: "Product Sales Report", path: "/daily-report/product-sales-report" },
+      { title: "Product Purchase Report", path: "/daily-report/product-purchase-report" },
+      { title: "Profit Loss", path: "/daily-report/profit-loss" },
+      { title: "Sales Analysis", path: "/daily-report/sales-analysis" },
+      { title: "Daily Accounts", path: "/daily-report/daily-accounts" },
+    ],
+  },
+  {
+    title: "Historical Reports",
+
+    items: [
+      { title: "Customer History", path: "/historical-reports/customer-history" },
+      { title: "Customer Statement", path: "/historical-reports/customer-statement" },
+      { title: "All Customer History", path: "/historical-reports/all-customer-history" },
+      { title: "Customer Aging RPT", path: "/historical-reports/customer-aging-rpt" },
+      { title: "Supplier Aging Rpt", path: "/historical-reports/supplier-aging-rpt" },
+      { title: "Supplier History", path: "/historical-reports/supplier-history" },
+      { title: "All Supplier History", path: "/historical-reports/all-supplier-history" },
+      { title: "Purchase History", path: "/historical-reports/purchase-history" },
+      { title: "Product History", path: "/historical-reports/product-history" },
+      { title: "Prod/Customer History", path: "/historical-reports/prod-customer-history" },
+      { title: "Date Wise Sales", path: "/historical-reports/date-wise-sales" },
+      { title: "Customer Return", path: "/historical-reports/customer-return" },
+      { title: "Supplier Returns", path: "/historical-reports/supplier-return" },
+      { title: "Daily Book History", path: "/historical-reports/daily-book-history" },
+      { title: "Full Analysis", path: "/historical-reports/full-analysis" },
+      { title: "EEC Report", path: "/historical-reports/eec-report" },
+    ],
+  },
+  {
+    title: "Payments",
+
+    items: [
+      { title: "Customer Payment", path: "/payments/customer-payment" },
+      { title: "Supplier Payment", path: "/payments/supplier-payment" },
+      { title: "Customer Payment History", path: "/payments/customer-payment-history" },
+      { title: "Sup Payment History", path: "/payments/sup-payment-history" },
+    ],
+  },
+  {
+    title: "Payroll",
+
+    items: [
+      { title: "Monthly Reports", path: "/payroll/monthly-report" },
+      { title: "Holiday Requests", path: "/payroll/holiday-requests" },
+    ],
+  },
+  {
+    title: "Admin Setup",
+
+    items: [
+      { title: "User Setup", path: "/admin/user-setup" },
+      { title: "Employee Database", path: "/admin/employee-database" },
+      { title: "Equipment Database", path: "/admin/equipment-database" },
+      { title: "Products Database", path: "/admin/products-database" },
+      { title: "Customer Database", path: "/admin/customer-database" },
+      { title: "Supplier Database", path: "/admin/supplier-database" },
+      { title: "Expenses Database", path: "/admin/expenses-database" },
+      { title: "Company Details", path: "/admin/company-details" },
+      { title: "Admin Functions", path: "/admin/admin-functions" },
+    ],
+  },
 ];
+
+
+const restrictionSections = menuSections.flatMap(section => {
+  const sectionKey = section.title.toLowerCase().replace(/\s+/g, '_');
+  return [
+    { key: sectionKey, label: section.title.toUpperCase() },
+    ...section.items.map(item => ({
+      key: item.title.toLowerCase().replace(/\s+/g, '_'),
+      label: item.title
+    }))
+  ];
+});
 
 const AdminFunctions = () => {
   const [userWorkTime, setUserWorkTime] = useState({
@@ -35,40 +138,7 @@ const AdminFunctions = () => {
     butt: { start: "00:01", end: "23:59" }
   });
 
-  const [userRestrictions, setUserRestrictions] = useState({
-    admin: {
-      dataEntry: { show: true, hide: false },
-      dailyReports: { show: false, hide: true },
-      historicalReports: { show: true, hide: false },
-      payments: { show: true, hide: false },
-      admin: { show: true, hide: false },
-      others: { show: true, hide: false }
-    },
-    cashier: {
-      dataEntry: { show: true, hide: false },
-      dailyReports: { show: false, hide: true },
-      historicalReports: { show: true, hide: false },
-      payments: { show: true, hide: false },
-      admin: { show: true, hide: false },
-      others: { show: true, hide: false }
-    },
-    burhan: {
-      dataEntry: { show: true, hide: false },
-      dailyReports: { show: false, hide: true },
-      historicalReports: { show: true, hide: false },
-      payments: { show: true, hide: false },
-      admin: { show: true, hide: false },
-      others: { show: true, hide: false }
-    },
-    butt: {
-      dataEntry: { show: true, hide: false },
-      dailyReports: { show: false, hide: true },
-      historicalReports: { show: true, hide: false },
-      payments: { show: true, hide: false },
-      admin: { show: true, hide: false },
-      others: { show: true, hide: false }
-    }
-  });
+  
 
   const [backDateOptions, setBackDateOptions] = useState<Record<number, { editing: boolean; deleting: boolean }>>({});
 
@@ -448,69 +518,94 @@ const AdminFunctions = () => {
 
         {/* User Restriction */}
         <Card className="shadow-sm border border-gray-200 mb-10">
-          <Collapsible>
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                <CardTitle className="flex items-center justify-between text-sm">
-                  User Restriction
-                  <ChevronDown className="h-4 w-4" />
-                </CardTitle>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent className="p-4">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
-                    <thead>
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+  <Collapsible>
+    <CollapsibleTrigger asChild>
+      <CardHeader className="cursor-pointer bg-blue-500 text-white">
+        <CardTitle className="flex items-center justify-between text-sm">
+          User Restriction
+          <ChevronDown className="h-4 w-4" />
+        </CardTitle>
+      </CardHeader>
+    </CollapsibleTrigger>
+    <CollapsibleContent>
+      <CardContent className="p-4">
+        <div className="overflow-x-auto">
+          <table className="min-w-full border border-gray-200 rounded-lg bg-white">
+            <thead>
+              <tr>
+                <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  User
+                </th>
+                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Restrictions
+                </th>
+                <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(user => (
+                <tr
+                  key={user.id}
+                  className="border-t border-gray-100 hover:bg-gray-50 transition"
+                >
+                  {/* Username */}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {user.username}
+                  </td>
+
+                  {/* Dropdown with all restrictionSections */}
+                  <td className="px-6 py-4 text-center">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          Manage Restrictions
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-64 max-h-80 overflow-y-auto">
                         {restrictionSections.map(section => (
-                          <th key={section.key} className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">{section.label}</th>
+                          <DropdownMenuCheckboxItem
+                            key={section.key}
+                            checked={
+                              editRestrictions[user.id]?.[section.key] ?? true
+                            }
+                            onCheckedChange={checked =>
+                              setEditRestrictions(prev => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...prev[user.id],
+                                  [section.key]: checked,
+                                },
+                              }))
+                            }
+                          >
+                            {section.label}
+                          </DropdownMenuCheckboxItem>
                         ))}
-                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map(user => (
-                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
-                          {restrictionSections.map(section => (
-                            <td key={section.key} className="px-6 py-4 text-center">
-                              <label className="inline-flex items-center space-x-2">
-                                <input
-                                  type="checkbox"
-                                  checked={editRestrictions[user.id]?.[section.key] ?? true}
-                                  onChange={e => setEditRestrictions(prev => ({
-                                    ...prev,
-                                    [user.id]: {
-                                      ...prev[user.id],
-                                      [section.key]: e.target.checked,
-                                    },
-                                  }))}
-                                  className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
-                                />
-                                <span className="text-xs text-gray-700">{editRestrictions[user.id]?.[section.key] ? "Show" : "Hide"}</span>
-                              </label>
-                            </td>
-                          ))}
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
-                              disabled={saving}
-                              onClick={() => saveRestrictions(user.id)}
-                            >
-                              {saving ? "Saving..." : "Save"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+
+                  {/* Save button */}
+                  <td className="px-6 py-4 text-center">
+                    <button
+                      className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
+                      disabled={saving}
+                      onClick={() => saveRestrictions(user.id)}
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </CollapsibleContent>
+  </Collapsible>
+</Card>
 
         {/* Back Date Editing/Deleting */}
         <Card className="shadow-sm border border-gray-200 mb-10">
