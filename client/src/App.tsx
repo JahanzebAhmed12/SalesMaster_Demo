@@ -16,6 +16,7 @@ import HolidayRequestForm from "@/pages/payroll/holiday-request-form";
 import HolidayRequestView from "@/pages/payroll/holiday-request-view";
 import HolidayRequestPrint from "@/pages/print/holiday-request-print";
 import EmployeeContractPrint from "@/pages/print/employee-contract-print";
+import EmployeeJoiningForm from "@/pages/print/employee-joining-form";
 import PaymentReceiptPrint from "@/pages/print/payment-receipt-print";
 
 // Data Entry Pages
@@ -127,9 +128,13 @@ function AuthenticatedRoute({ component: Component, title, breadcrumb }: { compo
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Login} />
+      <Route exact path="/">
+        <Login />
+      </Route>
       <Route path="/dashboard">
-        <AuthenticatedRoute component={Dashboard} title="Dashboard" breadcrumb="Dashboard" />
+      <ProtectedRoute requiredSection="dashboard" title="Dashboard" breadcrumb="Dashboard > Dashbaord">
+          <Dashboard />
+        </ProtectedRoute>
       </Route>
 
       {/* Data Entry Routes */}
@@ -255,10 +260,26 @@ function Router() {
           <ProductPurchaseFullView />
         </ProtectedRoute>
       </Route>
-      <Route path="/reports/product-sales-history" component={ProductSalesHistoryPage} />
-      <Route path="/reports/product-purchase-history" component={ProductPurchaseHistoryPage} />
-      <Route path="/daily-report/compare-with-purchase" component={CompareWithPurchasePage} />
-      <Route path="/daily-report/supplier-purchase-history/:supplierId" component={SupplierPurchaseHistoryPage} />
+      <Route path="/reports/product-sales-history">
+        <ProtectedRoute requiredSection="historical_reports" title="Product Sales History" breadcrumb="Historical Reports > Product Sales History">
+          <ProductSalesHistoryPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/reports/product-purchase-history">
+        <ProtectedRoute requiredSection="historical_reports" title="Product Purchase History" breadcrumb="Historical Reports > Product Purchase History">
+          <ProductPurchaseHistoryPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/daily-report/compare-with-purchase">
+        <ProtectedRoute requiredSection="daily_reports" title="Compare with Purchase" breadcrumb="Daily Report > Compare with Purchase">
+          <CompareWithPurchasePage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/daily-report/supplier-purchase-history/:supplierId">
+        <ProtectedRoute requiredSection="daily_reports" title="Supplier Purchase History" breadcrumb="Daily Report > Supplier Purchase History">
+          <SupplierPurchaseHistoryPage />
+        </ProtectedRoute>
+      </Route>
 
       <Route path="/daily-report/daily-accounts">
         <ProtectedRoute requiredSection="daily_reports" title="Daily Accounts" breadcrumb="Daily Report > Daily Accounts">
@@ -376,19 +397,39 @@ function Router() {
       </Route>
       {/* Attenedence and Payroll */}
 
+      {/* Payroll Section */}
       <Route path="/payroll/monthly-report">
-        <ProtectedRoute requiredSection="payroll" title="Monthly Report" breadcrumb="Monthly Report">
+        <ProtectedRoute requiredSection="payroll" title="Monthly Reports" breadcrumb="Payroll > Monthly Reports">
           <MonthlyReports />
-        </ProtectedRoute>
-      </Route>
-      <Route path="/payroll/payroll">
-        <ProtectedRoute requiredSection="daily_attendance" title="Daily Attendance" breadcrumb="Daily Attendance">
-          <Payroll />
         </ProtectedRoute>
       </Route>
       <Route path="/payroll/holiday-requests">
         <ProtectedRoute requiredSection="payroll" title="Holiday Requests" breadcrumb="Payroll > Holiday Requests">
           <HolidayRequests />
+        </ProtectedRoute>
+      </Route>
+      
+      {/* Daily Attendance Section */}
+      <Route path="/daily-attendance">
+        <ProtectedRoute requiredSection="daily_attendance" title="Daily Attendance" breadcrumb="Daily Attendance">
+          <Payroll />
+        </ProtectedRoute>
+      </Route>
+      
+      {/* Timings Setup Section */}
+      <Route path="/timings-setup">
+        <ProtectedRoute requiredSection="timings_setup" title="Timings Setup" breadcrumb="Timings Setup">
+          <div className="p-6">
+            <h1 className="text-2xl font-bold mb-4">Timings Setup</h1>
+            <p>Timings setup page content will be implemented here.</p>
+          </div>
+        </ProtectedRoute>
+      </Route>
+      
+      {/* Daily Summary Section */}
+      <Route path="/daily-summary">
+        <ProtectedRoute requiredSection="daily_summary" title="Daily Summary" breadcrumb="Daily Summary">
+          <DailySummary />
         </ProtectedRoute>
       </Route>
       <Route path="/payroll/holiday-requests/new">
@@ -508,27 +549,48 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
-      {/* Print Invoice Route (public) */}
-      <Route path="/print/invoice/:invoiceNumber" component={InvoicePrintPage} />
-      {/* Daily Summary Print (public) */}
-      <Route path="/print/daily-summary" component={DailySummaryPrintPage} />
-      {/* A5 Print Invoice Route (public) */}
-      <Route path="/print/a5-invoice/:invoiceNumber" component={A5InvoicePrintPage} />
-      {/* Dot Matrix Print Invoice Route (public) */}
-      <Route path="/print/dot-matrix-invoice/:invoiceNumber" component={DotMatrixInvoicePrintPage} />
-      {/* Dot Matrix Print Payment Route (public) */}
-      <Route path="/print/dot-matrix-payment/:batchId" component={DotMatrixPaymentPrintPage} />
-      <Route path="/print/purchase-invoice/:invoiceId" component={PurchaseInvoicePrintPage} />
+      {/* Print Routes (public) */}
+      <Route path="/print/invoice/:invoiceNumber">
+        <InvoicePrintPage />
+      </Route>
+      <Route path="/print/daily-summary">
+        <DailySummaryPrintPage />
+      </Route>
+      <Route path="/print/a5-invoice/:invoiceNumber">
+        <A5InvoicePrintPage />
+      </Route>
+      <Route path="/print/dot-matrix-invoice/:invoiceNumber">
+        <DotMatrixInvoicePrintPage />
+      </Route>
+      <Route path="/print/dot-matrix-payment/:batchId">
+        <DotMatrixPaymentPrintPage />
+      </Route>
+      <Route path="/print/purchase-invoice/:invoiceId">
+        <PurchaseInvoicePrintPage />
+      </Route>
       <Route path="/print/delivery-note/:invoiceNumber">
         <DeliveryNotePrintPage />
       </Route>
-      <Route path="/print/packing-list/:invoiceNumber" component={PackingListPrintPage} />
-      <Route path="/print/holiday-request/:id" component={HolidayRequestPrint} />
-      <Route path="/print/employee-contract/:id" component={EmployeeContractPrint} />
-      <Route path="/print/payment-receipt/:saleId/:paymentType" component={PaymentReceiptPrint} />
+      <Route path="/print/packing-list/:invoiceNumber">
+        <PackingListPrintPage />
+      </Route>
+      <Route path="/print/holiday-request/:id">
+        <HolidayRequestPrint />
+      </Route>
+      <Route path="/print/employee-contract/:id">
+        <EmployeeContractPrint />
+      </Route>
+      <Route path="/print/employee-joining-form/:id">
+        <EmployeeJoiningForm />
+      </Route>
+      <Route path="/print/payment-receipt/:saleId/:paymentType">
+        <PaymentReceiptPrint />
+      </Route>
 
       {/* Fallback to 404 */}
-      <Route component={NotFound} />
+      <Route>
+        <NotFound />
+      </Route>
     </Switch>
   );
 }

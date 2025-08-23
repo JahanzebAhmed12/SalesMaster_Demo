@@ -96,7 +96,7 @@ const SalesInvoice = () => {
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
-  const [itemQuantity, setItemQuantity] = useState<number>(1);
+  const [itemQuantity, setItemQuantity] = useState<string>("");
   const [itemUnitPrice, setItemUnitPrice] = useState<string>("");
   const [itemNotes, setItemNotes] = useState<string>("");
   const [isCreatingSale, setIsCreatingSale] = useState(false);
@@ -616,10 +616,19 @@ const SalesInvoice = () => {
       return;
     }
 
-    if (!itemUnitPrice || Number(itemUnitPrice) <= 0) {
+    if (!itemUnitPrice || isNaN(Number(itemUnitPrice)) || itemUnitPrice.trim() === '') {
       toast({
         title: "Validation Error",
         description: "Please enter a valid unit price.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!itemQuantity || isNaN(Number(itemQuantity)) || itemQuantity.trim() === '') {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid quantity.",
         variant: "destructive",
       });
       return;
@@ -637,7 +646,7 @@ const SalesInvoice = () => {
       })
       .reduce((sum, item) => sum + item.quantity, 0);
 
-    const totalRequestedQuantity = existingQuantity + itemQuantity;
+    const totalRequestedQuantity = existingQuantity + Number(itemQuantity);
 
     // Only block for regular products if not enough stock
     if (selectedProductType === 'regular' && totalRequestedQuantity > actualStockLevel) {
@@ -677,9 +686,9 @@ const SalesInvoice = () => {
     const newItem: SaleItem = {
       productId: isRegular ? product.id : null,
       nonProductId: isRegular ? null : product.id,
-      quantity: itemQuantity,
+      quantity: Number(itemQuantity),
       unitPrice: Number(itemUnitPrice),
-      totalPrice: itemQuantity * Number(itemUnitPrice),
+      totalPrice: Number(itemQuantity) * Number(itemUnitPrice),
       productName: product.description || null,
       notes: itemNotes || null,
       addedBy: currentUser?.username || 'Unknown',
@@ -872,7 +881,15 @@ const SalesInvoice = () => {
     const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const vatRate = taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0;
     const vatAmount = (subtotal * vatRate) / 100;
-    const porterage = (porterageDetails.withPorterage && applyPorterage) ? parseFloat(porterageDetails.porterageCharge) : 0;
+    
+    // Calculate total quantity of all items
+    const totalQuantity = saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    
+    // Calculate porterage as (base porterage) * (total quantity)
+    const porterage = (porterageDetails.withPorterage && applyPorterage) 
+      ? parseFloat(porterageDetails.porterageCharge) * totalQuantity 
+      : 0;
+      
     const totalAmount = subtotal + vatAmount + porterage;
     return { subtotal, vatAmount, porterage, totalAmount };
   };
@@ -1663,11 +1680,14 @@ const SalesInvoice = () => {
                         className="text-center"
                         type="number"
                         placeholder="Qty"
-                        value={itemQuantity === 1 ? "" : itemQuantity}
-                        onChange={(e) => setItemQuantity(e.target.value === "" ? 0 : parseInt(e.target.value) || 0)}
+                        value={itemQuantity}
+                        onChange={(e) => setItemQuantity(e.target.value)}
                         onKeyPress={(e) => {
-                          // Only allow numbers, backspace, delete, and arrow keys
-                          if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                          // Only allow numbers, decimal point, backspace, delete, and arrow keys
+                          if (!/[0-9.]/.test(e.key) && 
+                              e.key !== 'Backspace' && 
+                              e.key !== 'Delete' && 
+                              !e.key.startsWith('Arrow')) {
                             e.preventDefault();
                           }
                         }}
@@ -1690,7 +1710,7 @@ const SalesInvoice = () => {
                       />
                     </TableCell>
                     <TableCell className="text-center">
-                      £{(itemQuantity * Number(itemUnitPrice || 0)).toFixed(2)}
+                      £{(Number(itemQuantity || 0) * Number(itemUnitPrice || 0)).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-center">
                       <Button
@@ -1898,59 +1918,61 @@ const SalesInvoice = () => {
             <CardContent className="p-4">
               <div className="space-y-2 text-sm">
                 {porterageDetails.withPorterage && applyPorterage && (
-                  <div className="flex justify-between items-center">
-                    <span>Porterage:</span>
-                    <div className="flex items-center gap-2">
-                      {isEditingPorterage ? (
-                        <>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={customPorterage}
-                            onChange={e => setCustomPorterage(e.target.value)}
-                            className="border rounded px-2 py-1 w-20 text-right"
-                            onBlur={() => {
-                              setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
-                              setIsEditingPorterage(false);
-                            }}
-                            autoFocus
-                          />
-                          <button
-                            className="text-green-600 hover:text-green-800 text-sm"
-                            onClick={() => {
-                              setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
-                              setIsEditingPorterage(false);
-                            }}
-                            title="Save porterage"
-                          >
-                            ✓
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <span>£{porterage.toFixed(2)}</span>
-                          <button
-                            onClick={() => {
-                              setCustomPorterage(porterageDetails.porterageCharge);
-                              setIsEditingPorterage(true);
-                            }}
-                            className="text-blue-500 hover:text-blue-700 text-sm"
-                            title="Edit porterage"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            onClick={() => {
-                              setApplyPorterage(false);
-                              toast({ title: "Porterage Removed", description: "Porterage has been removed from this invoice." });
-                            }}
-                            className="text-red-500 hover:text-red-700 text-sm"
-                            title="Remove porterage"
-                          >
-                            ✕
-                          </button>
-                        </>
-                      )}
+                  <div className="space-y-1">
+                    <div className="flex justify-between items-center">
+                      <span>Porterage ({saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0)} × £{parseFloat(porterageDetails.porterageCharge).toFixed(2)}):</span>
+                      <div className="flex items-center gap-2">
+                        {isEditingPorterage ? (
+                          <>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={customPorterage}
+                              onChange={e => setCustomPorterage(e.target.value)}
+                              className="border rounded px-2 py-1 w-20 text-right"
+                              onBlur={() => {
+                                setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
+                                setIsEditingPorterage(false);
+                              }}
+                              autoFocus
+                            />
+                            <button
+                              className="text-green-600 hover:text-green-800 text-sm"
+                              onClick={() => {
+                                setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
+                                setIsEditingPorterage(false);
+                              }}
+                              title="Save porterage"
+                            >
+                              ✓
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span>£{porterage.toFixed(2)}</span>
+                            <button
+                              onClick={() => {
+                                setCustomPorterage(porterageDetails.porterageCharge);
+                                setIsEditingPorterage(true);
+                              }}
+                              className="text-blue-500 hover:text-blue-700 text-sm"
+                              title="Edit porterage"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => {
+                                setApplyPorterage(false);
+                                toast({ title: "Porterage Removed", description: "Porterage has been removed from this invoice." });
+                              }}
+                              className="text-red-500 hover:text-red-700 text-sm"
+                              title="Remove porterage"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

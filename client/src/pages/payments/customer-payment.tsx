@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt, FileCheck } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,16 @@ export default function CustomerPayment() {
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [splitPayment, setSplitPayment] = useState({
+    cash: "",
+    card: "",
+    bankTransfer: "",
+    cheque: ""
+  });
+  const [isOnAccountMode, setIsOnAccountMode] = useState(false);
+  const [onAccountInvoiceId, setOnAccountInvoiceId] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -52,26 +63,107 @@ export default function CustomerPayment() {
     enabled: !!selectedCustomerId,
   });
 
+  // Group payment history by batch ID
+  const groupedPaymentHistory = paymentHistory?.reduce((acc: any[], payment: any) => {
+    const batchId = payment.batchId;
+    if (!batchId) return acc;
+
+    const existingBatch = acc.find(batch => batch.batchId === batchId);
+    if (existingBatch) {
+      existingBatch.totalAmount += payment.amount;
+      // Only add invoice number if it's not already in the list
+      const invoiceNumber = payment.invoiceNumber || 'On Account';
+      if (!existingBatch.invoices.includes(invoiceNumber)) {
+        existingBatch.invoices.push(invoiceNumber);
+      }
+      // Aggregate by payment mode
+      const mode = payment.paymentMode;
+      if (mode === 'cash') existingBatch.cashAmount += payment.amount;
+      else if (mode === 'bank') existingBatch.cardAmount += payment.amount;
+      else if (mode === 'bank_transfer') existingBatch.bankTransferAmount += payment.amount;
+      else if (mode === 'cheque') existingBatch.chequeAmount += payment.amount;
+    } else {
+      acc.push({
+        batchId: batchId,
+        paymentDate: payment.paymentDate,
+        totalAmount: payment.amount,
+        remarks: payment.remarks,
+        invoices: [payment.invoiceNumber || 'On Account'],
+        cashAmount: payment.paymentMode === 'cash' ? payment.amount : 0,
+        cardAmount: payment.paymentMode === 'bank' ? payment.amount : 0,
+        bankTransferAmount: payment.paymentMode === 'bank_transfer' ? payment.amount : 0,
+        chequeAmount: payment.paymentMode === 'cheque' ? payment.amount : 0,
+      });
+    }
+    return acc;
+  }, []) || [];
+
+  // Mutation for updating a payment
+  const updatePaymentMutation = useMutation<any, Error, any>({
+    mutationFn: (paymentData) => apiRequest("PUT", `/api/payments/batch/${paymentData.batchId}`, paymentData),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Payment updated successfully.",
+      });
+      refetchOutstandingInvoices();
+      refetchPaymentHistory();
+      setEditingPayment(null);
+      setIsEditing(false);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update payment.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation for creating on-account payment
+  const createOnAccountMutation = useMutation<any, Error, any>({
+    mutationFn: (paymentData) => apiRequest("POST", "/api/payments", paymentData),
+    onSuccess: (response) => {
+      toast({
+        title: "Success",
+        description: "On-account payment recorded successfully.",
+      });
+      refetchOutstandingInvoices();
+      refetchPaymentHistory();
+      setReceivedAmount(0);
+      setRemarks("");
+      setOnAccountInvoiceId(null);
+      resetSplitPayment();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to record on-account payment.",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Mutation for creating a new payment
   const createPaymentMutation = useMutation<any, Error, any>({
     mutationFn: (paymentData) => apiRequest("POST", "/api/payments/bulk", paymentData),
     onSuccess: (response) => {
-      const cashAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cash').reduce((sum, inv) => sum + inv.balance, 0);
-      const cardAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank').reduce((sum, inv) => sum + inv.balance, 0);
-      const bankTransferAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank_transfer').reduce((sum, inv) => sum + inv.balance, 0);
-      const chequeAmount = selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cheque').reduce((sum, inv) => sum + inv.balance, 0);
-      
       let paymentSummary = `ID: ${response.paymentId}`;
       const paymentParts = [];
+      const cashAmount = parseFloat(splitPayment.cash) || 0;
+      const cardAmount = parseFloat(splitPayment.card) || 0;
+      const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
+      const chequeAmount = parseFloat(splitPayment.cheque) || 0;
+      
       if (cashAmount > 0) paymentParts.push(`Cash: £${cashAmount.toFixed(2)}`);
       if (cardAmount > 0) paymentParts.push(`Card: £${cardAmount.toFixed(2)}`);
       if (bankTransferAmount > 0) paymentParts.push(`Bank Transfer: £${bankTransferAmount.toFixed(2)}`);
       if (chequeAmount > 0) paymentParts.push(`Cheque: £${chequeAmount.toFixed(2)}`);
-      
+
       if (paymentParts.length > 0) {
         paymentSummary += ` (${paymentParts.join(', ')})`;
       }
-      
+
       toast({
         title: "Success",
         description: `Payment recorded successfully. Batch ${paymentSummary}`,
@@ -82,6 +174,7 @@ export default function CustomerPayment() {
       setRemarks("");
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
+      resetSplitPayment();
     },
     onError: (error) => {
       toast({
@@ -96,7 +189,7 @@ export default function CustomerPayment() {
   const handleInvoiceSelection = (invoiceId: number, checked: boolean) => {
     const newSelection = new Set(selectedInvoiceIds);
     const newPaymentModes = new Map(invoicePaymentModes);
-    
+
     if (checked) {
       newSelection.add(invoiceId);
       // Set default payment mode to cash for new selections
@@ -107,13 +200,25 @@ export default function CustomerPayment() {
       newSelection.delete(invoiceId);
       newPaymentModes.delete(invoiceId);
     }
-    
+
     setSelectedInvoiceIds(newSelection);
     setInvoicePaymentModes(newPaymentModes);
-    
+
     // Auto-calculate total amount for selected invoices
     const selectedInvoices = displayedInvoices.filter(inv => newSelection.has(inv.id));
     const totalAmount = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
+
+    // If using split payment, distribute evenly to cash by default
+    if (totalAmount > 0) {
+      setSplitPayment({
+        cash: totalAmount.toString(),
+        card: "",
+        bankTransfer: "",
+        cheque: ""
+      });
+    } else {
+      resetSplitPayment();
+    }
     setReceivedAmount(totalAmount);
   };
 
@@ -122,22 +227,30 @@ export default function CustomerPayment() {
     if (checked) {
       const allIds = new Set(displayedInvoices.map(inv => inv.id));
       const newPaymentModes = new Map(invoicePaymentModes);
-      
+
       // Set default payment mode for all invoices
       displayedInvoices.forEach(inv => {
         if (!newPaymentModes.has(inv.id)) {
           newPaymentModes.set(inv.id, 'cash');
         }
       });
-      
+
       setSelectedInvoiceIds(allIds);
       setInvoicePaymentModes(newPaymentModes);
       const totalAmount = displayedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
+      // Set split payment to cash by default
+      setSplitPayment({
+        cash: totalAmount.toString(),
+        card: "",
+        bankTransfer: "",
+        cheque: ""
+      });
       setReceivedAmount(totalAmount);
     } else {
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
       setReceivedAmount(0);
+      resetSplitPayment();
     }
   };
 
@@ -148,7 +261,152 @@ export default function CustomerPayment() {
     setInvoicePaymentModes(newPaymentModes);
   };
 
+  // Handle split payment amount changes
+  const handleSplitPaymentChange = (type: string, value: string) => {
+    setSplitPayment(prev => ({
+      ...prev,
+      [type]: value
+    }));
+    // Update total received amount
+    const newSplitPayment = {
+      ...splitPayment,
+      [type]: value
+    };
+    const newTotal = Object.values(newSplitPayment).reduce((sum, val) => {
+      const numVal = parseFloat(val as string) || 0;
+      return sum + numVal;
+    }, 0);
+    setReceivedAmount(newTotal);
+  };
+
+  // Convert split payment strings to numbers for backend
+  const getSplitPaymentNumbers = () => ({
+    cash: parseFloat(splitPayment.cash) || 0,
+    card: parseFloat(splitPayment.card) || 0,
+    bankTransfer: parseFloat(splitPayment.bankTransfer) || 0,
+    cheque: parseFloat(splitPayment.cheque) || 0
+  });
+
+  // Reset split payment when selection changes
+  const resetSplitPayment = () => {
+    setSplitPayment({
+      cash: "",
+      card: "",
+      bankTransfer: "",
+      cheque: ""
+    });
+  };
+
+  // Handle on-account payment mode toggle
+  const handleOnAccountModeToggle = () => {
+    setIsOnAccountMode(!isOnAccountMode);
+    if (!isOnAccountMode) {
+      // Switching to on-account mode - clear invoice selections
+      setSelectedInvoiceIds(new Set());
+      setInvoicePaymentModes(new Map());
+      setReceivedAmount(0);
+      resetSplitPayment();
+    } else {
+      // Switching back to invoice mode - clear on-account data
+      setOnAccountInvoiceId(null);
+      setReceivedAmount(0);
+      resetSplitPayment();
+    }
+  };
+
+  // Handle on-account payment submission
+  const handleOnAccountPayment = () => {
+    if (!selectedCustomerId || receivedAmount <= 0 || !paymentDate) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a customer, enter a valid amount, and select a payment date.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Determine primary payment mode from split payment
+    const cashAmount = parseFloat(splitPayment.cash) || 0;
+    const cardAmount = parseFloat(splitPayment.card) || 0;
+    const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
+    const chequeAmount = parseFloat(splitPayment.cheque) || 0;
+    
+    let primaryPaymentMode = 'cash';
+    if (cardAmount > 0 && cardAmount >= cashAmount && cardAmount >= bankTransferAmount && cardAmount >= chequeAmount) {
+      primaryPaymentMode = 'bank';
+    } else if (bankTransferAmount > 0 && bankTransferAmount >= cashAmount && bankTransferAmount >= chequeAmount) {
+      primaryPaymentMode = 'bank_transfer';
+    } else if (chequeAmount > 0 && chequeAmount >= cashAmount) {
+      primaryPaymentMode = 'cheque';
+    }
+
+    const paymentPayload = {
+      customerId: parseInt(selectedCustomerId),
+      saleId: onAccountInvoiceId,
+      amount: receivedAmount,
+      paymentMode: primaryPaymentMode,
+      paymentDate: format(paymentDate, "yyyy-MM-dd"),
+      remarks: remarks || (onAccountInvoiceId ? "On-account payment for invoice" : "On-account payment"),
+      splitPayment: getSplitPaymentNumbers()
+    };
+
+    createOnAccountMutation.mutate(paymentPayload);
+  };
+
+  const handleEditPayment = (batchPayment: any) => {
+    setEditingPayment(batchPayment);
+    setReceivedAmount(batchPayment.totalAmount);
+    setPaymentDate(new Date(batchPayment.paymentDate));
+    setRemarks(batchPayment.remarks || '');
+
+    // Set split payment amounts from batch
+    setSplitPayment({
+      cash: batchPayment.cashAmount ? batchPayment.cashAmount.toString() : "",
+      card: batchPayment.cardAmount ? batchPayment.cardAmount.toString() : "",
+      bankTransfer: batchPayment.bankTransferAmount ? batchPayment.bankTransferAmount.toString() : "",
+      cheque: batchPayment.chequeAmount ? batchPayment.chequeAmount.toString() : ""
+    });
+
+    // Clear any selected invoices when editing
+    setSelectedInvoiceIds(new Set());
+    setInvoicePaymentModes(new Map());
+    setIsEditing(true);
+
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPayment(null);
+    setIsEditing(false);
+    setReceivedAmount(0);
+    setRemarks('');
+    setSelectedInvoiceIds(new Set());
+    setInvoicePaymentModes(new Map());
+    resetSplitPayment();
+  };
+
   const handlePaymentSubmit = () => {
+    if (isEditing && editingPayment) {
+      // Handle update
+      const paymentData = {
+        batchId: editingPayment.batchId,
+        amount: receivedAmount,
+        paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
+        remarks: remarks,
+        splitPayment: getSplitPaymentNumbers()
+      };
+      updatePaymentMutation.mutate(paymentData);
+      return;
+    }
+
+    // Handle on-account payment
+    if (isOnAccountMode) {
+      handleOnAccountPayment();
+      return;
+    }
+
+    // Original create payment logic
     if (!selectedCustomerId || receivedAmount <= 0 || !paymentDate) {
       toast({
         title: "Validation Error",
@@ -159,13 +417,14 @@ export default function CustomerPayment() {
     }
 
     const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
-    
+
     const paymentPayload = {
       customerId: parseInt(selectedCustomerId),
       amount: receivedAmount,
       paymentDate: format(paymentDate, "yyyy-MM-dd"),
       remarks: remarks,
       invoiceIds: Array.from(selectedInvoiceIds),
+      splitPayment: getSplitPaymentNumbers(),
       invoices: selectedInvoices.map(inv => ({
         invoiceId: inv.id,
         invoiceNumber: inv.invoiceNumber,
@@ -198,7 +457,7 @@ export default function CustomerPayment() {
 
   const displayedInvoices = calculateRunningBalance();
   const totalOutstandingBalance = displayedInvoices.reduce((sum, invoice) => sum + invoice.balance, 0);
-  
+
   // Calculate selected invoices total
   const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
   const selectedTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
@@ -222,7 +481,28 @@ export default function CustomerPayment() {
         {/* Payment Form */}
         <Card>
           <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            {/* Payment Mode Toggle */}
+            <div className="mb-4">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant={!isOnAccountMode ? "default" : "outline"}
+                  onClick={() => !isOnAccountMode || handleOnAccountModeToggle()}
+                  className="flex items-center gap-2"
+                >
+                  Invoice Payment
+                </Button>
+                <Button
+                  variant={isOnAccountMode ? "default" : "outline"}
+                  onClick={() => isOnAccountMode || handleOnAccountModeToggle()}
+                  className="flex items-center gap-2"
+                >
+                  On-Account Payment
+                </Button>
+              </div>
+            </div>
+
+            {/* First Row: Customer Selection and Invoice/Split Payment */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
               <div>
                 <Label htmlFor="customer">Select Customer:</Label>
                 <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
@@ -245,28 +525,117 @@ export default function CustomerPayment() {
                 </Select>
               </div>
 
-              <div>
-                <Label>Selected Invoices Total:</Label>
-                <div className="p-2 border rounded bg-gray-50">
-                  <span className="font-semibold text-lg">£{selectedTotal.toFixed(2)}</span>
-                  <span className="text-sm text-gray-500 ml-2">
-                    ({selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} selected)
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <Label>Payment Summary:</Label>
-                <div className="p-2 border rounded bg-gray-50">
-                  <div className="text-sm">
-                    <div>Cash: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cash').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
-                    <div>Card: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
-                    <div>Bank Transfer: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'bank_transfer').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
-                    <div>Cheque: £{selectedInvoices.filter(inv => invoicePaymentModes.get(inv.id) === 'cheque').reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}</div>
+              {!isOnAccountMode ? (
+                <div>
+                  <Label>Selected Invoices Total:</Label>
+                  <div className="p-2 border rounded bg-gray-50">
+                    <span className="font-semibold text-lg">£{selectedTotal.toFixed(2)}</span>
+                    <span className="text-sm text-gray-500 ml-2">
+                      ({selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} selected)
+                    </span>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <Label>Link to Invoice (Optional):</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className="w-full justify-between"
+                      >
+                        {onAccountInvoiceId
+                          ? displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.invoiceNumber || "Select invoice"
+                          : "No invoice (pure on-account)"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0">
+                      <Command>
+                        <CommandInput placeholder="Search invoice number..." />
+                        <CommandList>
+                          <CommandItem
+                            value="none"
+                            onSelect={() => setOnAccountInvoiceId(null)}
+                          >
+                            No Invoice (Pure On-Account)
+                          </CommandItem>
+                          <CommandEmpty>No invoices found.</CommandEmpty>
+                          {displayedInvoices.map(inv => (
+                            <CommandItem
+                              key={inv.id}
+                              value={inv.invoiceNumber}
+                              onSelect={() => setOnAccountInvoiceId(inv.id)}
+                            >
+                              {inv.invoiceNumber} - £{inv.balance.toFixed(2)}
+                            </CommandItem>
+                          ))}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
+            </div>
 
+            {/* Second Row: Split Payment - Full Width */}
+            <div className="mb-4">
+              <Label>Split Payment:</Label>
+              <div className="p-4 border rounded bg-gray-50 space-y-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm font-medium min-w-[60px]">Cash:</Label>
+                    <Input
+                      type="number"
+                      value={splitPayment.cash}
+                      onChange={(e) => handleSplitPaymentChange('cash', e.target.value)}
+                      className="flex-1 h-9 text-sm"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm font-medium min-w-[60px]">Card:</Label>
+                    <Input
+                      type="number"
+                      value={splitPayment.card}
+                      onChange={(e) => handleSplitPaymentChange('card', e.target.value)}
+                      className="flex-1 h-9 text-sm"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm font-medium min-w-[60px]">Transfer:</Label>
+                    <Input
+                      type="number"
+                      value={splitPayment.bankTransfer}
+                      onChange={(e) => handleSplitPaymentChange('bankTransfer', e.target.value)}
+                      className="flex-1 h-9 text-sm"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Label className="text-sm font-medium min-w-[60px]">Cheque:</Label>
+                    <Input
+                      type="number"
+                      value={splitPayment.cheque}
+                      onChange={(e) => handleSplitPaymentChange('cheque', e.target.value)}
+                      className="flex-1 h-9 text-sm"
+                      step="0.01"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+                <div className="text-sm font-semibold text-gray-700 border-t pt-2 text-center">
+                  Total: £{((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0)).toFixed(2)}
+                </div>
+              </div>
+            </div>
+
+            {/* Third Row: Payment Date and Received Amount */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               <div>
                 <Label>Payment Date:</Label>
                 <Popover>
@@ -328,20 +697,42 @@ export default function CustomerPayment() {
                 </div>
               </div>
 
-              <div className="flex items-end">
+              <div className="flex items-end gap-2">
+                {isEditing && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleCancelEdit}
+                    disabled={createPaymentMutation.isPending || updatePaymentMutation.isPending}
+                  >
+                    Cancel
+                  </Button>
+                )}
                 <Button
                   className="w-full"
                   onClick={handlePaymentSubmit}
-                  disabled={createPaymentMutation.isPending || selectedInvoiceIds.size === 0}
+                  disabled={
+                    (isEditing
+                      ? updatePaymentMutation.isPending
+                      : isOnAccountMode 
+                        ? createOnAccountMutation.isPending || receivedAmount <= 0
+                        : createPaymentMutation.isPending || selectedInvoiceIds.size === 0)
+                  }
                 >
-                  {createPaymentMutation.isPending ? "Processing..." : "Record Payment"}
+                  {isEditing
+                    ? (updatePaymentMutation.isPending ? 'Updating...' : 'Update Payment')
+                    : isOnAccountMode
+                      ? (createOnAccountMutation.isPending ? 'Processing...' : 'Record On-Account Payment')
+                      : (createPaymentMutation.isPending ? 'Processing...' : 'Record Payment')
+                  }
                 </Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Outstanding Invoices Table */}
+        {/* Outstanding Invoices Table - Only show in invoice mode */}
+        {!isOnAccountMode && (
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -376,7 +767,7 @@ export default function CustomerPayment() {
                   <TableHead className="text-right">Total Amount</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
-                  <TableHead>Payment Mode</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Running Balance</TableHead>
                 </TableRow>
               </TableHeader>
@@ -398,20 +789,7 @@ export default function CustomerPayment() {
                     <TableCell className="text-right">£{invoice.balance.toFixed(2)}</TableCell>
                     <TableCell>
                       {selectedInvoiceIds.has(invoice.id) ? (
-                        <Select 
-                          value={invoicePaymentModes.get(invoice.id) || 'cash'} 
-                          onValueChange={(value) => handleInvoicePaymentModeChange(invoice.id, value)}
-                        >
-                          <SelectTrigger className="w-20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cash">Cash</SelectItem>
-                            <SelectItem value="bank">Card</SelectItem>
-                            <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                            <SelectItem value="cheque">Cheque</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <span className="text-green-600 text-sm">Selected</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
@@ -430,6 +808,7 @@ export default function CustomerPayment() {
             </Table>
           </CardContent>
         </Card>
+        )}
 
         {/* Payment History Table */}
         {selectedCustomerId && (
@@ -447,50 +826,71 @@ export default function CustomerPayment() {
                     <TableHead>Payment Mode</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Remarks</TableHead>
-                    <TableHead>Action</TableHead>
+                    <TableHead className="w-40">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paymentHistory?.sort((a: any, b: any) => (b.batchId || 0) - (a.batchId || 0)).map((payment: any) => (
-                    <TableRow key={payment.id}>
-                      <TableCell className="font-mono">{payment.batchId || '-'}</TableCell>
-                      <TableCell>{format(new Date(payment.paymentDate), "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{payment.invoiceNumber || 'On Account'}</TableCell>
-                      <TableCell className="capitalize">{payment.paymentMode}</TableCell>
-                      <TableCell className="text-right">£{payment.amount.toFixed(2)}</TableCell>
-                      <TableCell>{payment.remarks || '-'}</TableCell>
+                  {groupedPaymentHistory.sort((a: any, b: any) => b.batchId - a.batchId).map((batch: any) => (
+                    <TableRow key={batch.batchId}>
+                      <TableCell className="font-mono">{batch.batchId}</TableCell>
+                      <TableCell>{format(new Date(batch.paymentDate), "dd/MM/yyyy")}</TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          {batch.invoices.slice(0, 2).join(', ')}
+                          {batch.invoices.length > 2 && ` +${batch.invoices.length - 2} more`}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs space-y-1">
+                          {batch.cashAmount > 0 && <div>Cash: £{batch.cashAmount.toFixed(2)}</div>}
+                          {batch.cardAmount > 0 && <div>Card: £{batch.cardAmount.toFixed(2)}</div>}
+                          {batch.bankTransferAmount > 0 && <div>Transfer: £{batch.bankTransferAmount.toFixed(2)}</div>}
+                          {batch.chequeAmount > 0 && <div>Cheque: £{batch.chequeAmount.toFixed(2)}</div>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">£{batch.totalAmount.toFixed(2)}</TableCell>
+                      <TableCell>{batch.remarks || '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {payment.batchId && (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => window.open(`/print/dot-matrix-payment/${payment.batchId}`, '_blank')}
-                                title="Print Dot Matrix Receipt"
-                              >
-                                <Receipt className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  const paymentType = payment.paymentMode === 'bank' ? 'card' : 
-                                                     payment.paymentMode === 'bank_transfer' ? 'bank_transfer' :
-                                                     payment.paymentMode === 'cheque' ? 'cheque' : 'cash';
-                                  window.open(`/print/payment-receipt/${payment.batchId}/${paymentType}`, '_blank');
-                                }}
-                                title="Print Payment Receipt"
-                              >
-                                <FileCheck className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditPayment(batch)}
+                            title="Edit Payment"
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                              <path d="m15 5 4 4" />
+                            </svg>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(`/print/dot-matrix-payment/${batch.batchId}`, '_blank')}
+                            title="Print Dot Matrix Receipt"
+                          >
+                            <Receipt className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              // Determine primary payment type for receipt
+                              const primaryType = batch.cashAmount >= batch.cardAmount && batch.cashAmount >= batch.bankTransferAmount && batch.cashAmount >= batch.chequeAmount ? 'cash' :
+                                batch.cardAmount >= batch.bankTransferAmount && batch.cardAmount >= batch.chequeAmount ? 'card' :
+                                  batch.bankTransferAmount >= batch.chequeAmount ? 'bank_transfer' : 'cheque';
+                              window.open(`/print/payment-receipt/${batch.batchId}/${primaryType}`, '_blank');
+                            }}
+                            title="Print Payment Receipt"
+                          >
+                            <FileCheck className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
-                  {(!paymentHistory || paymentHistory.length === 0) && (
+                  {groupedPaymentHistory.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-4">
                         No payment history found

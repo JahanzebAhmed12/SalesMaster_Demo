@@ -13,11 +13,12 @@ import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
 import { insertEmployeeSchema, Employee, InsertEmployee, employeeSchema } from "@shared/schema";
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, Upload, Download, Eye, FileText } from "lucide-react";
-import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { DayPicker } from "react-day-picker";
+import "react-day-picker/dist/style.css";
 
 const EmployeeDatabaseEdit = () => {
   const { id } = useParams<{ id: string }>();
@@ -387,7 +388,7 @@ const EmployeeDatabaseEdit = () => {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        <Calendar
+                        <DayPicker
                           mode="single"
                           selected={(() => {
                             const dateStr = form.watch("dateOfBirth");
@@ -399,7 +400,10 @@ const EmployeeDatabaseEdit = () => {
                               date ? format(date, "yyyy-MM-dd") : null
                             )
                           }
-                          initialFocus
+                          captionLayout="dropdown-buttons"
+                          fromYear={1900}
+                          toYear={new Date().getFullYear()}
+                          className="p-3"
                         />
                       </PopoverContent>
                     </Popover>
@@ -460,7 +464,7 @@ const EmployeeDatabaseEdit = () => {
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        <Calendar
+                        <DayPicker
                           mode="single"
                           selected={(() => {
                             const dateStr = form.watch("startDate");
@@ -472,7 +476,10 @@ const EmployeeDatabaseEdit = () => {
                               date ? format(date, "yyyy-MM-dd") : null
                             )
                           }
-                          initialFocus
+                          captionLayout="dropdown-buttons"
+                          fromYear={2000}
+                          toYear={new Date().getFullYear() + 5}
+                          className="p-3"
                         />
                       </PopoverContent>
                     </Popover>
@@ -746,7 +753,7 @@ const EmployeeDatabaseEdit = () => {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
-                            <Calendar
+                            <DayPicker
                               mode="single"
                               selected={(() => {
                                 const dateStr = form.watch(`documents.${index}.startDate`);
@@ -758,7 +765,10 @@ const EmployeeDatabaseEdit = () => {
                                   date ? format(date, "yyyy-MM-dd") : null
                                 )
                               }
-                              initialFocus
+                              captionLayout="dropdown-buttons"
+                              fromYear={2000}
+                              toYear={new Date().getFullYear() + 10}
+                              className="p-3"
                             />
                           </PopoverContent>
                         </Popover>
@@ -789,7 +799,7 @@ const EmployeeDatabaseEdit = () => {
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0">
-                            <Calendar
+                            <DayPicker
                               mode="single"
                               selected={(() => {
                                 const dateStr = form.watch(`documents.${index}.endDate`);
@@ -801,7 +811,10 @@ const EmployeeDatabaseEdit = () => {
                                   date ? format(date, "yyyy-MM-dd") : null
                                 )
                               }
-                              initialFocus
+                              captionLayout="dropdown-buttons"
+                              fromYear={2000}
+                              toYear={new Date().getFullYear() + 10}
+                              className="p-3"
                             />
                           </PopoverContent>
                         </Popover>

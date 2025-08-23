@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import PageLayout from "@/components/common/page-layout";
 import BusinessDateDisplay from "@/components/common/business-date-display";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Banknote, Save, Loader2, Plus, X, Trash2 } from "lucide-react";
+import { CalendarIcon, Banknote, Save, Loader2, Plus, X, Trash2, FileText, Download, Copy, Printer } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -18,6 +18,9 @@ import { BankingEntry, InsertBankingEntry } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import React from "react";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function Banking() {
   const { currentDate: businessDate } = useBusinessDate();
@@ -35,6 +38,7 @@ export default function Banking() {
     chequePayingNumber: "" // Paying number for CHEQUE payments
   });
   const queryClient = useQueryClient();
+  const tableRef = useRef<HTMLDivElement>(null);
 
   // Update newEntry.date when businessDate changes
   React.useEffect(() => {
@@ -179,6 +183,154 @@ export default function Banking() {
     queryKey: ['/api/company-details'],
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
+
+  // Export functions
+  const handlePrint = () => {
+    if (!tableRef.current || bankingEntries.length === 0) return;
+    
+    const printContents = tableRef.current.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Banking Entries Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.company-info{text-align:center;margin-bottom:10px;font-size:14px;}');
+      printWindow.document.write('.period-info{margin-bottom:15px;font-weight:bold;}');
+      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+      
+      // Add company header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>BANKING ENTRIES REPORT</h2>');
+      if (companyDetails) {
+        printWindow.document.write(`<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
+      }
+      printWindow.document.write('</div>');
+      
+      // Add period information
+      printWindow.document.write('<div class="period-info">');
+      printWindow.document.write(`<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`);
+      printWindow.document.write('</div>');
+      
+      // Add the table content
+      printWindow.document.write(printContents);
+      
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
+  const handleExcel = () => {
+    if (bankingEntries.length === 0) return;
+    
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Add company info sheet
+    const companyInfo = [
+      ['BANKING ENTRIES REPORT'],
+      [''],
+      ['Company:', companyDetails?.companyName || ''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      [''],
+      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      [''],
+    ];
+    
+    const wsInfo = XLSX.utils.aoa_to_sheet(companyInfo);
+    XLSX.utils.book_append_sheet(wb, wsInfo, 'Report Info');
+    
+    // Add data sheet
+    const ws = XLSX.utils.json_to_sheet(bankingEntries.map((entry: BankingEntry) => ({
+      'Date': format(new Date(entry.date), "dd/MM/yyyy"),
+      'Remarks': entry.remarks,
+      'Payment Type': entry.paymentType,
+      'Amount': Number(entry.amount).toFixed(2),
+      'Bag Details': entry.bags && entry.bags.length > 0 
+        ? entry.bags.map(bag => `${bag.number} (${bag.payingNumber}) £${bag.amount.toFixed(2)}`).join('; ')
+        : entry.bagNumber ? `Bag: ${entry.bagNumber}` : '-',
+      'Cheque Number': entry.chequeNumber || '-',
+      'Paying Number': entry.payingNumber || '-'
+    })));
+    
+    XLSX.utils.book_append_sheet(wb, ws, 'Banking Entries');
+    
+    // Save file
+    XLSX.writeFile(wb, `Banking_Entries_${format(fromDate, "yyyy-MM-dd")}_to_${format(toDate, "yyyy-MM-dd")}.xlsx`);
+  };
+
+  const handlePDF = () => {
+    if (bankingEntries.length === 0) return;
+    
+    const doc = new jsPDF();
+    
+    // Add company header
+    doc.setFontSize(16);
+    doc.text('BANKING ENTRIES REPORT', 105, 20, { align: 'center' });
+    
+    if (companyDetails) {
+      doc.setFontSize(12);
+      doc.text(`${companyDetails.companyName}`, 105, 30, { align: 'center' });
+      doc.text(`${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 40, { align: 'center' });
+    }
+    
+    // Add period
+    doc.setFontSize(10);
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, 55);
+    
+    // Prepare table data
+    const tableData = bankingEntries.map((entry: BankingEntry) => [
+      format(new Date(entry.date), "dd/MM/yyyy"),
+      entry.remarks,
+      entry.paymentType,
+      `£${Number(entry.amount).toFixed(2)}`,
+      entry.bags && entry.bags.length > 0 
+        ? entry.bags.map(bag => `${bag.number} (${bag.payingNumber}) £${bag.amount.toFixed(2)}`).join('\n')
+        : entry.bagNumber ? `Bag: ${entry.bagNumber}` : '-'
+    ]);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Date', 'Remarks', 'Payment Type', 'Amount', 'Bag Details']],
+      body: tableData,
+      startY: 65,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [240, 240, 240] },
+    });
+    
+    // Save PDF
+    doc.save(`Banking_Entries_${format(fromDate, "yyyy-MM-dd")}_to_${format(toDate, "yyyy-MM-dd")}.pdf`);
+  };
+
+  const handleCopy = () => {
+    if (bankingEntries.length === 0) return;
+    
+    const headers = ['Date', 'Remarks', 'Payment Type', 'Amount', 'Bag Details'];
+    const rows = bankingEntries.map((entry: BankingEntry) => [
+      format(new Date(entry.date), "dd/MM/yyyy"),
+      entry.remarks,
+      entry.paymentType,
+      `£${Number(entry.amount).toFixed(2)}`,
+      entry.bags && entry.bags.length > 0 
+        ? entry.bags.map(bag => `${bag.number} (${bag.payingNumber}) £${bag.amount.toFixed(2)}`).join('; ')
+        : entry.bagNumber ? `Bag: ${entry.bagNumber}` : '-'
+    ]);
+    
+    const csvContent = [headers, ...rows].map(row => row.join('\t')).join('\n');
+    
+    navigator.clipboard.writeText(csvContent).then(() => {
+      toast({ title: "Success", description: "Banking entries copied to clipboard" });
+    }).catch(() => {
+      toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
+    });
+  };
 
   return (
     <PageLayout title="Banking" breadcrumb="Banking">
@@ -423,8 +575,8 @@ export default function Banking() {
                 </>
               )}
               {newEntry.paymentType !== "CASH" && newEntry.paymentType !== "COINS" && (
-                <div className="flex gap-2">
-                  <div className="flex-1">
+                <>
+                  <div>
                     <Label>AMOUNT</Label>
                     <Input
                       type="number"
@@ -435,24 +587,28 @@ export default function Banking() {
                       className="text-right"
                     />
                   </div>
-                  <Button 
-                    className="bg-green-500 hover:bg-green-600 text-white mt-6"
-                    onClick={handleAddEntry}
-                    disabled={addEntryMutation.isPending}
-                  >
-                    {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} className="mr-1" />
-                    Save
-                  </Button>
-                </div>
+                  <div className="flex justify-start items-end">
+                    <Button 
+                      className="bg-green-500 hover:bg-green-600 text-white"
+                      onClick={handleAddEntry}
+                      disabled={addEntryMutation.isPending}
+                    >
+                      {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4 mr-1" />}
+                      <Save size={16} className="mr-1" />
+                      Save
+                    </Button>
+                  </div>
+                </>
               )}
               {(newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && (
-                <div className="flex justify-end">
+                <div className="flex justify-start">
                   <Button 
                     className="bg-green-500 hover:bg-green-600 text-white"
                     onClick={handleAddEntry}
                     disabled={addEntryMutation.isPending}
                   >
-                    {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4" />}<Save size={16} className="mr-1" />
+                    {addEntryMutation.isPending && <Loader2 className="animate-spin h-4 w-4 mr-1" />}
+                    <Save size={16} className="mr-1" />
                     Save
                   </Button>
                 </div>
@@ -465,8 +621,28 @@ export default function Banking() {
               <div className="text-red-600">Failed to load entries.</div>
             ) : bankingEntries.length > 0 ? (
               <div className="mt-6">
-                <h3 className="font-semibold mb-4">Banking Entries:</h3>
-                <div className="border rounded-lg overflow-hidden">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold">Banking Entries:</h3>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                      <FileText size={14} />
+                      PDF
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                      <Download size={14} />
+                      Excel
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                      <Copy size={14} />
+                      Copy
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                      <Printer size={14} />
+                      Print
+                    </Button>
+                  </div>
+                </div>
+                <div className="border rounded-lg overflow-hidden" ref={tableRef}>
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50">

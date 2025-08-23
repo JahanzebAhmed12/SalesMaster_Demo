@@ -793,7 +793,7 @@ def update_sale(id):
                             # Generate customer return reference number
                             last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
                             ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
-                            
+
                             customer_return = CustomerReturn(
                                 ref_number=ref_number,
                                 date=sale.date.date() if hasattr(sale.date, 'date') else sale.date,
@@ -3118,18 +3118,20 @@ def create_equipment():
         # Validate required fields
         if not data.get('description'):
             return jsonify({'error': 'Description is required'}), 400
-        if not data.get('startDate'):
-            return jsonify({'error': 'Start date is required'}), 400
+       
         if not data.get('endDate'):
             return jsonify({'error': 'End date is required'}), 400
         
         # Parse dates
         from datetime import datetime
-        start_date = datetime.strptime(data['startDate'], '%Y-%m-%d').date()
+        
+        start_date = None
+        if data.get('startDate'):
+            start_date = datetime.strptime(data['startDate'], '%Y-%m-%d').date()
         end_date = datetime.strptime(data['endDate'], '%Y-%m-%d').date()
         
         # Validate date range
-        if end_date <= start_date:
+        if start_date and end_date <= start_date:
             return jsonify({'error': 'End date must be after start date'}), 400
         
         equipment = Equipment(
@@ -3159,18 +3161,19 @@ def update_equipment(id):
         # Validate required fields
         if not data.get('description'):
             return jsonify({'error': 'Description is required'}), 400
-        if not data.get('startDate'):
-            return jsonify({'error': 'Start date is required'}), 400
+       
         if not data.get('endDate'):
             return jsonify({'error': 'End date is required'}), 400
         
         # Parse dates
         from datetime import datetime
-        start_date = datetime.strptime(data['startDate'], '%Y-%m-%d').date()
+        start_date = None
+        if data.get('startDate'):
+            start_date = datetime.strptime(data['startDate'], '%Y-%m-%d').date()
         end_date = datetime.strptime(data['endDate'], '%Y-%m-%d').date()
         
         # Validate date range
-        if end_date <= start_date:
+        if start_date and end_date <= start_date:
             return jsonify({'error': 'End date must be after start date'}), 400
         
         equipment.description = data['description']
@@ -3593,17 +3596,50 @@ def create_payment():
                 sale.paid_amount = new_paid
             db.session.add(sale)
 
-        new_payment = Payment(
-            customer_id=payment_data.customer_id,
-            sale_id=payment_data.sale_id,
-            amount=payment_data.amount,
-            payment_mode=payment_data.payment_mode,
-            payment_date=payment_data.payment_date,
-            remarks=payment_data.remarks
-        )
-        print("Created payment object:", new_payment.to_dict())  # Debug log
+        # Handle split payment if provided
+        split_payment = data.get('splitPayment', {})
+        total_split = sum(split_payment.values()) if split_payment else 0
         
-        db.session.add(new_payment)
+        if total_split > 0 and split_payment:
+            # Create separate payment records for each payment type
+            mode_map = {
+                'cash': 'cash',
+                'card': 'bank', 
+                'bankTransfer': 'bank_transfer',
+                'cheque': 'cheque'
+            }
+            
+            # Generate batch ID for split payments
+            last_batch = db.session.query(Payment.batch_id).filter(
+                Payment.batch_id.isnot(None)
+            ).order_by(Payment.batch_id.desc()).first()
+            batch_id = (last_batch[0] + 1) if last_batch else 1
+            
+            for payment_type, split_amount in split_payment.items():
+                if split_amount > 0:
+                    new_payment = Payment(
+                        customer_id=payment_data.customer_id,
+                        sale_id=payment_data.sale_id,
+                        amount=split_amount,
+                        payment_mode=mode_map.get(payment_type, 'cash'),
+                        payment_date=payment_data.payment_date,
+                        remarks=payment_data.remarks,
+                        batch_id=batch_id
+                    )
+                    db.session.add(new_payment)
+        else:
+            # Single payment mode
+            new_payment = Payment(
+                customer_id=payment_data.customer_id,
+                sale_id=payment_data.sale_id,
+                amount=payment_data.amount,
+                payment_mode=payment_data.payment_mode,
+                payment_date=payment_data.payment_date,
+                remarks=payment_data.remarks
+            )
+            print("Created payment object:", new_payment.to_dict())  # Debug log
+            db.session.add(new_payment)
+        
         db.session.commit()
         
         # Update customer running balance
@@ -3628,6 +3664,159 @@ def create_payment():
         print("Full traceback:", traceback.format_exc())  # Debug log
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/payments/batch/<int:batch_id>', methods=['PUT', 'OPTIONS'])
+def update_payment_batch(batch_id):
+    if request.method == 'OPTIONS':
+        # Handle preflight request
+        response = jsonify({'message': 'Preflight request accepted'})
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+        response.headers.add('Access-Control-Allow-Methods', 'PUT,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+        
+    try:
+        # Add JWT requirement after OPTIONS check
+        from flask_jwt_extended import jwt_required, get_jwt_identity
+        jwt_required()(lambda: None)()
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
+        # Get all payments in this batch
+        payments = Payment.query.filter_by(batch_id=batch_id).all()
+        if not payments:
+            return jsonify({"error": "Payment batch not found"}), 404
+            
+        # Calculate total old amount for the batch
+        old_total_amount = sum(float(p.amount) for p in payments)
+        new_total_amount = float(data.get('amount', old_total_amount))
+        
+        # Start a transaction
+        db.session.begin_nested()
+        
+        try:
+            # Handle split payment update
+            split_payment = data.get('splitPayment', {})
+            if split_payment and sum(split_payment.values()) > 0:
+                # Delete existing payments and recreate with new split
+                invoice_ids = list(set([p.sale_id for p in payments if p.sale_id]))
+                
+                for payment in payments:
+                    db.session.delete(payment)
+                db.session.flush()
+                
+                # Recreate payments with new split
+                mode_map = {
+                    'cash': 'cash',
+                    'card': 'bank', 
+                    'bankTransfer': 'bank_transfer',
+                    'cheque': 'cheque'
+                }
+                
+                for invoice_id in invoice_ids:
+                    # Calculate this invoice's proportion of total
+                    invoice_total = sum(float(p.amount) for p in payments if p.sale_id == invoice_id)
+                    proportion = invoice_total / old_total_amount if old_total_amount > 0 else 1.0 / len(invoice_ids)
+                    
+                    # Create new payments for each split type
+                    for payment_type, split_amount in split_payment.items():
+                        if split_amount > 0:
+                            new_payment = Payment(
+                                customer_id=payments[0].customer_id,
+                                sale_id=invoice_id,
+                                amount=split_amount * proportion,
+                                payment_mode=mode_map.get(payment_type, 'cash'),
+                                payment_date=datetime.strptime(data.get('paymentDate'), '%Y-%m-%d').date() if data.get('paymentDate') else payments[0].payment_date,
+                                remarks=data.get('remarks', payments[0].remarks),
+                                batch_id=batch_id,
+                                created_at=payments[0].created_at,
+                                updated_at=datetime.utcnow()
+                            )
+                            db.session.add(new_payment)
+                
+                # Handle on-account payments
+                on_account_payments = [p for p in payments if p.sale_id is None]
+                if on_account_payments:
+                    total_on_account = sum(float(p.amount) for p in on_account_payments)
+                    proportion = total_on_account / old_total_amount if old_total_amount > 0 else 0
+                    
+                    for payment_type, split_amount in split_payment.items():
+                        if split_amount > 0 and proportion > 0:
+                            new_payment = Payment(
+                                customer_id=payments[0].customer_id,
+                                sale_id=None,
+                                amount=split_amount * proportion,
+                                payment_mode=mode_map.get(payment_type, 'cash'),
+                                payment_date=datetime.strptime(data.get('paymentDate'), '%Y-%m-%d').date() if data.get('paymentDate') else payments[0].payment_date,
+                                remarks=data.get('remarks', payments[0].remarks),
+                                batch_id=batch_id,
+                                created_at=payments[0].created_at,
+                                updated_at=datetime.utcnow()
+                            )
+                            db.session.add(new_payment)
+            else:
+                # Update all payments proportionally (original logic)
+                for payment in payments:
+                    if old_total_amount > 0:
+                        proportion = float(payment.amount) / old_total_amount
+                        payment.amount = new_total_amount * proportion
+                    else:
+                        payment.amount = new_total_amount / len(payments)
+                    
+                    payment.payment_date = datetime.strptime(data.get('paymentDate'), '%Y-%m-%d').date() if data.get('paymentDate') else payment.payment_date
+                    payment.remarks = data.get('remarks', payment.remarks)
+                    payment.updated_at = datetime.utcnow()
+            
+            # Update linked sale payment status for all affected invoices
+            affected_sales = set()
+            for payment in payments:
+                if payment.sale_id:
+                    affected_sales.add(payment.sale_id)
+            
+            for sale_id in affected_sales:
+                sale = Sale.query.get(sale_id)
+                if sale:
+                    # Recalculate total paid amount for this sale
+                    total_paid = db.session.query(func.sum(Payment.amount)).filter_by(sale_id=sale.id).scalar() or 0
+                    
+                    if total_paid >= float(sale.total_amount):
+                        sale.payment_status = "paid"
+                        sale.paid_amount = sale.total_amount
+                    elif total_paid > 0:
+                        sale.payment_status = "partial"
+                        sale.paid_amount = total_paid
+                    else:
+                        sale.payment_status = "unpaid"
+                        sale.paid_amount = 0
+                    
+                    db.session.add(sale)
+            
+            # Commit the transaction
+            db.session.commit()
+            
+            return jsonify({
+                "message": "Payment batch updated successfully",
+                "batchId": batch_id,
+                "totalAmount": float(new_total_amount),
+                "paymentCount": len(payments)
+            })
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error updating payment batch {batch_id}:", str(e))
+            import traceback
+            print("Full traceback:", traceback.format_exc())
+            return jsonify({"error": str(e)}), 500
+            
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error in update_payment_batch endpoint for batch {batch_id}:", str(e))
+        import traceback
+        print("Full traceback:", traceback.format_exc())
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/payments/bulk', methods=['POST'])
 @jwt_required()
 def create_bulk_payment():
@@ -3649,71 +3838,136 @@ def create_bulk_payment():
         
         batch_id = (last_batch[0] + 1) if last_batch else 1
         
+        # Handle split payment
+        split_payment = data.get('splitPayment', {})
+        total_split = sum(split_payment.values()) if split_payment else 0
+        
         # Distribute payment across selected invoices
-        remaining_amount = total_amount
         payments_created = []
         
         for invoice_data in invoices:
-            if remaining_amount <= 0:
-                break
-                
             invoice_balance = float(invoice_data['balance'])
-            invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
-            payment_amount = min(remaining_amount, invoice_balance)
             
-            # Create payment for this invoice with its specific payment mode
-            payment = Payment(
-                customer_id=customer_id,
-                sale_id=invoice_data['invoiceId'],
-                amount=payment_amount,
-                payment_mode=invoice_payment_mode,
-                payment_date=payment_date,
-                batch_id=batch_id,
-                remarks=f"{remarks} (Batch ID: {batch_id} - {invoice_payment_mode.title()})"
-            )
+            # If split payment is used, distribute proportionally
+            if total_split > 0 and split_payment:
+                proportion = invoice_balance / total_amount
+                # Create separate payment records for each payment type
+                mode_map = {
+                    'cash': 'cash',
+                    'card': 'bank', 
+                    'bankTransfer': 'bank_transfer',
+                    'cheque': 'cheque'
+                }
+                
+                for payment_type, split_amount in split_payment.items():
+                    if split_amount > 0:
+                        payment_amount = split_amount * proportion
+                        payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=invoice_data['invoiceId'],
+                            amount=payment_amount,
+                            payment_mode=mode_map.get(payment_type, 'cash'),
+                            payment_date=payment_date,
+                            batch_id=batch_id,
+                            remarks=f"{remarks} (Batch ID: {batch_id} - {payment_type.title()})"
+                        )
+                        db.session.add(payment)
+                        payments_created.append(payment)
+            else:
+                # Original single payment mode
+                invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
+                payment = Payment(
+                    customer_id=customer_id,
+                    sale_id=invoice_data['invoiceId'],
+                    amount=invoice_balance,
+                    payment_mode=invoice_payment_mode,
+                    payment_date=payment_date,
+                    batch_id=batch_id,
+                    remarks=f"{remarks} (Batch ID: {batch_id} - {invoice_payment_mode.title()})"
+                )
+                db.session.add(payment)
+                payments_created.append(payment)
             
-            # Update the sale's payment status
+        # Update sale payment status for each invoice
+        for invoice_data in invoices:
             sale = Sale.query.get(invoice_data['invoiceId'])
             if sale:
                 current_paid = float(sale.paid_amount or 0)
-                new_paid = current_paid + payment_amount
+                new_paid = current_paid + invoice_data['balance']
                 
                 if new_paid >= float(sale.total_amount):
                     sale.payment_status = "paid"
                     sale.paid_amount = sale.total_amount
                     sale.status = "finalized"
-                    # Update customer_type based on payment mode
-                    if invoice_payment_mode.lower() == "cash":
-                        sale.customer_type = "cash"
-                    elif invoice_payment_mode.lower() in ["bank", "card"]:
-                        sale.customer_type = "bank"
-                    elif invoice_payment_mode.lower() == "bank_transfer":
-                        sale.customer_type = "bank_transfer"
-                    elif invoice_payment_mode.lower() == "cheque":
-                        sale.customer_type = "cheque"
+                    # Set customer_type based on primary payment mode
+                    if split_payment:
+                        # Use the payment type with highest amount
+                        primary_type = max(split_payment.items(), key=lambda x: x[1])[0]
+                        type_map = {
+                            'cash': 'cash',
+                            'card': 'bank',
+                            'bankTransfer': 'bank_transfer',
+                            'cheque': 'cheque'
+                        }
+                        sale.customer_type = type_map.get(primary_type, 'cash')
+                    else:
+                        invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
+                        if invoice_payment_mode.lower() == "cash":
+                            sale.customer_type = "cash"
+                        elif invoice_payment_mode.lower() in ["bank", "card"]:
+                            sale.customer_type = "bank"
+                        elif invoice_payment_mode.lower() == "bank_transfer":
+                            sale.customer_type = "bank_transfer"
+                        elif invoice_payment_mode.lower() == "cheque":
+                            sale.customer_type = "cheque"
                 else:
                     sale.payment_status = "partial"
                     sale.paid_amount = new_paid
                 
                 db.session.add(sale)
-            
-            db.session.add(payment)
-            payments_created.append(payment)
-            remaining_amount -= payment_amount
         
-        # If there's remaining amount, create an on-account payment (default to cash)
+        # Calculate remaining amount for on-account payments
+        total_invoice_amount = sum(float(inv['balance']) for inv in invoices)
+        remaining_amount = total_amount - total_invoice_amount
+        
+        # If there's remaining amount, create on-account payments with split
         if remaining_amount > 0:
-            on_account_payment = Payment(
-                customer_id=customer_id,
-                sale_id=None,  # On account payment
-                amount=remaining_amount,
-                payment_mode='cash',  # Default to cash for on-account
-                payment_date=payment_date,
-                batch_id=batch_id,
-                remarks=f"{remarks} (On Account - Batch ID: {batch_id})"
-            )
-            db.session.add(on_account_payment)
-            payments_created.append(on_account_payment)
+            if split_payment and total_split > 0:
+                proportion = remaining_amount / total_amount
+                mode_map = {
+                    'cash': 'cash',
+                    'card': 'bank', 
+                    'bankTransfer': 'bank_transfer',
+                    'cheque': 'cheque'
+                }
+                
+                for payment_type, split_amount in split_payment.items():
+                    if split_amount > 0:
+                        on_account_amount = split_amount * proportion
+                        if on_account_amount > 0:
+                            on_account_payment = Payment(
+                                customer_id=customer_id,
+                                sale_id=None,  # On account payment
+                                amount=on_account_amount,
+                                payment_mode=mode_map.get(payment_type, 'cash'),
+                                payment_date=payment_date,
+                                batch_id=batch_id,
+                                remarks=f"{remarks} (On Account - Batch ID: {batch_id} - {payment_type.title()})"
+                            )
+                            db.session.add(on_account_payment)
+                            payments_created.append(on_account_payment)
+            else:
+                on_account_payment = Payment(
+                    customer_id=customer_id,
+                    sale_id=None,  # On account payment
+                    amount=remaining_amount,
+                    payment_mode='cash',  # Default to cash for on-account
+                    payment_date=payment_date,
+                    batch_id=batch_id,
+                    remarks=f"{remarks} (On Account - Batch ID: {batch_id})"
+                )
+                db.session.add(on_account_payment)
+                payments_created.append(on_account_payment)
         
         db.session.commit()
         
@@ -11601,3 +11855,46 @@ def view_signed_form(id):
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+# Holiday Request reset entitlement endpoint
+@app.route('/api/holiday-requests/reset-entitlement', methods=['POST'])
+@jwt_required()
+def reset_employee_holiday_entitlement():
+    """Reset all employee holiday entitlements"""
+    try:
+        data = request.get_json()
+        end_date = data.get('endDate')
+        
+        if not end_date:
+            return jsonify({'error': 'End date is required'}), 400
+        
+        # Parse the end date
+        try:
+            entitlement_end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
+        
+        # Get all employees
+        employees = Employee.query.filter_by(is_active='yes').all()
+        
+        # Reset entitlement for each employee
+        for employee in employees:
+            # Reset their entitlement days to the default (usually 25 days)
+            employee.entitlement_days = employee.entitlement_days or 25
+            
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Holiday entitlements reset successfully for {len(employees)} employees',
+            'entitlementEndDate': end_date,
+            'employeesUpdated': len(employees)
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        create_admin_user()
+    app.run(debug=True, host='0.0.0.0', port=5000)

@@ -1261,7 +1261,7 @@ class Equipment(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     description = db.Column(db.String(500), nullable=False)
-    start_date = db.Column(db.Date, nullable=False)
+    start_date = db.Column(db.Date, nullable=True)
     end_date = db.Column(db.Date, nullable=False)
     is_active = db.Column(db.String(3), default='yes')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1140,9 +1140,29 @@ export default function DailySummary() {
     }
   };
 
+  // Add/remove class to body for print styling
+  useEffect(() => {
+    const handleBeforePrint = () => {
+      document.body.classList.add('daily-summary-print');
+    };
+    
+    const handleAfterPrint = () => {
+      document.body.classList.remove('daily-summary-print');
+    };
+
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+    
+    return () => {
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('afterprint', handleAfterPrint);
+      document.body.classList.remove('daily-summary-print');
+    };
+  }, []);
+
   return (
     <PageLayout title="Daily Summary" breadcrumb="Daily Report / Daily Summary">
-      <div className="space-y-6">
+      <div id="daily-summary-page" className="space-y-6">
         {/* Header */}
         <div className="print-content">
         <Card>

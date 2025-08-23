@@ -35,6 +35,13 @@ interface MenuSection {
 }
 
 const menuSections: MenuSection[] = [
+  // {
+  //   title: "Dashboard",
+  //   icon: LayoutDashboard,
+  //   items: [
+  //     { title: "Dashboard", path: "/dashboard" },
+  //   ],
+  // },
   {
     title: "Data Entry",
     icon: Edit,
@@ -153,19 +160,25 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   // Filter menu sections based on permissions
   const filteredMenuSections = menuSections
-  .map(section => {
-    const sectionKey = section.title.toLowerCase().replace(/\s+/g, '_');
+    .map(section => {
+      const sectionKey = section.title.toLowerCase().replace(/\s+/g, '_');
 
-    if (!hasPermission(sectionKey)) return null;
+      // Skip section if no permission
+      if (!hasPermission(sectionKey)) return null;
 
-    const filteredItems = section.items.filter(item => {
-      const itemKey = item.title.toLowerCase().replace(/\s+/g, '_');
-      return hasPermission(itemKey);
-    });
+      // Filter items based on permissions
+      const filteredItems = section.items.filter(item => {
+        const itemKey = item.title.toLowerCase().replace(/\s+/g, '_');
+        return hasPermission(itemKey);
+      });
 
-    return { ...section, items: filteredItems };
-  })
-  .filter(Boolean);
+      // Only include section if it has visible items or is the Dashboard section
+      if (filteredItems.length > 0 || section.title === 'Dashboard') {
+        return { ...section, items: filteredItems };
+      }
+      return null;
+    })
+    .filter(Boolean);
 
 
   return (
@@ -200,17 +213,20 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4">
-          {/* Dashboard Home */}
-          <Link href="/dashboard">
-            <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/dashboard' ? 'active' : ''
-              }`}>
-              <LayoutDashboard size={20} />
-              <span className="ml-3 font-medium">Dashboard</span>
-            </a>
-          </Link>
+        {hasPermission('dashboard') && (
+            <Link href="/dashboard">
+              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/dashboard' ? 'active' : ''
+                }`}>
+                <LayoutDashboard size={20} />
+                <span className="ml-3 font-medium">Dashboard</span>
+              </a>
+            </Link>
+          )}
 
           {/* Menu Sections */}
           {filteredMenuSections.map((section) => {
+            if (!section) return null;
+            
             const Icon = section.icon;
             const isExpanded = expandedSections.includes(section.title);
 
@@ -230,7 +246,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                   />
                 </button>
 
-                {isExpanded && (
+                {isExpanded && section.items.length > 0 && (
                   <div className="bg-gray-50">
                     {section.items.map((item) => (
                       <Link key={item.path} href={item.path}>
@@ -255,8 +271,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
           {/* Daily Attendance */}
           {hasPermission('daily_attendance') && (
-            <Link href="/payroll/payroll">
-              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/payroll/payroll' ? 'active' : ''
+            <Link href="/daily-attendance">
+              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-attendance' ? 'active' : ''
                 }`}>
                 <Clock size={20} />
                 <span className="ml-3 font-medium">Daily Attendance</span>

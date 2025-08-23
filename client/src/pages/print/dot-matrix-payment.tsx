@@ -43,7 +43,7 @@ const FIELD_POSITIONS = {
   date: { top: '75mm', left: '50mm' }, // Position for date - adjusted for margin
   pageNumber: { top: '75mm', left: '118mm' }, // Position for page number
   itemsStartTop: '95mm', // Starting position for items grid
-  itemsRowHeight: '6mm', // Height between rows
+  itemsRowHeight: '10mm', // Height between rows
   maxItemsPerPage: 11, // Reduced by 1 to account for margins
   columns: {
     quantity: { left: '1mm', width: '15mm' } as ColumnConfig, // added 3mm margin

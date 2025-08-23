@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Edit, Trash2, Download, FileText, Upload } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Download, FileText, Upload, UserPlus } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Employee } from "@shared/schema";
 import { Link } from "wouter";
@@ -331,6 +331,7 @@ export default function EmployeeDatabase() {
                     <th className="text-left p-3 border-r">Term</th>
                     <th className="text-left p-3 border-r">Status</th>
                     <th className="text-left p-3 border-r">Documents</th>
+                    <th className="text-left p-3 border-r">Joining Form</th>
                     <th className="text-left p-3 border-r">Contract</th>
                     <th className="text-left p-3 border-r">Edit</th>
                     <th className="text-left p-3 border-r">Delete</th>
@@ -353,6 +354,16 @@ export default function EmployeeDatabase() {
                       <td className="p-3 border-r">{employee.status || ""}</td>
                       <td className="p-3 border-r">
                         <DocumentsCell employeeId={employee.id} />
+                      </td>
+                      <td className="p-3 border-r">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => window.open(`/print/employee-joining-form/${employee.id}`, '_blank')}
+                          title="Print Joining Form"
+                        >
+                          <UserPlus className="h-4 w-4" />
+                        </Button>
                       </td>
                       <td className="p-3 border-r">
                         <Button 

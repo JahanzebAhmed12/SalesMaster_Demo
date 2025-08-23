@@ -85,15 +85,6 @@ export default function EquipmentDatabaseEdit() {
       return;
     }
 
-    if (!startDate) {
-      toast({
-        title: "Validation Error",
-        description: "Start date is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (!endDate) {
       toast({
         title: "Validation Error",
@@ -103,7 +94,7 @@ export default function EquipmentDatabaseEdit() {
       return;
     }
 
-    if (endDate <= startDate) {
+    if (startDate && endDate <= startDate) {
       toast({
         title: "Validation Error",
         description: "End date must be after start date",
@@ -112,10 +103,11 @@ export default function EquipmentDatabaseEdit() {
       return;
     }
 
-    const equipmentData: InsertEquipment = {
+    const equipmentData = {
       description: description.trim(),
-      startDate: format(startDate, "yyyy-MM-dd"),
+      startDate: startDate ? format(startDate, "yyyy-MM-dd") : null,
       endDate: format(endDate, "yyyy-MM-dd"),
+      isActive: '1',
     };
 
     saveMutation.mutate(equipmentData);
@@ -167,7 +159,7 @@ export default function EquipmentDatabaseEdit() {
 
               {/* Start Date */}
               <div className="space-y-2">
-                <Label>Start Date *</Label>
+                <Label>Start Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button

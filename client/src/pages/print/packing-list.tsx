@@ -48,12 +48,11 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
     <div style={{ maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
       {/* Header: Logo and Company Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-     
+
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: "bold", fontSize: 28, color: '#1a237e', marginBottom: 4 }}>PACKING LIST</div>
+          <div style={{ fontWeight: "bold", fontSize: 28, color: '#1a237e', marginBottom: 4 }}>PICKING LIST</div>
           <div style={{ fontWeight: 400, fontSize: 18, marginTop: 8 }}>Date: {sale?.date ? new Date(sale.date).toLocaleDateString() : "-"}</div>
           <div style={{ fontWeight: 400, fontSize: 18 }}>Invoice No: {sale?.invoice_number || sale?.invoiceNumber || "-"}</div>
-          <div style={{ fontWeight: 400, fontSize: 18 }}>Customer type: {sale?.customer_type || sale?.customerType || "-"}</div>
         </div>
       </div>
       <hr style={{ margin: "16px 0" }} />

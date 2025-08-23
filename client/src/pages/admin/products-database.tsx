@@ -387,9 +387,8 @@ export default function Products() {
                     <Input
                       id="sageCode"
                       {...form.register("sageCode")}
-                      placeholder="P1"
+                      placeholder="Enter Sage Code"
                       required
-                      readOnly
                     />
                   </div>
                   <div>

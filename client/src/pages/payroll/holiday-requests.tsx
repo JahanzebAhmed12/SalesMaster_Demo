@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { HolidayRequest } from "@shared/schema";
-import { Loader2, Plus, Eye, Edit, Trash2, Printer, Upload, FileText } from "lucide-react";
+import { Loader2, Plus, Eye, Edit, Trash2, Printer, Upload, FileText, CalendarIcon, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,12 +12,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DayPicker } from "react-day-picker";
+import { cn } from "@/lib/utils";
+import "react-day-picker/dist/style.css";
 
 const HolidayRequests = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [uploadingId, setUploadingId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [entitlementEndDate, setEntitlementEndDate] = useState<Date | undefined>(new Date());
+  const [showEntitlementReset, setShowEntitlementReset] = useState(false);
 
   const { data: holidayRequests = [], isLoading, error } = useQuery({
     queryKey: ["/api/holiday-requests"],
@@ -86,6 +92,26 @@ const HolidayRequests = () => {
     }
   });
 
+  // Reset entitlement mutation
+  const resetEntitlementMutation = useMutation({
+    mutationFn: (endDate: string) => apiRequest("POST", "/api/holiday-requests/reset-entitlement", { endDate }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] });
+      setShowEntitlementReset(false);
+      toast({
+        title: "Success",
+        description: "Holiday entitlements have been reset successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to reset entitlements",
+        variant: "destructive",
+      });
+    }
+  });
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'granted':
@@ -136,6 +162,25 @@ const HolidayRequests = () => {
     }
 
     uploadFormMutation.mutate({ id, file: selectedFile });
+  };
+
+  const handleResetEntitlement = () => {
+    if (!entitlementEndDate) {
+      toast({
+        title: "No date selected",
+        description: "Please select an entitlement end date",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const confirmReset = window.confirm(
+      `Are you sure you want to reset all holiday entitlements? This will set the entitlement end date to ${format(entitlementEndDate, "dd/MM/yyyy")} and reset all employee holiday balances. This action cannot be undone.`
+    );
+
+    if (confirmReset) {
+      resetEntitlementMutation.mutate(format(entitlementEndDate, "yyyy-MM-dd"));
+    }
   };
 
   const handleViewSignedForm = async (request: HolidayRequest) => {
@@ -222,6 +267,14 @@ const HolidayRequests = () => {
             <p className="text-sm text-gray-500">Manage employee holiday requests</p>
           </div>
           <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowEntitlementReset(true)}
+              className="border-orange-500 text-orange-600 hover:bg-orange-50"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Reset Entitlements
+            </Button>
             <Link href="/payroll/holiday-requests/new">
               <Button className="bg-blue-600 text-white hover:bg-blue-700">
                 <Plus className="h-4 w-4 mr-2" />
@@ -398,6 +451,101 @@ const HolidayRequests = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Entitlement Reset Dialog */}
+        <Dialog open={showEntitlementReset} onOpenChange={setShowEntitlementReset}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-orange-600">Reset Holiday Entitlements</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="flex items-start">
+                  <div className="flex-shrink-0">
+                    <RefreshCw className="h-5 w-5 text-orange-400" />
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-orange-800">
+                      Warning: This action will reset all employee holiday entitlements
+                    </h3>
+                    <div className="mt-2 text-sm text-orange-700">
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>All employees will have their holiday balances reset</li>
+                        <li>The entitlement period will be updated</li>
+                        <li>This action cannot be undone</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="entitlementEndDate" className="block text-sm font-medium mb-2">
+                  New Entitlement End Date
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !entitlementEndDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {entitlementEndDate ? (
+                        format(entitlementEndDate, "PPP")
+                      ) : (
+                        <span>Pick a date</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <DayPicker
+                      mode="single"
+                      selected={entitlementEndDate}
+                      onSelect={setEntitlementEndDate}
+                      captionLayout="dropdown-buttons"
+                      fromYear={new Date().getFullYear()}
+                      toYear={new Date().getFullYear() + 5}
+                      className="p-3"
+                    />
+                  </PopoverContent>
+                </Popover>
+                <p className="text-sm text-gray-500 mt-1">
+                  Select the end date for the new holiday entitlement period
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEntitlementReset(false)}
+                  disabled={resetEntitlementMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleResetEntitlement}
+                  disabled={!entitlementEndDate || resetEntitlementMutation.isPending}
+                  className="bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  {resetEntitlementMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Reset Entitlements
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

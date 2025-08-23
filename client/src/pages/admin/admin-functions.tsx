@@ -95,15 +95,31 @@ const menuSections: MenuSection[] = [
   },
   {
     title: "Payroll",
-
     items: [
       { title: "Monthly Reports", path: "/payroll/monthly-report" },
       { title: "Holiday Requests", path: "/payroll/holiday-requests" },
     ],
   },
   {
+    title: "Daily Attendance",
+    items: [
+      { title: "Daily Attendance", path: "/daily-attendance" },
+    ],
+  },
+  {
+    title: "Timings Setup",
+    items: [
+      { title: "Timings Setup", path: "/timings-setup" },
+    ],
+  },
+  {
+    title: "Daily Summary",
+    items: [
+      { title: "Daily Summary", path: "/daily-summary" },
+    ],
+  },
+  {
     title: "Admin Setup",
-
     items: [
       { title: "User Setup", path: "/admin/user-setup" },
       { title: "Employee Database", path: "/admin/employee-database" },
@@ -116,16 +132,35 @@ const menuSections: MenuSection[] = [
       { title: "Admin Functions", path: "/admin/admin-functions" },
     ],
   },
+  {
+    title: "Daily Attendance",
+    items: [
+      { title: "Daily Attendance", path: "/daily-attendance" },
+    ],
+  },
+  {
+    title: "Timings Setup",
+    items: [
+      { title: "Timings Setup", path: "/timings-setup" },
+    ],
+  },
+  {
+    title: "Daily Summary",
+    items: [
+      { title: "Daily Summary", path: "/daily-summary" },
+    ],
+  },
 ];
 
 
 const restrictionSections = menuSections.flatMap(section => {
   const sectionKey = section.title.toLowerCase().replace(/\s+/g, '_');
   return [
-    { key: sectionKey, label: section.title.toUpperCase() },
+    { key: sectionKey, label: section.title, isSection: true },
     ...section.items.map(item => ({
       key: item.title.toLowerCase().replace(/\s+/g, '_'),
-      label: item.title
+      label: item.title,
+      isSection: false
     }))
   ];
 });
@@ -225,6 +260,17 @@ const AdminFunctions = () => {
 
   // Local state for editing
   const [editRestrictions, setEditRestrictions] = useState<Record<number, Record<string, boolean>>>({});
+
+  // Handle restriction changes
+  const handleRestrictionChange = (userId: number, sectionKey: string, checked: boolean) => {
+    setEditRestrictions(prev => ({
+      ...prev,
+      [userId]: {
+        ...prev[userId],
+        [sectionKey]: checked,
+      },
+    }));
+  };
 
   // Initialize editRestrictions from backend data
   useEffect(() => {
@@ -564,24 +610,26 @@ const AdminFunctions = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent className="w-64 max-h-80 overflow-y-auto">
-                        {restrictionSections.map(section => (
-                          <DropdownMenuCheckboxItem
-                            key={section.key}
-                            checked={
-                              editRestrictions[user.id]?.[section.key] ?? true
-                            }
-                            onCheckedChange={checked =>
-                              setEditRestrictions(prev => ({
-                                ...prev,
-                                [user.id]: {
-                                  ...prev[user.id],
-                                  [section.key]: checked,
-                                },
-                              }))
-                            }
-                          >
-                            {section.label}
-                          </DropdownMenuCheckboxItem>
+                        {restrictionSections.map((section) => (
+                          <div key={section.key}>
+                            {section.isSection ? (
+                              <div className="px-2 py-1 text-sm font-semibold bg-gray-100 border-t border-b border-gray-200">
+                                {section.label}
+                              </div>
+                            ) : (
+                              <DropdownMenuCheckboxItem
+                                checked={
+                                  editRestrictions[user.id]?.[section.key] ?? true
+                                }
+                                onCheckedChange={(checked) =>
+                                  handleRestrictionChange(user.id, section.key, checked)
+                                }
+                                className="pl-6"
+                              >
+                                {section.label}
+                              </DropdownMenuCheckboxItem>
+                            )}
+                          </div>
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
