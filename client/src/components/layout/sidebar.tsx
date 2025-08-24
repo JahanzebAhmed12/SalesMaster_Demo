@@ -282,8 +282,8 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
           {/* Timings Setup */}
           {hasPermission('timings_setup') && (
-            <Link href="/timings-setup">
-              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${location === '/timings-setup' ? 'active' : ''
+            <Link href="/closing-time">
+              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${location === '/closing-time' ? 'active' : ''
                 }`}>
                 <Clock size={20} />
                 <span className="ml-3 font-medium">Timings Setup</span>
