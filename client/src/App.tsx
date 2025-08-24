@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
 import { useAuth } from "@/lib/auth";
+import { useEffect } from "react";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -80,7 +81,6 @@ import ProductsDatabase from "@/pages/admin/products-database";
 import ViewNonProducts from "./pages/admin/view-nonproduct";
 import AddNonProducts from "./pages/admin/add-nonproduct";
 import UserDatabase from "@/pages/admin/user-database";
-import UserDatabaseEdit from "@/pages/admin/user-database-edit";
 import CustomerDatabase from "@/pages/admin/customer-database";
 import CustomerDatabaseEdit from "@/pages/admin/customer-database-edit";
 import SupplierDatabase from "@/pages/admin/supplier-database";
@@ -115,8 +115,8 @@ import TestPermissions from "./pages/test-permissions";
 import { useRouteProtection } from "@/hooks/useRouteProtection";
 
 function Router() {
-  // Initialize route protection
-  useRouteProtection();
+  // Initialize route protection - temporarily disabled to fix infinite refresh
+  // useRouteProtection();
 
   return (
     <Switch>
@@ -598,6 +598,13 @@ function Router() {
 }
 
 function App() {
+  const { checkAuth } = useAuth();
+
+  useEffect(() => {
+    // Check authentication status once on app startup
+    checkAuth().catch(console.error);
+  }, [checkAuth]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>

@@ -35,25 +35,12 @@ export default function ProtectedRoute({
   useEffect(() => {
     if (!hydrated) return;
     
-    const verifyAuth = async () => {
-      const isAuth = await checkAuth();
-      
-      if (!isAuth) {
-        setLocation("/");
-        toast({
-          title: "Session Expired",
-          description: "Please log in again",
-          variant: "destructive",
-        });
-        return;
-      }
-    };
-    
-    // Only check auth if we don't have a user or if we're not authenticated
-    if (!user || !isAuthenticated) {
-      verifyAuth();
+    // If not authenticated, redirect to login
+    if (!isAuthenticated || !user) {
+      setLocation("/");
+      return;
     }
-  }, [hydrated, checkAuth, setLocation, toast, user, isAuthenticated]);
+  }, [hydrated, isAuthenticated, user, setLocation]);
   
   // Check permissions after auth is verified
   useEffect(() => {

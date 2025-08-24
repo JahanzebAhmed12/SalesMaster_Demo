@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/auth";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -91,8 +91,10 @@ export function useRouteProtection() {
   const { user, isAuthenticated } = useAuth();
   const permissions = usePermissions();
   const { toast } = useToast();
+  const lastRedirectRef = useRef<string>("");
 
   useEffect(() => {
+    // Don't run protection logic if not authenticated or no user
     if (!isAuthenticated || !user) return;
 
     // Check if current route requires permission
@@ -107,12 +109,19 @@ export function useRouteProtection() {
       const hasDashboardAccess = permissions['dashboard'] !== false;
       const redirectTo = hasDashboardAccess ? "/dashboard" : "/restricted-landing";
       
-      setLocation(redirectTo);
-      toast({
-        title: "Access Denied",
-        description: "You don't have permission to access this page",
-        variant: "destructive",
-      });
+      // Prevent infinite redirects by checking if we're already redirecting to the same place
+      if (lastRedirectRef.current !== redirectTo && location !== redirectTo) {
+        lastRedirectRef.current = redirectTo;
+        setLocation(redirectTo);
+        toast({
+          title: "Access Denied",
+          description: "You don't have permission to access this page",
+          variant: "destructive",
+        });
+      }
+    } else {
+      // Reset redirect tracking when user has permission
+      lastRedirectRef.current = "";
     }
   }, [location, permissions, user, isAuthenticated, setLocation, toast]);
 
