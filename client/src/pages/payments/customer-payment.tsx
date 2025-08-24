@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,13 +8,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
-import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt, FileCheck } from "lucide-react";
+import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt, FileCheck, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBackdatePermissions } from "@/hooks/usePermissions";
+import { isPastDate } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { Customer, Sale, Payment, InsertPayment } from "@shared/schema";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type InvoiceWithBalance = Sale & {
   balance: number;
@@ -40,8 +46,60 @@ export default function CustomerPayment() {
   });
   const [isOnAccountMode, setIsOnAccountMode] = useState(false);
   const [onAccountInvoiceId, setOnAccountInvoiceId] = useState<number | null>(null);
+  const [emailAddress, setEmailAddress] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Backdate permissions
+  const { canEditBackdate } = useBackdatePermissions();
+
+  // Fetch user permissions for current date editing
+  const { data: userPermissions } = useQuery<any>({
+    queryKey: ['/api/user-backdate-options', user?.id],
+    queryFn: () => apiRequest('GET', `/api/user-backdate-options/${user?.id}`),
+    enabled: !!user?.id,
+  });
+
+  // Check if user can edit a payment based on date
+  const canEditPayment = (paymentDate: string) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const paymentDateFormatted = format(new Date(paymentDate), 'yyyy-MM-dd');
+    
+    if (paymentDateFormatted === today) {
+      // For current date payments, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else {
+      // For back date payments, check editing permission
+      return userPermissions.editing === true;
+    }
+  };
+
+  // Check if user can create new payments for a specific date
+  const canCreatePaymentForDate = (date: Date) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const selectedDateFormatted = format(date, 'yyyy-MM-dd');
+    
+    if (selectedDateFormatted === today) {
+      // For current date, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else if (isPastDate(date)) {
+      // For past dates, check editing permission
+      return userPermissions.editing === true;
+    } else {
+      // For future dates, allow (assuming future dates are always allowed)
+      return true;
+    }
+  };
+
+  // Reset email field when customer changes
+  useEffect(() => {
+    setEmailAddress("");
+  }, [selectedCustomerId]);
 
   // Fetch customers
   const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
@@ -325,6 +383,19 @@ export default function CustomerPayment() {
       return;
     }
 
+    // Check permission for the selected payment date
+    if (!canCreatePaymentForDate(paymentDate)) {
+      const isToday = format(paymentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+      toast({
+        title: "Permission Denied",
+        description: isToday 
+          ? "You don't have permission to create payments for today"
+          : "You don't have permission to create payments for past dates",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Determine primary payment mode from split payment
     const cashAmount = parseFloat(splitPayment.cash) || 0;
     const cardAmount = parseFloat(splitPayment.card) || 0;
@@ -388,6 +459,19 @@ export default function CustomerPayment() {
 
   const handlePaymentSubmit = () => {
     if (isEditing && editingPayment) {
+      // Check permission for editing the payment
+      if (!canEditPayment(editingPayment.paymentDate)) {
+        const isToday = format(new Date(editingPayment.paymentDate), 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+        toast({
+          title: "Permission Denied",
+          description: isToday 
+            ? "You don't have permission to edit payments for today"
+            : "You don't have permission to edit past date payments",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Handle update
       const paymentData = {
         batchId: editingPayment.batchId,
@@ -416,6 +500,19 @@ export default function CustomerPayment() {
       return;
     }
 
+    // Check permission for the selected payment date
+    if (!canCreatePaymentForDate(paymentDate)) {
+      const isToday = format(paymentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+      toast({
+        title: "Permission Denied",
+        description: isToday 
+          ? "You don't have permission to create payments for today"
+          : "You don't have permission to create payments for past dates",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
 
     const paymentPayload = {
@@ -434,6 +531,278 @@ export default function CustomerPayment() {
     };
 
     createPaymentMutation.mutate(paymentPayload);
+  };
+
+  // Handle email sending
+  const handleEmail = async () => {
+    if (!selectedCustomerId) {
+      toast({
+        title: "Error",
+        description: "Please select a customer first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!emailAddress.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (groupedPaymentHistory.length === 0) {
+      toast({
+        title: "Error",
+        description: "No payment history to email",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
+      
+      // Generate PDF data for email attachment
+      const doc = new jsPDF();
+      
+      // Add company header
+      doc.setFontSize(16);
+      doc.text('CUSTOMER PAYMENT HISTORY', 105, 20, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.text('TROPIFRUIT UK LTD', 105, 30, { align: 'center' });
+      doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 105, 40, { align: 'center' });
+      
+      // Add customer info
+      doc.setFontSize(10);
+      doc.text(`Customer: ${selectedCustomer?.customer_name || 'Unknown'}`, 20, 55);
+      doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 65);
+      
+      // Prepare table data
+      const tableData = groupedPaymentHistory.map((batch: any) => [
+        batch.batchId.toString(),
+        format(new Date(batch.paymentDate), "dd/MM/yyyy"),
+        batch.invoices.slice(0, 2).join(', ') + (batch.invoices.length > 2 ? ` +${batch.invoices.length - 2} more` : ''),
+        [
+          batch.cashAmount > 0 ? `Cash: £${batch.cashAmount.toFixed(2)}` : '',
+          batch.cardAmount > 0 ? `Card: £${batch.cardAmount.toFixed(2)}` : '',
+          batch.bankTransferAmount > 0 ? `Transfer: £${batch.bankTransferAmount.toFixed(2)}` : '',
+          batch.chequeAmount > 0 ? `Cheque: £${batch.chequeAmount.toFixed(2)}` : ''
+        ].filter(Boolean).join('\n'),
+        `£${batch.totalAmount.toFixed(2)}`,
+        batch.remarks || '-'
+      ]);
+      
+      // Add table
+      autoTable(doc, {
+        head: [['Payment ID', 'Date', 'Invoice No.', 'Payment Mode', 'Amount', 'Remarks']],
+        body: tableData,
+        startY: 75,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [240, 240, 240] },
+        columnStyles: {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 40 },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 25 },
+          5: { cellWidth: 35 }
+        }
+      });
+
+      // Convert PDF to base64
+      const pdfBase64 = doc.output('datauristring').split(',')[1];
+
+      // Send email via API
+      await apiRequest('POST', '/api/send-email', {
+        to: emailAddress,
+        subject: `Payment History - ${selectedCustomer?.customer_name || 'Customer'}`,
+        body: `Please find attached the payment history for ${selectedCustomer?.customer_name || 'the customer'}.`,
+        attachment: {
+          filename: `Payment_History_${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Customer'}_${format(new Date(), "yyyy-MM-dd")}.pdf`,
+          content: pdfBase64,
+          contentType: 'application/pdf'
+        }
+      });
+
+      toast({ 
+        title: "Success", 
+        description: "Payment history emailed successfully" 
+      });
+      setEmailAddress(""); // Reset email field after successful send
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to send email. Please try again.", 
+        variant: "destructive" 
+      });
+    }
+  };
+
+  // Export functions
+  const handlePDF = () => {
+    if (groupedPaymentHistory.length === 0) return;
+    
+    const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
+    const doc = new jsPDF();
+    
+    // Add company header
+    doc.setFontSize(16);
+    doc.text('CUSTOMER PAYMENT HISTORY', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(12);
+    doc.text('TROPIFRUIT UK LTD', 105, 30, { align: 'center' });
+    doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 105, 40, { align: 'center' });
+    
+    // Add customer info
+    doc.setFontSize(10);
+    doc.text(`Customer: ${selectedCustomer?.customer_name || 'Unknown'}`, 20, 55);
+    doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 65);
+    
+    // Prepare table data
+    const tableData = groupedPaymentHistory.map((batch: any) => [
+      batch.batchId.toString(),
+      format(new Date(batch.paymentDate), "dd/MM/yyyy"),
+      batch.invoices.slice(0, 2).join(', ') + (batch.invoices.length > 2 ? ` +${batch.invoices.length - 2} more` : ''),
+      [
+        batch.cashAmount > 0 ? `Cash: £${batch.cashAmount.toFixed(2)}` : '',
+        batch.cardAmount > 0 ? `Card: £${batch.cardAmount.toFixed(2)}` : '',
+        batch.bankTransferAmount > 0 ? `Transfer: £${batch.bankTransferAmount.toFixed(2)}` : '',
+        batch.chequeAmount > 0 ? `Cheque: £${batch.chequeAmount.toFixed(2)}` : ''
+      ].filter(Boolean).join('\n'),
+      `£${batch.totalAmount.toFixed(2)}`,
+      batch.remarks || '-'
+    ]);
+    
+    // Add table
+    autoTable(doc, {
+      head: [['Payment ID', 'Date', 'Invoice No.', 'Payment Mode', 'Amount', 'Remarks']],
+      body: tableData,
+      startY: 75,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [240, 240, 240] },
+    });
+    
+    // Save PDF
+    doc.save(`Payment_History_${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Customer'}_${format(new Date(), "yyyy-MM-dd")}.pdf`);
+  };
+
+  const handleExcel = () => {
+    if (groupedPaymentHistory.length === 0) return;
+    
+    const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
+    
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    
+    // Add data sheet
+    const ws = XLSX.utils.json_to_sheet(groupedPaymentHistory.map((batch: any) => ({
+      'Payment ID': batch.batchId,
+      'Date': format(new Date(batch.paymentDate), "dd/MM/yyyy"),
+      'Invoice No.': batch.invoices.join(', '),
+      'Cash Amount': batch.cashAmount.toFixed(2),
+      'Card Amount': batch.cardAmount.toFixed(2),
+      'Bank Transfer Amount': batch.bankTransferAmount.toFixed(2),
+      'Cheque Amount': batch.chequeAmount.toFixed(2),
+      'Total Amount': batch.totalAmount.toFixed(2),
+      'Remarks': batch.remarks || '-'
+    })));
+    
+    XLSX.utils.book_append_sheet(wb, ws, 'Payment History');
+    
+    // Save file
+    XLSX.writeFile(wb, `Payment_History_${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Customer'}_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+  };
+
+  const handleCopy = () => {
+    if (groupedPaymentHistory.length === 0) return;
+    
+    const headers = ['Payment ID', 'Date', 'Invoice No.', 'Payment Mode', 'Amount', 'Remarks'];
+    const rows = groupedPaymentHistory.map((batch: any) => [
+      batch.batchId,
+      format(new Date(batch.paymentDate), "dd/MM/yyyy"),
+      batch.invoices.join(', '),
+      [
+        batch.cashAmount > 0 ? `Cash: £${batch.cashAmount.toFixed(2)}` : '',
+        batch.cardAmount > 0 ? `Card: £${batch.cardAmount.toFixed(2)}` : '',
+        batch.bankTransferAmount > 0 ? `Transfer: £${batch.bankTransferAmount.toFixed(2)}` : '',
+        batch.chequeAmount > 0 ? `Cheque: £${batch.chequeAmount.toFixed(2)}` : ''
+      ].filter(Boolean).join('; '),
+      `£${batch.totalAmount.toFixed(2)}`,
+      batch.remarks || '-'
+    ]);
+    
+    const csvContent = [headers, ...rows].map(row => row.join('\t')).join('\n');
+    
+    navigator.clipboard.writeText(csvContent).then(() => {
+      toast({ title: "Success", description: "Payment history copied to clipboard" });
+    }).catch(() => {
+      toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
+    });
+  };
+
+  const handlePrint = () => {
+    if (groupedPaymentHistory.length === 0) return;
+    
+    const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Customer Payment History</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.customer-info{margin-bottom:15px;font-weight:bold;}');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+      
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>CUSTOMER PAYMENT HISTORY</h2>');
+      printWindow.document.write('<p>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ</p>');
+      printWindow.document.write('</div>');
+      
+      // Add customer info
+      printWindow.document.write('<div class="customer-info">');
+      printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomer?.customer_name || 'Unknown'}<br>`);
+      printWindow.document.write(`<strong>Generated:</strong> ${format(new Date(), "dd/MM/yyyy HH:mm")}`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Payment ID</th><th>Date</th><th>Invoice No.</th><th>Payment Mode</th><th>Amount</th><th>Remarks</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      
+      groupedPaymentHistory.forEach((batch: any) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${batch.batchId}</td>`);
+        printWindow.document.write(`<td>${format(new Date(batch.paymentDate), "dd/MM/yyyy")}</td>`);
+        printWindow.document.write(`<td>${batch.invoices.join(', ')}</td>`);
+        const paymentModes = [
+          batch.cashAmount > 0 ? `Cash: £${batch.cashAmount.toFixed(2)}` : '',
+          batch.cardAmount > 0 ? `Card: £${batch.cardAmount.toFixed(2)}` : '',
+          batch.bankTransferAmount > 0 ? `Transfer: £${batch.bankTransferAmount.toFixed(2)}` : '',
+          batch.chequeAmount > 0 ? `Cheque: £${batch.chequeAmount.toFixed(2)}` : ''
+        ].filter(Boolean).join('<br>');
+        printWindow.document.write(`<td>${paymentModes}</td>`);
+        printWindow.document.write(`<td>£${batch.totalAmount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${batch.remarks || '-'}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
   };
 
   // Calculate balances for each invoice
@@ -655,11 +1024,35 @@ export default function CustomerPayment() {
                     <Calendar
                       mode="single"
                       selected={paymentDate}
-                      onSelect={setPaymentDate}
+                      onSelect={(date) => {
+                        if (date && !canCreatePaymentForDate(date)) {
+                          const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+                          toast({
+                            title: "Permission Denied",
+                            description: isToday 
+                              ? "You don't have permission to create payments for today"
+                              : "You don't have permission to select past dates",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        setPaymentDate(date);
+                      }}
+                      disabled={(date) => !canCreatePaymentForDate(date)}
                       initialFocus
                     />
                   </PopoverContent>
                 </Popover>
+                {userPermissions && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    {userPermissions.current_editing === false && (
+                      <p>Current date editing is disabled</p>
+                    )}
+                    {userPermissions.editing !== true && (
+                      <p>Past date editing is disabled - contact admin for permissions</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -814,7 +1207,44 @@ export default function CustomerPayment() {
         {selectedCustomerId && (
           <Card>
             <CardHeader>
-              <CardTitle>Payment History</CardTitle>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <CardTitle>Payment History</CardTitle>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+                  {/* Email section */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <Input
+                      type="email"
+                      placeholder="Enter email address"
+                      value={emailAddress}
+                      onChange={(e) => setEmailAddress(e.target.value)}
+                      className="w-full sm:w-48 h-8 text-sm"
+                    />
+                    <Button size="sm" variant="outline" className="flex items-center gap-1 whitespace-nowrap" onClick={handleEmail}>
+                      <Mail size={14} />
+                      Email
+                    </Button>
+                  </div>
+                  {/* Export buttons */}
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                      <FileText size={14} />
+                      PDF
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                      <Download size={14} />
+                      Excel
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                      <Copy size={14} />
+                      Copy
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                      <Printer size={14} />
+                      Print
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <Table>
@@ -852,18 +1282,33 @@ export default function CustomerPayment() {
                       <TableCell>{batch.remarks || '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditPayment(batch)}
-                            title="Edit Payment"
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                              <path d="m15 5 4 4" />
-                            </svg>
-                          </Button>
+                          {canEditPayment(batch.paymentDate) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditPayment(batch)}
+                              title="Edit Payment"
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                <path d="m15 5 4 4" />
+                              </svg>
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled
+                              title="You don't have permission to edit this payment"
+                              className="text-gray-400 cursor-not-allowed"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                <path d="m15 5 4 4" />
+                              </svg>
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"

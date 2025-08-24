@@ -248,7 +248,7 @@ const PaymentReceiptPrint = () => {
       `}</style>
       
       {/* Footer text for print */}
-      <div className="footer-text">aa stand 100</div>
+      <div className="footer-text">stand 100</div>
     </div>
   );
 };

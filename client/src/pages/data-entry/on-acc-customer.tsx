@@ -18,6 +18,12 @@ import { Customer, Payment, InsertPayment } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 import type { Sale } from "@shared/schema";
 
+// Extended Payment type that includes batchId from API response
+type PaymentWithBatch = Payment & {
+  batchId?: number;
+  invoiceNumber?: string;
+};
+
 export default function OnAccCustomer() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -57,7 +63,7 @@ export default function OnAccCustomer() {
     isLoading: loadingPayments,
     isError: errorPayments,
     refetch: refetchPayments
-  } = useQuery<Payment[]>({
+  } = useQuery<PaymentWithBatch[]>({
     queryKey: ["on-acc-payments", selectedCustomer, fromDate, toDate],
     enabled: !!selectedCustomer,
     queryFn: async () => {
@@ -71,13 +77,16 @@ export default function OnAccCustomer() {
     }
   });
 
-  // Add new on-account payment
+  // Add new on-account payment using batch system
   const addPaymentMutation = useMutation({
-    mutationFn: async (data: InsertPayment) => {
-      return apiRequest("POST", "/api/payments", data);
+    mutationFn: async (paymentData: any) => {
+      return apiRequest("POST", "/api/payments/bulk", paymentData);
     },
-    onSuccess: () => {
-      toast({ title: "Success", description: "Payment added." });
+    onSuccess: (response) => {
+      toast({ 
+        title: "Success", 
+        description: `Payment added successfully. Batch ID: ${response.paymentId}` 
+      });
       setNewPayment({ paymentDate: new Date(), amount: 0, paymentMode: "CASH", remarks: "", saleId: null });
       refetchPayments();
     },
@@ -89,15 +98,42 @@ export default function OnAccCustomer() {
   const handleAddPayment = () => {
     if (!selectedCustomer) return toast({ title: "Select a customer" });
     if (!newPayment.amount || newPayment.amount <= 0) return toast({ title: "Enter a valid amount" });
-    const payload: InsertPayment = {
-      customerId: Number(selectedCustomer),
-      saleId: newPayment.saleId, // <-- pass the selected invoice ID
-      amount: newPayment.amount,
-      paymentMode: newPayment.paymentMode,
-      paymentDate: format(newPayment.paymentDate, "yyyy-MM-dd"),
-      remarks: newPayment.remarks || null
+    
+    // Structure payment data for batch system
+    const splitPayment = {
+      cash: newPayment.paymentMode === 'CASH' ? newPayment.amount : 0,
+      card: newPayment.paymentMode === 'CARD' ? newPayment.amount : 0,
+      bankTransfer: newPayment.paymentMode === 'BANK' ? newPayment.amount : 0,
+      cheque: newPayment.paymentMode === 'CHEQUE' ? newPayment.amount : 0
     };
-    addPaymentMutation.mutate(payload);
+
+    // Map payment mode to backend expected values
+    const getBackendPaymentMode = (mode: string) => {
+      switch (mode) {
+        case 'CASH': return 'cash';
+        case 'CARD': return 'bank'; // Card payments are stored as 'bank' in backend
+        case 'BANK': return 'bank_transfer';
+        case 'CHEQUE': return 'cheque';
+        default: return 'cash';
+      }
+    };
+
+    const paymentPayload = {
+      customerId: Number(selectedCustomer),
+      amount: newPayment.amount,
+      paymentDate: format(newPayment.paymentDate, "yyyy-MM-dd"),
+      remarks: newPayment.remarks || "On-account payment",
+      invoiceIds: newPayment.saleId ? [newPayment.saleId] : [], // Include invoice ID if selected
+      splitPayment: splitPayment,
+      invoices: newPayment.saleId ? [{
+        invoiceId: newPayment.saleId,
+        invoiceNumber: customerInvoices.find(inv => inv.id === newPayment.saleId)?.invoiceNumber || 'Unknown',
+        balance: newPayment.amount, // For on-account, use the payment amount
+        paymentMode: getBackendPaymentMode(newPayment.paymentMode)
+      }] : [] // Empty array for pure on-account payments
+    };
+
+    addPaymentMutation.mutate(paymentPayload);
   };
 
   const filteredPayments = useMemo(() =>
@@ -145,6 +181,17 @@ export default function OnAccCustomer() {
     };
     fetchInvoices();
   }, [selectedCustomer]);
+
+  // Map backend payment modes back to display values
+  const getDisplayPaymentMode = (mode: string) => {
+    switch (mode) {
+      case 'cash': return 'CASH';
+      case 'bank': return 'CARD';
+      case 'bank_transfer': return 'BANK';
+      case 'cheque': return 'CHEQUE';
+      default: return mode.toUpperCase();
+    }
+  };
 
   // Debug logs before rendering the payments table
   console.log('customerInvoices', customerInvoices);
@@ -356,6 +403,7 @@ export default function OnAccCustomer() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>
+                      <TableHead>Batch ID</TableHead>
                       <TableHead>Invoice No</TableHead>
                       <TableHead>Amount ({currency})</TableHead>
                       <TableHead>Payment Mode</TableHead>
@@ -366,9 +414,10 @@ export default function OnAccCustomer() {
                     {filteredPayments.slice(0, Number(recordsPerPage)).map((p, idx) => (
                       <TableRow key={p.id}>
                         <TableCell>{p.paymentDate}</TableCell>
+                        <TableCell className="font-mono">{p.batchId || '-'}</TableCell>
                         <TableCell>{p.saleId ? (customerInvoices.find(inv => Number(inv.id) === Number(p.saleId))?.invoiceNumber || p.saleId) : '-'}</TableCell>
                         <TableCell>{p.amount}</TableCell>
-                        <TableCell>{p.paymentMode}</TableCell>
+                        <TableCell>{getDisplayPaymentMode(p.paymentMode)}</TableCell>
                         <TableCell>{p.remarks}</TableCell>
                       </TableRow>
                     ))}

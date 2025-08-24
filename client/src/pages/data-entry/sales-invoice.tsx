@@ -731,7 +731,7 @@ const SalesInvoice = () => {
     }
     // For new invoices, stock will be reduced when the invoice is saved
     setSelectedProductId("");
-    setItemQuantity(1);
+    setItemQuantity("");
     setItemUnitPrice("");
     setItemNotes("");
     setProductSearch("");
@@ -1678,13 +1678,13 @@ const SalesInvoice = () => {
                     <TableCell>
                       <Input
                         className="text-center"
-                        type="number"
+                        type="text"
                         placeholder="Qty"
                         value={itemQuantity}
                         onChange={(e) => setItemQuantity(e.target.value)}
                         onKeyPress={(e) => {
-                          // Only allow numbers, decimal point, backspace, delete, and arrow keys
-                          if (!/[0-9.]/.test(e.key) && 
+                          // Allow numbers, decimal point, minus sign, backspace, delete, and arrow keys
+                          if (!/[0-9.\-]/.test(e.key) && 
                               e.key !== 'Backspace' && 
                               e.key !== 'Delete' && 
                               !e.key.startsWith('Arrow')) {
@@ -1692,9 +1692,9 @@ const SalesInvoice = () => {
                           }
                         }}
                         onPaste={(e) => {
-                          // Prevent pasting non-numeric content
+                          // Allow pasting numeric content including negative numbers
                           const paste = e.clipboardData?.getData('text');
-                          if (paste && !/^\d+$/.test(paste)) {
+                          if (paste && !/^-?\d*\.?\d*$/.test(paste)) {
                             e.preventDefault();
                           }
                         }}

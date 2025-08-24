@@ -12,10 +12,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { RotateCcw, Search, Save, Trash2 } from "lucide-react";
+import { RotateCcw, Search, Save, Trash2, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { Customer, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 
 // Simplified schema for return form
 const returnSchema = z.object({
@@ -65,6 +66,7 @@ interface CustomerReturn {
 export default function ReturnFromCustomer() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   // State management
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
@@ -96,6 +98,29 @@ export default function ReturnFromCustomer() {
     queryKey: ['products'],
     queryFn: () => apiRequest('GET', '/api/products')
   });
+
+  // Fetch user permissions
+  const { data: userPermissions } = useQuery<any>({
+    queryKey: ['/api/user-backdate-options', user?.id],
+    queryFn: () => apiRequest('GET', `/api/user-backdate-options/${user?.id}`),
+    enabled: !!user?.id,
+  });
+
+  // Check if user can delete a customer return based on date
+  const canDeleteReturn = (returnDate: string) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const returnDateFormatted = format(new Date(returnDate), 'yyyy-MM-dd');
+    
+    if (returnDateFormatted === today) {
+      // For current date entries, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else {
+      // For back date entries, check deleting permission
+      return userPermissions.deleting === true;
+    }
+  };
 
   // Fetch customer returns (only after customer is searched)
   const { data: returns = [], refetch: refetchReturns } = useQuery({
@@ -186,9 +211,10 @@ export default function ReturnFromCustomer() {
       });
     },
     onError: (error: any) => {
+      const errorMessage = error?.error || error?.message || "Failed to delete customer return";
       toast({
         title: "Error",
-        description: error.message || "Failed to delete customer return",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -634,13 +660,35 @@ export default function ReturnFromCustomer() {
                           <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
                           <TableCell>{returnItem.remarks || "-"}</TableCell>
                           <TableCell className="text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => deleteReturnMutation.mutate(returnItem.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
+                            {canDeleteReturn(returnItem.date) ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to delete this customer return?")) {
+                                    deleteReturnMutation.mutate(returnItem.id);
+                                  }
+                                }}
+                                disabled={deleteReturnMutation.isPending}
+                                title="Delete return"
+                              >
+                                {deleteReturnMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                )}
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled
+                                className="text-gray-400 cursor-not-allowed"
+                                title="You don't have permission to delete this return"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))

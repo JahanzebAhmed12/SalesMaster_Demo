@@ -30,15 +30,14 @@ import {
   Edit,
   Trash2,
   Eye,
-  CheckCircle,
-  XCircle,
-  Clock
+  CheckCircle
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { SupplierReturn, Supplier, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/lib/auth";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -58,7 +57,7 @@ const supplierReturnSchema = z.object({
   returnReason: z.string().optional(),
   creditNoteIssued: z.boolean().default(false),
   creditNoteAmount: z.number().min(0, "Credit note amount must be non-negative"),
-  status: z.enum(["pending", "approved", "rejected", "completed"]).default("pending")
+  status: z.enum(["pending", "approved", "rejected", "completed"]).default("completed")
 });
 
 type SupplierReturnFormData = z.infer<typeof supplierReturnSchema>;
@@ -104,21 +103,12 @@ const deleteSupplierReturn = async (id: number): Promise<void> => {
   return apiRequest('DELETE', `/api/supplier-returns/${id}`);
 };
 
-const approveSupplierReturn = async (id: number): Promise<SupplierReturn> => {
-  return apiRequest('POST', `/api/supplier-returns/${id}/approve`);
-};
 
-const rejectSupplierReturn = async (id: number): Promise<SupplierReturn> => {
-  return apiRequest('POST', `/api/supplier-returns/${id}/reject`, { rejectionReason: 'Return rejected' });
-};
-
-const completeSupplierReturn = async (id: number): Promise<SupplierReturn> => {
-  return apiRequest('POST', `/api/supplier-returns/${id}/complete`);
-};
 
 export default function ReturnToSupplier() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   
   // State
   const [selectedSupplier, setSelectedSupplier] = useState<number | undefined>();
@@ -142,7 +132,7 @@ export default function ReturnToSupplier() {
       unitPrice: 0,
       creditNoteIssued: false,
       creditNoteAmount: 0,
-      status: 'pending'
+      status: 'completed'
     }
   });
 
@@ -186,6 +176,45 @@ export default function ReturnToSupplier() {
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
+  // Fetch user permissions
+  const { data: userPermissions } = useQuery<any>({
+    queryKey: ['/api/user-backdate-options', user?.id],
+    queryFn: () => apiRequest('GET', `/api/user-backdate-options/${user?.id}`),
+    enabled: !!user?.id,
+  });
+
+  // Check if user can delete a supplier return based on date
+  const canDeleteReturn = (returnDate: string) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const returnDateFormatted = format(new Date(returnDate), 'yyyy-MM-dd');
+    
+    if (returnDateFormatted === today) {
+      // For current date entries, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else {
+      // For back date entries, check deleting permission
+      return userPermissions.deleting === true;
+    }
+  };
+
+  // Check if user can edit a supplier return based on date
+  const canEditReturn = (returnDate: string) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const returnDateFormatted = format(new Date(returnDate), 'yyyy-MM-dd');
+    
+    if (returnDateFormatted === today) {
+      // For current date entries, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else {
+      // For back date entries, check editing permission
+      return userPermissions.editing === true;
+    }
+  };
+
   // Mutations
   const createMutation = useMutation({
     mutationFn: createSupplierReturn,
@@ -198,8 +227,9 @@ export default function ReturnToSupplier() {
       setIsDialogOpen(false);
       form.reset();
     },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    onError: (error: any) => {
+      const errorMessage = error?.error || error?.message || "Failed to create supplier return";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
   });
 
@@ -215,8 +245,9 @@ export default function ReturnToSupplier() {
       setEditingReturn(null);
       form.reset();
     },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    onError: (error: any) => {
+      const errorMessage = error?.error || error?.message || "Failed to update supplier return";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
   });
 
@@ -226,43 +257,13 @@ export default function ReturnToSupplier() {
       queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
       toast({ title: "Success", description: "Supplier return deleted successfully" });
     },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    onError: (error: any) => {
+      const errorMessage = error?.error || error?.message || "Failed to delete supplier return";
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
   });
 
-  const approveMutation = useMutation({
-    mutationFn: approveSupplierReturn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
-      toast({ title: "Success", description: "Supplier return approved successfully" });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
 
-  const rejectMutation = useMutation({
-    mutationFn: rejectSupplierReturn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
-      toast({ title: "Success", description: "Supplier return rejected successfully" });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
-
-  const completeMutation = useMutation({
-    mutationFn: completeSupplierReturn,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
-      toast({ title: "Success", description: "Supplier return completed successfully" });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    }
-  });
 
   // Computed values
   const totalValue = useMemo(() => {
@@ -481,6 +482,15 @@ export default function ReturnToSupplier() {
   };
 
   const handleEdit = (returnItem: SupplierReturn) => {
+    if (!canEditReturn(returnItem.date)) {
+      toast({
+        title: "Permission Denied",
+        description: "You don't have permission to edit this return",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setEditingReturn(returnItem);
     form.reset({
       date: returnItem.date,
@@ -496,92 +506,38 @@ export default function ReturnToSupplier() {
       returnReason: returnItem.returnReason || "",
       creditNoteIssued: returnItem.creditNoteIssued,
       creditNoteAmount: returnItem.creditNoteAmount,
-      status: returnItem.status as "pending" | "approved" | "rejected" | "completed"
+      status: "completed" as "pending" | "approved" | "rejected" | "completed"
     });
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = (returnItem: SupplierReturn) => {
+    if (!canDeleteReturn(returnItem.date)) {
+      toast({
+        title: "Permission Denied",
+        description: "You don't have permission to delete this return",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     if (confirm("Are you sure you want to delete this supplier return?")) {
-      deleteMutation.mutate(id);
+      deleteMutation.mutate(returnItem.id);
     }
   };
 
-  const handleStatusAction = (id: number, action: 'approve' | 'reject' | 'complete') => {
-    switch (action) {
-      case 'approve':
-        approveMutation.mutate(id);
-        break;
-      case 'reject':
-        rejectMutation.mutate(id);
-        break;
-      case 'complete':
-        completeMutation.mutate(id);
-        break;
-    }
-  };
+
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      pending: "outline",
-      approved: "default",
-      rejected: "destructive",
-      completed: "secondary"
-    };
-
-    const icons = {
-      pending: <Clock className="w-3 h-3" />,
-      approved: <CheckCircle className="w-3 h-3" />,
-      rejected: <XCircle className="w-3 h-3" />,
-      completed: <CheckCircle className="w-3 h-3" />
-    };
-
     return (
-      <Badge variant={variants[status] || "outline"} className="flex items-center gap-1">
-        {icons[status as keyof typeof icons]}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+      <Badge variant="secondary" className="flex items-center gap-1">
+        <CheckCircle className="w-3 h-3" />
+        Completed
       </Badge>
     );
   };
 
-  const getStatusActions = (returnItem: SupplierReturn) => {
-    switch (returnItem.status) {
-      case 'pending':
-        return (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleStatusAction(returnItem.id, 'approve')}
-              disabled={approveMutation.isPending}
-            >
-              <CheckCircle className="w-3 h-3" />
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleStatusAction(returnItem.id, 'reject')}
-              disabled={rejectMutation.isPending}
-            >
-              <XCircle className="w-3 h-3" />
-            </Button>
-          </div>
-        );
-      case 'approved':
-        return (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => handleStatusAction(returnItem.id, 'complete')}
-            disabled={completeMutation.isPending}
-          >
-            <CheckCircle className="w-3 h-3" />
-          </Button>
-        );
-      default:
-        return null;
-    }
-  };
+
 
   return (
     <PageLayout title="Return to Supplier" breadcrumb="Return to Supplier">
@@ -699,10 +655,7 @@ export default function ReturnToSupplier() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
+                    <SelectItem value="all">All Returns</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1026,22 +979,47 @@ export default function ReturnToSupplier() {
                         <TableCell>{getStatusBadge(returnItem.status)}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleEdit(returnItem)}
-                            >
-                              <Edit className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDelete(returnItem.id)}
-                              disabled={deleteMutation.isPending}
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                            {getStatusActions(returnItem)}
+                            {canEditReturn(returnItem.date) ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEdit(returnItem)}
+                                title="Edit return"
+                              >
+                                <Edit className="w-3 h-3" />
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled
+                                className="text-gray-400 cursor-not-allowed"
+                                title="You don't have permission to edit this return"
+                              >
+                                <Edit className="w-3 h-3" />
+                              </Button>
+                            )}
+                            {canDeleteReturn(returnItem.date) ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDelete(returnItem)}
+                                disabled={deleteMutation.isPending}
+                                title="Delete return"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled
+                                className="text-gray-400 cursor-not-allowed"
+                                title="You don't have permission to delete this return"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

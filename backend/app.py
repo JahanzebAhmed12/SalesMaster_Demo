@@ -6832,9 +6832,28 @@ def update_customer_return(id):
 @app.route('/api/customer-returns/<int:id>', methods=['DELETE'])
 @jwt_required()
 def delete_customer_return(id):
-    """Delete a customer return"""
+    """Delete a customer return with permission checks"""
     try:
+        user_id = get_jwt_identity()
         customer_return = CustomerReturn.query.get_or_404(id)
+        
+        # Get user's backdate options
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        
+        # Get today's date
+        from datetime import datetime
+        today = datetime.now().date()
+        return_date = customer_return.date
+        
+        # Check permissions based on return date
+        if return_date == today:
+            # For current date entries, check current_editing permission
+            if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
+                return jsonify({'error': 'You do not have permission to delete returns for today.'}), 403
+        else:
+            # For back date entries, check deleting permission
+            if not backdate_opt or not backdate_opt.deleting:
+                return jsonify({'error': 'You do not have permission to delete back-dated returns.'}), 403
         
         # Restore stock before deleting
         success, result = update_product_stock(
@@ -7073,8 +7092,33 @@ def create_supplier_return():
     try:
         data = request.get_json()
         user_id = get_jwt_identity()
-        # Use business date
+        
+        # Parse date string to date object first to check permissions
         business_date = get_business_date()
+        parsed_date = business_date
+        date_str = data.get('date')
+        if date_str:
+            try:
+                parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = business_date
+        
+        # Get user's backdate options
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        
+        # Get today's date
+        from datetime import datetime
+        today = datetime.now().date()
+        
+        # Check permissions based on return date
+        if parsed_date == today:
+            # For current date entries, check current_editing permission
+            if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
+                return jsonify({'error': 'You do not have permission to create returns for today.'}), 403
+        else:
+            # For back date entries, check editing permission
+            if not backdate_opt or not backdate_opt.editing:
+                return jsonify({'error': 'You do not have permission to create back-dated returns.'}), 403
         # Generate reference number
         last_return = SupplierReturn.query.order_by(SupplierReturn.id.desc()).first()
         ref_number = f"SR{1 if not last_return else last_return.id + 1:04d}"
@@ -7184,11 +7228,39 @@ def create_supplier_return():
 @app.route('/api/supplier-returns/<int:id>', methods=['PUT'])
 @jwt_required()
 def update_supplier_return(id):
-    """Update a supplier return"""
+    """Update a supplier return with permission checks"""
     try:
         data = request.get_json()
         supplier_return = SupplierReturn.query.get_or_404(id)
         user_id = get_jwt_identity()
+        
+        # Parse the new date to check permissions
+        parsed_date = supplier_return.date  # Default to existing date
+        date_str = data.get('date')
+        if date_str:
+            try:
+                parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = supplier_return.date
+        
+        # Get user's backdate options
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        
+        # Get today's date
+        from datetime import datetime
+        today = datetime.now().date()
+        
+        # Check permissions based on return date (both old and new dates)
+        dates_to_check = [supplier_return.date, parsed_date]
+        for check_date in dates_to_check:
+            if check_date == today:
+                # For current date entries, check current_editing permission
+                if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
+                    return jsonify({'error': 'You do not have permission to edit returns for today.'}), 403
+            else:
+                # For back date entries, check editing permission
+                if not backdate_opt or not backdate_opt.editing:
+                    return jsonify({'error': 'You do not have permission to edit back-dated returns.'}), 403
         
         # Store old values for stock adjustment
         old_quantity = supplier_return.quantity
@@ -7279,9 +7351,28 @@ def update_supplier_return(id):
 @app.route('/api/supplier-returns/<int:id>', methods=['DELETE'])
 @jwt_required()
 def delete_supplier_return(id):
-    """Delete a supplier return"""
+    """Delete a supplier return with permission checks"""
     try:
+        user_id = get_jwt_identity()
         supplier_return = SupplierReturn.query.get_or_404(id)
+        
+        # Get user's backdate options
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        
+        # Get today's date
+        from datetime import datetime
+        today = datetime.now().date()
+        return_date = supplier_return.date
+        
+        # Check permissions based on return date
+        if return_date == today:
+            # For current date entries, check current_editing permission
+            if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
+                return jsonify({'error': 'You do not have permission to delete returns for today.'}), 403
+        else:
+            # For back date entries, check deleting permission
+            if not backdate_opt or not backdate_opt.deleting:
+                return jsonify({'error': 'You do not have permission to delete back-dated returns.'}), 403
         
         # Restore stock before deleting
         success, result = update_product_stock(
@@ -10173,9 +10264,28 @@ def add_banking_entry():
 @app.route('/api/banking/<int:id>', methods=['DELETE'])
 @jwt_required()
 def delete_banking_entry(id):
-    """Delete a banking entry"""
+    """Delete a banking entry with permission checks"""
     try:
+        user_id = get_jwt_identity()
         entry = BankingEntry.query.get_or_404(id)
+        
+        # Get user's backdate options
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        
+        # Get today's date
+        from datetime import datetime
+        today = datetime.now().date()
+        entry_date = entry.date
+        
+        # Check permissions based on entry date
+        if entry_date == today:
+            # For current date entries, check current_editing permission
+            if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
+                return jsonify({'error': 'You do not have permission to delete entries for today.'}), 403
+        else:
+            # For back date entries, check deleting permission
+            if not backdate_opt or not backdate_opt.deleting:
+                return jsonify({'error': 'You do not have permission to delete back-dated entries.'}), 403
         
         # Delete associated bag numbers if they exist
         if hasattr(entry, 'bag_numbers'):

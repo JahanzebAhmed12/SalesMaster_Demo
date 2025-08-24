@@ -110,29 +110,31 @@ import DailySummaryPrintPage from "@/pages/print/daily-summary-print";
 // User Profile
 import UserProfile from "./pages/profile/user-profile";
 import ProtectedRoute from "@/components/protected-route";
-
-function AuthenticatedRoute({ component: Component, title, breadcrumb }: { component: React.ComponentType; title: string; breadcrumb: string }) {
-  const { isAuthenticated } = useAuth();
-
-  if (!isAuthenticated) {
-    return <Login />;
-  }
-
-  return (
-    <DashboardLayout title={title} breadcrumb={breadcrumb}>
-      <Component />
-    </DashboardLayout>
-  );
-}
+import RestrictedLanding from "./pages/restricted-landing";
+import TestPermissions from "./pages/test-permissions";
+import { useRouteProtection } from "@/hooks/useRouteProtection";
 
 function Router() {
+  // Initialize route protection
+  useRouteProtection();
+
   return (
     <Switch>
-      <Route exact path="/">
+      <Route path="/">
         <Login />
       </Route>
+      <Route path="/restricted-landing">
+        <DashboardLayout title="Restricted Access" breadcrumb="Dashboard > Restricted Access">
+          <RestrictedLanding />
+        </DashboardLayout>
+      </Route>
+      <Route path="/test-permissions">
+        <DashboardLayout title="Test Permissions" breadcrumb="Test > Permissions">
+          <TestPermissions />
+        </DashboardLayout>
+      </Route>
       <Route path="/dashboard">
-      <ProtectedRoute requiredSection="dashboard" title="Dashboard" breadcrumb="Dashboard > Dashbaord">
+        <ProtectedRoute requiredSection="dashboard" title="Dashboard" breadcrumb="Dashboard > Dashboard">
           <Dashboard />
         </ProtectedRoute>
       </Route>
@@ -408,14 +410,14 @@ function Router() {
           <HolidayRequests />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Daily Attendance Section */}
       <Route path="/daily-attendance">
         <ProtectedRoute requiredSection="daily_attendance" title="Daily Attendance" breadcrumb="Daily Attendance">
           <Payroll />
         </ProtectedRoute>
       </Route>
-      
+
       {/* Timings Setup Section */}
       <Route path="/timings-setup">
         <ProtectedRoute requiredSection="timings_setup" title="Timings Setup" breadcrumb="Timings Setup">
@@ -425,7 +427,7 @@ function Router() {
           </div>
         </ProtectedRoute>
       </Route>
-      
+
       {/* Daily Summary Section */}
       <Route path="/daily-summary">
         <ProtectedRoute requiredSection="daily_summary" title="Daily Summary" breadcrumb="Daily Summary">

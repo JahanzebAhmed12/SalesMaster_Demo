@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/usePermissions";
 import DashboardLayout from "@/components/layout/dashboard-layout";
+import RestrictedLanding from "@/pages/restricted-landing";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -59,9 +60,12 @@ export default function ProtectedRoute({
     if (!hydrated || !user) return;
     
     if (requireAdmin && user.userType !== "admin") {
-      setLocation("/dashboard");
+      // Check if user has dashboard access, if not redirect to restricted landing
+      const hasDashboardAccess = permissions['dashboard'] !== false;
+      const redirectTo = hasDashboardAccess ? "/dashboard" : "/restricted-landing";
+      setLocation(redirectTo);
       toast({
-        title: "Access Denized",
+        title: "Access Denied",
         description: "You need admin privileges to access this page",
         variant: "destructive",
       });
@@ -73,7 +77,10 @@ export default function ProtectedRoute({
       const hasAccess = permissions[sectionKey] !== false;
       
       if (!hasAccess) {
-        setLocation("/dashboard");
+        // Check if user has dashboard access, if not redirect to restricted landing
+        const hasDashboardAccess = permissions['dashboard'] !== false;
+        const redirectTo = hasDashboardAccess ? "/dashboard" : "/restricted-landing";
+        setLocation(redirectTo);
         toast({
           title: "Access Denied",
           description: "You don't have permission to access this page",
@@ -94,6 +101,11 @@ export default function ProtectedRoute({
     const hasAccess = permissions[sectionKey] !== false;
     
     if (!hasAccess) {
+      // If this is the dashboard and user doesn't have access, show restricted landing
+      if (requiredSection === 'dashboard') {
+        return <RestrictedLanding />;
+      }
+      
       return (
         <DashboardLayout title={title} breadcrumb={breadcrumb}>
           <div className="p-8 text-center text-red-600 font-bold text-lg">

@@ -760,7 +760,7 @@ export default function DailySummary() {
       });
     }
 
-    // Add footer text "aa stand 100" on bottom right
+    // Add footer text "stand 100" on bottom right
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(8);
@@ -1002,11 +1002,11 @@ export default function DailySummary() {
       });
     }
 
-    // Add footer text "aa stand 100" on bottom right
+    // Add footer text "stand 100" on bottom right
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(8);
-    doc.text('aa stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
+    doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
 
     return doc.output('blob');
   };
@@ -1780,7 +1780,7 @@ export default function DailySummary() {
       </div>
 
       {/* Footer text for print */}
-      <div className="footer-text">aa stand 100</div>
+      <div className="footer-text">stand 100</div>
     </PageLayout>
   );
 }

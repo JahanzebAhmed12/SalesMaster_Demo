@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Banknote, Save, Loader2, Plus, X, Trash2, FileText, Download, Copy, Printer } from "lucide-react";
+import { CalendarIcon, Banknote, Save, Loader2, Plus, X, Trash2, FileText, Download, Copy, Printer, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { BankingEntry, InsertBankingEntry } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useAuth } from "@/lib/auth";
 import React from "react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -24,6 +25,7 @@ import autoTable from 'jspdf-autotable';
 
 export default function Banking() {
   const { currentDate: businessDate } = useBusinessDate();
+  const { user } = useAuth();
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [newEntry, setNewEntry] = useState({
@@ -37,6 +39,7 @@ export default function Banking() {
     bagNumber: "", // Bag number for CHEQUE payments
     chequePayingNumber: "" // Paying number for CHEQUE payments
   });
+  const [emailAddress, setEmailAddress] = useState("");
   const queryClient = useQueryClient();
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -103,11 +106,16 @@ export default function Banking() {
       return apiRequest("DELETE", `/api/banking/${id}`);
     },
     onSuccess: () => {
-      toast({ title: "Success", description: "Banking entry deleted." });
+      toast({ title: "Success", description: "Banking entry deleted successfully." });
       refetch();
     },
     onError: (e: any) => {
-      toast({ title: "Error", description: e?.message || "Failed to delete entry.", variant: "destructive" });
+      const errorMessage = e?.error || e?.message || "Failed to delete entry.";
+      toast({ 
+        title: "Error", 
+        description: errorMessage, 
+        variant: "destructive" 
+      });
     }
   });
 
@@ -183,6 +191,29 @@ export default function Banking() {
     queryKey: ['/api/company-details'],
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
+
+  // Fetch user permissions
+  const { data: userPermissions } = useQuery<any>({
+    queryKey: ['/api/user-backdate-options', user?.id],
+    queryFn: () => apiRequest('GET', `/api/user-backdate-options/${user?.id}`),
+    enabled: !!user?.id,
+  });
+
+  // Check if user can delete a banking entry based on date
+  const canDeleteEntry = (entryDate: string) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const entryDateFormatted = format(new Date(entryDate), 'yyyy-MM-dd');
+    
+    if (entryDateFormatted === today) {
+      // For current date entries, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else {
+      // For back date entries, check deleting permission
+      return userPermissions.deleting === true;
+    }
+  };
 
   // Export functions
   const handlePrint = () => {
@@ -330,6 +361,78 @@ export default function Banking() {
     }).catch(() => {
       toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
     });
+  };
+
+  const handleEmail = async () => {
+    if (bankingEntries.length === 0) {
+      toast({ title: "Error", description: "No banking entries to email", variant: "destructive" });
+      return;
+    }
+    
+    if (!emailAddress.trim()) {
+      toast({ title: "Error", description: "Please enter an email address", variant: "destructive" });
+      return;
+    }
+
+    try {
+      // Generate PDF data for email attachment
+      const doc = new jsPDF();
+      
+      // Add company header
+      doc.setFontSize(16);
+      doc.text('BANKING ENTRIES REPORT', 105, 20, { align: 'center' });
+      
+      if (companyDetails) {
+        doc.setFontSize(12);
+        doc.text(`${companyDetails.companyName}`, 105, 30, { align: 'center' });
+        doc.text(`${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 40, { align: 'center' });
+      }
+      
+      // Add period
+      doc.setFontSize(10);
+      doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, 55);
+      
+      // Prepare table data
+      const tableData = bankingEntries.map((entry: BankingEntry) => [
+        format(new Date(entry.date), "dd/MM/yyyy"),
+        entry.remarks,
+        entry.paymentType,
+        `£${Number(entry.amount).toFixed(2)}`,
+        entry.bags && entry.bags.length > 0 
+          ? entry.bags.map(bag => `${bag.number} (${bag.payingNumber}) £${bag.amount.toFixed(2)}`).join('\n')
+          : entry.bagNumber ? `Bag: ${entry.bagNumber}` : '-'
+      ]);
+      
+      // Add table
+      autoTable(doc, {
+        head: [['Date', 'Remarks', 'Payment Type', 'Amount', 'Bag Details']],
+        body: tableData,
+        startY: 65,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [240, 240, 240] },
+      });
+
+      // Convert PDF to base64
+      const pdfBase64 = doc.output('datauristring').split(',')[1];
+
+      // Send email via API
+      await apiRequest('POST', '/api/send-email', {
+        to: emailAddress,
+        subject: `Banking Entries Report - ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`,
+        body: `Please find attached the Banking Entries Report for the period ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}.`,
+        attachment: {
+          filename: `Banking_Entries_${format(fromDate, "yyyy-MM-dd")}_to_${format(toDate, "yyyy-MM-dd")}.pdf`,
+          content: pdfBase64,
+          contentType: 'application/pdf'
+        }
+      });
+
+      toast({ title: "Success", description: "Banking entries report emailed successfully" });
+      setEmailAddress(""); // Clear email field after successful send
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({ title: "Error", description: "Failed to send email. Please try again.", variant: "destructive" });
+    }
   };
 
   return (
@@ -621,25 +724,42 @@ export default function Banking() {
               <div className="text-red-600">Failed to load entries.</div>
             ) : bankingEntries.length > 0 ? (
               <div className="mt-6">
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                   <h3 className="font-semibold">Banking Entries:</h3>
-                  <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
-                      <FileText size={14} />
-                      PDF
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
-                      <Download size={14} />
-                      Excel
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
-                      <Copy size={14} />
-                      Copy
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
-                      <Printer size={14} />
-                      Print
-                    </Button>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+                    {/* Email section */}
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <Input
+                        type="email"
+                        placeholder="Enter email address"
+                        value={emailAddress}
+                        onChange={(e) => setEmailAddress(e.target.value)}
+                        className="w-full sm:w-48 h-8 text-sm"
+                      />
+                      <Button size="sm" variant="outline" className="flex items-center gap-1 whitespace-nowrap" onClick={handleEmail}>
+                        <Mail size={14} />
+                        Email
+                      </Button>
+                    </div>
+                    {/* Export buttons */}
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
+                        <FileText size={14} />
+                        PDF
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
+                        <Download size={14} />
+                        Excel
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
+                        <Copy size={14} />
+                        Copy
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
+                        <Printer size={14} />
+                        Print
+                      </Button>
+                    </div>
                   </div>
                 </div>
                 <div className="border rounded-lg overflow-hidden" ref={tableRef}>
@@ -707,23 +827,36 @@ export default function Banking() {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                if (confirm("Are you sure you want to delete this banking entry?")) {
-                                  deleteEntryMutation.mutate(entry.id);
-                                }
-                              }}
-                              disabled={deleteEntryMutation.isPending}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            >
-                              {deleteEntryMutation.isPending ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
+                            {canDeleteEntry(entry.date) ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to delete this banking entry?")) {
+                                    deleteEntryMutation.mutate(entry.id);
+                                  }
+                                }}
+                                disabled={deleteEntryMutation.isPending}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete entry"
+                              >
+                                {deleteEntryMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled
+                                className="text-gray-400 cursor-not-allowed"
+                                title="You don't have permission to delete this entry"
+                              >
                                 <Trash2 className="h-4 w-4" />
-                              )}
-                            </Button>
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}

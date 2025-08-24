@@ -11,6 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/lib/auth';
 import PageLayout from '@/components/common/page-layout';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -29,6 +30,7 @@ interface FullViewRow {
 }
 
 export default function DailySalesFullView() {
+  const { user } = useAuth();
   const today = new Date();
   const [fromDate, setFromDate] = useState<Date>(today);
   const [toDate, setToDate] = useState<Date>(today);
@@ -56,6 +58,29 @@ export default function DailySalesFullView() {
     queryKey: ['/api/company-details'],
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
+
+  // Fetch user permissions
+  const { data: userPermissions } = useQuery<any>({
+    queryKey: ['/api/user-backdate-options', user?.id],
+    queryFn: () => apiRequest('GET', `/api/user-backdate-options/${user?.id}`),
+    enabled: !!user?.id,
+  });
+
+  // Check if user can edit an invoice based on date
+  const canEditInvoice = (invoiceDate: string) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const invoiceDateFormatted = format(new Date(invoiceDate), 'yyyy-MM-dd');
+    
+    if (invoiceDateFormatted === today) {
+      // For current date entries, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else {
+      // For back date entries, check editing permission
+      return userPermissions.editing === true;
+    }
+  };
 
   // Auto-search on load and when dates change
   useEffect(() => {
@@ -543,9 +568,23 @@ export default function DailySalesFullView() {
                           <TableRow key={idx} className="bg-white">
                             <TableCell></TableCell>
                             <TableCell>
-                              <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}>
-                                {row.invoiceNo}
-                              </Button>
+                              {canEditInvoice(row.date) ? (
+                                <Button 
+                                  variant="link" 
+                                  className="p-0 text-blue-600 underline" 
+                                  onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}
+                                  title="Edit invoice"
+                                >
+                                  {row.invoiceNo}
+                                </Button>
+                              ) : (
+                                <span 
+                                  className="text-gray-500 cursor-not-allowed" 
+                                  title="You don't have permission to edit this invoice"
+                                >
+                                  {row.invoiceNo}
+                                </span>
+                              )}
                             </TableCell>
                             <TableCell>{row.customerName}</TableCell>
                             <TableCell>

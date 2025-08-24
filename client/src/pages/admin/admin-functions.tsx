@@ -21,6 +21,13 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 
+interface MenuSection {
+  title: string;
+  items: Array<{
+    title: string;
+    path: string;
+  }>;
+}
 
 // Generate restrictionSections dynamically
 const menuSections: MenuSection[] = [
@@ -130,24 +137,6 @@ const menuSections: MenuSection[] = [
       { title: "Expenses Database", path: "/admin/expenses-database" },
       { title: "Company Details", path: "/admin/company-details" },
       { title: "Admin Functions", path: "/admin/admin-functions" },
-    ],
-  },
-  {
-    title: "Daily Attendance",
-    items: [
-      { title: "Daily Attendance", path: "/daily-attendance" },
-    ],
-  },
-  {
-    title: "Timings Setup",
-    items: [
-      { title: "Timings Setup", path: "/timings-setup" },
-    ],
-  },
-  {
-    title: "Daily Summary",
-    items: [
-      { title: "Daily Summary", path: "/daily-summary" },
     ],
   },
 ];

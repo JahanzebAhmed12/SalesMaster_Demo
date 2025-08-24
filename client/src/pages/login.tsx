@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { usePermissions } from "@/hooks/usePermissions";
 import { ShoppingCart } from "lucide-react";
 
 export default function Login() {
@@ -16,7 +17,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { login } = useAuth();
+  const { login, user } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,9 +28,30 @@ export default function Login() {
       if (success) {
         toast({
           title: "Login successful",
-          description: "Welcome to POS System",
+          description: "Welcome to TropiFruit System",
         });
-        setLocation("/dashboard");
+        
+        // Small delay to allow permissions to load, then redirect based on permissions
+        setTimeout(() => {
+          // The user data from login should include restrictions
+          // Check if user has dashboard access
+          fetch('/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+            },
+          })
+          .then(res => res.json())
+          .then(userData => {
+            const restrictions = userData.restrictions || {};
+            const hasDashboardAccess = restrictions['dashboard'] !== false;
+            const redirectTo = hasDashboardAccess ? "/dashboard" : "/restricted-landing";
+            setLocation(redirectTo);
+          })
+          .catch(() => {
+            // If permissions check fails, default to dashboard
+            setLocation("/dashboard");
+          });
+        }, 500);
       } else {
         toast({
           title: "Login failed",

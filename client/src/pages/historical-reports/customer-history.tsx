@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer } from "@shared/schema";
+import { useAuth } from "@/lib/auth";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ interface CompanyDetails {
 }
 
 export default function CustomerHistory() {
+  const { user } = useAuth();
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
@@ -59,6 +61,29 @@ export default function CustomerHistory() {
     queryKey: ["/api/company-details"],
     queryFn: () => apiRequest("GET", "/api/company-details"),
   });
+
+  // Fetch user permissions
+  const { data: userPermissions } = useQuery<any>({
+    queryKey: ['/api/user-backdate-options', user?.id],
+    queryFn: () => apiRequest('GET', `/api/user-backdate-options/${user?.id}`),
+    enabled: !!user?.id,
+  });
+
+  // Check if user can edit an invoice based on date
+  const canEditInvoice = (invoiceDate: string) => {
+    if (!userPermissions) return false;
+    
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const invoiceDateFormatted = format(new Date(invoiceDate), 'yyyy-MM-dd');
+    
+    if (invoiceDateFormatted === today) {
+      // For current date entries, check current_editing permission
+      return userPermissions.current_editing !== false;
+    } else {
+      // For back date entries, check editing permission
+      return userPermissions.editing === true;
+    }
+  };
 
   // Calculate totals from history data
   const totals = useMemo(() => ({
@@ -634,9 +659,23 @@ export default function CustomerHistory() {
                         <TableCell>{row.slNo}</TableCell>
                         <TableCell>{format(new Date(row.date), "yyyy-MM-dd")}</TableCell>
                         <TableCell>
-                          <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}>
-                            {row.invoiceNo}
-                          </Button>
+                          {canEditInvoice(row.date) ? (
+                            <Button 
+                              variant="link" 
+                              className="p-0 text-blue-600 underline" 
+                              onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}
+                              title="Edit invoice"
+                            >
+                              {row.invoiceNo}
+                            </Button>
+                          ) : (
+                            <span 
+                              className="text-gray-500 cursor-not-allowed" 
+                              title="You don't have permission to edit this invoice"
+                            >
+                              {row.invoiceNo}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-center">
                           <input
