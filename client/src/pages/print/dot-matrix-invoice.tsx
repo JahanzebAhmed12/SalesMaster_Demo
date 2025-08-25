@@ -248,15 +248,18 @@ export default function DotMatrixInvoicePrintPage() {
         @media print {
           @page { 
             size: 186mm 200mm; 
-            margin: 3mm; 
+            margin: 0;
             padding: 0;
           }
           html, body { 
             margin: 0; 
             padding: 0;
             width: 186mm !important;
+            height: 200mm !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            transform-origin: top left !important;
+            transform: scale(1) !important;
           }
           * {
             -webkit-print-color-adjust: exact;
@@ -276,6 +279,23 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-inside: avoid !important;
             page-break-after: never !important;
             overflow: hidden !important;
+            transform-origin: top left !important;
+            transform: scale(1) !important;
+            position: relative !important;
+          }
+          
+          /* Force exact dimensions for PDF viewers */
+          .dot-matrix-print * {
+            transform: scale(1) !important;
+            zoom: 1 !important;
+          }
+          
+          /* Prevent browser auto-scaling */
+          @media print and (max-width: 186mm) {
+            html, body {
+              zoom: 1 !important;
+              transform: scale(1) !important;
+            }
           }
         }
       `}</style>

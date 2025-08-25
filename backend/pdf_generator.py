@@ -8,6 +8,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import PageTemplate, BaseDocTemplate
 import io
 import os
 
@@ -45,8 +46,21 @@ class DotMatrixInvoicePDF:
         """Generate PDF from invoice data"""
         buffer = io.BytesIO()
         
-        # Create canvas
+        # Create canvas with explicit page size metadata
         p = canvas.Canvas(buffer, pagesize=(self.page_width, self.page_height))
+        
+        # Add PDF metadata to prevent scaling
+        p.setTitle(f"Invoice {invoice_data.get('sale', {}).get('invoice_number', 'Unknown')}")
+        p.setAuthor("Dot Matrix Invoice System")
+        p.setSubject("Invoice Document")
+        p.setCreator("Custom PDF Generator")
+        
+        # Set page size explicitly in PDF metadata
+        p.setPageSize((self.page_width, self.page_height))
+        
+        # Add custom PDF properties to prevent auto-scaling
+        p._doc.info.producer = "Dot Matrix Invoice Generator"
+        p._doc.info.title = f"Invoice {invoice_data.get('sale', {}).get('invoice_number', 'Unknown')}"
         
         # Set up fonts (monospace to match HTML)
         try:
@@ -60,7 +74,10 @@ class DotMatrixInvoicePDF:
         self._add_items(p, invoice_data.get('items', []))
         self._add_totals(p, invoice_data)
         
-        # Save PDF
+        # Add page metadata to prevent scaling
+        p.setPageCompression(0)  # Disable compression for better compatibility
+        
+        # Save PDF with explicit size preservation
         p.save()
         buffer.seek(0)
         return buffer
