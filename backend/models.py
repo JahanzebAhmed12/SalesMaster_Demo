@@ -1038,6 +1038,24 @@ class UserBackDateOption(db.Model):
             'deleting': self.deleting
         }
 
+class UserTimingRestriction(db.Model):
+    __tablename__ = 'user_timing_restrictions'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
+    start_time = db.Column(db.String(5), default='00:01')  # Format: HH:MM
+    end_time = db.Column(db.String(5), default='23:59')    # Format: HH:MM
+    enabled = db.Column(db.Boolean, default=False)
+
+    user = db.relationship('User', backref=db.backref('timing_restriction', uselist=False))
+
+    def to_dict(self):
+        return {
+            'userId': self.user_id,
+            'startTime': self.start_time,
+            'endTime': self.end_time,
+            'enabled': self.enabled
+        }
+
 class UserInvoiceRestriction(db.Model):
     __tablename__ = 'user_invoice_restriction'
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)

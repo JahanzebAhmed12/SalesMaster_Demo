@@ -13,10 +13,16 @@ interface User {
   status: string;
 }
 
+interface LoginResult {
+  success: boolean;
+  error?: string;
+  status?: number;
+}
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<boolean>;
 }
@@ -47,12 +53,18 @@ export const useAuth = create<AuthState>()(
               user: data,
               isAuthenticated: true,
             });
-            return true;
+            return { success: true };
+          } else {
+            const errorData = await response.json();
+            return { 
+              success: false, 
+              error: errorData.error || "Invalid credentials",
+              status: response.status 
+            };
           }
-          return false;
         } catch (error) {
           console.error("Login error:", error);
-          return false;
+          return { success: false, error: "Network error occurred" };
         }
       },
       logout: async () => {

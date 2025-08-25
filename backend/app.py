@@ -2,7 +2,7 @@ from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
     SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema, HolidayRequestSchema, EquipmentSchema
@@ -280,12 +280,35 @@ def health_check():
 # Auth routes
 @app.route('/api/auth/login', methods=['POST'])
 def login():
+    from datetime import datetime
+    
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
     
     user = User.query.filter_by(username=username).first()
     if user and check_password_hash(user.password, password):
+        # Check timing restrictions
+        timing_restriction = UserTimingRestriction.query.filter_by(user_id=user.id).first()
+        if timing_restriction and timing_restriction.enabled:
+            current_time = datetime.now().strftime('%H:%M')
+            start_time = timing_restriction.start_time
+            end_time = timing_restriction.end_time
+            
+            # Handle time comparison (considering overnight periods)
+            if start_time <= end_time:
+                # Same day period (e.g., 09:00 to 17:00)
+                if not (start_time <= current_time <= end_time):
+                    return jsonify({
+                        'error': f'Access denied. You can only login between {start_time} and {end_time}'
+                    }), 403
+            else:
+                # Overnight period (e.g., 22:00 to 06:00)
+                if not (current_time >= start_time or current_time <= end_time):
+                    return jsonify({
+                        'error': f'Access denied. You can only login between {start_time} and {end_time}'
+                    }), 403
+        
         # Debugging: Print type of user.id before creating token
         print(f"Type of user.id: {type(user.id)}, value: {user.id}")
         # Create access token
@@ -11339,8 +11362,32 @@ def update_user_restrictions(user_id):
 @app.route('/api/auth/me', methods=['GET'])
 @jwt_required()
 def get_current_user():
+    from datetime import datetime
+    
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
+    
+    # Check timing restrictions for current session
+    timing_restriction = UserTimingRestriction.query.filter_by(user_id=user_id).first()
+    if timing_restriction and timing_restriction.enabled:
+        current_time = datetime.now().strftime('%H:%M')
+        start_time = timing_restriction.start_time
+        end_time = timing_restriction.end_time
+        
+        # Handle time comparison (considering overnight periods)
+        access_allowed = False
+        if start_time <= end_time:
+            # Same day period (e.g., 09:00 to 17:00)
+            access_allowed = start_time <= current_time <= end_time
+        else:
+            # Overnight period (e.g., 22:00 to 06:00)
+            access_allowed = current_time >= start_time or current_time <= end_time
+        
+        if not access_allowed:
+            return jsonify({
+                'error': f'Session expired. Access allowed only between {start_time} and {end_time}'
+            }), 403
+    
     restrictions = UserRestriction.query.filter_by(user_id=user_id).all()
     restriction_dict = {r.section: r.allowed for r in restrictions}
     # ...existing user serialization...
@@ -11382,6 +11429,42 @@ def update_backdate_option(user_id):
     d['current_editing'] = getattr(opt, 'current_editing', True)
     return jsonify(d)
 
+# User Timing Restrictions
+@app.route('/api/user-timing-restrictions', methods=['GET'])
+@jwt_required()
+def get_all_timing_restrictions():
+    restrictions = UserTimingRestriction.query.all()
+    return jsonify([r.to_dict() for r in restrictions])
+
+@app.route('/api/user-timing-restrictions/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_timing_restriction(user_id):
+    restriction = UserTimingRestriction.query.filter_by(user_id=user_id).first()
+    if not restriction:
+        # Return default values if no restriction exists
+        return jsonify({
+            'userId': user_id,
+            'startTime': '00:01',
+            'endTime': '23:59',
+            'enabled': False
+        })
+    return jsonify(restriction.to_dict())
+
+@app.route('/api/user-timing-restrictions/<int:user_id>', methods=['PUT'])
+@jwt_required()
+def update_timing_restriction(user_id):
+    data = request.get_json()
+    restriction = UserTimingRestriction.query.filter_by(user_id=user_id).first()
+    if not restriction:
+        restriction = UserTimingRestriction(user_id=user_id)
+        db.session.add(restriction)
+    
+    restriction.start_time = data.get('startTime', '00:01')
+    restriction.end_time = data.get('endTime', '23:59')
+    restriction.enabled = bool(data.get('enabled', False))
+    
+    db.session.commit()
+    return jsonify(restriction.to_dict())
 
     # Invoce Retrictions
 

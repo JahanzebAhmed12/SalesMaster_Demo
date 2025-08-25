@@ -213,7 +213,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4">
-        {hasPermission('dashboard') && (
+          {hasPermission('dashboard') && (
             <Link href="/dashboard">
               <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/dashboard' ? 'active' : ''
                 }`}>
@@ -226,7 +226,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           {/* Menu Sections */}
           {filteredMenuSections.map((section) => {
             if (!section) return null;
-            
+
             const Icon = section.icon;
             const isExpanded = expandedSections.includes(section.title);
 

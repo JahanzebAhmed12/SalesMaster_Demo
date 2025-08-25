@@ -169,6 +169,9 @@ const AdminFunctions = () => {
   const [stockRestriction, setStockRestriction] = useState("sell");
   const [currentDateEditing, setCurrentDateEditing] = useState<Record<number, boolean>>({});
 
+  const [timingRestrictions, setTimingRestrictions] = useState<Record<number, { enabled: boolean; startTime: string; endTime: string }>>({});
+  const [savingTimingRestrictions, setSavingTimingRestrictions] = useState(false);
+
   const [emailConfig, setEmailConfig] = useState({
     MAIL_EMAIL: "",
     MAIL_PASSWORD: "",
@@ -344,6 +347,48 @@ const AdminFunctions = () => {
       queryClient.invalidateQueries({ queryKey: ["/api/user-backdate-options"] });
     },
   });
+
+  // Fetch timing restrictions
+  useEffect(() => {
+    async function fetchTimingRestrictions() {
+      try {
+        const res = await apiRequest("GET", "/api/user-timing-restrictions");
+        if (Array.isArray(res)) {
+          const map: Record<number, { enabled: boolean; startTime: string; endTime: string }> = {};
+          res.forEach((restriction: any) => {
+            map[restriction.userId] = {
+              enabled: restriction.enabled,
+              startTime: restriction.startTime,
+              endTime: restriction.endTime
+            };
+          });
+          setTimingRestrictions(map);
+        }
+      } catch (error) {
+        console.error("Failed to fetch timing restrictions:", error);
+      }
+    }
+    if (users.length > 0) {
+      fetchTimingRestrictions();
+    }
+  }, [users]);
+
+  // Save timing restriction
+  const saveTimingRestriction = async (userId: number) => {
+    setSavingTimingRestrictions(true);
+    try {
+      const restriction = timingRestrictions[userId];
+      await apiRequest("PUT", `/api/user-timing-restrictions/${userId}`, {
+        enabled: restriction?.enabled || false,
+        startTime: restriction?.startTime || '00:01',
+        endTime: restriction?.endTime || '23:59'
+      });
+    } catch (error) {
+      console.error("Failed to save timing restriction:", error);
+    } finally {
+      setSavingTimingRestrictions(false);
+    }
+  };
 
   const [invoiceRestriction, setInvoiceRestriction] = useState<Record<number, boolean>>({});
   const [savingInvoiceRestriction, setSavingInvoiceRestriction] = useState(false);
@@ -763,6 +808,104 @@ const AdminFunctions = () => {
                               onClick={() => saveCurrentDateEditing(user.id)}
                             >
                               {savingCurrentDate ? "Saving..." : "Save"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {/* User Timing Restrictions */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  User Timing Restrictions
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="text-xs mb-4 text-gray-600">
+                  Set time restrictions for when users can login to the system. Users will be blocked from logging in outside their allowed time window.
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
+                    <thead>
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Enabled</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Start Time</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">End Time</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(user => (
+                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={timingRestrictions[user.id]?.enabled ?? false}
+                              onChange={e => setTimingRestrictions(prev => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...prev[user.id],
+                                  enabled: e.target.checked,
+                                  startTime: prev[user.id]?.startTime || '00:01',
+                                  endTime: prev[user.id]?.endTime || '23:59'
+                                }
+                              }))}
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="time"
+                              value={timingRestrictions[user.id]?.startTime || '00:01'}
+                              onChange={e => setTimingRestrictions(prev => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...prev[user.id],
+                                  startTime: e.target.value,
+                                  endTime: prev[user.id]?.endTime || '23:59',
+                                  enabled: prev[user.id]?.enabled || false
+                                }
+                              }))}
+                              className="text-xs border border-gray-300 rounded px-2 py-1"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="time"
+                              value={timingRestrictions[user.id]?.endTime || '23:59'}
+                              onChange={e => setTimingRestrictions(prev => ({
+                                ...prev,
+                                [user.id]: {
+                                  ...prev[user.id],
+                                  endTime: e.target.value,
+                                  startTime: prev[user.id]?.startTime || '00:01',
+                                  enabled: prev[user.id]?.enabled || false
+                                }
+                              }))}
+                              className="text-xs border border-gray-300 rounded px-2 py-1"
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <button
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
+                              disabled={savingTimingRestrictions}
+                              onClick={() => saveTimingRestriction(user.id)}
+                            >
+                              {savingTimingRestrictions ? "Saving..." : "Save"}
                             </button>
                           </td>
                         </tr>

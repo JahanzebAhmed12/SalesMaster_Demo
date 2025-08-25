@@ -24,8 +24,8 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const success = await login(username, password);
-      if (success) {
+      const result = await login(username, password);
+      if (result.success) {
         toast({
           title: "Login successful",
           description: "Welcome to TropiFruit System",
@@ -54,8 +54,8 @@ export default function Login() {
         }, 500);
       } else {
         toast({
-          title: "Login failed",
-          description: "Invalid username or password",
+          title: result.status === 403 ? "Access Denied" : "Login failed",
+          description: result.error || "Invalid username or password",
           variant: "destructive",
         });
       }
