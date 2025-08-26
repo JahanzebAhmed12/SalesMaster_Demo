@@ -19,7 +19,7 @@ export default function PurchaseInvoice() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedProductId, setSelectedProductId] = useState("");
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState(0);
   const [unitPrice, setUnitPrice] = useState("");
   const [items, setItems] = useState<any[]>([]);
   const [remarks, setRemarks] = useState("");
@@ -273,7 +273,7 @@ export default function PurchaseInvoice() {
     }]);
     setSelectedProductId("");
     setProductSearch(""); // Clear the product search field
-    setQuantity(1);
+    setQuantity(0); // Reset to 0 for completely manual entry
     setUnitPrice(""); // Keep unit price empty for next product
     setProductRemarks(""); // Clear remarks after adding
   };
@@ -466,7 +466,7 @@ export default function PurchaseInvoice() {
                     type="number"
                     min="1"
                     placeholder="Qty"
-                    value={quantity === 1 ? "" : quantity}
+                    value={quantity === 0 ? "" : quantity}
                     onChange={e => setQuantity(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
                     onKeyPress={(e) => {
                       // Only allow numbers, backspace, delete, and arrow keys

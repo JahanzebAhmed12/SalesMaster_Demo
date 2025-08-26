@@ -81,17 +81,92 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
           {items.map((item, idx) => (
             <tr key={item.id || idx}>
               <td style={{ border: "1px solid #888", padding: 4 }}>{item.productName || item.description || "-"}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.quantity}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}></td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}></td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
+                <input 
+                  type="number" 
+                  style={{ 
+                    border: "none", 
+                    background: "transparent", 
+                    textAlign: "center", 
+                    width: "100%",
+                    fontSize: "inherit",
+                    fontFamily: "inherit"
+                  }}
+                  className="no-print-border"
+                  placeholder="0"
+                />
+              </td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  style={{ 
+                    border: "none", 
+                    background: "transparent", 
+                    textAlign: "center", 
+                    width: "100%",
+                    fontSize: "inherit",
+                    fontFamily: "inherit"
+                  }}
+                  className="no-print-border"
+                  placeholder="0.00"
+                />
+              </td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  style={{ 
+                    border: "none", 
+                    background: "transparent", 
+                    textAlign: "center", 
+                    width: "100%",
+                    fontSize: "inherit",
+                    fontFamily: "inherit"
+                  }}
+                  className="no-print-border"
+                  placeholder="0.00"
+                />
+              </td>
               <td style={{ border: "1px solid #888", padding: 4 }}>{item.remarks || "-"}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
             <td style={{ border: "1px solid #888", padding: 4 }}>TOTAL</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{items.reduce((a, b) => a + (b.quantity || 0), 0)}</td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
+              <input 
+                type="number" 
+                style={{ 
+                  border: "none", 
+                  background: "transparent", 
+                  textAlign: "center", 
+                  width: "100%",
+                  fontSize: "inherit",
+                  fontFamily: "inherit",
+                  fontWeight: "bold"
+                }}
+                className="no-print-border"
+                placeholder="0"
+              />
+            </td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{items.reduce((a, b) => a + (b.totalPrice || 0), 0).toFixed(2)}</td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
+              <input 
+                type="number" 
+                step="0.01"
+                style={{ 
+                  border: "none", 
+                  background: "transparent", 
+                  textAlign: "center", 
+                  width: "100%",
+                  fontSize: "inherit",
+                  fontFamily: "inherit",
+                  fontWeight: "bold"
+                }}
+                className="no-print-border"
+                placeholder="0.00"
+              />
+            </td>
             <td style={{ border: "1px solid #888", padding: 4 }}></td>
           </tr>
         </tbody>
@@ -129,6 +204,18 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }
+          .no-print-border input {
+            border: none !important;
+            outline: none !important;
+            background: transparent !important;
+          }
+        }
+        .no-print-border input {
+          outline: none;
+        }
+        .no-print-border input:focus {
+          outline: 1px solid #007bff;
+          outline-offset: -1px;
         }
       `}</style>
     </div>

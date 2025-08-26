@@ -196,7 +196,7 @@ export default function DailyBookSales() {
       printWindow.document.write('</tr></thead><tbody>');
       salesData.forEach(sale => {
         printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${format(new Date(sale.date), "MM-dd")}</td>`);
+        printWindow.document.write(`<td>${format(new Date(sale.date), "MM/dd/yy")}</td>`);
         printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
         printWindow.document.write(`<td>${sale.customerName}</td>`);
         printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
@@ -280,7 +280,7 @@ export default function DailyBookSales() {
         'Date', 'Invoice', 'Customer Name', 'Accounts', 'Cash', 'Card', 'Transfer', 'Cheque', 'Credit'
       ]],
       body: salesData.map((item: SalesEntry) => [
-        format(new Date(item.date), "MM-dd"),
+        format(new Date(item.date), "MM/dd/yy"),
         item.invoiceNo,
         item.customerName,
         `£${Number(item.amount ?? 0).toFixed(2)}`,
@@ -1244,7 +1244,7 @@ export default function DailyBookSales() {
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
-                        <TableCell className="text-xs sm:text-sm">{format(new Date(sale.date), "MM-dd")}</TableCell>
+                        <TableCell className="text-xs sm:text-sm">{format(new Date(sale.date), "MM/dd/yy")}</TableCell>
                         <TableCell className="text-xs sm:text-sm">{sale.invoiceNo}</TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
                           <DropdownMenu>
