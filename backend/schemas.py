@@ -238,6 +238,7 @@ class SystemSettingsSchema(BaseModel):
     with_porterage: bool = Field(default=False)
     porterage_charge: float = Field(default=0)
     invoice_print_format: str = Field(default="A4")
+    lock_invoices: bool = Field(default=False)
 
 class AttendanceSchema(BaseModel):
     employee_id: int
@@ -337,7 +338,6 @@ class ExpenseEntrySchema(BaseModel):
     date: date
     supplierId: Optional[int] = Field(default=None, alias='supplierId')
     expenseId: int = Field(alias='expenseId')
-    description: str
     invoiceNumber: Optional[str] = Field(default=None, alias='invoiceNumber')
     remarks: Optional[str] = None
     paymentMode: str = Field(default='CASH', alias='paymentMode')

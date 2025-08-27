@@ -1978,6 +1978,8 @@ def update_settings():
             data['porterage_charge'] = data.pop('porterageCharge')
         if 'invoicePrintFormat' in data:
             data['invoice_print_format'] = data.pop('invoicePrintFormat')
+        if 'lockInvoices' in data:
+            data['lock_invoices'] = data.pop('lockInvoices')
         # Print all incoming fields and types
         for k, v in data.items():
             print(f'[DEBUG] Field: {k}, Value: {v}, Type: {type(v)}')
@@ -4053,11 +4055,12 @@ def get_customer_outstanding_invoices(customer_id):
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
 
-        # Fetch sales where total_amount > paid_amount and status is pending, paid, or finalized
+        # Fetch sales where there's an outstanding balance (including credit invoices)
+        # This includes both positive balances (unpaid invoices) and negative balances (credit invoices)
         outstanding_sales = Sale.query.filter(
             Sale.customer_id == customer_id,
             or_(Sale.status == 'pending', Sale.status == 'paid', Sale.status == 'finalized'),
-            Sale.total_amount > (Sale.paid_amount or 0)
+            Sale.total_amount != (Sale.paid_amount or 0)  # Changed to != to include credit invoices
         ).all()
 
         return jsonify([sale.to_dict() for sale in outstanding_sales]), 200
@@ -6280,7 +6283,8 @@ def get_expense_entries():
         if search:
             query = query.join(Supplier).join(Expense).filter(
                 or_(
-                    ExpenseEntry.description.ilike(f'%{search}%'),
+                    ExpenseEntry.invoice_number.ilike(f'%{search}%'),
+                    ExpenseEntry.remarks.ilike(f'%{search}%'),
                     Supplier.supplier_name.ilike(f'%{search}%'),
                     Expense.expense_name.ilike(f'%{search}%')
                 )
@@ -6383,7 +6387,7 @@ def create_expense_entry():
             date=business_date,
             supplier_id=expense_entry_data.supplierId,
             expense_id=expense_entry_data.expenseId,
-            description=expense_entry_data.description,
+            description="",  # Temporary empty string until DB migration
             invoice_number=expense_entry_data.invoiceNumber,
             remarks=expense_entry_data.remarks,
             payment_mode=expense_entry_data.paymentMode,
@@ -6416,7 +6420,6 @@ def update_expense_entry(id):
         expense_entry.date = datetime.strptime(data['date'], "%Y-%m-%d").date()
         expense_entry.supplier_id = data.get('supplierId')
         expense_entry.expense_id = data['expenseId']
-        expense_entry.description = data['description']
         expense_entry.invoice_number = data.get('invoiceNumber')
         expense_entry.remarks = data.get('remarks')
         expense_entry.payment_mode = data['paymentMode']
@@ -9184,7 +9187,7 @@ def daily_summary_report():
     # 4. Expense Entries
     expense_entries = db.session.query(
         ExpenseEntry.ref_number,
-        ExpenseEntry.description,
+        ExpenseEntry.invoice_number,
         ExpenseEntry.amount,
         ExpenseEntry.payment_mode,
         ExpenseEntry.date,
@@ -9202,7 +9205,7 @@ def daily_summary_report():
     for expense in expense_entries:
         expense_data.append({
             'ref_number': expense.ref_number,
-            'description': expense.description,
+            'invoice_number': expense.invoice_number,
             'supplier_name': expense.supplier_name,
             'expense_name': expense.expense_name,
             'amount': float(expense.amount),
@@ -9491,7 +9494,7 @@ def daily_summary_pdf():
         # 4. Expense Entries
         expense_entries = db.session.query(
             ExpenseEntry.ref_number,
-            ExpenseEntry.description,
+            ExpenseEntry.invoice_number,
             ExpenseEntry.amount,
             ExpenseEntry.payment_mode,
             ExpenseEntry.date,
@@ -9509,7 +9512,7 @@ def daily_summary_pdf():
         for expense in expense_entries:
             expense_data.append({
                 'ref_number': expense.ref_number,
-                'description': expense.description,
+                'invoice_number': expense.invoice_number,
                 'supplier_name': expense.supplier_name,
                 'expense_name': expense.expense_name,
                 'amount': float(expense.amount),

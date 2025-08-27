@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Receipt, FileText, Download, Copy, Printer, Search, Info } from "lucide-react";
+import { CalendarIcon, Receipt, FileText, Download, Copy, Printer, Search, Info, Edit, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -27,7 +27,6 @@ interface NewExpense {
   date: Date;
   supplierId: number | null;
   expenseId: number | null;
-  description: string;
   invoiceNumber: string;
   remarks: string;
   paymentMode: string;
@@ -41,12 +40,11 @@ export default function Expenses() {
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  
+
   const [newExpense, setNewExpense] = useState<NewExpense>({
     date: businessDate ? new Date(businessDate) : new Date(),
     supplierId: null,
     expenseId: null,
-    description: "",
     invoiceNumber: "",
     remarks: "",
     paymentMode: "CASH",
@@ -54,6 +52,7 @@ export default function Expenses() {
     vatAmount: 0
   });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<ExpenseEntry | null>(null);
   const [taxDetails, setTaxDetails] = useState({ withTax: false, taxPercentage: '0' });
 
   // Fetch expense entries
@@ -64,7 +63,7 @@ export default function Expenses() {
       if (fromDate) params.append('fromDate', format(fromDate, 'yyyy-MM-dd'));
       if (toDate) params.append('toDate', format(toDate, 'yyyy-MM-dd'));
       if (searchTerm) params.append('search', searchTerm);
-      
+
       return apiRequest("GET", `/api/expense-entries?${params.toString()}`);
     }
   });
@@ -124,18 +123,8 @@ export default function Expenses() {
         title: "Success",
         description: "Expense entry created successfully",
       });
-      // Reset form
-      setNewExpense({
-        date: new Date(),
-        supplierId: null,
-        expenseId: null,
-        description: "",
-        invoiceNumber: "",
-        remarks: "",
-        paymentMode: "CASH",
-        amount: 0,
-        vatAmount: 0
-      });
+      resetForm();
+      setDialogOpen(false);
     },
     onError: (error: any) => {
       toast({
@@ -146,8 +135,66 @@ export default function Expenses() {
     },
   });
 
+  // Update expense entry mutation
+  const updateExpenseMutation = useMutation({
+    mutationFn: async (data: { id: number } & Omit<NewExpense, 'date'> & { date: string }) => {
+      return apiRequest("PUT", `/api/expense-entries/${data.id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-entries"] });
+      toast({
+        title: "Success",
+        description: "Expense entry updated successfully",
+      });
+      resetForm();
+      setDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update expense entry",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete expense entry mutation
+  const deleteExpenseMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest("DELETE", `/api/expense-entries/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-entries"] });
+      toast({
+        title: "Success",
+        description: "Expense entry deleted successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete expense entry",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resetForm = () => {
+    setNewExpense({
+      date: businessDate ? new Date(businessDate) : new Date(),
+      supplierId: null,
+      expenseId: null,
+      invoiceNumber: "",
+      remarks: "",
+      paymentMode: "CASH",
+      amount: 0,
+      vatAmount: 0
+    });
+    setEditingExpense(null);
+  };
+
   const handleAddExpense = () => {
-    if (!newExpense.supplierId || !newExpense.expenseId || !newExpense.description || newExpense.amount <= 0) {
+    if (!newExpense.supplierId || !newExpense.expenseId || newExpense.amount <= 0) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields and ensure amount is greater than 0",
@@ -164,7 +211,32 @@ export default function Expenses() {
       date: format(newExpense.date, 'yyyy-MM-dd')
     };
 
-    createExpenseMutation.mutate(expenseData);
+    if (editingExpense) {
+      updateExpenseMutation.mutate({ ...expenseData, id: editingExpense.id });
+    } else {
+      createExpenseMutation.mutate(expenseData);
+    }
+  };
+
+  const handleEditExpense = (expense: ExpenseEntry) => {
+    setNewExpense({
+      date: new Date(expense.date),
+      supplierId: expense.supplierId,
+      expenseId: expense.expenseId,
+      invoiceNumber: expense.invoiceNumber || "",
+      remarks: expense.remarks || "",
+      paymentMode: expense.paymentMode,
+      amount: expense.amount,
+      vatAmount: expense.vatAmount || 0
+    });
+    setEditingExpense(expense);
+    setDialogOpen(true);
+  };
+
+  const handleDeleteExpense = (id: number) => {
+    if (confirm("Are you sure you want to delete this expense entry?")) {
+      deleteExpenseMutation.mutate(id);
+    }
   };
 
   const handleSearch = () => {
@@ -181,23 +253,23 @@ export default function Expenses() {
       printWindow.document.write('<html><head><title>Expense Entries</title>');
       printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      
+
       // Add company details header following the specific structure
       printWindow.document.write('<div class="company-details">');
       if (companyDetails) {
         // Company name
         printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
-        
+
         // Email
         if (companyDetails.email) {
           printWindow.document.write(`<p>${companyDetails.email}</p>`);
         }
-        
+
         // Bank details
         if (companyDetails.bankDetails) {
           printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
         }
-        
+
         // VAT and Registration info
         let regInfo = [];
         if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
@@ -205,28 +277,26 @@ export default function Expenses() {
         if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
       }
       printWindow.document.write('</div>');
-      
+
       // Add report title
       printWindow.document.write('<div class="header">');
       printWindow.document.write('<h3>EXPENSES</h3>');
       printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
       printWindow.document.write('</div>');
-      
+
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
-      const headers = ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
+      const headers = ['Date', 'Supplier', 'Expenses Category', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
       headers.forEach(h => {
         printWindow.document.write(`<th>${h}</th>`);
       });
       printWindow.document.write('</tr></thead><tbody>');
       expenseEntries.forEach((item: ExpenseEntry) => {
         printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.refNumber}</td>`);
         printWindow.document.write(`<td>${format(new Date(item.date), "dd/MM/yyyy")}</td>`);
         printWindow.document.write(`<td>${item.supplierName || '-'}</td>`);
         printWindow.document.write(`<td>${item.expenseName || '-'}</td>`);
-        printWindow.document.write(`<td>${item.description}</td>`);
         printWindow.document.write(`<td>${item.invoiceNumber || '-'}</td>`);
         printWindow.document.write(`<td>${item.remarks || '-'}</td>`);
         printWindow.document.write(`<td>${item.paymentMode}</td>`);
@@ -247,13 +317,11 @@ export default function Expenses() {
   const handleExcel = () => {
     const wsData = [
       [exportTitle],
-      ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'],
+      ['Date', 'Supplier', 'Expenses Category', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'],
       ...expenseEntries.map((item: ExpenseEntry) => ([
-        item.refNumber,
         format(new Date(item.date), "dd/MM/yyyy"),
         item.supplierName || '-',
         item.expenseName || '-',
-        item.description,
         item.invoiceNumber || '-',
         item.remarks || '-',
         item.paymentMode,
@@ -269,28 +337,28 @@ export default function Expenses() {
   const handlePDF = () => {
     const doc = new jsPDF();
     let yPosition = 20;
-    
+
     // Add company details following the specific structure
     if (companyDetails) {
       // Company name
       doc.setFontSize(16);
       doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
       yPosition += 8;
-      
+
       doc.setFontSize(10);
-      
+
       // Email
       if (companyDetails.email) {
         doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // Bank details
       if (companyDetails.bankDetails) {
         doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // VAT and Registration info
       let regInfo = [];
       if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
@@ -302,27 +370,25 @@ export default function Expenses() {
         yPosition += 5;
       }
     }
-    
+
     // Add report title
     doc.setFontSize(14);
     doc.text('EXPENSES', 105, yPosition, { align: 'center' });
     yPosition += 8;
-    
+
     doc.setFontSize(10);
     doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
     yPosition += 10;
-    
+
     // Add table
     autoTable(doc, {
       head: [[
-        'Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'
+        'Date', 'Supplier', 'Expenses Category', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'
       ]],
       body: expenseEntries.map((item: ExpenseEntry) => [
-        item.refNumber,
         format(new Date(item.date), "dd/MM/yyyy"),
         item.supplierName || '-',
         item.expenseName || '-',
-        item.description,
         item.invoiceNumber || '-',
         item.remarks || '-',
         item.paymentMode,
@@ -334,29 +400,25 @@ export default function Expenses() {
         cellPadding: 2
       },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 20 },
-        2: { cellWidth: 25 },
+        0: { cellWidth: 25 },
+        1: { cellWidth: 30 },
+        2: { cellWidth: 30 },
         3: { cellWidth: 25 },
         4: { cellWidth: 30 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 25 },
-        7: { cellWidth: 20 },
-        8: { cellWidth: 20 }
+        5: { cellWidth: 25 },
+        6: { cellWidth: 25 }
       }
     });
-    
+
     doc.save(`expenses-${format(fromDate, "yyyyMMdd")}-${format(toDate, "yyyyMMdd")}.pdf`);
   };
 
   const handleCopy = () => {
-    const headers = ['Ref.#', 'Date', 'Supplier', 'Expenses Category', 'Description', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
+    const headers = ['Date', 'Supplier', 'Expenses Category', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
     const rows = expenseEntries.map((item: ExpenseEntry) => [
-      item.refNumber,
       format(new Date(item.date), "dd/MM/yyyy"),
       item.supplierName || '-',
       item.expenseName || '-',
-      item.description,
       item.invoiceNumber || '-',
       item.remarks || '-',
       item.paymentMode,
@@ -372,7 +434,7 @@ export default function Expenses() {
       <div className="space-y-6">
         {/* Business Date Display */}
         <BusinessDateDisplay />
-        
+
         {/* Header Section */}
         <Card>
           <CardHeader className="pb-4">
@@ -413,7 +475,7 @@ export default function Expenses() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
+
               <div>
                 <Label>To Date:</Label>
                 <Popover>
@@ -439,21 +501,27 @@ export default function Expenses() {
                   </PopoverContent>
                 </Popover>
               </div>
-              
+
               <Button className="bg-blue-500 hover:bg-blue-600" onClick={handleSearch}>
                 Search
               </Button>
-              
+
               <div className="ml-auto flex gap-2">
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <Dialog open={dialogOpen} onOpenChange={(open) => {
+                  setDialogOpen(open);
+                  if (!open) resetForm();
+                }}>
                   <DialogTrigger asChild>
-                    <Button className="bg-green-500 hover:bg-green-600 text-white" onClick={() => setDialogOpen(true)}>
+                    <Button className="bg-green-500 hover:bg-green-600 text-white" onClick={() => {
+                      resetForm();
+                      setDialogOpen(true);
+                    }}>
                       Add Expense
                     </Button>
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
-                      <DialogTitle>Add New Expense</DialogTitle>
+                      <DialogTitle>{editingExpense ? 'Edit Expense' : 'Add New Expense'}</DialogTitle>
                     </DialogHeader>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
@@ -474,7 +542,7 @@ export default function Expenses() {
                             <Calendar
                               mode="single"
                               selected={newExpense.date}
-                              onSelect={(date) => date && setNewExpense({...newExpense, date})}
+                              onSelect={(date) => date && setNewExpense({ ...newExpense, date })}
                               initialFocus
                             />
                           </PopoverContent>
@@ -482,9 +550,9 @@ export default function Expenses() {
                       </div>
                       <div>
                         <Label>Supplier</Label>
-                        <Select 
-                          value={newExpense.supplierId?.toString() || ""} 
-                          onValueChange={(value) => setNewExpense({...newExpense, supplierId: value ? parseInt(value) : null})}
+                        <Select
+                          value={newExpense.supplierId?.toString() || ""}
+                          onValueChange={(value) => setNewExpense({ ...newExpense, supplierId: value ? parseInt(value) : null })}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select" />
@@ -500,9 +568,9 @@ export default function Expenses() {
                       </div>
                       <div>
                         <Label>Category</Label>
-                        <Select 
-                          value={newExpense.expenseId?.toString() || ""} 
-                          onValueChange={(value) => setNewExpense({...newExpense, expenseId: value ? parseInt(value) : null})}
+                        <Select
+                          value={newExpense.expenseId?.toString() || ""}
+                          onValueChange={(value) => setNewExpense({ ...newExpense, expenseId: value ? parseInt(value) : null })}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Category" />
@@ -517,20 +585,11 @@ export default function Expenses() {
                         </Select>
                       </div>
                       <div>
-                        <Label>Description</Label>
-                        <Input
-                          placeholder="Description"
-                          value={newExpense.description}
-                          onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
-                          className="w-full"
-                        />
-                      </div>
-                      <div>
                         <Label>Invoice #</Label>
                         <Input
                           placeholder="Invoice #"
                           value={newExpense.invoiceNumber}
-                          onChange={(e) => setNewExpense({...newExpense, invoiceNumber: e.target.value})}
+                          onChange={(e) => setNewExpense({ ...newExpense, invoiceNumber: e.target.value })}
                           className="w-full"
                         />
                       </div>
@@ -539,15 +598,15 @@ export default function Expenses() {
                         <Input
                           placeholder="Remarks"
                           value={newExpense.remarks}
-                          onChange={(e) => setNewExpense({...newExpense, remarks: e.target.value})}
+                          onChange={(e) => setNewExpense({ ...newExpense, remarks: e.target.value })}
                           className="w-full"
                         />
                       </div>
                       <div>
                         <Label>Payment Mode</Label>
-                        <Select 
-                          value={newExpense.paymentMode} 
-                          onValueChange={(value) => setNewExpense({...newExpense, paymentMode: value})}
+                        <Select
+                          value={newExpense.paymentMode}
+                          onValueChange={(value) => setNewExpense({ ...newExpense, paymentMode: value })}
                         >
                           <SelectTrigger className="w-full">
                             <SelectValue />
@@ -566,7 +625,7 @@ export default function Expenses() {
                           type="number"
                           step="0.01"
                           value={newExpense.amount}
-                          onChange={(e) => setNewExpense({...newExpense, amount: parseFloat(e.target.value) || 0})}
+                          onChange={(e) => setNewExpense({ ...newExpense, amount: parseFloat(e.target.value) || 0 })}
                           className="w-full text-right"
                           min="0"
                         />
@@ -616,15 +675,12 @@ export default function Expenses() {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button 
+                      <Button
                         className="bg-green-500 hover:bg-green-600 text-white w-full"
-                        onClick={() => {
-                          handleAddExpense();
-                          if (!createExpenseMutation.isPending) setDialogOpen(false);
-                        }}
-                        disabled={createExpenseMutation.isPending}
+                        onClick={handleAddExpense}
+                        disabled={createExpenseMutation.isPending || updateExpenseMutation.isPending}
                       >
-                        {createExpenseMutation.isPending ? "Saving..." : "Save"}
+                        {(createExpenseMutation.isPending || updateExpenseMutation.isPending) ? "Saving..." : editingExpense ? "Update" : "Save"}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -675,48 +731,65 @@ export default function Expenses() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ref.#</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Supplier</TableHead>
                   <TableHead>Expenses Category</TableHead>
-                  <TableHead>Description</TableHead>
                   <TableHead>Invoice #</TableHead>
                   <TableHead>Remarks</TableHead>
                   <TableHead>Payment Mode</TableHead>
                   <TableHead>Amount(Exc VAT)</TableHead>
                   <TableHead>Amount (Inc VAT)</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : expenseEntries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                       No data available in table
                     </TableCell>
                   </TableRow>
                 ) : (
                   expenseEntries.map((expense) => (
                     <TableRow key={expense.id}>
-                      <TableCell>{expense.refNumber}</TableCell>
                       <TableCell>{format(new Date(expense.date), "dd/MM/yyyy")}</TableCell>
                       <TableCell>{expense.supplierName || '-'}</TableCell>
                       <TableCell>{expense.expenseName || '-'}</TableCell>
-                      <TableCell>{expense.description}</TableCell>
                       <TableCell>{expense.invoiceNumber || '-'}</TableCell>
                       <TableCell>{expense.remarks || '-'}</TableCell>
                       <TableCell>{expense.paymentMode}</TableCell>
                       <TableCell className="text-right">£{expense.amount.toFixed(2)}</TableCell>
                       <TableCell className="text-right">£{(expense.amount + (expense.amount * (expense.vatAmount || 0) / 100)).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditExpense(expense)}
+                            className="h-8 w-8 p-0"
+                          >
+                            <Edit size={14} />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDeleteExpense(expense.id)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
-                
+
                 {/* Total Row */}
                 <TableRow className="border-t-2 border-gray-300">
                   <TableCell className="font-bold">TOTAL</TableCell>
@@ -725,14 +798,13 @@ export default function Expenses() {
                   <TableCell></TableCell>
                   <TableCell></TableCell>
                   <TableCell></TableCell>
-                  <TableCell></TableCell>
-                  <TableCell></TableCell>
                   <TableCell className="text-right font-bold">£{totalAmount.toFixed(2)}</TableCell>
                   <TableCell className="text-right font-bold">£{expenseEntries.reduce((sum, expense) => sum + (expense.amount + (expense.amount * (expense.vatAmount || 0) / 100)), 0).toFixed(2)}</TableCell>
+                  <TableCell></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
-            
+
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
               <div>Showing {expenseEntries.length} entries</div>
               <div className="flex items-center gap-4">

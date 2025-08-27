@@ -124,7 +124,7 @@ interface DailySummaryData {
   }>;
   expense_entries: Array<{
     ref_number: string;
-    description: string;
+    invoice_number: string;
     supplier_name: string;
     expense_name: string;
     amount: number;
@@ -174,9 +174,9 @@ function PrintButton() {
   const handlePrint = () => {
     window.print();
   };
-  
+
   return (
-    <button 
+    <button
       onClick={handlePrint}
       className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors print:hidden"
     >
@@ -254,6 +254,18 @@ export default function DailySummary() {
     staleTime: 0,
     gcTime: 0,
   });
+
+  // Filter stock data to only show entries with non-zero values
+  const filteredStockData = stockData.filter((item) =>
+    item.os !== 0 ||
+    item.ns !== 0 ||
+    item.sales !== 0 ||
+    item.crtn !== 0 ||
+    item.dmps !== 0 ||
+    item.srtn !== 0 ||
+    item.stock !== 0 ||
+    item.clStock !== 0
+  );
 
   // Fetch purchase data (legacy - keeping for backward compatibility)
   const { data: purchaseData = [] } = useQuery<PurchaseEntry[]>({
@@ -501,17 +513,16 @@ export default function DailySummary() {
       yPosition += 5;
 
       autoTable(doc, {
-        head: [['Ref Number', 'Description', 'Supplier Name', 'Expense Name', 'Amount', 'Payment Mode']],
+        head: [['Supplier Invoice No', 'Supplier Name', 'Expense Name', 'Amount', 'Payment Mode']],
         body: [
           ...summaryData.expense_entries.map(expense => [
-            expense.ref_number,
-            expense.description,
+            expense.invoice_number || '-',
             expense.supplier_name,
             expense.expense_name,
             expense.amount.toFixed(2),
             expense.payment_mode
           ]),
-          ['TOTAL', '', '', '', summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2), '']
+          ['TOTAL', '', '', summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2), '']
         ],
         startY: yPosition,
         styles: { fontSize: 8, cellPadding: 2 },
@@ -627,21 +638,33 @@ export default function DailySummary() {
       doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
       yPosition += 15;
 
+      // Filter stock data to only include items with non-zero values
+      const filteredStockData = stockData.filter((item: StockItem) =>
+        item.os !== 0 ||
+        item.ns !== 0 ||
+        item.sales !== 0 ||
+        item.crtn !== 0 ||
+        item.dmps !== 0 ||
+        item.srtn !== 0 ||
+        item.stock !== 0 ||
+        item.clStock !== 0
+      );
+
       const stockTotals = {
-        os: stockData.reduce((sum, item) => sum + item.os, 0),
-        ns: stockData.reduce((sum, item) => sum + item.ns, 0),
-        sales: stockData.reduce((sum, item) => sum + item.sales, 0),
-        crtn: stockData.reduce((sum, item) => sum + item.crtn, 0),
-        dmps: stockData.reduce((sum, item) => sum + item.dmps, 0),
-        srtn: stockData.reduce((sum, item) => sum + item.srtn, 0),
-        stock: stockData.reduce((sum, item) => sum + item.stock, 0),
-        clStock: stockData.reduce((sum, item) => sum + item.clStock, 0)
+        os: filteredStockData.reduce((sum, item) => sum + item.os, 0),
+        ns: filteredStockData.reduce((sum, item) => sum + item.ns, 0),
+        sales: filteredStockData.reduce((sum, item) => sum + item.sales, 0),
+        crtn: filteredStockData.reduce((sum, item) => sum + item.crtn, 0),
+        dmps: filteredStockData.reduce((sum, item) => sum + item.dmps, 0),
+        srtn: filteredStockData.reduce((sum, item) => sum + item.srtn, 0),
+        stock: filteredStockData.reduce((sum, item) => sum + item.stock, 0),
+        clStock: filteredStockData.reduce((sum, item) => sum + item.clStock, 0)
       };
 
       autoTable(doc, {
         head: [['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result']],
         body: [
-          ...stockData.map((item: StockItem) => [
+          ...filteredStockData.map((item: StockItem) => [
             item.slNo,
             item.productDescription,
             item.os,
@@ -712,12 +735,12 @@ export default function DailySummary() {
       displayData.forEach((row, index) => {
         if (row.isHeader) {
           processedData.push([
-            row.date, row.supplier, row.invNo, 
+            row.date, row.supplier, row.invNo,
             '', '', '', '', ''
           ]);
         } else if (row.isTotal) {
           processedData.push([
-            '', '', '',  row.product, row.quantity.toString(),
+            '', '', '', row.product, row.quantity.toString(),
             '', Number(row.total).toFixed(2)
           ]);
           if (index < displayData.length - 1) {
@@ -725,7 +748,7 @@ export default function DailySummary() {
           }
         } else {
           processedData.push([
-            '', '', row.invNo,  row.product, row.quantity.toString(),
+            '', '', row.invNo, row.product, row.quantity.toString(),
             Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
           ]);
         }
@@ -952,7 +975,7 @@ export default function DailySummary() {
       displayData.forEach((row, index) => {
         if (row.isHeader) {
           processedData.push([
-            row.date, row.supplier, row.invNo, 
+            row.date, row.supplier, row.invNo,
             '', '', '', ''
           ]);
         } else if (row.isTotal) {
@@ -1145,14 +1168,14 @@ export default function DailySummary() {
     const handleBeforePrint = () => {
       document.body.classList.add('daily-summary-print');
     };
-    
+
     const handleAfterPrint = () => {
       document.body.classList.remove('daily-summary-print');
     };
 
     window.addEventListener('beforeprint', handleBeforePrint);
     window.addEventListener('afterprint', handleAfterPrint);
-    
+
     return () => {
       window.removeEventListener('beforeprint', handleBeforePrint);
       window.removeEventListener('afterprint', handleAfterPrint);
@@ -1165,346 +1188,344 @@ export default function DailySummary() {
       <div id="daily-summary-page" className="space-y-6">
         {/* Header */}
         <div className="print-content">
-        <Card>
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                Daily Summary Report
-              </CardTitle>
-              <div className="flex items-center gap-4 print:hidden">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Date:</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-40 justify-start text-left font-normal",
-                          !selectedDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "PPP") : "Pick date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => date && setSelectedDate(date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="flex gap-2 items-center">
-                  {/* <Button onClick={handleGeneratePDF} className="bg-red-600 hover:bg-red-700">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Daily Summary Report
+                </CardTitle>
+                <div className="flex items-center gap-4 print:hidden">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Date:</span>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-40 justify-start text-left font-normal",
+                            !selectedDate && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "PPP") : "Pick date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={selectedDate}
+                          onSelect={(date) => date && setSelectedDate(date)}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    {/* <Button onClick={handleGeneratePDF} className="bg-red-600 hover:bg-red-700">
                     <Printer className="w-4 h-4 mr-2" />
                     Print PDF
                   </Button> */}
-                  <PrintButton />
-                  <Button onClick={handleGenerateCleanPDF} className="bg-blue-600 hover:bg-blue-700">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download PDF
-                  </Button>
-                  {/* <PrintButton /> */}
-
-                  {/* Email Section */}
-                  <div className="flex items-center gap-2 ml-2">
-                    <input
-                      type="text"
-                      placeholder="Enter emails (comma separated)"
-                      value={emails}
-                      onChange={(e) => setEmails(e.target.value)}
-                      className="w-48 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
-                      disabled={isEmailSending}
-                    />
-                    <Button
-                      variant="outline"
-                      onClick={handleEmailPDF}
-                      className="flex items-center gap-1"
-                      disabled={isEmailSending}
-                      size="sm"
-                    >
-                      <Mail size={14} />
-                      <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                    <PrintButton />
+                    <Button onClick={handleGenerateCleanPDF} className="bg-blue-600 hover:bg-blue-700">
+                      <Download className="w-4 h-4 mr-2" />
+                      Download PDF
                     </Button>
+                    {/* <PrintButton /> */}
+
+                    {/* Email Section */}
+                    <div className="flex items-center gap-2 ml-2">
+                      <input
+                        type="text"
+                        placeholder="Enter emails (comma separated)"
+                        value={emails}
+                        onChange={(e) => setEmails(e.target.value)}
+                        className="w-48 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
+                        disabled={isEmailSending}
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={handleEmailPDF}
+                        className="flex items-center gap-1"
+                        disabled={isEmailSending}
+                        size="sm"
+                      >
+                        <Mail size={14} />
+                        <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        {isLoading ? (
-          <Card>
-            <CardContent className="py-8">
-              <div className="text-center">Loading daily summary...</div>
-            </CardContent>
+            </CardHeader>
           </Card>
-        ) : error ? (
-          <Card>
-            <CardContent className="py-8">
-              <div className="text-center text-red-500">Failed to load daily summary</div>
-            </CardContent>
-          </Card>
-        ) : summaryData ? (
-          <div className="space-y-6">
-            {/* Daily Sales Summary */}
+
+          {isLoading ? (
             <Card>
-              <CardHeader>
-                <CardTitle>Daily Sales Summary - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold border">Customer</TableHead>
-                        <TableHead className="font-semibold border">Invoice No</TableHead>
-                        <TableHead className="font-semibold border text-right">Cash Sales</TableHead>
-                        <TableHead className="font-semibold border text-right">Card Paid</TableHead>
-                        <TableHead className="font-semibold border text-right">Bank Transfer</TableHead>
-                        <TableHead className="font-semibold border text-right">Cheque</TableHead>
-                        <TableHead className="font-semibold border text-right">Account Sales</TableHead>
-                        <TableHead className="font-semibold border text-right">Account Credits</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summaryData.sales_summary.map((sale, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="border">{sale.customer_name}</TableCell>
-                          <TableCell className="border">{sale.invoice_no || '-'}</TableCell>
-                          <TableCell className="border text-right">
-                            {sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-'}
-                          </TableCell>
-                          <TableCell className="border text-right">
-                            {sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-'}
-                          </TableCell>
-                          <TableCell className="border text-right">
-                            {(() => {
-                              // Use the bank_transfer value from the sales summary data
-                              const amount = sale.bank_transfer || 0;
-                              console.log('Bank transfer for', sale.customer_name, 'invoice', sale.invoice_no, ':', amount, typeof amount);
-                              return amount > 0 ? amount.toFixed(2) : '-';
-                            })()}
-                          </TableCell>
-                          <TableCell className="border text-right">
-                            {(() => {
-                              // Use the cheque value from the sales summary data
-                              const amount = sale.cheque || 0;
-                              console.log('Cheque for', sale.customer_name, 'invoice', sale.invoice_no, ':', amount, typeof amount);
-                              return amount > 0 ? amount.toFixed(2) : '-';
-                            })()}
-                          </TableCell>
-                          <TableCell className="border text-right">
-                            {sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-'}
-                          </TableCell>
-                          <TableCell className="border text-right">
-                            {sale.account_credits > 0 ? sale.account_credits.toFixed(2) : '-'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {/* Totals Row */}
-                      <TableRow className="bg-gray-100 font-semibold">
-                        <TableCell className="border" colSpan={2}>TOTALS</TableCell>
-                        <TableCell className="border text-right">{summaryData.totals.cash_sales.toFixed(2)}</TableCell>
-                        <TableCell className="border text-right">{summaryData.totals.card_sales.toFixed(2)}</TableCell>
-                        <TableCell className="border text-right">{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</TableCell>
-                        <TableCell className="border text-right">{(summaryData.totals.cheque_sales || 0).toFixed(2)}</TableCell>
-                        <TableCell className="border text-right">{summaryData.totals.account_sales.toFixed(2)}</TableCell>
-                        <TableCell className="border text-right">{(summaryData.totals.account_credits || 0).toFixed(2)}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
+              <CardContent className="py-8">
+                <div className="text-center">Loading daily summary...</div>
               </CardContent>
             </Card>
-
-            {/* Customer Payments */}
-            <Card className={summaryData.customer_payments && summaryData.customer_payments.length === 0 ? "print:hidden" : ""}>
-              <CardHeader>
-                <CardTitle>Customer Payments (Backdate Only)</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold border">Customer Name</TableHead>
-                        <TableHead className="font-semibold border">Payment ID</TableHead>
-                        <TableHead className="font-semibold border text-right">Cash Amount</TableHead>
-                        <TableHead className="font-semibold border text-right">Card Amount</TableHead>
-                        <TableHead className="font-semibold border text-right">Total Amount</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summaryData.customer_payments.map((payment, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="border">{payment.customer_name}</TableCell>
-                          <TableCell className="border">{payment.payment_id}</TableCell>
-                          <TableCell className="border text-right">
-                            {payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-'}
-                          </TableCell>
-                          <TableCell className="border text-right">
-                            {payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-'}
-                          </TableCell>
-                          <TableCell className="border text-right">{payment.total_amount.toFixed(2)}</TableCell>
-                        </TableRow>
-                      ))}
-                      {summaryData.customer_payments.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
-                            No customer payments found
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      {summaryData.customer_payments.length > 0 && (
-                        <TableRow className="bg-gray-100 font-semibold">
-                          <TableCell className="border" colSpan={2}>TOTAL</TableCell>
-                          <TableCell className="border text-right">
-                            {summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}
-                          </TableCell>
-                          <TableCell className="border text-right">
-                            {summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}
-                          </TableCell>
-                          <TableCell className="border text-right">{summaryData.totals.customer_payments_total.toFixed(2)}</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Supplier Payments */}
-            <Card className={summaryData.supplier_payments && summaryData.supplier_payments.length === 0 ? "print:hidden" : ""}>
-              <CardHeader>
-                <CardTitle>Supplier Payments</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold border">Supplier Name</TableHead>
-                        <TableHead className="font-semibold border">Supplier Invoice No</TableHead>
-                        <TableHead className="font-semibold border">Supplier Invoice Date</TableHead>
-                        <TableHead className="font-semibold border text-right">Amount</TableHead>
-                        <TableHead className="font-semibold border">Payment Mode</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summaryData.supplier_payments.map((payment, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="border">{payment.supplier_name}</TableCell>
-                          <TableCell className="border">{payment.supplier_invoice_number || '-'}</TableCell>
-                          <TableCell className="border">{payment.supplier_invoice_date ? format(new Date(payment.supplier_invoice_date), "dd/MM/yyyy") : '-'}</TableCell>
-                          <TableCell className="border text-right">{payment.amount.toFixed(2)}</TableCell>
-                          <TableCell className="border capitalize">{payment.payment_mode}</TableCell>
-                        </TableRow>
-                      ))}
-                      {summaryData.supplier_payments.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
-                            No supplier payments found
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      {summaryData.supplier_payments.length > 0 && (
-                        <TableRow className="bg-gray-100 font-semibold">
-                          <TableCell className="border" colSpan={3}>TOTAL</TableCell>
-                          <TableCell className="border text-right">{summaryData.totals.supplier_payments_total.toFixed(2)}</TableCell>
-                          <TableCell className="border"></TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Expense Entries */}
-            <Card className={summaryData.expense_entries && summaryData.expense_entries.length === 0 ? "print:hidden" : ""}>
-              <CardHeader>
-                <CardTitle>Expense Entries</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold border">Ref Number</TableHead>
-                        <TableHead className="font-semibold border">Description</TableHead>
-                        <TableHead className="font-semibold border">Supplier Name</TableHead>
-                        <TableHead className="font-semibold border">Expense Name</TableHead>
-                        <TableHead className="font-semibold border text-right">Amount</TableHead>
-                        <TableHead className="font-semibold border">Payment Mode</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summaryData.expense_entries.map((expense, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="border">{expense.ref_number}</TableCell>
-                          <TableCell className="border">{expense.description}</TableCell>
-                          <TableCell className="border">{expense.supplier_name}</TableCell>
-                          <TableCell className="border">{expense.expense_name}</TableCell>
-                          <TableCell className="border text-right">{expense.amount.toFixed(2)}</TableCell>
-                          <TableCell className="border capitalize">{expense.payment_mode}</TableCell>
-                        </TableRow>
-                      ))}
-                      {summaryData.expense_entries.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="border text-center text-gray-500 py-4">
-                            No expense entries found
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      {summaryData.expense_entries.length > 0 && (
-                        <TableRow className="bg-gray-100 font-semibold">
-                          <TableCell className="border" colSpan={4}>TOTAL</TableCell>
-                          <TableCell className="border text-right">{summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</TableCell>
-                          <TableCell className="border"></TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Card Sales & Customer Card Payments */}
+          ) : error ? (
             <Card>
-              <CardHeader>
-                <CardTitle>Card Sales & Customer Card Payments</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-lg">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Card Sales:</span>
-                    <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Account Paid Card(Backdate):</span>
-                    <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
-                  </div>
-                </div>
+              <CardContent className="py-8">
+                <div className="text-center text-red-500">Failed to load daily summary</div>
               </CardContent>
             </Card>
-
-            {/* Payment Received via Bank Transfer */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Received via Bank Transfer</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-lg">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Bank Transfer Sales:</span>
-                    <span className="font-bold">£{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
+          ) : summaryData ? (
+            <div className="space-y-6">
+              {/* Daily Sales Summary */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Daily Sales Summary - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border">Customer</TableHead>
+                          <TableHead className="font-semibold border">Invoice No</TableHead>
+                          <TableHead className="font-semibold border text-right">Cash Sales</TableHead>
+                          <TableHead className="font-semibold border text-right">Card Paid</TableHead>
+                          <TableHead className="font-semibold border text-right">Bank Transfer</TableHead>
+                          <TableHead className="font-semibold border text-right">Cheque</TableHead>
+                          <TableHead className="font-semibold border text-right">Account Sales</TableHead>
+                          <TableHead className="font-semibold border text-right">Account Credits</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {summaryData.sales_summary.map((sale, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="border">{sale.customer_name}</TableCell>
+                            <TableCell className="border">{sale.invoice_no || '-'}</TableCell>
+                            <TableCell className="border text-right">
+                              {sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {(() => {
+                                // Use the bank_transfer value from the sales summary data
+                                const amount = sale.bank_transfer || 0;
+                                console.log('Bank transfer for', sale.customer_name, 'invoice', sale.invoice_no, ':', amount, typeof amount);
+                                return amount > 0 ? amount.toFixed(2) : '-';
+                              })()}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {(() => {
+                                // Use the cheque value from the sales summary data
+                                const amount = sale.cheque || 0;
+                                console.log('Cheque for', sale.customer_name, 'invoice', sale.invoice_no, ':', amount, typeof amount);
+                                return amount > 0 ? amount.toFixed(2) : '-';
+                              })()}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {sale.account_credits > 0 ? sale.account_credits.toFixed(2) : '-'}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {/* Totals Row */}
+                        <TableRow className="bg-gray-100 font-semibold">
+                          <TableCell className="border" colSpan={2}>TOTALS</TableCell>
+                          <TableCell className="border text-right">{summaryData.totals.cash_sales.toFixed(2)}</TableCell>
+                          <TableCell className="border text-right">{summaryData.totals.card_sales.toFixed(2)}</TableCell>
+                          <TableCell className="border text-right">{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</TableCell>
+                          <TableCell className="border text-right">{(summaryData.totals.cheque_sales || 0).toFixed(2)}</TableCell>
+                          <TableCell className="border text-right">{summaryData.totals.account_sales.toFixed(2)}</TableCell>
+                          <TableCell className="border text-right">{(summaryData.totals.account_credits || 0).toFixed(2)}</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
                   </div>
-                  {/* <div className="flex justify-between items-center py-2 border-b">
+                </CardContent>
+              </Card>
+
+              {/* Customer Payments */}
+              <Card className={summaryData.customer_payments && summaryData.customer_payments.length === 0 ? "print:hidden" : ""}>
+                <CardHeader>
+                  <CardTitle>Customer Payments (Backdate Only)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border">Customer Name</TableHead>
+                          <TableHead className="font-semibold border">Payment ID</TableHead>
+                          <TableHead className="font-semibold border text-right">Cash Amount</TableHead>
+                          <TableHead className="font-semibold border text-right">Card Amount</TableHead>
+                          <TableHead className="font-semibold border text-right">Total Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {summaryData.customer_payments.map((payment, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="border">{payment.customer_name}</TableCell>
+                            <TableCell className="border">{payment.payment_id}</TableCell>
+                            <TableCell className="border text-right">
+                              {payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="border text-right">{payment.total_amount.toFixed(2)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {summaryData.customer_payments.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
+                              No customer payments found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {summaryData.customer_payments.length > 0 && (
+                          <TableRow className="bg-gray-100 font-semibold">
+                            <TableCell className="border" colSpan={2}>TOTAL</TableCell>
+                            <TableCell className="border text-right">
+                              {summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="border text-right">{summaryData.totals.customer_payments_total.toFixed(2)}</TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Supplier Payments */}
+              <Card className={summaryData.supplier_payments && summaryData.supplier_payments.length === 0 ? "print:hidden" : ""}>
+                <CardHeader>
+                  <CardTitle>Supplier Payments</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border">Supplier Name</TableHead>
+                          <TableHead className="font-semibold border">Supplier Invoice No</TableHead>
+                          <TableHead className="font-semibold border">Supplier Invoice Date</TableHead>
+                          <TableHead className="font-semibold border text-right">Amount</TableHead>
+                          <TableHead className="font-semibold border">Payment Mode</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {summaryData.supplier_payments.map((payment, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="border">{payment.supplier_name}</TableCell>
+                            <TableCell className="border">{payment.supplier_invoice_number || '-'}</TableCell>
+                            <TableCell className="border">{payment.supplier_invoice_date ? format(new Date(payment.supplier_invoice_date), "dd/MM/yyyy") : '-'}</TableCell>
+                            <TableCell className="border text-right">{payment.amount.toFixed(2)}</TableCell>
+                            <TableCell className="border capitalize">{payment.payment_mode}</TableCell>
+                          </TableRow>
+                        ))}
+                        {summaryData.supplier_payments.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
+                              No supplier payments found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {summaryData.supplier_payments.length > 0 && (
+                          <TableRow className="bg-gray-100 font-semibold">
+                            <TableCell className="border" colSpan={3}>TOTAL</TableCell>
+                            <TableCell className="border text-right">{summaryData.totals.supplier_payments_total.toFixed(2)}</TableCell>
+                            <TableCell className="border"></TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Expense Entries */}
+              <Card className={summaryData.expense_entries && summaryData.expense_entries.length === 0 ? "print:hidden" : ""}>
+                <CardHeader>
+                  <CardTitle>Expense Entries</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border">Supplier Invoice No</TableHead>
+                          <TableHead className="font-semibold border">Supplier Name</TableHead>
+                          <TableHead className="font-semibold border">Expense Name</TableHead>
+                          <TableHead className="font-semibold border text-right">Amount</TableHead>
+                          <TableHead className="font-semibold border">Payment Mode</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {summaryData.expense_entries.map((expense, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="border">{expense.invoice_number || '-'}</TableCell>
+                            <TableCell className="border">{expense.supplier_name}</TableCell>
+                            <TableCell className="border">{expense.expense_name}</TableCell>
+                            <TableCell className="border text-right">{expense.amount.toFixed(2)}</TableCell>
+                            <TableCell className="border capitalize">{expense.payment_mode}</TableCell>
+                          </TableRow>
+                        ))}
+                        {summaryData.expense_entries.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
+                              No expense entries found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {summaryData.expense_entries.length > 0 && (
+                          <TableRow className="bg-gray-100 font-semibold">
+                            <TableCell className="border" colSpan={3}>TOTAL</TableCell>
+                            <TableCell className="border text-right">{summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</TableCell>
+                            <TableCell className="border"></TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card Sales & Customer Card Payments */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Card Sales & Customer Card Payments</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-lg">
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Total Card Sales:</span>
+                      <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Account Paid Card(Backdate):</span>
+                      <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Payment Received via Bank Transfer */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Payment Received via Bank Transfer</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-lg">
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Total Bank Transfer Sales:</span>
+                      <span className="font-bold">£{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
+                    </div>
+                    {/* <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Customer Bank Transfer Payments:</span>
                     <span className="font-bold">£{(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}</span>
                   </div>
@@ -1512,270 +1533,270 @@ export default function DailySummary() {
                     <span className="font-medium">Total Bank Transfer Received:</span>
                     <span className="font-bold">£{((summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0)).toFixed(2)}</span>
                   </div> */}
-                </div>
-              </CardContent>
-            </Card>
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Total Banking */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Total Banking</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-lg">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Cash Sales:</span>
-                    <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
+              {/* Total Banking */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Total Banking</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 text-lg">
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Total Cash Sales:</span>
+                      <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Total Cheque:</span>
+                      <span className="font-bold">£{(summaryData.totals.cheque_sales || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Account Paid Cash(Backdate):</span>
+                      <span className="font-bold">£{(summaryData.totals.customer_cash_payments || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Till/Float(C/F):</span>
+                      <span className="font-bold">£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b text-red-600">
+                      <span className="font-medium">Total Supplier Payment (Paid Out):</span>
+                      <span className="font-bold">-£{(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b text-red-600">
+                      <span className="font-medium">Total Expense (Paid Out):</span>
+                      <span className="font-bold">-£{(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-t-2 border-gray-400 bg-blue-50 total-banking-print">
+                      <span className="font-bold text-xl">Total Banking:</span>
+                      <span className="font-bold text-xl text-blue-600">£{summaryData.totals.banking_total.toFixed(2)}</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Cheque:</span>
-                    <span className="font-bold">£{(summaryData.totals.cheque_sales || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Account Paid Cash(Backdate):</span>
-                    <span className="font-bold">£{(summaryData.totals.customer_cash_payments || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Till/Float(C/F):</span>
-                    <span className="font-bold">£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b text-red-600">
-                    <span className="font-medium">Total Supplier Payment (Paid Out):</span>
-                    <span className="font-bold">-£{(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b text-red-600">
-                    <span className="font-medium">Total Expense (Paid Out):</span>
-                    <span className="font-bold">-£{(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-t-2 border-gray-400 bg-blue-50 total-banking-print">
-                    <span className="font-bold text-xl">Total Banking:</span>
-                    <span className="font-bold text-xl text-blue-600">£{summaryData.totals.banking_total.toFixed(2)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Banking Records */}
-            <Card className={summaryData.banking_records && summaryData.banking_records.length === 0 ? "print:hidden" : ""}>
-              <CardHeader>
-                <CardTitle>Banking Records</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold border">Date</TableHead>
-                        <TableHead className="font-semibold border">Remarks</TableHead>
-                        <TableHead className="font-semibold border">Payment Type</TableHead>
-                        <TableHead className="font-semibold border text-right">Amount</TableHead>
-                        <TableHead className="font-semibold border">Bag Details</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summaryData.banking_records.map((record, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="border">
-                            {record.date ? format(new Date(record.date), "dd/MM/yyyy") : "N/A"}
-                          </TableCell>
-                          <TableCell className="border">{record.remarks}</TableCell>
-                          <TableCell className="border capitalize">{record.payment_type}</TableCell>
-                          <TableCell className="border text-right">{record.amount.toFixed(2)}</TableCell>
-                          <TableCell className="border">
-                            {record.bag_details.length > 0 ? (
-                              <div className="space-y-1">
-                                {record.bag_details.map((bag, bagIndex) => (
-                                  <div key={bagIndex} className="text-sm">
-                                    Bag: {bag.bag_number} | Pay In: {bag.paying_number} | {bag.amount.toFixed(2)}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="text-sm">
-                                {record.paying_number && `Pay In: ${record.paying_number}`}
-                                {record.cheque_number && ` | Cheque: ${record.cheque_number}`}
-                              </div>
-                            )}
-                          </TableCell>
+              {/* Banking Records */}
+              <Card className={summaryData.banking_records && summaryData.banking_records.length === 0 ? "print:hidden" : ""}>
+                <CardHeader>
+                  <CardTitle>Banking Records</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border">Date</TableHead>
+                          <TableHead className="font-semibold border">Remarks</TableHead>
+                          <TableHead className="font-semibold border">Payment Type</TableHead>
+                          <TableHead className="font-semibold border text-right">Amount</TableHead>
+                          <TableHead className="font-semibold border">Bag Details</TableHead>
                         </TableRow>
-                      ))}
-                      {summaryData.banking_records.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
-                            No banking records found
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      {summaryData.banking_records.length > 0 && (
-                        <TableRow className="bg-gray-100 font-semibold">
-                          <TableCell className="border" colSpan={3}>TOTAL</TableCell>
-                          <TableCell className="border text-right">{summaryData.totals.banking_total.toFixed(2)}</TableCell>
-                          <TableCell className="border"></TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {summaryData.banking_records.map((record, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="border">
+                              {record.date ? format(new Date(record.date), "dd/MM/yyyy") : "N/A"}
+                            </TableCell>
+                            <TableCell className="border">{record.remarks}</TableCell>
+                            <TableCell className="border capitalize">{record.payment_type}</TableCell>
+                            <TableCell className="border text-right">{record.amount.toFixed(2)}</TableCell>
+                            <TableCell className="border">
+                              {record.bag_details.length > 0 ? (
+                                <div className="space-y-1">
+                                  {record.bag_details.map((bag, bagIndex) => (
+                                    <div key={bagIndex} className="text-sm">
+                                      Bag: {bag.bag_number} | Pay In: {bag.paying_number} | {bag.amount.toFixed(2)}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-sm">
+                                  {record.paying_number && `Pay In: ${record.paying_number}`}
+                                  {record.cheque_number && ` | Cheque: ${record.cheque_number}`}
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {summaryData.banking_records.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
+                              No banking records found
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {summaryData.banking_records.length > 0 && (
+                          <TableRow className="bg-gray-100 font-semibold">
+                            <TableCell className="border" colSpan={3}>TOTAL</TableCell>
+                            <TableCell className="border text-right">{summaryData.totals.banking_total.toFixed(2)}</TableCell>
+                            <TableCell className="border"></TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Stock Check */}
-            <Card className={`${stockData && stockData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
-              <CardHeader>
-                <CardTitle>Stock Check - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold border">Sl.No</TableHead>
-                        <TableHead className="font-semibold border">Product Description</TableHead>
-                        <TableHead className="font-semibold border text-center">O.S</TableHead>
-                        <TableHead className="font-semibold border text-center">N.S</TableHead>
-                        <TableHead className="font-semibold border text-center">Sales</TableHead>
-                        <TableHead className="font-semibold border text-center">C.RTN</TableHead>
-                        <TableHead className="font-semibold border text-center">Dmps</TableHead>
-                        <TableHead className="font-semibold border text-center">S.RTN</TableHead>
-                        <TableHead className="font-semibold border text-center">Stock</TableHead>
-                        <TableHead className="font-semibold border text-center">Cl.Stock</TableHead>
-                        <TableHead className="font-semibold border text-center">Result</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {stockData.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="border">{item.slNo}</TableCell>
-                          <TableCell className="border">{item.productDescription}</TableCell>
-                          <TableCell className="border text-center">{item.os}</TableCell>
-                          <TableCell className="border text-center">{item.ns}</TableCell>
-                          <TableCell className="border text-center">{item.sales}</TableCell>
-                          <TableCell className="border text-center">{item.crtn}</TableCell>
-                          <TableCell className="border text-center">{item.dmps}</TableCell>
-                          <TableCell className="border text-center">{item.srtn}</TableCell>
-                          <TableCell className="border text-center">{item.stock}</TableCell>
-                          <TableCell className="border text-center">{item.clStock}</TableCell>
-                          <TableCell className="border text-center">
-                            {item.result === "âœ“" ? (
-                              <span className="text-green-600">âœ“</span>
-                            ) : (
-                              <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
-                                {item.result}
-                              </span>
-                            )}
-                          </TableCell>
+              {/* Stock Check */}
+              <Card className={`${filteredStockData && filteredStockData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
+                <CardHeader>
+                  <CardTitle>Stock Check - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border">Sl.No</TableHead>
+                          <TableHead className="font-semibold border">Product Description</TableHead>
+                          <TableHead className="font-semibold border text-center">O.S</TableHead>
+                          <TableHead className="font-semibold border text-center">N.S</TableHead>
+                          <TableHead className="font-semibold border text-center">Sales</TableHead>
+                          <TableHead className="font-semibold border text-center">C.RTN</TableHead>
+                          <TableHead className="font-semibold border text-center">Dmps</TableHead>
+                          <TableHead className="font-semibold border text-center">S.RTN</TableHead>
+                          <TableHead className="font-semibold border text-center">Stock</TableHead>
+                          <TableHead className="font-semibold border text-center">Cl.Stock</TableHead>
+                          <TableHead className="font-semibold border text-center">Result</TableHead>
                         </TableRow>
-                      ))}
-                      {stockData.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={11} className="border text-center text-gray-500 py-4">
-                            No stock check data found
-                          </TableCell>
-                        </TableRow>
-                      )}
-                      {stockData.length > 0 && (
-                        <TableRow className="bg-gray-100 font-semibold">
-                          <TableCell className="border"></TableCell>
-                          <TableCell className="border">TOTAL</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.os, 0)}</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.ns, 0)}</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.sales, 0)}</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.crtn, 0)}</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.dmps, 0)}</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.srtn, 0)}</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.stock, 0)}</TableCell>
-                          <TableCell className="border text-center">{stockData.reduce((sum, item) => sum + item.clStock, 0)}</TableCell>
-                          <TableCell className="border"></TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredStockData.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="border">{item.slNo}</TableCell>
+                            <TableCell className="border">{item.productDescription}</TableCell>
+                            <TableCell className="border text-center">{item.os}</TableCell>
+                            <TableCell className="border text-center">{item.ns}</TableCell>
+                            <TableCell className="border text-center">{item.sales}</TableCell>
+                            <TableCell className="border text-center">{item.crtn}</TableCell>
+                            <TableCell className="border text-center">{item.dmps}</TableCell>
+                            <TableCell className="border text-center">{item.srtn}</TableCell>
+                            <TableCell className="border text-center">{item.stock}</TableCell>
+                            <TableCell className="border text-center">{item.clStock}</TableCell>
+                            <TableCell className="border text-center">
+                              {item.result === "âœ“" ? (
+                                <span className="text-green-600">âœ“</span>
+                              ) : (
+                                <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
+                                  {item.result}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {filteredStockData.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={11} className="border text-center text-gray-500 py-4">
+                              No stock check data found (entries with all zero values are hidden)
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {filteredStockData.length > 0 && (
+                          <TableRow className="bg-gray-100 font-semibold">
+                            <TableCell className="border"></TableCell>
+                            <TableCell className="border">TOTAL</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.os, 0)}</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.ns, 0)}</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.sales, 0)}</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.crtn, 0)}</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.dmps, 0)}</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.srtn, 0)}</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.stock, 0)}</TableCell>
+                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.clStock, 0)}</TableCell>
+                            <TableCell className="border"></TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Product Purchase Full View */}
-            <Card className={`${productPurchaseData && productPurchaseData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
-              <CardHeader>
-                <CardTitle>Product Purchase Full View - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gray-50">
-                        <TableHead className="font-semibold border">Date</TableHead>
-                        <TableHead className="font-semibold border">Supplier</TableHead>
-                        <TableHead className="font-semibold border">Inv.No</TableHead>
-                        <TableHead className="font-semibold border">Product</TableHead>
-                        <TableHead className="font-semibold border text-right">Quantity</TableHead>
-                        <TableHead className="font-semibold border text-right">Unit Price</TableHead>
-                        <TableHead className="font-semibold border text-right">Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {productPurchaseData.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="border text-center text-gray-500 py-4">
-                            No product purchase data found
-                          </TableCell>
+              {/* Product Purchase Full View */}
+              <Card className={`${productPurchaseData && productPurchaseData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
+                <CardHeader>
+                  <CardTitle>Product Purchase Full View - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border">Date</TableHead>
+                          <TableHead className="font-semibold border">Supplier</TableHead>
+                          <TableHead className="font-semibold border">Inv.No</TableHead>
+                          <TableHead className="font-semibold border">Product</TableHead>
+                          <TableHead className="font-semibold border text-right">Quantity</TableHead>
+                          <TableHead className="font-semibold border text-right">Unit Price</TableHead>
+                          <TableHead className="font-semibold border text-right">Total</TableHead>
                         </TableRow>
-                      ) : (
-                        productPurchaseData.map((row, idx) => {
-                          if (row.isHeader) {
-                            return (
-                              <TableRow key={idx} className="bg-gray-50 font-semibold border-t-2 border-gray-200">
-                                <TableCell className="border">{row.date}</TableCell>
-                                <TableCell className="border">{row.supplier}</TableCell>
-                                <TableCell className="border">{row.invNo}</TableCell>
-                                <TableCell className="border" colSpan={3}></TableCell>
-                                <TableCell className="border"></TableCell>
-                              </TableRow>
-                            );
-                          } else if (row.isTotal) {
-                            return (
-                              <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
-                                <TableCell className="border" colSpan={3}></TableCell>
-                                <TableCell className="border text-right">{row.product}</TableCell>
-                                <TableCell className="border text-right">{row.quantity}</TableCell>
-                                <TableCell className="border"></TableCell>
-                                <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
-                              </TableRow>
-                            );
-                          } else {
-                            return (
-                              <TableRow key={idx} className="bg-white">
-                                <TableCell className="border"></TableCell>
-                                <TableCell className="border"></TableCell>
-                                <TableCell className="border">
-                                  <Button
-                                    variant="link"
-                                    className="p-0 text-blue-600 underline"
-                                    onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invNo}&edit=true`, '_self')}
-                                  >
-                                    {row.invNo}
-                                  </Button>
-                                </TableCell>
-                                <TableCell className="border">
-                                  <span className="text-blue-600 cursor-pointer hover:text-blue-800 transition-colors">
-                                    {row.product}
-                                  </span>
-                                </TableCell>
-                                <TableCell className="border text-right">{row.quantity}</TableCell>
-                                <TableCell className="border text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
-                                <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
-                              </TableRow>
-                            );
-                          }
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>  
-        ) : null}
+                      </TableHeader>
+                      <TableBody>
+                        {productPurchaseData.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="border text-center text-gray-500 py-4">
+                              No product purchase data found
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          productPurchaseData.map((row, idx) => {
+                            if (row.isHeader) {
+                              return (
+                                <TableRow key={idx} className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+                                  <TableCell className="border">{row.date}</TableCell>
+                                  <TableCell className="border">{row.supplier}</TableCell>
+                                  <TableCell className="border">{row.invNo}</TableCell>
+                                  <TableCell className="border" colSpan={3}></TableCell>
+                                  <TableCell className="border"></TableCell>
+                                </TableRow>
+                              );
+                            } else if (row.isTotal) {
+                              return (
+                                <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
+                                  <TableCell className="border" colSpan={3}></TableCell>
+                                  <TableCell className="border text-right">{row.product}</TableCell>
+                                  <TableCell className="border text-right">{row.quantity}</TableCell>
+                                  <TableCell className="border"></TableCell>
+                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                                </TableRow>
+                              );
+                            } else {
+                              return (
+                                <TableRow key={idx} className="bg-white">
+                                  <TableCell className="border"></TableCell>
+                                  <TableCell className="border"></TableCell>
+                                  <TableCell className="border">
+                                    <Button
+                                      variant="link"
+                                      className="p-0 text-blue-600 underline"
+                                      onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invNo}&edit=true`, '_self')}
+                                    >
+                                      {row.invNo}
+                                    </Button>
+                                  </TableCell>
+                                  <TableCell className="border">
+                                    <span className="text-blue-600 cursor-pointer hover:text-blue-800 transition-colors">
+                                      {row.product}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell className="border text-right">{row.quantity}</TableCell>
+                                  <TableCell className="border text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                                </TableRow>
+                              );
+                            }
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
         </div>
       </div>
 

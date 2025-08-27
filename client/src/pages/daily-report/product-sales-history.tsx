@@ -14,6 +14,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 
 export default function ProductSalesHistoryPage() {
   const [productId, setProductId] = useState<string>("");
@@ -24,6 +25,7 @@ export default function ProductSalesHistoryPage() {
   const [isEmailSending, setIsEmailSending] = useState(false);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { canEditInvoice } = useInvoicePermissions();
 
   // Navigation handler for clickable product descriptions
   const handleProductClick = (sale: any) => {
@@ -336,7 +338,17 @@ export default function ProductSalesHistoryPage() {
                     sales.map((row: any, idx: number) => (
                       <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                         <td className="border-b px-4 py-2">
-                          <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}>
+                          <Button 
+                            variant="link" 
+                            className="p-0 text-blue-600 underline" 
+                            onClick={() => {
+                              const url = canEditInvoice 
+                                ? `/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`
+                                : `/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}&readonly=true`;
+                              window.open(url, '_self');
+                            }}
+                            title={canEditInvoice ? "Edit invoice" : "View invoice (Read-Only)"}
+                          >
                             {row.invoiceNo}
                           </Button>
                         </td>

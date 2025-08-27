@@ -433,6 +433,8 @@ class SystemSettings(db.Model):
     porterage_charge = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     # Invoice print format
     invoice_print_format = db.Column(db.String(20), nullable=False, default='A4')
+    # Invoice lock setting
+    lock_invoices = db.Column(db.Boolean, nullable=False, default=False)
 
     def to_dict(self):
         return {
@@ -450,7 +452,8 @@ class SystemSettings(db.Model):
             'showProfit': self.show_profit,
             'withPorterage': self.with_porterage,
             'porterageCharge': float(self.porterage_charge) if self.porterage_charge else 0,
-            'invoicePrintFormat': self.invoice_print_format
+            'invoicePrintFormat': self.invoice_print_format,
+            'lockInvoices': self.lock_invoices
         }
 
 class Attendance(db.Model):
@@ -762,7 +765,7 @@ class ExpenseEntry(db.Model):
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'))
     expense_id = db.Column(db.Integer, db.ForeignKey('expenses.id'), nullable=False)
-    description = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.String(200), nullable=True)
     invoice_number = db.Column(db.String(50))
     remarks = db.Column(db.Text)
     payment_mode = db.Column(db.String(20), nullable=False, default='CASH')  # CASH, CARD, BANK, CHEQUE
@@ -787,7 +790,6 @@ class ExpenseEntry(db.Model):
             'supplierName': self.supplier.supplier_name if self.supplier else None,
             'expenseId': self.expense_id,
             'expenseName': self.expense_category.expense_name if self.expense_category else None,
-            'description': self.description,
             'invoiceNumber': self.invoice_number,
             'remarks': self.remarks,
             'paymentMode': self.payment_mode,
@@ -1225,6 +1227,12 @@ class Employee(db.Model):
     licence_certificate_number = db.Column(db.String(50))  # New field
     market_permit_number = db.Column(db.String(50))  # New field
     entitlement_days = db.Column(db.Integer, default=25)  # Annual holiday entitlement days
+    # Next of Kin Information
+    next_of_kin_name = db.Column(db.String(200))
+    next_of_kin_phone_number = db.Column(db.String(20))
+    next_of_kin_email = db.Column(db.String(100))
+    next_of_kin_address = db.Column(db.Text)
+    next_of_kin_relationship = db.Column(db.String(50))
     is_active = db.Column(db.String(3), default='yes')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1269,6 +1277,12 @@ class Employee(db.Model):
             'licenceCertificateNumber': self.licence_certificate_number,
             'marketPermitNumber': self.market_permit_number,
             'entitlementDays': self.entitlement_days,
+            # Next of Kin Information
+            'nextOfKinName': self.next_of_kin_name,
+            'nextOfKinPhoneNumber': self.next_of_kin_phone_number,
+            'nextOfKinEmail': self.next_of_kin_email,
+            'nextOfKinAddress': self.next_of_kin_address,
+            'nextOfKinRelationship': self.next_of_kin_relationship,
             'documents': documents_list,
             'isActive': self.is_active,
             'createdAt': self.created_at.isoformat() if self.created_at else None,

@@ -150,6 +150,12 @@ const EmployeeDatabaseEdit = () => {
       accountNumber: "",
       sortCode: "",
       entitlementDays: 25,
+      // Next of Kin Information
+      nextOfKinName: "",
+      nextOfKinPhoneNumber: "",
+      nextOfKinEmail: "",
+      nextOfKinAddress: "",
+      nextOfKinRelationship: "",
       documents: [],
       isActive: "yes",
     },
@@ -670,6 +676,72 @@ const EmployeeDatabaseEdit = () => {
                         <SelectItem value="no">Inactive</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next of Kin Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Next of Kin Information</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label htmlFor="nextOfKinName" className="block text-sm font-medium mb-2">Name</label>
+                    <Input 
+                      id="nextOfKinName" 
+                      placeholder="Enter next of kin name" 
+                      {...form.register("nextOfKinName")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="nextOfKinPhoneNumber" className="block text-sm font-medium mb-2">Phone Number</label>
+                    <Input 
+                      id="nextOfKinPhoneNumber" 
+                      placeholder="Enter phone number" 
+                      {...form.register("nextOfKinPhoneNumber")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="nextOfKinEmail" className="block text-sm font-medium mb-2">Email Address</label>
+                    <Input 
+                      id="nextOfKinEmail" 
+                      type="email"
+                      placeholder="Enter email address" 
+                      {...form.register("nextOfKinEmail")}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="nextOfKinRelationship" className="block text-sm font-medium mb-2">Relationship with Employee</label>
+                    <Select 
+                      onValueChange={(value) => form.setValue("nextOfKinRelationship", value)}
+                      defaultValue={form.watch("nextOfKinRelationship") || ""}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select relationship" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Spouse">Spouse</SelectItem>
+                        <SelectItem value="Parent">Parent</SelectItem>
+                        <SelectItem value="Child">Child</SelectItem>
+                        <SelectItem value="Sibling">Sibling</SelectItem>
+                        <SelectItem value="Partner">Partner</SelectItem>
+                        <SelectItem value="Friend">Friend</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label htmlFor="nextOfKinAddress" className="block text-sm font-medium mb-2">Home Address</label>
+                    <Textarea 
+                      id="nextOfKinAddress" 
+                      placeholder="Enter next of kin home address" 
+                      {...form.register("nextOfKinAddress")}
+                      rows={3}
+                    />
                   </div>
                 </div>
               </div>

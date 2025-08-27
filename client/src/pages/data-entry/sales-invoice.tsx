@@ -12,6 +12,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
 import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -76,10 +77,12 @@ const SalesInvoice = () => {
   const skipAutoHoldRef = useRef(false);
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
   const [locationStr, setLocation] = useLocation();
+  const [isReadOnly, setIsReadOnly] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { currentDate: businessDate } = useBusinessDate();
+  const { canEditInvoice, isInvoiceLocked, canEditPaymentMode } = useInvoicePermissions();
   // const navigate = useNavigate(); // Removed useNavigate
 
   // Use the latest location from useLocation
@@ -250,6 +253,10 @@ const SalesInvoice = () => {
     // const queryParams = new URLSearchParams(locationStr.split('?')[1] || '');
     const params = new URLSearchParams(window.location.search);
     console.log(params)
+    
+    // Check for readonly parameter or if invoices are locked
+    const readonlyParam = params.get('readonly') === 'true';
+    setIsReadOnly(readonlyParam || isInvoiceLocked);
 
 
     const customerIdFromUrl = params.get('customerId');
@@ -474,6 +481,31 @@ const SalesInvoice = () => {
     : selectedCustomer?.customer_name || 'N/A';
   const customerType = currentSale?.customerType || "account";
   const paymentStatus = currentSale?.paymentStatus || "pending";
+
+  // Function to update payment status
+  const updatePaymentStatus = async (newStatus: string) => {
+    if (!currentSale?.id) return;
+    
+    try {
+      await apiRequest('PUT', `/api/sales/${currentSale.id}`, {
+        payment_status: newStatus
+      });
+      
+      // Update local state
+      setCurrentSale(prev => prev ? { ...prev, paymentStatus: newStatus } : null);
+      
+      toast({
+        title: "Success",
+        description: "Payment status updated successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update payment status",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Mutation to create a new sale
   const createSaleMutation = useMutation({
@@ -1075,6 +1107,328 @@ const SalesInvoice = () => {
     setLocation(`/historical-reports/customer-history?${searchParams.toString()}`);
   };
 
+  // Handler for PDF download
+  const handlePdfDownload = async () => {
+    if (currentSale?.invoiceNumber) {
+      // For existing invoice - download the actual invoice PDF using server PDF generation
+      try {
+        const response = await apiRequest('POST', '/api/generate-invoice-pdf', {
+          invoiceNumber: currentSale.invoiceNumber
+        });
+
+        // The apiRequest should handle the response properly
+        // If it returns a blob, handle it; otherwise it might be an error
+        if (response instanceof Blob) {
+          const url = window.URL.createObjectURL(response);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `invoice-${currentSale.invoiceNumber}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+
+          toast({
+            title: "PDF Downloaded",
+            description: `Invoice ${currentSale.invoiceNumber} downloaded successfully.`,
+          });
+        } else {
+          // If apiRequest doesn't return a blob, try direct fetch with proper backend URL
+          const backendUrl = window.location.origin.replace(':5173', ':5000');
+          const directResponse = await fetch(`${backendUrl}/api/generate-invoice-pdf`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+            },
+            body: JSON.stringify({
+              invoiceNumber: currentSale.invoiceNumber
+            })
+          });
+
+          if (!directResponse.ok) {
+            throw new Error(`HTTP error! status: ${directResponse.status}`);
+          }
+          
+          const blob = await directResponse.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `invoice-${currentSale.invoiceNumber}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+
+          toast({
+            title: "PDF Downloaded",
+            description: `Invoice ${currentSale.invoiceNumber} downloaded successfully.`,
+          });
+        }
+
+      } catch (error) {
+        console.error('Error downloading PDF:', error);
+        toast({
+          title: "Error",
+          description: "Failed to download PDF. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } else if (saleItems.length > 0) {
+      // For new invoice with items - create a preview PDF
+      handleCreatePreviewPdf();
+    } else {
+      // For empty invoice - show empty template
+      handleCreateEmptyPdf();
+    }
+  };
+
+  // Handler for Excel download
+  const handleExcelDownload = () => {
+    if (currentSale?.invoiceNumber) {
+      // For existing invoice - download actual invoice data as Excel
+      handleDownloadInvoiceExcel();
+    } else if (saleItems.length > 0) {
+      // For new invoice with items - create preview Excel
+      handleCreatePreviewExcel();
+    } else {
+      toast({
+        title: "No Data",
+        description: "Please add items to the invoice before exporting to Excel.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Create preview PDF for unsaved invoice
+  const handleCreatePreviewPdf = async () => {
+    try {
+      if (!customerId) {
+        toast({
+          title: "Missing Customer",
+          description: "Please select a customer before generating PDF.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
+      
+      // Create preview data structure
+      const previewData = {
+        customer: selectedCustomer,
+        sale: {
+          invoiceNumber: 'PREVIEW',
+          date: new Date().toISOString(),
+          customerType: 'account',
+          paymentStatus: 'pending',
+          subtotal,
+          vatAmount,
+          porterage,
+          totalAmount,
+          vehicleDetails: vehicleDetails || null,
+          gateNumber: gateNumber || null,
+          notes: notes || null,
+        },
+        items: saleItems,
+      };
+
+      // Send to backend to generate preview PDF using correct backend URL
+      const backendUrl = window.location.origin.replace(':5173', ':5000');
+      const response = await fetch(`${backendUrl}/api/generate-preview-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+        },
+        body: JSON.stringify(previewData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate preview PDF');
+      }
+
+      // Download the PDF
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-preview-${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "PDF Generated",
+        description: "Preview PDF downloaded successfully.",
+      });
+
+    } catch (error) {
+      console.error('Error generating preview PDF:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate preview PDF.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Create empty PDF template
+  const handleCreateEmptyPdf = async () => {
+    try {
+      const backendUrl = window.location.origin.replace(':5173', ':5000');
+      const response = await fetch(`${backendUrl}/api/generate-empty-invoice-pdf`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate empty PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `empty-invoice-template.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "PDF Generated",
+        description: "Empty invoice template downloaded successfully.",
+      });
+
+    } catch (error) {
+      console.error('Error generating empty PDF:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate empty PDF template.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Download existing invoice as Excel
+  const handleDownloadInvoiceExcel = async () => {
+    try {
+      const backendUrl = window.location.origin.replace(':5173', ':5000');
+      const response = await fetch(`${backendUrl}/api/sales/${currentSale?.invoiceNumber}/excel`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate Excel file');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${currentSale?.invoiceNumber}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Excel Downloaded",
+        description: `Invoice ${currentSale?.invoiceNumber} exported to Excel successfully.`,
+      });
+
+    } catch (error) {
+      console.error('Error downloading Excel:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download Excel file.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Create preview Excel for unsaved invoice
+  const handleCreatePreviewExcel = async () => {
+    try {
+      if (!customerId) {
+        toast({
+          title: "Missing Customer",
+          description: "Please select a customer before exporting to Excel.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
+      
+      // Create preview data structure
+      const previewData = {
+        customer: selectedCustomer,
+        sale: {
+          invoiceNumber: 'PREVIEW',
+          date: new Date().toISOString(),
+          customerType: 'account',
+          paymentStatus: 'pending',
+          subtotal,
+          vat_amount: vatAmount,
+          porterage,
+          total_amount: totalAmount,
+          vehicle_details: vehicleDetails || null,
+          gate_number: gateNumber || null,
+          notes: notes || null,
+        },
+        items: saleItems,
+      };
+
+      // Send to backend to generate preview Excel using correct backend URL
+      const backendUrl = window.location.origin.replace(':5173', ':5000');
+      const response = await fetch(`${backendUrl}/api/generate-preview-excel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+        },
+        body: JSON.stringify(previewData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate preview Excel');
+      }
+
+      // Download the Excel file
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-preview-${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Excel Export",
+        description: "Invoice preview exported as Excel file.",
+      });
+
+    } catch (error) {
+      console.error('Error creating preview Excel:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create preview Excel file.",
+        variant: "destructive",
+      });
+    }
+  };
+
   useEffect(() => {
     apiRequest("GET", "/api/settings").then(settings => {
       setTaxDetails({
@@ -1321,6 +1675,23 @@ const SalesInvoice = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {isReadOnly && (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                <strong>Read-Only Mode:</strong> This invoice is locked and cannot be edited. 
+                {!canEditInvoice && " Only admin users can edit locked invoices."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="p-6">
         {/* Header Section */}
         <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
@@ -1366,9 +1737,10 @@ const SalesInvoice = () => {
                   <span className="font-semibold ml-1">{customerName}</span>
                   <button
                     type="button"
-                    className="ml-2 text-blue-600 hover:underline flex items-center"
-                    onClick={() => setIsEditCustomerOpen(true)}
-                    title="Edit Customer"
+                    className={`ml-2 flex items-center ${isReadOnly ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:underline'}`}
+                    onClick={() => !isReadOnly && setIsEditCustomerOpen(true)}
+                    title={isReadOnly ? "Cannot edit in read-only mode" : "Edit Customer"}
+                    disabled={isReadOnly}
                   >
                     <Pencil size={16} className="mr-1" />
                     Edit
@@ -1450,9 +1822,9 @@ const SalesInvoice = () => {
                 <div>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...</div>
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleHoldInvoice} variant="outline" size="sm">Hold Invoice</Button>
+                <Button onClick={handleHoldInvoice} variant="outline" size="sm" disabled={isReadOnly}>Hold Invoice</Button>
 
-                <Button variant="destructive" size="sm" onClick={handleCloseInvoice}>Cancel Ticket</Button>
+                <Button variant="destructive" size="sm" onClick={handleCloseInvoice} disabled={isReadOnly}>Cancel Ticket</Button>
               </div>
             </div>
           </div>
@@ -1466,6 +1838,7 @@ const SalesInvoice = () => {
                 name="productType"
                 checked={selectedProductType === "regular"}
                 onChange={() => setSelectedProductType("regular")}
+                disabled={isReadOnly}
               />
               <label htmlFor="regular" className="text-sm">Regular Products</label>
             </div>
@@ -1476,6 +1849,7 @@ const SalesInvoice = () => {
                 name="productType"
                 checked={selectedProductType === "non_product"}
                 onChange={() => setSelectedProductType("non_product")}
+                disabled={isReadOnly}
               />
               <label htmlFor="non_product" className="text-sm">Non-Products</label>
             </div>
@@ -1484,8 +1858,22 @@ const SalesInvoice = () => {
           {/* Action Buttons */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex gap-2">
-              <Button variant="outline" size="sm">Pdf</Button>
-              <Button variant="outline" size="sm">Excel</Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handlePdfDownload}
+                disabled={!currentSale && saleItems.length === 0}
+              >
+                Pdf
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleExcelDownload}
+                disabled={!currentSale && saleItems.length === 0}
+              >
+                Excel
+              </Button>
               <Button variant="outline" size="sm" onClick={handleShowOutstanding}>Cust_Outstanding</Button>
               <Button variant="outline" size="sm" onClick={handleCustomerHistory}>Customer History</Button>
             </div>
@@ -1501,8 +1889,7 @@ const SalesInvoice = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="text-center"></TableHead>
-
+                    <TableHead className="text-center">Notes</TableHead>
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">Unit price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
@@ -1516,10 +1903,7 @@ const SalesInvoice = () => {
                   {saleItems.map((item, index) => (
                     editingIndex === index ? (
                       <TableRow key={index}>
-
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell></TableCell>
-
                         <TableCell className="text-center">
                           <Input
                             className="text-center"
@@ -1567,16 +1951,16 @@ const SalesInvoice = () => {
                     ) : (
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell></TableCell>
+                        <TableCell className="text-center">{item.notes || "-"}</TableCell>
                         <TableCell className="text-center">{item.quantity}</TableCell>
                         <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">
-                          <Button size="sm" variant="outline" onClick={() => {
+                          <Button size="sm" variant="outline" disabled={isReadOnly} onClick={() => {
                             setEditingIndex(index);
                             setEditItem(item);
                           }}>Edit</Button>
-                          <Button size="sm" variant="destructive" onClick={() => {
+                          <Button size="sm" variant="destructive" disabled={isReadOnly} onClick={() => {
                             const updatedItems = saleItems.filter((_, i) => i !== index);
                             if (currentSale) {
                               const updatedSalePayload: BackendSalePayload = {
@@ -1629,6 +2013,7 @@ const SalesInvoice = () => {
                           ref={productInputRef}
                           placeholder={`Type to search ${selectedProductType === 'regular' ? 'regular' : 'non'} products...`}
                           value={productSearch}
+                          disabled={isReadOnly}
                           onChange={e => {
                             setProductSearch(e.target.value);
                             setShowProductDropdown(true);
@@ -1671,6 +2056,7 @@ const SalesInvoice = () => {
                         className="text-center"
                         placeholder="Add notes (optional)"
                         value={itemNotes}
+                        disabled={isReadOnly}
                         onChange={(e) => setItemNotes(e.target.value)}
                         style={{ minWidth: 120 }}
                       />
@@ -1681,6 +2067,7 @@ const SalesInvoice = () => {
                         type="text"
                         placeholder="Qty"
                         value={itemQuantity}
+                        disabled={isReadOnly}
                         onChange={(e) => setItemQuantity(e.target.value)}
                         onKeyPress={(e) => {
                           // Allow numbers, decimal point, minus sign, backspace, delete, and arrow keys
@@ -1706,6 +2093,7 @@ const SalesInvoice = () => {
                         type="number"
                         step="0.01"
                         value={itemUnitPrice}
+                        disabled={isReadOnly}
                         onChange={(e) => setItemUnitPrice(e.target.value)}
                       />
                     </TableCell>
@@ -1716,6 +2104,7 @@ const SalesInvoice = () => {
                       <Button
                         size="sm"
                         className="bg-green-600 hover:bg-green-700"
+                        disabled={isReadOnly}
                         onClick={() => {
                           handleAddItem();
                         }}
@@ -1805,12 +2194,12 @@ const SalesInvoice = () => {
                 <div className="flex gap-2">
                   {/* Show Save for new, Update for edit */}
                   {!currentSale && (
-                    <Button variant="outline" size="sm" onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)}>
+                    <Button variant="outline" size="sm" disabled={isReadOnly} onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)}>
                       Save Ticket
                     </Button>
                   )}
                   {currentSale && (
-                    <Button variant="outline" size="sm" onClick={() => {
+                    <Button variant="outline" size="sm" disabled={isReadOnly} onClick={() => {
                       skipAutoHoldRef.current = true; // Prevent auto-hold on navigation after update
                       // Build update payload and call updateSaleMutation
                       const updatedSalePayload = {
@@ -1859,7 +2248,7 @@ const SalesInvoice = () => {
                       // Save and print invoice (previously only printed)
                       handleSaveInvoiceWithWhatsapp(mailInvoice, true);
                     }}
-                    disabled={saleItems.length === 0}
+                    disabled={saleItems.length === 0 || isReadOnly}
                   >
                     Print Ticket
                   </Button>

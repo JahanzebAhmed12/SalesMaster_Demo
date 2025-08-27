@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt } from "lucide-react";
 import classNames from 'classnames';
 import { useBackdatePermissions } from "@/hooks/usePermissions";
+import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { isPastDate } from "@/lib/utils";
 
 interface SalesEntry {
@@ -120,6 +121,9 @@ export default function DailyBookSales() {
 
   // Backdate permissions
   const { canEditBackdate } = useBackdatePermissions();
+  
+  // Invoice permissions
+  const { canEditInvoice, isInvoiceLocked } = useInvoicePermissions();
 
   useEffect(() => {
     async function fetchUserAndType() {
@@ -1267,8 +1271,17 @@ export default function DailyBookSales() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" className="w-48">
                               {(!isPastDate(sale.date) || canEditBackdate) && (
-                                <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`, '_self')}>
-                                  <Pencil className="mr-2 h-4 w-4" /> Edit Invoice
+                                <DropdownMenuItem 
+                                  className="text-sm py-2" 
+                                  onClick={() => {
+                                    const url = canEditInvoice 
+                                      ? `/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`
+                                      : `/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}&readonly=true`;
+                                    window.open(url, '_self');
+                                  }}
+                                >
+                                  <Pencil className="mr-2 h-4 w-4" /> 
+                                  {canEditInvoice ? 'Edit Invoice' : 'View Invoice (Read-Only)'}
                                 </DropdownMenuItem>
                               )}
                               <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}>
@@ -1302,22 +1315,46 @@ export default function DailyBookSales() {
                           </DropdownMenu>
                         </TableCell>
                         <TableCell className="text-right text-xs sm:text-sm">
-                          <span className="hidden sm:inline">£</span>{Number(sale.amount ?? 0).toFixed(2)}
+                          {Number(sale.amount ?? 0) === 0 ? "-" : (
+                            <>
+                              <span className="hidden sm:inline">£</span>{Number(sale.amount ?? 0).toFixed(2)}
+                            </>
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-xs sm:text-sm">
-                          <span className="hidden sm:inline">£</span>{Number(sale.cash ?? 0).toFixed(2)}
+                          {Number(sale.cash ?? 0) === 0 ? "-" : (
+                            <>
+                              <span className="hidden sm:inline">£</span>{Number(sale.cash ?? 0).toFixed(2)}
+                            </>
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-xs sm:text-sm">
-                          <span className="hidden sm:inline">£</span>{Number(sale.bank ?? 0).toFixed(2)}
+                          {Number(sale.bank ?? 0) === 0 ? "-" : (
+                            <>
+                              <span className="hidden sm:inline">£</span>{Number(sale.bank ?? 0).toFixed(2)}
+                            </>
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-xs sm:text-sm">
-                          <span className="hidden sm:inline">£</span>{Number(sale.bankTransfer ?? 0).toFixed(2)}
+                          {Number(sale.bankTransfer ?? 0) === 0 ? "-" : (
+                            <>
+                              <span className="hidden sm:inline">£</span>{Number(sale.bankTransfer ?? 0).toFixed(2)}
+                            </>
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-xs sm:text-sm">
-                          <span className="hidden sm:inline">£</span>{Number(sale.cheque ?? 0).toFixed(2)}
+                          {Number(sale.cheque ?? 0) === 0 ? "-" : (
+                            <>
+                              <span className="hidden sm:inline">£</span>{Number(sale.cheque ?? 0).toFixed(2)}
+                            </>
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-red-600 text-xs sm:text-sm">
-                          <span className="hidden sm:inline">£</span>{sale.credit?.toFixed(2) ?? "0.00"}
+                          {Number(sale.credit ?? 0) === 0 ? "-" : (
+                            <>
+                              <span className="hidden sm:inline">£</span>{Number(sale.credit ?? 0).toFixed(2)}
+                            </>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -1330,22 +1367,46 @@ export default function DailyBookSales() {
                     <TableCell className="text-center font-bold text-xs sm:text-sm">{totalBoxes}</TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      <span className="hidden sm:inline">£</span>{totalAmount.toFixed(2)}
+                      {totalAmount === 0 ? "-" : (
+                        <>
+                          <span className="hidden sm:inline">£</span>{totalAmount.toFixed(2)}
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      <span className="hidden sm:inline">£</span>{totalCash.toFixed(2)}
+                      {totalCash === 0 ? "-" : (
+                        <>
+                          <span className="hidden sm:inline">£</span>{totalCash.toFixed(2)}
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      <span className="hidden sm:inline">£</span>{totalBank.toFixed(2)}
+                      {totalBank === 0 ? "-" : (
+                        <>
+                          <span className="hidden sm:inline">£</span>{totalBank.toFixed(2)}
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      <span className="hidden sm:inline">£</span>{totalBankTransfer.toFixed(2)}
+                      {totalBankTransfer === 0 ? "-" : (
+                        <>
+                          <span className="hidden sm:inline">£</span>{totalBankTransfer.toFixed(2)}
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      <span className="hidden sm:inline">£</span>{totalCheque.toFixed(2)}
+                      {totalCheque === 0 ? "-" : (
+                        <>
+                          <span className="hidden sm:inline">£</span>{totalCheque.toFixed(2)}
+                        </>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-red-600 text-xs sm:text-sm">
-                      <span className="hidden sm:inline">£</span>{totalCredit.toFixed(2)}
+                      {totalCredit === 0 ? "-" : (
+                        <>
+                          <span className="hidden sm:inline">£</span>{totalCredit.toFixed(2)}
+                        </>
+                      )}
                     </TableCell>
                   </TableRow>
                 </TableBody>

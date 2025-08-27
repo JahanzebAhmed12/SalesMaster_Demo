@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/lib/auth';
 import PageLayout from '@/components/common/page-layout';
+import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -31,6 +32,7 @@ interface FullViewRow {
 
 export default function DailySalesFullView() {
   const { user } = useAuth();
+  const { canEditInvoice: canEditInvoiceGlobal } = useInvoicePermissions();
   const today = new Date();
   const [fromDate, setFromDate] = useState<Date>(today);
   const [toDate, setToDate] = useState<Date>(today);
@@ -66,8 +68,11 @@ export default function DailySalesFullView() {
     enabled: !!user?.id,
   });
 
-  // Check if user can edit an invoice based on date
+  // Check if user can edit an invoice based on date and invoice locking
   const canEditInvoice = (invoiceDate: string) => {
+    // First check if invoice locking allows editing
+    if (!canEditInvoiceGlobal) return false;
+    
     if (!userPermissions) return false;
     
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -572,8 +577,13 @@ export default function DailySalesFullView() {
                                 <Button 
                                   variant="link" 
                                   className="p-0 text-blue-600 underline" 
-                                  onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}
-                                  title="Edit invoice"
+                                  onClick={() => {
+                                    const url = canEditInvoiceGlobal 
+                                      ? `/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`
+                                      : `/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}&readonly=true`;
+                                    window.open(url, '_self');
+                                  }}
+                                  title={canEditInvoiceGlobal ? "Edit invoice" : "View invoice (Read-Only)"}
                                 >
                                   {row.invoiceNo}
                                 </Button>

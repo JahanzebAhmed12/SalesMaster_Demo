@@ -4,8 +4,10 @@ Add these routes to your main Flask app
 """
 
 from flask import request, jsonify, send_file
-from pdf_generator import DotMatrixInvoicePDF
 import logging
+import io
+import requests
+from mail_utils import generate_invoice_pdf as mail_generate_pdf
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -43,9 +45,29 @@ def add_pdf_routes(app, get_invoice_data_func):
             if not invoice_data:
                 return jsonify({'error': 'Invoice not found'}), 404
             
-            # Generate PDF
-            pdf_generator = DotMatrixInvoicePDF()
-            pdf_buffer = pdf_generator.generate_pdf(invoice_data)
+            # Generate PDF by fetching and converting the existing invoice page
+            try:
+                frontend_url = f"http://localhost:5173/print/invoice/{invoice_number}"
+                
+                # Fetch the HTML content from the frontend
+                response = requests.get(frontend_url, timeout=10)
+                response.raise_for_status()
+                
+                # Convert HTML to PDF using existing mail_utils function
+                html_content = response.text
+                pdf_bytes = mail_generate_pdf(html_content)
+                
+                if not pdf_bytes:
+                    raise Exception("PDF generation returned empty result")
+                
+                pdf_buffer = io.BytesIO(pdf_bytes)
+                
+            except requests.RequestException as e:
+                logger.error(f"Failed to fetch invoice page: {str(e)}")
+                return jsonify({'error': 'Failed to fetch invoice page for PDF generation'}), 500
+            except Exception as e:
+                logger.error(f"PDF generation failed: {str(e)}")
+                return jsonify({'error': 'PDF generation failed'}), 500
             
             # Reset buffer position
             pdf_buffer.seek(0)
@@ -96,8 +118,8 @@ def add_pdf_routes(app, get_invoice_data_func):
                 ]
             }
             
-            pdf_generator = DotMatrixInvoicePDF()
-            pdf_buffer = pdf_generator.generate_pdf(sample_data)
+            # For test endpoint, just return a simple message
+            return jsonify({'message': 'Test endpoint - use the main generate-invoice-pdf endpoint instead'})
             
             return send_file(
                 pdf_buffer,

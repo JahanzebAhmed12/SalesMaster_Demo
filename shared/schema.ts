@@ -779,6 +779,12 @@ export const employeeSchema = z.object({
   licenceCertificateNumber: z.string().optional().nullable(),
   marketPermitNumber: z.string().optional().nullable(),
   entitlementDays: z.number().optional().default(25),
+  // Next of Kin Information
+  nextOfKinName: z.string().optional().nullable(),
+  nextOfKinPhoneNumber: z.string().optional().nullable(),
+  nextOfKinEmail: z.string().optional().nullable(),
+  nextOfKinAddress: z.string().optional().nullable(),
+  nextOfKinRelationship: z.string().optional().nullable(),
   documents: z.array(employeeDocumentSchema).optional().default([]),
   isActive: z.string().default("yes"),
   createdAt: z.string(),

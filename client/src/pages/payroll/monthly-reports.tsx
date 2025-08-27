@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Printer, FileText, Download, RefreshCw, CalendarIcon } from "lucide-react";
+import { Printer, FileText, Download, RefreshCw, CalendarIcon, Mail } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
@@ -74,6 +76,8 @@ export default function MonthlyReports() {
   });
 
   const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
+  const [emailAddress, setEmailAddress] = useState<string>("");
+  const [isEmailSending, setIsEmailSending] = useState(false);
 
   // Fetch employees first
   const { data: employees = [], isLoading: isLoadingEmployees } = useQuery<Employee[]>({
@@ -166,13 +170,43 @@ export default function MonthlyReports() {
       item.totalHours.toString()
     ]);
     
-    // Use autoTable for better table formatting
-    (doc as any).autoTable({
-      head: [['Employee', 'Present', 'Absent', 'Leave', 'Holiday', 'Attendance %', 'Total Hours']],
-      body: tableData,
-      startY: 65,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [59, 130, 246] }
+    // Create table manually
+    let yPosition = 65;
+    const cellHeight = 8;
+    const startX = 10;
+    const headers = ['Employee', 'Present', 'Absent', 'Leave', 'Holiday', 'Attendance %', 'Total Hours'];
+    const cellWidth = (210 - 20) / headers.length; // A4 width minus margins
+    
+    // Draw headers
+    doc.setFillColor(59, 130, 246);
+    doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
+    headers.forEach((header, index) => {
+      doc.text(header, startX + (index * cellWidth) + 2, yPosition + 5);
+    });
+    
+    yPosition += cellHeight;
+    doc.setTextColor(0, 0, 0);
+    
+    // Draw data rows
+    tableData.forEach((row, rowIndex) => {
+      if (yPosition > 270) { // Start new page if needed
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      // Alternate row colors
+      if (rowIndex % 2 === 0) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+      }
+      
+      row.forEach((cell, cellIndex) => {
+        doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 5);
+      });
+      
+      yPosition += cellHeight;
     });
     
     doc.save(`attendance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
@@ -197,6 +231,406 @@ export default function MonthlyReports() {
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance Report');
     
     XLSX.writeFile(workbook, `attendance-report-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+  };
+
+  const handleDetailedPDFExport = async () => {
+    if (!dateRange?.from || !dateRange?.to) {
+      toast({
+        title: "Error",
+        description: "Please select a date range first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation
+    
+    // Add header
+    doc.setFontSize(16);
+    doc.text('TROPIFRUIT UK LTD', 148, 15, { align: 'center' });
+    doc.setFontSize(12);
+    doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 148, 22, { align: 'center' });
+    doc.setFontSize(14);
+    doc.text('Detailed Attendance Report', 148, 32, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text(`${format(dateRange.from, "dd/MM/yyyy")} - ${format(dateRange.to, "dd/MM/yyyy")}`, 148, 38, { align: 'center' });
+    
+    // Generate date headers
+    const dates = [];
+    const currentDate = new Date(dateRange.from);
+    while (currentDate <= dateRange.to) {
+      dates.push(format(currentDate, 'dd/MM'));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Create table headers
+    const headers = ['Employee', ...dates, 'Weekly Wage', 'Remarks'];
+    
+    // Create table data
+    const tableData = attendanceData.map((item: any) => {
+      const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+      const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays);
+      const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
+      
+      const row = [item.employee.name || item.employee.fullName || 'Unknown'];
+      
+      // Add daily attendance markings
+      dates.forEach(date => {
+        // This is simplified - you'd need actual daily attendance data from backend
+        // For now, showing 'P' for present days and 'A' for others
+        const dayIndex = dates.indexOf(date);
+        if (dayIndex < item.presentDays) {
+          row.push('P');
+        } else if (dayIndex < item.presentDays + item.absentDays) {
+          row.push('A');
+        } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays) {
+          row.push('L');
+        } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays + item.holidayDays) {
+          row.push('H');
+        } else {
+          row.push('-');
+        }
+      });
+      
+      row.push(`£${weeklyPay.toFixed(2)}`);
+      row.push(''); // Remarks column
+      
+      return row;
+    });
+    
+    // Create table manually
+    let yPosition = 45;
+    const cellHeight = 6;
+    const startX = 10;
+    const cellWidth = (297 - 20) / headers.length; // A4 landscape width minus margins
+    
+    // Draw headers
+    doc.setFillColor(59, 130, 246);
+    doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(7);
+    headers.forEach((header, index) => {
+      doc.text(header, startX + (index * cellWidth) + 2, yPosition + 4);
+    });
+    
+    yPosition += cellHeight;
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(6);
+    
+    // Draw data rows
+    tableData.forEach((row, rowIndex) => {
+      if (yPosition > 200) { // Start new page if needed
+        doc.addPage();
+        yPosition = 20;
+      }
+      
+      // Alternate row colors
+      if (rowIndex % 2 === 0) {
+        doc.setFillColor(248, 250, 252);
+        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+      }
+      
+      row.forEach((cell, cellIndex) => {
+        doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 4);
+      });
+      
+      yPosition += cellHeight;
+    });
+    
+    doc.save(`detailed-attendance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+  };
+
+  const handleDetailedExcelExport = () => {
+    if (!dateRange?.from || !dateRange?.to) {
+      toast({
+        title: "Error",
+        description: "Please select a date range first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Generate date headers
+    const dates = [];
+    const currentDate = new Date(dateRange.from);
+    while (currentDate <= dateRange.to) {
+      dates.push(format(currentDate, 'dd/MM'));
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    // Create headers
+    const headers = ['Employee', ...dates, 'Weekly Wage', 'Remarks'];
+    
+    // Create data rows
+    const worksheetData = [
+      headers,
+      ...attendanceData.map((item: any) => {
+        const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+        const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays);
+        const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
+        
+        const row = [item.employee.name || item.employee.fullName || 'Unknown'];
+        
+        // Add daily attendance markings
+        dates.forEach(date => {
+          // This is simplified - you'd need actual daily attendance data from backend
+          const dayIndex = dates.indexOf(date);
+          if (dayIndex < item.presentDays) {
+            row.push('P');
+          } else if (dayIndex < item.presentDays + item.absentDays) {
+            row.push('A');
+          } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays) {
+            row.push('L');
+          } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays + item.holidayDays) {
+            row.push('H');
+          } else {
+            row.push('-');
+          }
+        });
+        
+        row.push(`£${weeklyPay.toFixed(2)}`);
+        row.push(''); // Remarks column
+        
+        return row;
+      })
+    ];
+    
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    
+    // Style the header row
+    const headerRange = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+      if (!worksheet[cellAddress]) continue;
+      worksheet[cellAddress].s = {
+        fill: { fgColor: { rgb: "3B82F6" } },
+        font: { color: { rgb: "FFFFFF" }, bold: true }
+      };
+    }
+    
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Detailed Attendance');
+    
+    XLSX.writeFile(workbook, `detailed-attendance-${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+  };
+
+  const handleEmailReport = async (reportType: 'summary' | 'detailed') => {
+    if (!emailAddress.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter an email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!dateRange?.from || !dateRange?.to) {
+      toast({
+        title: "Error",
+        description: "Please select a date range first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsEmailSending(true);
+
+    try {
+      // Generate PDF content based on report type
+      let pdfBlob;
+      if (reportType === 'summary') {
+        // Generate summary PDF
+        const doc = new jsPDF();
+        
+        // Add header
+        doc.setFontSize(16);
+        doc.text('TROPIFRUIT UK LTD', 105, 20, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 105, 30, { align: 'center' });
+        doc.setFontSize(14);
+        doc.text('Attendance Summary Report', 105, 45, { align: 'center' });
+        doc.setFontSize(10);
+        doc.text(`${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}`, 105, 55, { align: 'center' });
+        
+        // Add summary table
+        const tableData = processedAttendanceData.map(item => [
+          item.employee.name || item.employee.fullName || 'Unknown',
+          item.presentDays.toString(),
+          item.absentDays.toString(),
+          item.leaveDays.toString(),
+          item.holidayDays.toString(),
+          `${item.attendancePercentage}%`,
+          item.totalHours.toString()
+        ]);
+        
+        // Create table manually
+        let yPosition = 65;
+        const cellHeight = 8;
+        const startX = 10;
+        const headers = ['Employee', 'Present', 'Absent', 'Leave', 'Holiday', 'Attendance %', 'Total Hours'];
+        const cellWidth = (210 - 20) / headers.length;
+        
+        // Draw headers
+        doc.setFillColor(59, 130, 246);
+        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(8);
+        headers.forEach((header, index) => {
+          doc.text(header, startX + (index * cellWidth) + 2, yPosition + 5);
+        });
+        
+        yPosition += cellHeight;
+        doc.setTextColor(0, 0, 0);
+        
+        // Draw data rows
+        tableData.forEach((row, rowIndex) => {
+          if (yPosition > 270) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          
+          if (rowIndex % 2 === 0) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+          }
+          
+          row.forEach((cell, cellIndex) => {
+            doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 5);
+          });
+          
+          yPosition += cellHeight;
+        });
+        
+        pdfBlob = doc.output('blob');
+      } else {
+        // Generate detailed PDF (same as handleDetailedPDFExport but return blob)
+        const doc = new jsPDF('l', 'mm', 'a4');
+        
+        // Add header
+        doc.setFontSize(16);
+        doc.text('TROPIFRUIT UK LTD', 148, 15, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 148, 22, { align: 'center' });
+        doc.setFontSize(14);
+        doc.text('Detailed Attendance Report', 148, 32, { align: 'center' });
+        doc.setFontSize(10);
+        doc.text(`${format(dateRange.from, "dd/MM/yyyy")} - ${format(dateRange.to, "dd/MM/yyyy")}`, 148, 38, { align: 'center' });
+        
+        // Generate date headers
+        const dates = [];
+        const currentDate = new Date(dateRange.from);
+        while (currentDate <= dateRange.to) {
+          dates.push(format(currentDate, 'dd/MM'));
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        const headers = ['Employee', ...dates, 'Weekly Wage', 'Remarks'];
+        
+        const tableData = attendanceData.map((item: any) => {
+          const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+          const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays);
+          const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
+          
+          const row = [item.employee.name || item.employee.fullName || 'Unknown'];
+          
+          dates.forEach(date => {
+            const dayIndex = dates.indexOf(date);
+            if (dayIndex < item.presentDays) {
+              row.push('P');
+            } else if (dayIndex < item.presentDays + item.absentDays) {
+              row.push('A');
+            } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays) {
+              row.push('L');
+            } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays + item.holidayDays) {
+              row.push('H');
+            } else {
+              row.push('-');
+            }
+          });
+          
+          row.push(`£${weeklyPay.toFixed(2)}`);
+          row.push('');
+          
+          return row;
+        });
+        
+        // Create table manually
+        let yPosition = 45;
+        const cellHeight = 6;
+        const startX = 10;
+        const cellWidth = (297 - 20) / headers.length;
+        
+        // Draw headers
+        doc.setFillColor(59, 130, 246);
+        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+        headers.forEach((header, index) => {
+          doc.text(header, startX + (index * cellWidth) + 2, yPosition + 4);
+        });
+        
+        yPosition += cellHeight;
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(6);
+        
+        tableData.forEach((row, rowIndex) => {
+          if (yPosition > 200) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          
+          if (rowIndex % 2 === 0) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
+          }
+          
+          row.forEach((cell, cellIndex) => {
+            doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 4);
+          });
+          
+          yPosition += cellHeight;
+        });
+        
+        pdfBlob = doc.output('blob');
+      }
+
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result?.toString().split(',')[1];
+        
+        // Send email via API
+        const emailData = {
+          to: emailAddress,
+          subject: `${reportType === 'summary' ? 'Attendance Summary' : 'Detailed Attendance'} Report - ${format(dateRange.from!, "dd/MM/yyyy")} to ${format(dateRange.to!, "dd/MM/yyyy")}`,
+          body: `Please find attached the ${reportType === 'summary' ? 'attendance summary' : 'detailed attendance'} report for the period ${format(dateRange.from!, "dd/MM/yyyy")} to ${format(dateRange.to!, "dd/MM/yyyy")}.\n\nBest regards,\nTropifruit UK Ltd`,
+          attachment: {
+            filename: `${reportType}-attendance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
+            content: base64data,
+            contentType: 'application/pdf'
+          }
+        };
+
+        await apiRequest('POST', '/api/send-email', emailData);
+        
+        toast({
+          title: "Email Sent Successfully",
+          description: `${reportType === 'summary' ? 'Summary' : 'Detailed'} report has been sent to ${emailAddress}`,
+        });
+      };
+      
+      reader.readAsDataURL(pdfBlob);
+      
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send email. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsEmailSending(false);
+    }
   };
 
   // Process attendance data for display
@@ -303,6 +737,36 @@ export default function MonthlyReports() {
                 Excel
               </Button>
             </div>
+          </div>
+          
+          {/* Email Section */}
+          <div className="flex flex-wrap items-center gap-3 mt-4 p-4 bg-gray-50 rounded-lg">
+            <Label htmlFor="email" className="text-sm font-medium">Email Report:</Label>
+            <Input
+              id="email"
+              type="email"
+              placeholder="Enter email address"
+              value={emailAddress}
+              onChange={(e) => setEmailAddress(e.target.value)}
+              className="w-64"
+            />
+            <Button 
+              onClick={() => handleEmailReport('summary')} 
+              disabled={isEmailSending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              {isEmailSending ? "Sending..." : "Email Summary"}
+            </Button>
+            <Button 
+              onClick={() => handleEmailReport('detailed')} 
+              disabled={isEmailSending}
+              variant="outline"
+              className="bg-purple-600 text-white hover:bg-purple-700"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              {isEmailSending ? "Sending..." : "Email Detailed"}
+            </Button>
           </div>
         </CardHeader>
 
@@ -421,45 +885,70 @@ export default function MonthlyReports() {
           </div>
         </CardContent>
       </Card>
-      {/* Simple Payroll Section */}
+      {/* Weekly Payroll Section */}
       <div className="bg-white rounded-xl shadow p-0 mt-8">
         <div className="flex items-center justify-between border-b px-6 py-4">
-          <h3 className="text-lg font-semibold">Simple Payroll (Present Days × Daily Wage)</h3>
+          <h3 className="text-lg font-semibold">Weekly Payroll (6 Working Days)</h3>
           <div className="flex gap-2">
             <Button variant="outline" size="icon" onClick={handlePrint} title="Print"><Printer className="w-4 h-4" /></Button>
             <Button variant="outline" size="icon" onClick={handlePDFExport} title="Export PDF"><FileText className="w-4 h-4" /></Button>
             <Button variant="outline" size="icon" onClick={handleExcelExport} title="Export Excel"><Download className="w-4 h-4" /></Button>
+            <Button variant="outline" size="sm" onClick={handleDetailedPDFExport} className="bg-purple-600 text-white hover:bg-purple-700">
+              <FileText className="w-4 h-4 mr-1" />
+              Detailed PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleDetailedExcelExport} className="bg-orange-600 text-white hover:bg-orange-700">
+              <Download className="w-4 h-4 mr-1" />
+              Detailed Excel
+            </Button>
           </div>
         </div>
         <div className="px-6 pt-4 pb-6" id="payroll-print-area">
           <div className="text-sm text-gray-600 mb-4">
-            Use the date range picker above to select the period for payroll calculation.
+            Weekly wage calculation: Full week (6 days) = Full weekly salary. Missing days are deducted proportionally.
           </div>
           <div className="overflow-x-auto rounded-xl border">
-            <table className="w-full min-w-[600px]">
+            <table className="w-full min-w-[700px]">
               <thead>
                 <tr className="bg-blue-50">
                   <th className="text-center px-2 py-2">Employee</th>
+                  <th className="text-center px-2 py-2">Weekly Salary</th>
                   <th className="text-center px-2 py-2">Present Days</th>
-                  <th className="text-center px-2 py-2">Daily Wage</th>
-                  <th className="text-center px-2 py-2">Pay</th>
-                  <th className="text-center px-2 py-2">Present Dates</th>
+                  <th className="text-center px-2 py-2">Working Days</th>
+                  <th className="text-center px-2 py-2">Attendance %</th>
+                  <th className="text-center px-2 py-2">Weekly Pay</th>
                 </tr>
               </thead>
               <tbody>
                 {isLoadingAttendance ? (
-                  <tr><td colSpan={5} className="text-center py-8">Loading...</td></tr>
+                  <tr><td colSpan={6} className="text-center py-8">Loading...</td></tr>
                 ) : attendanceData.length === 0 ? (
-                  <tr><td colSpan={5} className="text-center py-8">No data for selected period</td></tr>
-                ) : attendanceData.map((item: any) => (
-                  <tr key={item.employee.id} className="hover:bg-blue-50">
-                    <td className="text-center px-2 py-2 font-medium">{item.employee.name || item.employee.fullName || `Employee ${item.employee.id}`}</td>
-                    <td className="text-center px-2 py-2">{item.presentDays}</td>
-                    <td className="text-center px-2 py-2">£{item.employee.salary || item.employee.dailyWage || '0.00'}</td>
-                    <td className="text-center px-2 py-2 font-bold text-green-700">£{item.pay}</td>
-                    <td className="text-center px-2 py-2 text-xs">{(item.presentDates || []).join(", ")}</td>
-                  </tr>
-                ))}
+                  <tr><td colSpan={6} className="text-center py-8">No data for selected period</td></tr>
+                ) : attendanceData.map((item: any) => {
+                  const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+                  const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays); // Max 6 working days per week
+                  const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
+                  const attendancePercentage = workingDaysInPeriod > 0 ? Math.round((item.presentDays / workingDaysInPeriod) * 100) : 0;
+                  
+                  return (
+                    <tr key={item.employee.id} className="hover:bg-blue-50">
+                      <td className="text-center px-2 py-2 font-medium">{item.employee.name || item.employee.fullName || `Employee ${item.employee.id}`}</td>
+                      <td className="text-center px-2 py-2">£{weeklySalary.toFixed(2)}</td>
+                      <td className="text-center px-2 py-2 font-semibold text-green-600">{item.presentDays}</td>
+                      <td className="text-center px-2 py-2">{workingDaysInPeriod}</td>
+                      <td className="text-center px-2 py-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          attendancePercentage >= 90 ? 'bg-green-100 text-green-800' :
+                          attendancePercentage >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {attendancePercentage}%
+                        </span>
+                      </td>
+                      <td className="text-center px-2 py-2 font-bold text-green-700">£{weeklyPay.toFixed(2)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

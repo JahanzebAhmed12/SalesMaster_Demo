@@ -33,7 +33,8 @@ export default function ClosingTime() {
   const { data: businessDate, isLoading, refetch } = useQuery<BusinessDate>({
     queryKey: ['/api/business-date'],
     queryFn: () => apiRequest<BusinessDate>('GET', '/api/business-date'),
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 5000, // Refetch every 5 seconds to catch external changes
+    staleTime: 0, // Always consider data stale to ensure fresh fetches
   });
 
   // Switch to next business date mutation
@@ -56,25 +57,7 @@ export default function ClosingTime() {
     },
   });
 
-  // Reset business date mutation
-  const resetDateMutation = useMutation({
-    mutationFn: () => apiRequest('POST', '/api/business-date/reset'),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/business-date'] });
-      toast({
-        title: "Date Reset Successfully",
-        description: "Business date has been reset to current system date.",
-      });
-      refetch();
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to reset business date. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
+
 
   useEffect(() => {
     if (businessDate) {
@@ -83,13 +66,21 @@ export default function ClosingTime() {
     }
   }, [businessDate]);
 
+  // Refetch when window gains focus (user returns from admin page)
+  useEffect(() => {
+    const handleFocus = () => {
+      refetch();
+    };
+    
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [refetch]);
+
   const handleDateSwitch = () => {
     switchDateMutation.mutate();
   };
 
-  const handleDateReset = () => {
-    resetDateMutation.mutate();
-  };
+
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-GB', {
@@ -209,62 +200,7 @@ export default function ClosingTime() {
 
           {/* Action Buttons */}
           <div className="flex justify-center gap-4 py-6">
-            {/* Reset Button */}
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button 
-                  variant="outline"
-                  size="lg" 
-                  className="border-blue-600 text-blue-600 hover:bg-blue-50 px-8 py-3"
-                  disabled={resetDateMutation.isPending}
-                >
-                  {resetDateMutation.isPending ? (
-                    <>
-                      <RefreshCw className="w-5 h-5 mr-2 animate-spin" />
-                      Resetting...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-5 h-5 mr-2" />
-                      Reset to Current Date
-                    </>
-                  )}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <RefreshCw className="h-5 w-5 text-blue-600" />
-                    Reset Business Date
-                  </AlertDialogTitle>
-                  <AlertDialogDescription className="space-y-3">
-                    <p>
-                      This will reset the business date to today's system date and clear any manual overrides.
-                    </p>
-                    <div className="bg-gray-50 p-4 rounded-lg space-y-2">
-                      <p><strong>Current System Date:</strong> {new Date().toLocaleDateString('en-GB', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                      })}</p>
-                    </div>
-                    <p className="text-sm text-blue-600">
-                      This will make the business date match today's actual date.
-                    </p>
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={handleDateReset}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    Reset to Current Date
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+
 
             {/* Switch Button */}
             <AlertDialog>

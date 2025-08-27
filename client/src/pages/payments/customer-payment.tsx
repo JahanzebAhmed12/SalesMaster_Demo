@@ -906,43 +906,36 @@ export default function CustomerPayment() {
                 </div>
               ) : (
                 <div>
-                  <Label>Link to Invoice (Optional):</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        className="w-full justify-between"
-                      >
-                        {onAccountInvoiceId
-                          ? displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.invoiceNumber || "Select invoice"
-                          : "No invoice (pure on-account)"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0">
-                      <Command>
-                        <CommandInput placeholder="Search invoice number..." />
-                        <CommandList>
-                          <CommandItem
-                            value="none"
-                            onSelect={() => setOnAccountInvoiceId(null)}
-                          >
-                            No Invoice (Pure On-Account)
-                          </CommandItem>
-                          <CommandEmpty>No invoices found.</CommandEmpty>
-                          {displayedInvoices.map(inv => (
-                            <CommandItem
-                              key={inv.id}
-                              value={inv.invoiceNumber}
-                              onSelect={() => setOnAccountInvoiceId(inv.id)}
-                            >
-                              {inv.invoiceNumber} - £{inv.balance.toFixed(2)}
-                            </CommandItem>
-                          ))}
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                  <Label>Selected Invoice for On-Account Payment:</Label>
+                  <div className="p-2 border rounded bg-gray-50">
+                    {onAccountInvoiceId ? (
+                      <div>
+                        <span className="font-semibold">
+                          {displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.invoiceNumber || "Unknown"}
+                        </span>
+                        <div className="text-sm text-gray-600 mt-1">
+                          Balance: £{displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.balance.toFixed(2) || "0.00"}
+                          {displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.balance < 0 && (
+                            <span className="text-red-600 ml-2">(Credit Invoice)</span>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setOnAccountInvoiceId(null);
+                            setReceivedAmount(0);
+                            setRemarks("");
+                          }}
+                          className="text-xs mt-1 p-0 h-auto text-red-600 hover:text-red-800"
+                        >
+                          Clear Selection
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-gray-500">No invoice selected - Pure on-account payment</span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1124,12 +1117,13 @@ export default function CustomerPayment() {
           </CardContent>
         </Card>
 
-        {/* Outstanding Invoices Table - Only show in invoice mode */}
-        {!isOnAccountMode && (
+        {/* Outstanding Invoices Table */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
-              <CardTitle>Outstanding Invoices</CardTitle>
+              <CardTitle>
+                {isOnAccountMode ? "Outstanding Invoices (Select for On-Account Payment)" : "Outstanding Invoices"}
+              </CardTitle>
               <div className="flex items-center gap-2">
                 <Input
                   placeholder="Search invoices..."
@@ -1147,61 +1141,121 @@ export default function CustomerPayment() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">
-                    <input
-                      type="checkbox"
-                      checked={selectedInvoiceIds.size === displayedInvoices.length && displayedInvoices.length > 0}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="rounded"
-                    />
-                  </TableHead>
+                  {!isOnAccountMode && (
+                    <TableHead className="w-12">
+                      <input
+                        type="checkbox"
+                        checked={selectedInvoiceIds.size === displayedInvoices.length && displayedInvoices.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="rounded"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Date</TableHead>
                   <TableHead>Invoice No.</TableHead>
                   <TableHead className="text-right">Total Amount</TableHead>
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Running Balance</TableHead>
+                  {isOnAccountMode && <TableHead>Action</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {displayedInvoices.map((invoice) => (
                   <TableRow key={invoice.id} className={selectedInvoiceIds.has(invoice.id) ? 'bg-blue-50' : ''}>
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        checked={selectedInvoiceIds.has(invoice.id)}
-                        onChange={(e) => handleInvoiceSelection(invoice.id, e.target.checked)}
-                        className="rounded"
-                      />
-                    </TableCell>
+                    {!isOnAccountMode && (
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedInvoiceIds.has(invoice.id)}
+                          onChange={(e) => handleInvoiceSelection(invoice.id, e.target.checked)}
+                          className="rounded"
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>{format(new Date(invoice.date || ''), "dd/MM/yyyy")}</TableCell>
                     <TableCell>{invoice.invoiceNumber}</TableCell>
                     <TableCell className="text-right">£{invoice.totalAmount.toFixed(2)}</TableCell>
                     <TableCell className="text-right">£{invoice.paid.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">£{invoice.balance.toFixed(2)}</TableCell>
+                    <TableCell className={`text-right ${invoice.balance < 0 ? 'text-red-600 font-semibold' : ''}`}>
+                      £{invoice.balance.toFixed(2)}
+                    </TableCell>
                     <TableCell>
-                      {selectedInvoiceIds.has(invoice.id) ? (
+                      {invoice.balance < 0 ? (
+                        <span className="text-red-600 text-xs bg-red-50 px-2 py-1 rounded">Credit</span>
+                      ) : (
+                        <span className="text-blue-600 text-xs bg-blue-50 px-2 py-1 rounded">Invoice</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {!isOnAccountMode && selectedInvoiceIds.has(invoice.id) ? (
                         <span className="text-green-600 text-sm">Selected</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">£{invoice.runningBal.toFixed(2)}</TableCell>
+                    {isOnAccountMode && (
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setOnAccountInvoiceId(invoice.id);
+                            setReceivedAmount(Math.abs(invoice.balance)); // Set amount to absolute balance
+                            setRemarks(`On-account payment for invoice ${invoice.invoiceNumber}`);
+                          }}
+                          className="text-xs"
+                        >
+                          Pay On Account
+                        </Button>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
                 {displayedInvoices.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-4">
+                    <TableCell colSpan={isOnAccountMode ? 10 : 9} className="text-center py-4">
                       No outstanding invoices found
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
+            
+            {/* Summary Row */}
+            {displayedInvoices.length > 0 && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium">Total Outstanding:</span>
+                    <div className="text-lg font-bold">£{totalOutstandingBalance.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Credit Invoices:</span>
+                    <div className="text-lg font-bold text-red-600">
+                      £{displayedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Unpaid Invoices:</span>
+                    <div className="text-lg font-bold text-blue-600">
+                      £{displayedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Net Balance:</span>
+                    <div className={`text-lg font-bold ${totalOutstandingBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      £{totalOutstandingBalance.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
-        )}
 
         {/* Payment History Table */}
         {selectedCustomerId && (

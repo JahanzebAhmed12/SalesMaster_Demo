@@ -1,0 +1,15 @@
+# Additional requirements for PDF and Excel export functionality
+# Add these to your existing requirements.txt
+
+# Excel generation
+openpyxl>=3.1.2
+pandas>=2.0.0
+
+# PDF generation from HTML (for A4 invoice)
+requests>=2.31.0
+
+# PDF generation (if not already included)
+reportlab>=4.0.0
+
+# For better Excel styling (optional)
+xlsxwriter>=3.1.0

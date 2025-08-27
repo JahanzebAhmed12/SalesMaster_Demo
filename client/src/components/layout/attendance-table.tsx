@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Save, Check, Calendar, AlertCircle, PoundSterling, CalendarDays } from "lucide-react";
+import { Save, Check, Calendar, AlertCircle, CalendarDays } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { EmployeeWithAttendance } from "@shared/schema";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -38,7 +38,7 @@ export default function AttendanceTable({
   const [selectedStatus, setSelectedStatus] = useState<Record<number, string>>({});
   const [leaveType, setLeaveType] = useState<Record<number, string>>({});
   const [holidayName, setHolidayName] = useState<Record<number, string>>({});
-  const [dailyWage, setDailyWage] = useState<Record<number, string>>({});
+
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'range'>(initialViewMode);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(
     initialDateRange || { 
@@ -139,25 +139,7 @@ export default function AttendanceTable({
     },
   });
 
-  const updateDailyWageMutation = useMutation({
-    mutationFn: async ({ employeeId, dailyWage }: { employeeId: number; dailyWage: number }) => {
-      return apiRequest("PUT", `/api/employees/${employeeId}/daily-wage`, { dailyWage });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/employees/attendance"] });
-      toast({
-        title: "Success",
-        description: "Daily wage updated successfully",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to update daily wage",
-        variant: "destructive",
-      });
-    },
-  });
+
 
   const handleMarkAllPresent = () => {
     if (!dateRange?.from || !dateRange?.to) return;
@@ -282,21 +264,7 @@ export default function AttendanceTable({
     }
   };
 
-  const handleSaveDailyWage = (employeeId: number) => {
-    const wage = dailyWage[employeeId];
-    if (wage && !isNaN(Number(wage)) && Number(wage) >= 0) {
-      updateDailyWageMutation.mutate({
-        employeeId,
-        dailyWage: Number(wage),
-      });
-    } else {
-      toast({
-        title: "Error",
-        description: "Please enter a valid daily wage",
-        variant: "destructive",
-      });
-    }
-  };
+
 
   // Filter out inactive employees if needed (case-insensitive check)
   const activeEmployees = employees.filter(emp => emp.status?.toLowerCase() === "active");
@@ -393,7 +361,6 @@ export default function AttendanceTable({
                   <TableHead>Employee</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Daily Wage</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -437,6 +404,9 @@ export default function AttendanceTable({
                               <SelectItem value="casual">Casual Leave</SelectItem>
                               <SelectItem value="annual">Annual Leave</SelectItem>
                               <SelectItem value="unpaid">Unpaid Leave</SelectItem>
+                              <SelectItem value="off">Off</SelectItem>
+                              <SelectItem value="maternity">Maternity Leave</SelectItem>
+                              <SelectItem value="paternity">Paternity Leave</SelectItem>
                             </SelectContent>
                           </Select>
                         )}
@@ -457,35 +427,7 @@ export default function AttendanceTable({
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <div className="relative">
-                          <PoundSterling className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <Input
-                            type="number"
-                            placeholder="0.00"
-                            value={dailyWage[employee.id] ?? employee.dailyWage ?? ""}
-                            onChange={(e) =>
-                              setDailyWage((prev) => ({
-                                ...prev,
-                                [employee.id]: e.target.value,
-                              }))
-                            }
-                            className="pl-8 w-[120px]"
-                            min="0"
-                            step="0.01"
-                          />
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSaveDailyWage(employee.id)}
-                          disabled={updateDailyWageMutation.isPending}
-                        >
-                          {updateDailyWageMutation.isPending ? "Saving..." : "Save"}
-                        </Button>
-                      </div>
-                    </TableCell>
+
                     <TableCell>
                       <Button
                         onClick={() => handleSaveAttendance(employee.id)}

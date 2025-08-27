@@ -330,6 +330,7 @@ export default function EmployeeDatabase() {
                     <th className="text-left p-3 border-r">Start Date</th>
                     <th className="text-left p-3 border-r">Term</th>
                     <th className="text-left p-3 border-r">Status</th>
+                    <th className="text-left p-3 border-r">Next of Kin</th>
                     <th className="text-left p-3 border-r">Documents</th>
                     <th className="text-left p-3 border-r">Joining Form</th>
                     <th className="text-left p-3 border-r">Contract</th>
@@ -352,6 +353,21 @@ export default function EmployeeDatabase() {
                       </td>
                       <td className="p-3 border-r">{employee.term || ""}</td>
                       <td className="p-3 border-r">{employee.status || ""}</td>
+                      <td className="p-3 border-r">
+                        {employee.nextOfKinName ? (
+                          <div className="text-xs">
+                            <div className="font-medium">{employee.nextOfKinName}</div>
+                            {employee.nextOfKinRelationship && (
+                              <div className="text-gray-500">({employee.nextOfKinRelationship})</div>
+                            )}
+                            {employee.nextOfKinPhoneNumber && (
+                              <div className="text-gray-500">{employee.nextOfKinPhoneNumber}</div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
                       <td className="p-3 border-r">
                         <DocumentsCell employeeId={employee.id} />
                       </td>

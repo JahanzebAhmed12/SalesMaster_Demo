@@ -22,10 +22,10 @@ export default function Payroll() {
           </div>
           <div className="text-right">
             <p className="text-sm text-blue-100">Current Date</p>
-            <p className="text-lg font-semibold">{new Date().toLocaleDateString('en-GB', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
+            <p className="text-lg font-semibold">{new Date().toLocaleDateString('en-GB', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
             })}</p>
             <p className="text-xs text-blue-200 mt-1">
               Closing Time: <span>11:59 PM</span>

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,6 +14,7 @@ import Header from "@/components/layout/header";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { UserRestriction, User } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -155,6 +156,7 @@ const restrictionSections = menuSections.flatMap(section => {
 });
 
 const AdminFunctions = () => {
+  const { toast } = useToast();
   const [userWorkTime, setUserWorkTime] = useState({
     admin: { start: "00:01", end: "23:59" },
     cashier: { start: "00:01", end: "23:59" },
@@ -234,10 +236,31 @@ const AdminFunctions = () => {
 
   const [savingShowDashboardInfo, setSavingShowDashboardInfo] = useState(false);
 
+  const [lockInvoices, setLockInvoices] = useState(false);
+  const [savingLockInvoices, setSavingLockInvoices] = useState(false);
+
   const [companyAddress, setCompanyAddress] = useState("");
   const [savingCompanyAddress, setSavingCompanyAddress] = useState(false);
 
   const queryClient = useQueryClient();
+
+  // Reset business date mutation
+  const resetDateMutation = useMutation({
+    mutationFn: () => apiRequest('POST', '/api/business-date/reset'),
+    onSuccess: () => {
+      toast({
+        title: "Date Reset Successfully",
+        description: "Business date has been reset to current system date.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to reset business date. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Fetch all users
   const { data: users = [], isLoading: loadingUsers } = useQuery<User[]>({
@@ -558,6 +581,16 @@ const AdminFunctions = () => {
     setSavingShowDashboardInfo(true);
     await apiRequest("PUT", "/api/settings", { showDashboardInfo });
     setSavingShowDashboardInfo(false);
+  };
+
+  useEffect(() => {
+    apiRequest("GET", "/api/settings").then(settings => setLockInvoices(!!settings.lockInvoices));
+  }, []);
+
+  const saveLockInvoices = async () => {
+    setSavingLockInvoices(true);
+    await apiRequest("PUT", "/api/settings", { lockInvoices });
+    setSavingLockInvoices(false);
   };
 
   useEffect(() => {
@@ -1440,6 +1473,42 @@ const AdminFunctions = () => {
             </Collapsible>
           </Card>
 
+          <Card className="shadow-sm border border-gray-200">
+            <Collapsible>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                  <CardTitle className="flex items-center justify-between text-sm">
+                    Invoice Lock Settings
+                    <ChevronDown className="h-4 w-4" />
+                  </CardTitle>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="p-4">
+                  <div className="mb-4">
+                    <div className="text-sm font-medium mb-2">Lock Invoices After Creation</div>
+                    <div className="text-xs text-gray-600 mb-4">
+                      When enabled, invoices become read-only after creation. Only admin users can edit locked invoices.
+                    </div>
+                    <RadioGroup value={lockInvoices ? "yes" : "no"} onValueChange={(value) => setLockInvoices(value === "yes")}> 
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="yes" id="yes-lock" />
+                        <Label htmlFor="yes-lock" className="text-sm">Yes - Lock invoices after creation</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="no" id="no-lock" />
+                        <Label htmlFor="no-lock" className="text-sm">No - Allow all users to edit invoices</Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveLockInvoices} disabled={savingLockInvoices}>
+                    {savingLockInvoices ? "Saving..." : "Save"}
+                  </Button>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
+          </Card>
+
           {/* Currency Exchange */}
           <Card className="shadow-sm border border-gray-200">
             <Collapsible>
@@ -1488,6 +1557,60 @@ const AdminFunctions = () => {
           </Card>
 
         </div>
+
+        {/* Business Date Reset */}
+        <Card className="shadow-sm border border-gray-200 mb-10">
+          <Collapsible>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                <CardTitle className="flex items-center justify-between text-sm">
+                  Business Date Reset
+                  <ChevronDown className="h-4 w-4" />
+                </CardTitle>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="p-4">
+                <div className="mb-4">
+                  <div className="text-sm font-medium mb-2">Reset Business Date to Current System Date</div>
+                  <div className="text-xs text-gray-600 mb-4">
+                    This will reset the business date to today's system date and clear any manual overrides.
+                    Use this if you need to sync the business date with today's actual date.
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg mb-4">
+                    <p className="text-sm"><strong>Current System Date:</strong> {new Date().toLocaleDateString('en-GB', {
+                      weekday: 'long',
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}</p>
+                  </div>
+                </div>
+                <Button 
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-6 py-2"
+                  onClick={() => {
+                    if (confirm("Are you sure you want to reset the business date to today's system date? This will affect all new data entries.")) {
+                      resetDateMutation.mutate();
+                    }
+                  }}
+                  disabled={resetDateMutation.isPending}
+                >
+                  {resetDateMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Resetting...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Reset to Current Date
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
 
         {/* Show Dashboard Info, Branding, Currency Exchange */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">

@@ -43,7 +43,6 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
   const { company, customer, sale, packingItems: items } = data;
   const totalItems = items.length;
   const totalBoxes = items.reduce((sum, item) => sum + (item.qty || 0), 0);
-  const totalKgs = items.reduce((sum, item) => sum + (item.weight || 0), 0);
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
       {/* Header: Logo and Company Info */}
@@ -64,29 +63,23 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
         {customer?.vat_number && <div style={{ fontSize: 14 }}>VAT No: {customer.vat_number}</div>}
       </div>
       {/* Packing List Table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 18 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 14 }}>
         <thead>
           <tr style={{ background: "#f5f5f5" }}>
-            <th style={{ border: "1px solid #888", padding: 8, textAlign: "left", fontSize: 20 }}>Qty</th>
-            <th style={{ border: "1px solid #888", padding: 8, fontSize: 20 }}>Weight(KGs)</th>
-            <th style={{ border: "1px solid #888", padding: 8, fontSize: 20 }}>Product</th>
-            <th style={{ border: "1px solid #888", padding: 8, fontSize: 20 }}>HS Code</th>
+            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left", fontSize: 16, width: "80px" }}>Qty</th>
+            <th style={{ border: "1px solid #888", padding: 4, fontSize: 16 }}>Product</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item, idx) => (
             <tr key={idx}>
-              <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontWeight: 600, fontSize: 20 }}>{item.qty}</td>
-              <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontWeight: 600, fontSize: 20 }}>{item.weight}</td>
-              <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}>{item.product}</td>
-              <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}>{item.hsCode || ""}</td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center", fontWeight: 600, fontSize: 16 }}>{item.qty}</td>
+              <td style={{ border: "1px solid #888", padding: 4, fontSize: 14 }}>{item.product}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold", background: "#f5f5f5" }}>
-            <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontSize: 20 }}>{totalBoxes} Boxes</td>
-            <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontSize: 20 }}>{totalKgs} Kgs</td>
-            <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}>{totalItems} Items</td>
-            <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}></td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center", fontSize: 16 }}>{totalBoxes} Boxes</td>
+            <td style={{ border: "1px solid #888", padding: 4, fontSize: 14 }}>{totalItems} Items</td>
           </tr>
         </tbody>
       </table>

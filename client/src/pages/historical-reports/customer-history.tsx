@@ -21,6 +21,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useLocation } from 'wouter';
 import { parseISO } from 'date-fns';
+import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 
 interface CompanyDetails {
   id: number;
@@ -69,8 +70,13 @@ export default function CustomerHistory() {
     enabled: !!user?.id,
   });
 
-  // Check if user can edit an invoice based on date
+  const { canEditInvoice: canEditInvoiceGlobal } = useInvoicePermissions();
+
+  // Check if user can edit an invoice based on date and invoice locking
   const canEditInvoice = (invoiceDate: string) => {
+    // First check if invoice locking allows editing
+    if (!canEditInvoiceGlobal) return false;
+    
     if (!userPermissions) return false;
     
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -663,8 +669,13 @@ export default function CustomerHistory() {
                             <Button 
                               variant="link" 
                               className="p-0 text-blue-600 underline" 
-                              onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`, '_self')}
-                              title="Edit invoice"
+                              onClick={() => {
+                                const url = canEditInvoiceGlobal 
+                                  ? `/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}`
+                                  : `/data-entry/sales-invoice?invoiceNumber=${row.invoiceNo}&readonly=true`;
+                                window.open(url, '_self');
+                              }}
+                              title={canEditInvoiceGlobal ? "Edit invoice" : "View invoice (Read-Only)"}
                             >
                               {row.invoiceNo}
                             </Button>

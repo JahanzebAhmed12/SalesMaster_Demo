@@ -1,3 +1,4 @@
+import React from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
@@ -39,13 +40,19 @@ export default function UserEdit() {
       userType: "user",
       status: "Active",
     },
-    values: user ? {
-      username: user.username,
-      password: "",
-      userType: user.userType,
-      status: user.status,
-    } : undefined,
   });
+
+  // Reset form values when user data is loaded
+  React.useEffect(() => {
+    if (user) {
+      form.reset({
+        username: user.username,
+        password: "", // Keep password empty for security
+        userType: user.userType,
+        status: user.status,
+      });
+    }
+  }, [user, form]);
 
   const updateUserMutation = useMutation({
     mutationFn: async (data: InsertUser) => {
@@ -133,7 +140,7 @@ export default function UserEdit() {
                       name="userType"
                       render={({ field }) => (
                         <FormItem>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select user type" />
@@ -192,7 +199,7 @@ export default function UserEdit() {
                       name="status"
                       render={({ field }) => (
                         <FormItem>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select status" />
