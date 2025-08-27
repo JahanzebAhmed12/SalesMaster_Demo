@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, FileText, Download, Mail } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
+import * as XLSX from 'xlsx';
 
 type ProductsAPI = { regularProducts: RegularProduct[]; nonProducts: NonProduct[] };
 type ProductHistoryAPI = {
@@ -43,6 +44,8 @@ export default function ProductHistory() {
   const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchClicked, setSearchClicked] = useState(false);
+  const [emailAddress, setEmailAddress] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   // Fetch all products
   const { data: productsData = { regularProducts: [], nonProducts: [] }, isLoading: loadingProducts, error: productsError } = useQuery<ProductsAPI>({
@@ -110,6 +113,183 @@ export default function ProductHistory() {
 
   // Loading states
   const loading = loadingProducts || loadingCustomers || loadingSuppliers || loadingHistory;
+
+  // Export functions
+  const exportToExcel = () => {
+    if (!searchClicked || loading) return;
+
+    const wb = XLSX.utils.book_new();
+    
+    // Create purchases sheet
+    const purchasesData = [
+      ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ...purchases.map((row: any, idx: number) => [
+        idx + 1,
+        row.date,
+        row.supplierName,
+        row.product,
+        row.quantity,
+        row.unitPrice,
+        row.total
+      ])
+    ];
+    const purchasesWS = XLSX.utils.aoa_to_sheet(purchasesData);
+    XLSX.utils.book_append_sheet(wb, purchasesWS, 'From Supplier');
+
+    // Create supplier returns sheet
+    const supplierReturnsData = [
+      ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ...supplierReturns.map((row: any, idx: number) => [
+        idx + 1,
+        row.date,
+        row.invoice,
+        row.supplierName,
+        row.product,
+        row.quantity,
+        row.unitPrice,
+        row.total
+      ])
+    ];
+    const supplierReturnsWS = XLSX.utils.aoa_to_sheet(supplierReturnsData);
+    XLSX.utils.book_append_sheet(wb, supplierReturnsWS, 'Supplier Returns');
+
+    // Create sales sheet
+    const salesData = [
+      ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ...sales.map((row: any, idx: number) => [
+        idx + 1,
+        row.date,
+        row.invoiceNo,
+        row.customerName,
+        row.product,
+        row.quantity,
+        row.unitPrice,
+        row.total
+      ])
+    ];
+    const salesWS = XLSX.utils.aoa_to_sheet(salesData);
+    XLSX.utils.book_append_sheet(wb, salesWS, 'Sales');
+
+    // Create customer returns sheet
+    const customerReturnsData = [
+      ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ...customerReturns.map((row: any, idx: number) => [
+        idx + 1,
+        row.date,
+        row.invoice,
+        row.customerName,
+        row.product,
+        row.quantity,
+        row.unitPrice,
+        row.total
+      ])
+    ];
+    const customerReturnsWS = XLSX.utils.aoa_to_sheet(customerReturnsData);
+    XLSX.utils.book_append_sheet(wb, customerReturnsWS, 'Customer Returns');
+
+    // Create dumps sheet
+    const dumpsData = [
+      ['Sl.No', 'Date', 'Product', 'Total Qty'],
+      ...dumps.map((row: any, idx: number) => [
+        idx + 1,
+        row.date,
+        row.product,
+        row.totalQty
+      ])
+    ];
+    const dumpsWS = XLSX.utils.aoa_to_sheet(dumpsData);
+    XLSX.utils.book_append_sheet(wb, dumpsWS, 'Dumps');
+
+    // Generate filename
+    const fromDateStr = fromDate ? format(fromDate, 'yyyy-MM-dd') : '';
+    const toDateStr = toDate ? format(toDate, 'yyyy-MM-dd') : '';
+    const filename = `Product_History_${fromDateStr}_to_${toDateStr}.xlsx`;
+    
+    XLSX.writeFile(wb, filename);
+  };
+
+  const exportToPDF = async () => {
+    if (!searchClicked || loading) return;
+    
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (productId && productId !== "All") params.append("productId", productId);
+      if (productLike) params.append("productLike", productLike);
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toEndOfDayDateString(toDate));
+      if (customerId && customerId !== "All") params.append("customerId", customerId);
+      if (supplierId && supplierId !== "All") params.append("supplierId", supplierId);
+      
+      const response = await fetch(`/api/reports/product-history/pdf?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const fromDateStr = fromDate ? format(fromDate, 'yyyy-MM-dd') : '';
+        const toDateStr = toDate ? format(toDate, 'yyyy-MM-dd') : '';
+        a.download = `Product_History_${fromDateStr}_to_${toDateStr}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        throw new Error('Failed to generate PDF');
+      }
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const sendEmail = async () => {
+    if (!emailAddress || !searchClicked || loading) {
+      alert('Please enter an email address and ensure data is loaded.');
+      return;
+    }
+    
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (productId && productId !== "All") params.append("productId", productId);
+      if (productLike) params.append("productLike", productLike);
+      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
+      if (toDate) params.append("toDate", toEndOfDayDateString(toDate));
+      if (customerId && customerId !== "All") params.append("customerId", customerId);
+      if (supplierId && supplierId !== "All") params.append("supplierId", supplierId);
+      params.append("email", emailAddress);
+      
+      const response = await fetch(`/api/reports/product-history/email?${params.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        alert('Email sent successfully!');
+        setEmailAddress('');
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('Error sending email:', error);
+      alert('Failed to send email. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -237,9 +417,9 @@ export default function ProductHistory() {
                   </PopoverContent>
                 </Popover>
               </div>
-              <div className="col-span-1 lg:col-span-3 flex items-end">
+              <div className="col-span-1 lg:col-span-3 flex items-end gap-2">
                 <Button
-                  className="bg-blue-600 hover:bg-blue-700 w-full"
+                  className="bg-blue-600 hover:bg-blue-700 flex-1"
                   disabled={loading}
                   onClick={() => setSearchClicked((v) => !v)}
                 >
@@ -247,6 +427,53 @@ export default function ProductHistory() {
                 </Button>
               </div>
             </div>
+            
+            {/* Export and Email Section */}
+            {searchClicked && !loading && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                  <div className="lg:col-span-2">
+                    <label className="block text-sm font-medium mb-2">Email Address (for sending report):</label>
+                    <Input
+                      type="email"
+                      value={emailAddress}
+                      onChange={(e) => setEmailAddress(e.target.value)}
+                      placeholder="Enter email address"
+                    />
+                  </div>
+                  <div>
+                    <Button
+                      onClick={exportToPDF}
+                      disabled={isExporting}
+                      className="w-full bg-red-600 hover:bg-red-700"
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      {isExporting ? "Exporting..." : "PDF"}
+                    </Button>
+                  </div>
+                  <div>
+                    <Button
+                      onClick={exportToExcel}
+                      disabled={isExporting}
+                      className="w-full bg-green-600 hover:bg-green-700"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Excel
+                    </Button>
+                  </div>
+                  <div>
+                    <Button
+                      onClick={sendEmail}
+                      disabled={isExporting || !emailAddress}
+                      className="w-full bg-purple-600 hover:bg-purple-700"
+                    >
+                      <Mail className="mr-2 h-4 w-4" />
+                      {isExporting ? "Sending..." : "Email"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Error handling */}
             {(productsError || customersError || suppliersError || historyError) && (
               <div className="text-red-600 mt-2">

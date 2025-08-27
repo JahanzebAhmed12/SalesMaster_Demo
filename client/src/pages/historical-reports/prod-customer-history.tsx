@@ -81,7 +81,12 @@ export default function ProdCustomerHistory() {
       if (!searchClicked) return [];
       const params = new URLSearchParams();
       if (selectedCustomer && selectedCustomer !== "All") params.append("customerId", selectedCustomer);
-      if (selectedProduct && selectedProduct !== "All") params.append("productId", selectedProduct);
+      if (selectedProduct && selectedProduct !== "All") {
+        // Handle the new product format (regular-123 or non-456)
+        const [productType, productId] = selectedProduct.split('-');
+        params.append("productId", productId);
+        params.append("productType", productType);
+      }
       if (productLike) params.append("productLike", productLike);
       if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
       if (toDate) params.append("toDate", toLocalDateString(toDate));
@@ -145,92 +150,173 @@ export default function ProdCustomerHistory() {
   };
 
   const handleExcel = () => {
+    if (!historyData || historyData.length === 0) {
+      alert('No data available to export');
+      return;
+    }
+
     const wb = XLSX.utils.book_new();
-    // Info sheet
-    const info = [
+    
+    // Create a single sheet with header info and data combined
+    const worksheetData = [
       ['PRODUCT-CUSTOMER HISTORY'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
       ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
       [''],
       ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
+      ['Generated on:', new Date().toLocaleString()],
       [''],
+      [''], // Empty row before table
+      ['Sl.No', 'Product', 'Quantity', 'Avg Price', 'Total'], // Table headers
     ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(info);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
-    // Data sheet
-    const ws = XLSX.utils.json_to_sheet(historyData.map((row: any) => ({
-      'Sl.No': row.slNo,
-      'Product': row.product,
-      'Quantity': row.quantity,
-      'Avg Price': row.avgPrice,
-      'Total': row.total
-    })));
+
+    // Add data rows
+    historyData.forEach((row: any) => {
+      worksheetData.push([
+        row.slNo || '',
+        row.product || '',
+        row.quantity || 0,
+        Number(row.avgPrice || 0),
+        Number(row.total || 0)
+      ]);
+    });
+
+    // Add totals row
+    worksheetData.push([
+      '',
+      'TOTAL',
+      totalQuantity,
+      '',
+      totalAmount
+    ]);
+
+    // Create worksheet from array of arrays
+    const ws = XLSX.utils.aoa_to_sheet(worksheetData);
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 8 },  // Sl.No
+      { wch: 35 }, // Product
+      { wch: 12 }, // Quantity
+      { wch: 12 }, // Avg Price
+      { wch: 12 }  // Total
+    ];
+
+    // Format numbers in the data section (starting from row 11, which is index 10)
+    const dataStartRow = 11; // Row 11 is where data starts (after headers)
+    for (let i = 0; i < historyData.length + 1; i++) { // +1 for totals row
+      const rowNum = dataStartRow + i;
+      // Format Avg Price column (D)
+      const avgPriceCell = `D${rowNum}`;
+      if (ws[avgPriceCell]) {
+        ws[avgPriceCell].z = '0.00';
+      }
+      // Format Total column (E)
+      const totalCell = `E${rowNum}`;
+      if (ws[totalCell]) {
+        ws[totalCell].z = '0.00';
+      }
+    }
+
+    // Add the worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Product-Customer History');
+    
+    // Save the file
     XLSX.writeFile(wb, `prod_customer_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
   };
 
   const handlePDF = () => {
+    if (!historyData || historyData.length === 0) {
+      alert('No data available to export');
+      return;
+    }
+
     const doc = new jsPDF();
+    let yPosition = 20;
+
+    // Add header
     doc.setFontSize(16);
-    doc.text('PRODUCT-CUSTOMER HISTORY', 105, 20, { align: 'center' });
+    doc.text('PRODUCT-CUSTOMER HISTORY', 105, yPosition, { align: 'center' });
+    yPosition += 10;
+
     doc.setFontSize(10);
-    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
-    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    if (companyDetails) {
+      const companyText = `${companyDetails.companyName || ''}${companyDetails.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`;
+      doc.text(companyText, 105, yPosition, { align: 'center' });
+      yPosition += 6;
+    }
+
+    const periodText = `Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`;
+    doc.text(periodText, 105, yPosition, { align: 'center' });
+    yPosition += 15;
+
+    // Prepare table data
     const tableData = historyData.map((row: any) => [
-      row.slNo,
-      row.product,
-      row.quantity,
-      row.avgPrice.toFixed(2),
-      row.total.toFixed(2)
+      String(row.slNo || ''),
+      String(row.product || ''),
+      String(row.quantity || 0),
+      String((row.avgPrice || 0).toFixed(2)),
+      String((row.total || 0).toFixed(2))
     ]);
+
+    // Create table
     autoTable(doc, {
-      head: [[
-        'Sl.No', 'Product', 'Quantity', 'Avg Price', 'Total'
-      ]],
+      head: [['Sl.No', 'Product', 'Quantity', 'Avg Price', 'Total']],
       body: tableData,
-      startY: 50,
+      startY: yPosition,
       styles: {
-        fontSize: 10,
-        cellPadding: 3,
-        halign: 'center'
+        fontSize: 9,
+        cellPadding: 2
       },
       headStyles: {
         fillColor: [66, 139, 202],
         textColor: 255,
-        fontStyle: 'bold',
-        halign: 'center'
+        fontStyle: 'bold'
       },
       columnStyles: {
-        0: { cellWidth: 20, halign: 'center' }, // Sl.No
-        1: { cellWidth: 60, halign: 'center' }, // Product
-        2: { cellWidth: 25, halign: 'center' }, // Quantity
-        3: { cellWidth: 25, halign: 'center' }, // Avg Price
-        4: { cellWidth: 25, halign: 'center' }  // Total
-      },
-      tableWidth: 'wrap',
-      margin: { left: 'auto', right: 'auto' }
+        0: { cellWidth: 20, halign: 'center' },
+        1: { cellWidth: 80, halign: 'left' },
+        2: { cellWidth: 25, halign: 'center' },
+        3: { cellWidth: 25, halign: 'right' },
+        4: { cellWidth: 25, halign: 'right' }
+      }
     });
     
-    // Add footer text "stand100" on bottom right
+    // Add footer
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(8);
-    doc.text('stand100', pageWidth - 30, pageHeight - 10, { align: 'right' });
+    doc.text('stand100', pageWidth - 30, pageHeight - 10);
     
     doc.save(`prod_customer_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tProduct\tQuantity\tAvg Price\tTotal\n';
-    text += historyData.map((row: any) => [
-      row.slNo,
-      row.product,
-      row.quantity,
-      row.avgPrice.toFixed(2),
-      row.total.toFixed(2)
-    ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    if (!historyData || historyData.length === 0) {
+      alert('No data available to copy');
+      return;
+    }
+
+    try {
+      let text = 'Sl.No\tProduct\tQuantity\tAvg Price\tTotal\n';
+      text += historyData.map((row: any) => [
+        row.slNo || '',
+        row.product || '',
+        row.quantity || 0,
+        (row.avgPrice || 0).toFixed(2),
+        (row.total || 0).toFixed(2)
+      ].join('\t')).join('\n');
+      
+      // Add totals row
+      text += `\n\tTOTAL\t${totalQuantity}\t\t${totalAmount.toFixed(2)}`;
+      
+      await navigator.clipboard.writeText(text);
+      alert('Data copied to clipboard!');
+    } catch (error) {
+      console.error('Failed to copy data:', error);
+      alert('Failed to copy data to clipboard');
+    }
   };
 
   return (
@@ -284,9 +370,14 @@ export default function ProdCustomerHistory() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All Products</SelectItem>
-                    {allProducts.map((p: any) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.description}
+                    {productsData.regularProducts?.map((p: any) => (
+                      <SelectItem key={`regular-${p.id}`} value={`regular-${p.id}`}>
+                        {p.description} (Regular)
+                      </SelectItem>
+                    ))}
+                    {productsData.nonProducts?.map((p: any) => (
+                      <SelectItem key={`non-${p.id}`} value={`non-${p.id}`}>
+                        {p.description} (Non-Product)
                       </SelectItem>
                     ))}
                   </SelectContent>

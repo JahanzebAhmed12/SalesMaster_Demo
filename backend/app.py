@@ -7935,6 +7935,7 @@ def purchase_history_report():
 @jwt_required()
 def product_history_report():
     from datetime import datetime
+    from sqlalchemy import or_
     from models import (
         PurchaseInvoice, PurchaseInvoiceItem, Purchase, Supplier,
         Sale, SaleItem, Customer,
@@ -8039,6 +8040,17 @@ def product_history_report():
         sales_query = sales_query.filter(Sale.date < to_dt)
     if customer_id:
         sales_query = sales_query.filter(Sale.customer_id == customer_id)
+    if product_id:
+        sales_query = sales_query.filter(
+            or_(SaleItem.product_id == product_id, SaleItem.non_product_id == product_id)
+        )
+    if product_like:
+        sales_query = sales_query.filter(
+            or_(
+                RegularProduct.description.ilike(f'%{product_like}%'),
+                NonProduct.description.ilike(f'%{product_like}%')
+            )
+        )
     sales_query = sales_query.filter(Sale.status == 'finalized')
     sales = sales_query.all()
     sales_data = [
@@ -8114,15 +8126,375 @@ def product_history_report():
         'dumps': dumps_data
     })
 
+@app.route('/api/reports/product-history/pdf', methods=['GET'])
+@jwt_required()
+def product_history_pdf():
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from io import BytesIO
+    import tempfile
+    
+    # Get the same data as the regular endpoint
+    from datetime import datetime
+    from sqlalchemy import or_
+    from models import (
+        PurchaseInvoice, PurchaseInvoiceItem, Purchase, Supplier,
+        Sale, SaleItem, Customer,
+        SupplierReturn, CustomerReturn, DumpEntry, RegularProduct, NonProduct
+    )
+    
+    product_id = request.args.get('productId', type=int)
+    product_like = request.args.get('productLike', '')
+    from_date = request.args.get('fromDate')
+    to_date = request.args.get('toDate')
+    customer_id = request.args.get('customerId', type=int)
+    supplier_id = request.args.get('supplierId', type=int)
+
+    from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
+    to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
+
+    # Get all the data (same logic as the main endpoint)
+    # Purchases
+    purchases_query = (
+        db.session.query(
+            PurchaseInvoice.date,
+            PurchaseInvoice.purchase_id,
+            Purchase.supplier_name,
+            PurchaseInvoiceItem.product_name,
+            PurchaseInvoiceItem.quantity,
+            PurchaseInvoiceItem.unit_price,
+            PurchaseInvoiceItem.total_price
+        )
+        .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+        .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+    )
+    if from_dt:
+        purchases_query = purchases_query.filter(PurchaseInvoice.date >= from_dt)
+    if to_dt:
+        purchases_query = purchases_query.filter(PurchaseInvoice.date <= to_dt)
+    if supplier_id:
+        purchases_query = purchases_query.filter(Purchase.supplier_id == supplier_id)
+    if product_id:
+        purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_id == product_id)
+    if product_like:
+        purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_name.ilike(f'%{product_like}%'))
+    purchases = purchases_query.all()
+
+    # Sales
+    sales_query = (
+        db.session.query(
+            Sale.date,
+            Sale.invoice_number,
+            Customer.customer_name,
+            SaleItem.product_id,
+            SaleItem.non_product_id,
+            SaleItem.quantity,
+            SaleItem.unit_price,
+            SaleItem.total_price,
+            RegularProduct.description.label('regular_product_desc'),
+            NonProduct.description.label('non_product_desc')
+        )
+        .join(SaleItem, Sale.id == SaleItem.sale_id)
+        .join(Customer, Sale.customer_id == Customer.id)
+        .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
+        .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
+    )
+    if from_dt:
+        sales_query = sales_query.filter(Sale.date >= from_dt)
+    if to_dt:
+        sales_query = sales_query.filter(Sale.date < to_dt)
+    if customer_id:
+        sales_query = sales_query.filter(Sale.customer_id == customer_id)
+    if product_id:
+        sales_query = sales_query.filter(
+            or_(SaleItem.product_id == product_id, SaleItem.non_product_id == product_id)
+        )
+    if product_like:
+        sales_query = sales_query.filter(
+            or_(
+                RegularProduct.description.ilike(f'%{product_like}%'),
+                NonProduct.description.ilike(f'%{product_like}%')
+            )
+        )
+    sales_query = sales_query.filter(Sale.status == 'finalized')
+    sales = sales_query.all()
+
+    # Create PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
+    
+    # Container for the 'Flowable' objects
+    elements = []
+    
+    # Define styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        spaceAfter=30,
+        alignment=1  # Center alignment
+    )
+    
+    # Add title
+    date_range = ""
+    if from_date and to_date:
+        date_range = f" ({from_date} to {to_date})"
+    elif from_date:
+        date_range = f" (from {from_date})"
+    elif to_date:
+        date_range = f" (to {to_date})"
+    
+    title = Paragraph(f"Product History Report{date_range}", title_style)
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+    
+    # Add purchases table if there's data
+    if purchases:
+        elements.append(Paragraph("From Supplier", styles['Heading2']))
+        purchase_data = [['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total']]
+        for idx, row in enumerate(purchases, 1):
+            purchase_data.append([
+                str(idx),
+                row.date.strftime('%Y-%m-%d') if row.date else '',
+                row.supplier_name or '',
+                row.product_name or '',
+                str(int(row.quantity)) if row.quantity else '0',
+                f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
+                f"{float(row.total_price):.2f}" if row.total_price else '0.00'
+            ])
+        
+        purchase_table = Table(purchase_data)
+        purchase_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(purchase_table)
+        elements.append(Spacer(1, 20))
+    
+    # Add sales table if there's data
+    if sales:
+        elements.append(Paragraph("Sales", styles['Heading2']))
+        sales_data = [['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']]
+        for idx, row in enumerate(sales, 1):
+            product_desc = row.regular_product_desc or row.non_product_desc or ''
+            sales_data.append([
+                str(idx),
+                row.date.strftime('%Y-%m-%d') if row.date else '',
+                row.invoice_number or '',
+                row.customer_name or '',
+                product_desc,
+                str(int(row.quantity)) if row.quantity else '0',
+                f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
+                f"{float(row.total_price):.2f}" if row.total_price else '0.00'
+            ])
+        
+        sales_table = Table(sales_data)
+        sales_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(sales_table)
+    
+    # Build PDF
+    doc.build(elements)
+    
+    # FileResponse
+    buffer.seek(0)
+    return send_file(
+        BytesIO(buffer.read()),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name=f'product_history_{from_date or "all"}_{to_date or "all"}.pdf'
+    )
+
+@app.route('/api/reports/product-history/email', methods=['POST'])
+@jwt_required()
+def product_history_email():
+    try:
+        email = request.args.get('email')
+        if not email:
+            return jsonify({'error': 'Email address is required'}), 400
+        
+        # Generate PDF (reuse the PDF generation logic)
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from io import BytesIO
+        import tempfile
+        
+        # Get the same data as the regular endpoint
+        from datetime import datetime
+        from sqlalchemy import or_
+        from models import (
+            PurchaseInvoice, PurchaseInvoiceItem, Purchase, Supplier,
+            Sale, SaleItem, Customer,
+            SupplierReturn, CustomerReturn, DumpEntry, RegularProduct, NonProduct
+        )
+        
+        product_id = request.args.get('productId', type=int)
+        product_like = request.args.get('productLike', '')
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        customer_id = request.args.get('customerId', type=int)
+        supplier_id = request.args.get('supplierId', type=int)
+
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
+
+        # Get sales data for email
+        sales_query = (
+            db.session.query(
+                Sale.date,
+                Sale.invoice_number,
+                Customer.customer_name,
+                SaleItem.product_id,
+                SaleItem.non_product_id,
+                SaleItem.quantity,
+                SaleItem.unit_price,
+                SaleItem.total_price,
+                RegularProduct.description.label('regular_product_desc'),
+                NonProduct.description.label('non_product_desc')
+            )
+            .join(SaleItem, Sale.id == SaleItem.sale_id)
+            .join(Customer, Sale.customer_id == Customer.id)
+            .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
+            .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
+        )
+        if from_dt:
+            sales_query = sales_query.filter(Sale.date >= from_dt)
+        if to_dt:
+            sales_query = sales_query.filter(Sale.date < to_dt)
+        if customer_id:
+            sales_query = sales_query.filter(Sale.customer_id == customer_id)
+        if product_id:
+            sales_query = sales_query.filter(
+                or_(SaleItem.product_id == product_id, SaleItem.non_product_id == product_id)
+            )
+        if product_like:
+            sales_query = sales_query.filter(
+                or_(
+                    RegularProduct.description.ilike(f'%{product_like}%'),
+                    NonProduct.description.ilike(f'%{product_like}%')
+                )
+            )
+        sales_query = sales_query.filter(Sale.status == 'finalized')
+        sales = sales_query.all()
+
+        # Create PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            spaceAfter=30,
+            alignment=1
+        )
+        
+        # Add title
+        date_range = ""
+        if from_date and to_date:
+            date_range = f" ({from_date} to {to_date})"
+        elif from_date:
+            date_range = f" (from {from_date})"
+        elif to_date:
+            date_range = f" (to {to_date})"
+        
+        title = Paragraph(f"Product History Report{date_range}", title_style)
+        elements.append(title)
+        elements.append(Spacer(1, 12))
+        
+        # Add sales table
+        if sales:
+            elements.append(Paragraph("Sales Data", styles['Heading2']))
+            sales_data = [['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']]
+            for idx, row in enumerate(sales, 1):
+                product_desc = row.regular_product_desc or row.non_product_desc or ''
+                sales_data.append([
+                    str(idx),
+                    row.date.strftime('%Y-%m-%d') if row.date else '',
+                    row.invoice_number or '',
+                    row.customer_name or '',
+                    product_desc,
+                    str(int(row.quantity)) if row.quantity else '0',
+                    f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
+                    f"{float(row.total_price):.2f}" if row.total_price else '0.00'
+                ])
+            
+            sales_table = Table(sales_data)
+            sales_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            elements.append(sales_table)
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        
+        # Send email with PDF attachment
+        from flask_mail import Message
+        
+        msg = Message(
+            subject=f'Product History Report{date_range}',
+            recipients=[email],
+            body=f'Please find attached the Product History Report{date_range}.\n\nBest regards,\nTROPIFRUIT UK LTD'
+        )
+        
+        msg.attach(
+            f'product_history_{from_date or "all"}_{to_date or "all"}.pdf',
+            'application/pdf',
+            buffer.getvalue()
+        )
+        
+        mail.send(msg)
+        
+        return jsonify({'message': 'Email sent successfully'}), 200
+        
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
+        return jsonify({'error': f'Failed to send email: {str(e)}'}), 500
+
 @app.route('/api/reports/prod-customer-history', methods=['GET'])
 @jwt_required()
 def prod_customer_history():
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from sqlalchemy import func, or_
     from models import Sale, SaleItem, Customer, RegularProduct, NonProduct
 
     customer_id = request.args.get('customerId', type=int)
     product_id = request.args.get('productId', type=int)
+    product_type = request.args.get('productType', '')
     product_like = request.args.get('productLike', '')
     from_date = request.args.get('fromDate')
     to_date = request.args.get('toDate')
@@ -8138,6 +8510,28 @@ def prod_customer_history():
         .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
         .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
     )
+    
+    # Apply customer filter
+    if customer_id:
+        query = query.filter(Sale.customer_id == customer_id)
+    
+    # Apply product filter
+    if product_id and product_type:
+        if product_type == 'regular':
+            query = query.filter(SaleItem.product_id == product_id)
+        elif product_type == 'non':
+            query = query.filter(SaleItem.non_product_id == product_id)
+    
+    # Apply product like filter
+    if product_like:
+        query = query.filter(
+            or_(
+                RegularProduct.description.ilike(f'%{product_like}%'),
+                NonProduct.description.ilike(f'%{product_like}%')
+            )
+        )
+    
+    # Apply date filters
     if from_date and to_date:
         from_dt = datetime.strptime(from_date, "%Y-%m-%d")
         to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
@@ -8148,6 +8542,7 @@ def prod_customer_history():
     elif to_date:
         to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
         query = query.filter(Sale.date < to_dt)
+    
     query = query.filter(Sale.status == 'finalized')
     query = query.group_by(RegularProduct.description, NonProduct.description)
     query = query.order_by(func.sum(SaleItem.total_price).desc())
@@ -11161,6 +11556,386 @@ def send_customer_history_email_api():
             'success': False,
             'message': f'Error sending customer history email: {str(e)}'
         }), 500
+
+@app.route('/api/send/selected-invoices', methods=['POST'])
+@jwt_required()
+def send_selected_invoices():
+    try:
+        data = request.get_json()
+        customer_id = data.get('customerId')
+        invoice_numbers = data.get('invoiceNumbers', [])
+        customer_emails = data.get('customerEmails', '')
+        
+        if not customer_id or not invoice_numbers:
+            return jsonify({'success': False, 'message': 'Missing required parameters'}), 400
+        
+        # Get customer
+        customer = Customer.query.get(customer_id)
+        if not customer:
+            return jsonify({'success': False, 'message': 'Customer not found'}), 404
+        
+        # Parse email addresses (comma-separated)
+        email_addresses = [email.strip() for email in customer_emails.split(',') if email.strip()]
+        if not email_addresses:
+            return jsonify({'success': False, 'message': 'No valid email addresses found'}), 400
+        
+        # Get sales for the selected invoice numbers
+        sales = Sale.query.filter(
+            Sale.customer_id == customer_id,
+            Sale.invoice_number.in_(invoice_numbers)
+        ).all()
+        
+        if not sales:
+            return jsonify({'success': False, 'message': 'No invoices found'}), 404
+        
+        # Create a combined PDF matching the exact invoice.tsx structure
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from io import BytesIO
+        import os
+        from models import SystemSettings
+        from datetime import datetime
+        
+        # Get system settings for invoice footer
+        settings = SystemSettings.query.first()
+        invoice_footer = settings.invoice_footer if settings and hasattr(settings, 'invoice_footer') else ''
+        show_outstanding_balance = settings.showOutstandingBalance if settings and hasattr(settings, 'showOutstandingBalance') else True
+        
+        # Get company details
+        company = Company.query.first()
+        
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=24, leftMargin=24, topMargin=24, bottomMargin=24)
+        
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Logo path
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        logo_path = os.path.join(static_dir, 'printlogo.png')
+        
+        for idx, sale in enumerate(sales):
+            # Add page break between invoices (except for the first one)
+            if idx > 0:
+                elements.append(PageBreak())
+            
+            # Header: Company Details and Logo (matching invoice.tsx structure)
+            header_left = []
+            if company:
+                header_left.append(Paragraph(f"<b>{company.companyName or 'Company Name'}</b>", 
+                    ParagraphStyle('CompanyName', parent=styles['Normal'], fontSize=18, fontName='Helvetica-Bold', spaceAfter=3)))
+                
+                address_text = company.address1 or ''
+                if company.address2:
+                    address_text += f", {company.address2}"
+                if address_text:
+                    header_left.append(Paragraph(address_text, 
+                        ParagraphStyle('Address', parent=styles['Normal'], fontSize=14, spaceAfter=3)))
+                
+                if company.compRegNo:
+                    header_left.append(Paragraph(f"Company Reg No: {company.compRegNo}", 
+                        ParagraphStyle('CompRegNo', parent=styles['Normal'], fontSize=14, spaceAfter=3)))
+                if company.vatNo:
+                    header_left.append(Paragraph(f"VAT No: {company.vatNo}", 
+                        ParagraphStyle('VatNo', parent=styles['Normal'], fontSize=14, spaceAfter=3)))
+            
+            # Logo and INVOICE title on right
+            header_right = []
+            if os.path.exists(logo_path):
+                try:
+                    logo = Image(logo_path, width=80, height=60)
+                    header_right.append(logo)
+                except:
+                    pass
+            
+            header_right.append(Paragraph("INVOICE", 
+                ParagraphStyle('InvoiceTitle', parent=styles['Normal'], fontSize=28, 
+                             fontName='Helvetica-Bold', spaceAfter=8, alignment=2)))
+            
+            # Create header table
+            header_table = Table([[header_left, header_right]], colWidths=[4*inch, 3*inch])
+            header_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+            ]))
+            elements.append(header_table)
+            
+            # Horizontal line
+            elements.append(Spacer(1, 16))
+            line_table = Table([['']], colWidths=[7*inch])
+            line_table.setStyle(TableStyle([
+                ('LINEBELOW', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            elements.append(line_table)
+            elements.append(Spacer(1, 12))
+            
+            # Bill To and Invoice Details Side by Side (matching invoice.tsx)
+            # Create left column content
+            left_column = []
+            
+            # Bill to label
+            left_column.append(Paragraph("<b>Bill to :</b>", 
+                ParagraphStyle('BillToLabel', parent=styles['Normal'], fontSize=13, fontName='Helvetica-Bold', spaceAfter=4)))
+            
+            # Customer box with border
+            customer_name = customer.customer_name or 'CUSTOMER'
+            customer_content = f"<b>{customer_name}</b>"
+            if customer.address:
+                customer_content += f"<br/>{customer.address}"
+            
+            customer_box = Table([[Paragraph(customer_content, styles['Normal'])]], colWidths=[3.2*inch])
+            customer_box.setStyle(TableStyle([
+                ('BOX', (0, 0), (-1, -1), 1, colors.Color(0.533, 0.533, 0.533)),  # #888 color
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+            left_column.append(customer_box)
+            left_column.append(Spacer(1, 4))
+            
+            # VAT number if available
+            if hasattr(customer, 'vat_number') and customer.vat_number:
+                left_column.append(Paragraph(f"VAT No: {customer.vat_number}", 
+                    ParagraphStyle('VatNumber', parent=styles['Normal'], fontSize=14, spaceAfter=4)))
+            
+            # Gate number if available
+            if hasattr(sale, 'gate_number') and sale.gate_number:
+                left_column.append(Paragraph(f"<b>Others/Gate:</b> {sale.gate_number}", 
+                    ParagraphStyle('GateNumber', parent=styles['Normal'], fontSize=18, fontName='Helvetica-Bold', spaceAfter=4)))
+            
+            # Create right column content
+            right_column = []
+            today_str = datetime.now().strftime('%d/%m/%Y')  # Matching DD/MM/YYYY format
+            right_column.append(Paragraph(f"Date: {today_str}", 
+                ParagraphStyle('InvoiceDate', parent=styles['Normal'], fontSize=16, alignment=2, spaceAfter=4)))
+            right_column.append(Paragraph(f"<b>Invoice No: {sale.invoice_number}</b>", 
+                ParagraphStyle('InvoiceNumber', parent=styles['Normal'], fontSize=18, fontName='Helvetica-Bold', 
+                             textColor=colors.HexColor('#1a237e'), alignment=2, spaceAfter=4)))
+            right_column.append(Paragraph(f"Cust.type: {sale.customer_type or 'account'}", 
+                ParagraphStyle('CustomerType', parent=styles['Normal'], fontSize=14, alignment=2)))
+            
+            # Create the side-by-side layout
+            bill_to_and_details = Table([[left_column, right_column]], colWidths=[4*inch, 3*inch])
+            bill_to_and_details.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+            elements.append(bill_to_and_details)
+            elements.append(Spacer(1, 12))
+            
+            # Items Table (matching invoice.tsx structure exactly)
+            items_data = [['Product', 'Qty', 'U.Price', 'Total']]
+            
+            for item in sale.items:
+                # Get product description
+                product_desc = ''
+                if hasattr(item, 'productName') and item.productName:
+                    product_desc = item.productName
+                elif item.product_id:
+                    product = RegularProduct.query.get(item.product_id)
+                    product_desc = product.description if product else f'Product ID: {item.product_id}'
+                elif item.non_product_id:
+                    product = NonProduct.query.get(item.non_product_id)
+                    product_desc = product.description if product else f'Non-Product ID: {item.non_product_id}'
+                
+                # Create product cell with notes
+                product_cell_content = [Paragraph(product_desc or '-', styles['Normal'])]
+                if hasattr(item, 'notes') and item.notes:
+                    product_cell_content.append(Paragraph(item.notes, 
+                        ParagraphStyle('ItemNotes', parent=styles['Normal'], fontSize=12, 
+                                     textColor=colors.Color(0.4, 0.4, 0.4), fontName='Helvetica-Oblique', spaceAfter=2)))
+                
+                items_data.append([
+                    product_cell_content,
+                    str(item.quantity),
+                    f"{item.unit_price:.2f}" if item.unit_price else "-",
+                    f"£{item.total_price:.2f}" if item.total_price else "-"
+                ])
+            
+            # Add SUB TOTAL row
+            total_qty = sum(item.quantity for item in sale.items)
+            items_data.append([
+                Paragraph("<b>SUB TOTAL</b>", ParagraphStyle('SubTotal', parent=styles['Normal'], fontName='Helvetica-Bold')),
+                str(total_qty),
+                "X",
+                f"£{sale.subtotal:.2f}" if sale.subtotal else "-"
+            ])
+            
+            items_table = Table(items_data, colWidths=[3*inch, 1*inch, 1.5*inch, 1.5*inch])
+            items_table.setStyle(TableStyle([
+                # Header row styling
+                ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.96, 0.96, 0.96)),  # #f5f5f5
+                ('ALIGN', (0, 0), (0, 0), 'LEFT'),  # Product header left-aligned
+                ('ALIGN', (1, 0), (-1, 0), 'CENTER'),  # Other headers centered
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),  # Reduced from 15 to 12
+                ('GRID', (0, 0), (-1, -1), 1, colors.Color(0.533, 0.533, 0.533)),  # #888 border
+                ('LEFTPADDING', (0, 0), (-1, -1), 3),  # Reduced padding
+                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                # Data rows
+                ('ALIGN', (0, 1), (0, -2), 'LEFT'),  # Product column left-aligned
+                ('ALIGN', (1, 1), (-1, -1), 'CENTER'),  # Other columns centered
+                ('FONTSIZE', (0, 1), (-1, -1), 11),  # Reduced from 15 to 11
+                # SUB TOTAL row styling
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, -1), (-1, -1), 12),  # SUB TOTAL row slightly larger
+            ]))
+            elements.append(items_table)
+            
+            # Notes and Totals section (matching invoice.tsx flex layout)
+            # No spacer here - table should connect directly to items table
+            
+            # Notes section (left side)
+            notes_content = ""
+            if hasattr(sale, 'notes') and sale.notes:
+                for line in sale.notes.split('\n'):
+                    notes_content += f"{line}<br/>"
+            else:
+                notes_content = "&nbsp;"  # Empty space if no notes
+            
+            notes_para = Paragraph(notes_content, 
+                ParagraphStyle('Notes', parent=styles['Normal'], fontSize=13, 
+                             textColor=colors.Color(0.533, 0.533, 0.533), fontName='Helvetica-Oblique'))
+            
+            # Totals section (right side) - matching invoice.tsx structure
+            totals_data = [
+                ['Vat', f"£{sale.vat_amount:.2f}" if sale.vat_amount else "£0.00"],
+                ['Porterage', f"£{sale.porterage:.2f}" if sale.porterage else "£0.00"],
+                ['TOTAL', f"£{sale.total_amount:.2f}" if sale.total_amount else "£0.00"],
+            ]
+            
+            # Add payment/balance info based on customer type (matching invoice.tsx logic)
+            if sale.customer_type == 'cash':
+                payment_mode = getattr(sale, 'payment_mode', 'cash')
+                display_mode = {
+                    'cash': 'Cash',
+                    'bank': 'Card',
+                    'bank_transfer': 'Bank Transfer',
+                    'cheque': 'Cheque'
+                }.get(payment_mode, payment_mode)
+                
+                paid_amount = sale.paid_amount or 0
+                totals_data.append(['PAID', f"{display_mode} £{paid_amount:.2f}"])
+            else:
+                # Credit customer
+                account_amount = (sale.total_amount or 0) - (sale.paid_amount or 0)
+                totals_data.append(['ACCOUNT', f"£{account_amount:.2f}"])
+                
+                if show_outstanding_balance:
+                    totals_data.append(['BALANCE', f"£{account_amount:.2f}"])
+            
+            totals_table = Table(totals_data, colWidths=[1.2*inch, 1.3*inch])
+            totals_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (0, -1), 'LEFT'),   # Left column left-aligned
+                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),  # Right column right-aligned
+                ('FONTSIZE', (0, 0), (-1, -1), 12),   # Reduced from 15 to 12
+                ('FONTNAME', (0, 2), (-1, 2), 'Helvetica-Bold'),  # TOTAL row bold
+                ('LEFTPADDING', (0, 0), (-1, -1), 3),  # Reduced padding
+                ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ]))
+            
+            # Create the notes and totals layout - matching the connected border style
+            notes_totals_table = Table([[notes_para, totals_table]], colWidths=[4.5*inch, 2.5*inch])
+            notes_totals_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('BOX', (0, 0), (0, 0), 1, colors.Color(0.533, 0.533, 0.533)),  # Notes border
+                ('BOX', (1, 0), (1, 0), 1, colors.Color(0.533, 0.533, 0.533)),  # Totals border
+                ('LINEABOVE', (0, 0), (-1, 0), 0, colors.white),  # Remove top border to connect with table
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            elements.append(notes_totals_table)
+            
+            # Dynamic Invoice Footer (matching invoice.tsx)
+            if invoice_footer:
+                elements.append(Spacer(1, 16))
+                elements.append(Paragraph(invoice_footer, 
+                    ParagraphStyle('InvoiceFooter', parent=styles['Normal'], fontSize=15, 
+                                 textColor=colors.HexColor('#1a237e'), fontName='Helvetica-Bold', 
+                                 alignment=1, spaceAfter=8)))
+            
+            # Footer with times (matching invoice.tsx)
+            elements.append(Spacer(1, 16))
+            invoice_time = sale.date.strftime('%d/%m/%Y, %H:%M:%S') if sale.date else '-'
+            current_time = datetime.now().strftime('%d/%m/%Y, %H:%M:%S')
+            
+            footer_text = f"Invoice Time: {invoice_time}<br/>Current Time: {current_time}"
+            elements.append(Paragraph(footer_text, 
+                ParagraphStyle('FooterTimes', parent=styles['Normal'], fontSize=13, 
+                             textColor=colors.Color(0.267, 0.267, 0.267))))  # #444 color
+        
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
+        pdf_bytes = buffer.getvalue()
+        
+        if not pdf_bytes:
+            return jsonify({'success': False, 'message': 'Failed to generate PDF'}), 500
+        
+        # Send email to all addresses with the combined PDF
+        from flask_mail import Message
+        
+        subject = f'Invoice(s): {", ".join(invoice_numbers)}'
+        body = f'''Dear {customer.customer_name},
+
+Please find attached the requested invoice(s): {", ".join(invoice_numbers)}.
+
+If you have any questions regarding these invoices, please don't hesitate to contact us.
+
+Best regards,
+{company.companyName if company else 'TROPIFRUIT UK LTD'}'''
+        
+        success_count = 0
+        failed_addresses = []
+        
+        for email_address in email_addresses:
+            try:
+                msg = Message(
+                    subject=subject,
+                    recipients=[email_address],
+                    body=body
+                )
+                
+                # Attach the combined PDF
+                filename = f'invoices_{"-".join(invoice_numbers)}.pdf'
+                msg.attach(
+                    filename,
+                    'application/pdf',
+                    pdf_bytes
+                )
+                
+                mail.send(msg)
+                print(f"Combined invoices sent successfully to {email_address}")
+                success_count += 1
+                
+            except Exception as e:
+                print(f"Failed to send combined invoices to {email_address}: {str(e)}")
+                failed_addresses.append(email_address)
+        
+        # Prepare response message
+        total_attempts = len(email_addresses)
+        
+        if success_count > 0:
+            message = f'Successfully sent combined invoices to {success_count}/{total_attempts} email address(es)'
+            if failed_addresses:
+                message += f'. Failed to send to: {", ".join(failed_addresses)}'
+            return jsonify({'success': True, 'message': message})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to send combined invoices to any email address'}), 500
+        
+    except Exception as e:
+        print(f"Error sending selected invoices: {str(e)}")
+        return jsonify({'success': False, 'message': f'Failed to send invoices: {str(e)}'}), 500
 
 @app.route('/api/send/supplier-statement', methods=['POST'])
 @jwt_required()

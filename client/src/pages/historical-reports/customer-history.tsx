@@ -148,16 +148,17 @@ export default function CustomerHistory() {
     }
 
     try {
-      const response = await apiRequest("POST", "/api/send/customer-history", {
+      const response = await apiRequest("POST", "/api/send/selected-invoices", {
         customerId: parseInt(selectedCustomer),
-        fromDate: fromDate.toISOString().split('T')[0],
-        toDate: toDate.toISOString().split('T')[0]
+        invoiceNumbers: Array.from(selectedInvoices),
+        customerEmails: selectedCustomerData.email
       });
 
       if (response.success) {
-        alert('Customer history email sent successfully!');
+        alert('Selected invoices sent successfully!');
+        setSelectedInvoices(new Set()); // Clear selection after successful send
       } else {
-        alert('Failed to send email: ' + response.message);
+        alert('Failed to send email: ' + (response.message || 'Unknown error'));
       }
     } catch (error) {
       console.error('Error sending email:', error);
