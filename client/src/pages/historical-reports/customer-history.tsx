@@ -166,6 +166,39 @@ export default function CustomerHistory() {
     }
   };
 
+  // Send customer history via email
+  const handleSendHistory = async () => {
+    if (!selectedCustomer || historyData.length === 0) {
+      alert('Please select a customer and generate history first');
+      return;
+    }
+    
+    // Get customer email from selected customer
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    if (!selectedCustomerData?.email) {
+      alert('Customer email not found. Please ensure the customer has an email address.');
+      return;
+    }
+
+    try {
+      const response = await apiRequest("POST", "/api/send/customer-history", {
+        customerId: parseInt(selectedCustomer),
+        fromDate: format(fromDate, "yyyy-MM-dd"),
+        toDate: format(toDate, "yyyy-MM-dd"),
+        filterType: filterType
+      });
+
+      if (response.success) {
+        alert('Customer history email sent successfully!');
+      } else {
+        alert('Failed to send email: ' + (response.message || 'Unknown error'));
+      }
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      alert('Failed to send email: ' + (error.message || 'Please try again.'));
+    }
+  };
+
   // Send individual invoice via email
   const handleSendInvoice = (invoiceNo: string) => {
     const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
@@ -306,8 +339,40 @@ export default function CustomerHistory() {
       printWindow.document.write(`<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`);
       printWindow.document.write('</div>');
       
-      // Add the table content
-      printWindow.document.write(printContents);
+      // Add custom table without checkboxes
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th><th>Date</th><th>Invoice #</th><th>Account Inv.</th><th>Cash Inv.</th><th>Paid</th><th>Credit/Adj</th><th>Discount/Adj</th><th>Balance</th><th>Running Balance</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      
+      historyData.forEach((row: any) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${row.slNo}</td>`);
+        printWindow.document.write(`<td>${format(new Date(row.date), "yyyy-MM-dd")}</td>`);
+        printWindow.document.write(`<td>${row.invoiceNo}</td>`);
+        printWindow.document.write(`<td>£${(row.accountInv || 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${(row.cashInv || 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${(row.paid || 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£0.00</td>`);
+        printWindow.document.write(`<td>£0.00</td>`);
+        printWindow.document.write(`<td>£${(row.balance || 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${(row.runningBalance || 0).toFixed(2)}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      
+      // Add totals row
+      printWindow.document.write('<tr class="totals">');
+      printWindow.document.write('<td></td><td><strong>TOTAL</strong></td><td></td>');
+      printWindow.document.write(`<td><strong>£${totals.accountInv.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td><strong>£${totals.cashInv.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td><strong>£${totals.paid.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td><strong>£0.00</strong></td>`);
+      printWindow.document.write(`<td><strong>£0.00</strong></td>`);
+      printWindow.document.write(`<td><strong>£${totals.balance.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td><strong>£${totals.runningBalance.toFixed(2)}</strong></td>`);
+      printWindow.document.write('</tr>');
+      
+      printWindow.document.write('</tbody></table>');
       
       // Add footer text
       printWindow.document.write('<div class="footer">stand100</div>');
@@ -320,6 +385,11 @@ export default function CustomerHistory() {
   };
 
   const handleExcel = () => {
+    if (historyData.length === 0) {
+      alert('No data to export. Please generate the report first.');
+      return;
+    }
+
     // Get customer details
     const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
     
@@ -346,20 +416,34 @@ export default function CustomerHistory() {
     const wsInfo = XLSX.utils.aoa_to_sheet(customerInfo);
     XLSX.utils.book_append_sheet(wb, wsInfo, 'Customer Info');
     
-    // Add data sheet
-    const ws = XLSX.utils.json_to_sheet(historyData.map((row: any) => ({
-      'Sl.No': row.slNo,
-      'Date': row.date,
-      'Invoice #': row.invoiceNo,
-      'Account Inv.': row.accountInv,
-      'Cash Inv.': row.cashInv,
-      'Paid': row.paid,
-      'Balance': row.balance,
-      'Running Balance': row.runningBalance
-    })));
+    // Add data sheet with proper data mapping
+    const dataForExcel = historyData.map((row: any) => ({
+      'Sl.No': row.slNo || '',
+      'Date': row.date || '',
+      'Invoice #': row.invoiceNo || '',
+      'Account Inv.': (row.accountInv || 0).toFixed(2),
+      'Cash Inv.': (row.cashInv || 0).toFixed(2),
+      'Paid': (row.paid || 0).toFixed(2),
+      'Balance': (row.balance || 0).toFixed(2),
+      'Running Balance': (row.runningBalance || 0).toFixed(2)
+    }));
+
+    // Add totals row
+    dataForExcel.push({
+      'Sl.No': '',
+      'Date': 'TOTAL',
+      'Invoice #': '',
+      'Account Inv.': totals.accountInv.toFixed(2),
+      'Cash Inv.': totals.cashInv.toFixed(2),
+      'Paid': totals.paid.toFixed(2),
+      'Balance': totals.balance.toFixed(2),
+      'Running Balance': totals.runningBalance.toFixed(2)
+    });
+    
+    const ws = XLSX.utils.json_to_sheet(dataForExcel);
     XLSX.utils.book_append_sheet(wb, ws, 'Customer History');
     
-    XLSX.writeFile(wb, 'customer-history.xlsx');
+    XLSX.writeFile(wb, `customer-history-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
   };
 
   const handlePDF = () => {
@@ -609,10 +693,10 @@ export default function CustomerHistory() {
                   variant="outline" 
                   className="flex items-center gap-1"
                   disabled={!selectedCustomer || historyData.length === 0}
-                  onClick={handleSendSelected}
+                  onClick={handleSendHistory}
                 >
                   <Mail size={14} />
-                  Email
+                  Email History
                 </Button>
               </div>
               <div className="relative">

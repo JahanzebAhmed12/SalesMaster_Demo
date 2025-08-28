@@ -106,19 +106,19 @@ export default function CustomerStatement() {
     try {
       const response = await apiRequest("POST", "/api/send/customer-statement", {
         customerId: parseInt(selectedCustomer),
-        fromDate: fromDate.toISOString().split('T')[0],
-        toDate: toDate.toISOString().split('T')[0],
-        statementType: 'Full Statement'
+        fromDate: format(fromDate, "yyyy-MM-dd"),
+        toDate: format(toDate, "yyyy-MM-dd"),
+        statementType: statementType
       });
 
       if (response.success) {
         alert('Customer statement email sent successfully!');
       } else {
-        alert('Failed to send email: ' + response.message);
+        alert('Failed to send email: ' + (response.message || 'Unknown error'));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending email:', error);
-      alert('Failed to send email. Please try again.');
+      alert('Failed to send email: ' + (error.message || 'Please try again.'));
     }
   };
 
@@ -190,6 +190,11 @@ export default function CustomerStatement() {
   };
 
   const handleExcel = () => {
+    if (statementData.length === 0) {
+      alert('No data to export. Please generate the statement first.');
+      return;
+    }
+
     // Get customer details
     const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
     
@@ -217,23 +222,40 @@ export default function CustomerStatement() {
     const wsInfo = XLSX.utils.aoa_to_sheet(customerInfo);
     XLSX.utils.book_append_sheet(wb, wsInfo, 'Customer Info');
     
-    // Add data sheet
-    const ws = XLSX.utils.json_to_sheet(statementData.map((row: StatementData) => ({
-      'Sl.No': row.slNo,
-      'Date': row.date,
-      'Invoice #': row.invoiceNo,
-      'Description': row.description,
-      'Credit Inv.': row.accountInv,
-      'Cash Inv.': row.cashInv,
-      'Paid': row.paid,
-      'Credit/Adj': row.accountAdj,
-      'Discount/Adj': row.discountAdj,
-      'Balance': row.balance,
-      'Running Balance': row.runningBalance
-    })));
+    // Add data sheet with proper data mapping
+    const dataForExcel = statementData.map((row: StatementData) => ({
+      'Sl.No': row.slNo || '',
+      'Date': row.date || '',
+      'Invoice #': row.invoiceNo || '',
+      'Description': row.description || '',
+      'Credit Inv.': (row.accountInv || 0).toFixed(2),
+      'Cash Inv.': (row.cashInv || 0).toFixed(2),
+      'Paid': (row.paid || 0).toFixed(2),
+      'Credit/Adj': (row.accountAdj || 0).toFixed(2),
+      'Discount/Adj': (row.discountAdj || 0).toFixed(2),
+      'Balance': (row.balance || 0).toFixed(2),
+      'Running Balance': (row.runningBalance || 0).toFixed(2)
+    }));
+
+    // Add totals row
+    dataForExcel.push({
+      'Sl.No': '',
+      'Date': 'TOTAL',
+      'Invoice #': '',
+      'Description': '',
+      'Credit Inv.': totals.accountInv.toFixed(2),
+      'Cash Inv.': totals.cashInv.toFixed(2),
+      'Paid': totals.paid.toFixed(2),
+      'Credit/Adj': totals.accountAdj.toFixed(2),
+      'Discount/Adj': totals.discountAdj.toFixed(2),
+      'Balance': totals.balance.toFixed(2),
+      'Running Balance': (statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)
+    });
+    
+    const ws = XLSX.utils.json_to_sheet(dataForExcel);
     XLSX.utils.book_append_sheet(wb, ws, 'Customer Statement');
     
-    XLSX.writeFile(wb, 'customer-statement.xlsx');
+    XLSX.writeFile(wb, `customer-statement-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
   };
 
   const handlePDF = () => {
@@ -249,30 +271,36 @@ export default function CustomerStatement() {
     // Add company info
     doc.setFontSize(10);
     if (companyDetails) {
-      doc.text(`${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+      doc.text(companyDetails.companyName || '', 105, 30, { align: 'center' });
+      doc.text(`${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 38, { align: 'center' });
     }
     
     // Add customer info
     doc.setFontSize(12);
-    doc.text('Customer Information:', 20, 45);
+    doc.text('Customer Information:', 20, 50);
     doc.setFontSize(10);
+    let yPos = 60;
     if (selectedCustomerData) {
-      doc.text(`Name: ${selectedCustomerData.customer_name}`, 20, 55);
+      doc.text(`Name: ${selectedCustomerData.customer_name}`, 20, yPos);
+      yPos += 8;
       if (selectedCustomerData.address) {
-        doc.text(`Address: ${selectedCustomerData.address}`, 20, 65);
+        doc.text(`Address: ${selectedCustomerData.address}`, 20, yPos);
+        yPos += 8;
       }
       if (selectedCustomerData.telephone) {
-        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, 75);
+        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, yPos);
+        yPos += 8;
       }
       if (selectedCustomerData.email) {
-        doc.text(`Email: ${selectedCustomerData.email}`, 20, 85);
+        doc.text(`Email: ${selectedCustomerData.email}`, 20, yPos);
+        yPos += 8;
       }
     }
     
     // Add period and statement type info
     doc.setFontSize(12);
-    doc.text(`Statement Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, 100);
-    doc.text(`Statement Type: ${statementType}`, 20, 110);
+    doc.text(`Statement Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, yPos + 5);
+    doc.text(`Statement Type: ${statementType}`, 20, yPos + 15);
     
     // Add table
     autoTable(doc, {
@@ -292,7 +320,7 @@ export default function CustomerStatement() {
         row.balance,
         row.runningBalance
       ]),
-      startY: 120,
+      startY: yPos + 25,
     });
     
     // Add footer text "stand100" on bottom right
