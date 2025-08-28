@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { insertUserSchema } from "@shared/schema";
+import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,8 +23,13 @@ function UserAddContent() {
   const userId = match ? params.id : null;
   const isEditMode = !!userId;
 
+  // Create a modified schema for edit mode that makes password optional
+  const editUserSchema = insertUserSchema.extend({
+    password: z.string().optional()
+  });
+
   const form = useForm<InsertUser>({
-    resolver: zodResolver(insertUserSchema),
+    resolver: zodResolver(isEditMode ? editUserSchema : insertUserSchema),
     defaultValues: {
       username: "",
       password: "",
@@ -35,6 +41,12 @@ function UserAddContent() {
     },
   });
 
+  // Debug: Watch form values
+  const watchedValues = form.watch();
+  useEffect(() => {
+    console.log('Form values changed:', watchedValues);
+  }, [watchedValues]);
+
   // Fetch user data if in edit mode
   const { data: userData, isLoading } = useQuery({
     queryKey: ["/api/users", userId],
@@ -45,6 +57,7 @@ function UserAddContent() {
   // Update form with user data when it's loaded
   useEffect(() => {
     if (userData) {
+      console.log('Loading user data:', userData);
       form.reset({
         username: userData.username,
         password: "", // Don't pre-fill password
@@ -54,19 +67,23 @@ function UserAddContent() {
         phone: userData.phone || "",
         dailyWage: userData.dailyWage || 0
       });
+      console.log('Form reset with values:', form.getValues());
     }
   }, [userData, form]);
 
   const addUserMutation = useInvalidateMutation(
     async (data: any) => {
+      console.log('Sending data to API:', data);
       const response = isEditMode
         ? await apiRequest("PUT", `/api/users/${userId}`, data)
         : await apiRequest("POST", "/api/users", data);
+      console.log('API response:', response);
       return response;
     },
     [{ queryKey: ["/api/users"] }, { queryKey: ["/api/users/attendance"] }],
     {
       onSuccess: (data) => {
+        console.log('Mutation success:', data);
         toast({
           title: "Success",
           description: isEditMode ? "User updated successfully" : "User added successfully",
@@ -74,6 +91,7 @@ function UserAddContent() {
         setLocation("/admin/user-setup");
       },
       onError: (error) => {
+        console.error('Mutation error:', error);
         toast({
           title: "Error",
           description: error instanceof Error ? error.message : `Failed to ${isEditMode ? 'update' : 'add'} user`,
@@ -91,16 +109,17 @@ function UserAddContent() {
       const formData = form.getValues();
       console.log('Form data:', formData);
       
-      // Only include required fields and format optional fields properly
+      // Format data to match backend expectations
       const formattedData = {
         username: formData.username,
-        password: formData.password,
-        user_type: formData.userType,
+        userType: formData.userType, // Backend expects 'userType', not 'user_type'
         status: formData.status,
         // Only include optional fields if they have values
         ...(formData.email ? { email: formData.email } : {}),
         ...(formData.phone ? { phone: formData.phone } : {}),
-        ...(formData.dailyWage ? { daily_wage: formData.dailyWage } : {})
+        ...(formData.dailyWage ? { dailyWage: formData.dailyWage } : {}), // Backend expects 'dailyWage', not 'daily_wage'
+        // Only include password if it's provided and not empty (for edit mode, empty password means don't change)
+        ...(formData.password && formData.password.trim() !== "" ? { password: formData.password } : {})
       };
       
       console.log('Formatted data:', formattedData);
@@ -153,7 +172,7 @@ function UserAddContent() {
                       name="userType"
                       render={({ field }) => (
                         <FormItem>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select user type" />
@@ -212,7 +231,7 @@ function UserAddContent() {
                       name="status"
                       render={({ field }) => (
                         <FormItem>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select status" />

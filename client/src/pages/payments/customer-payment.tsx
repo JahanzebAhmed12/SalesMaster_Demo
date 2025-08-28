@@ -267,7 +267,7 @@ export default function CustomerPayment() {
     const totalAmount = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
 
     // If using split payment, distribute evenly to cash by default
-    if (totalAmount > 0) {
+    if (totalAmount !== 0) {
       setSplitPayment({
         cash: totalAmount.toString(),
         card: "",
@@ -374,7 +374,7 @@ export default function CustomerPayment() {
 
   // Handle on-account payment submission
   const handleOnAccountPayment = () => {
-    if (!selectedCustomerId || receivedAmount <= 0 || !paymentDate) {
+    if (!selectedCustomerId || receivedAmount === 0 || !paymentDate) {
       toast({
         title: "Validation Error",
         description: "Please select a customer, enter a valid amount, and select a payment date.",
@@ -491,7 +491,7 @@ export default function CustomerPayment() {
     }
 
     // Original create payment logic
-    if (!selectedCustomerId || receivedAmount <= 0 || !paymentDate) {
+    if (!selectedCustomerId || receivedAmount === 0 || !paymentDate) {
       toast({
         title: "Validation Error",
         description: "Please select a customer, enter a valid amount, and select a payment date.",
@@ -1055,8 +1055,14 @@ export default function CustomerPayment() {
                   type="number"
                   value={receivedAmount}
                   onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)}
-                  placeholder="Enter amount"
+                  placeholder="Enter amount (negative for credit invoices)"
+                  step="0.01"
                 />
+                {receivedAmount < 0 && (
+                  <div className="text-xs text-blue-600 mt-1">
+                    Negative amount for credit invoice payment
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1075,7 +1081,7 @@ export default function CustomerPayment() {
                 <Label>Remaining Balance:</Label>
                 <div className="p-2 border rounded bg-gray-50">
                   <span className={`font-semibold text-lg ${remainingBalance > 0 ? 'text-red-600' : remainingBalance < 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                    £{Math.abs(remainingBalance).toFixed(2)}
+                    £{remainingBalance.toFixed(2)}
                   </span>
                   <span className="text-sm text-gray-500 ml-2">
                     {remainingBalance > 0 ? 'remaining' : remainingBalance < 0 ? 'overpaid' : 'exact'}
@@ -1101,7 +1107,7 @@ export default function CustomerPayment() {
                     (isEditing
                       ? updatePaymentMutation.isPending
                       : isOnAccountMode 
-                        ? createOnAccountMutation.isPending || receivedAmount <= 0
+                        ? createOnAccountMutation.isPending || receivedAmount === 0
                         : createPaymentMutation.isPending || selectedInvoiceIds.size === 0)
                   }
                 >
@@ -1204,7 +1210,7 @@ export default function CustomerPayment() {
                           variant="outline"
                           onClick={() => {
                             setOnAccountInvoiceId(invoice.id);
-                            setReceivedAmount(Math.abs(invoice.balance)); // Set amount to absolute balance
+                            setReceivedAmount(invoice.balance); // Set amount to actual balance (can be negative for credit invoices)
                             setRemarks(`On-account payment for invoice ${invoice.invoiceNumber}`);
                           }}
                           className="text-xs"

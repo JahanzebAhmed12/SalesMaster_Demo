@@ -288,6 +288,12 @@ def login():
     
     user = User.query.filter_by(username=username).first()
     if user and check_password_hash(user.password, password):
+        # Check if user account is active
+        if user.status != 'Active':
+            return jsonify({
+                'error': 'Account is inactive. Please contact administrator.'
+            }), 403
+            
         # Check timing restrictions
         timing_restriction = UserTimingRestriction.query.filter_by(user_id=user.id).first()
         if timing_restriction and timing_restriction.enabled:
@@ -388,8 +394,8 @@ def create_sale():
             # Check backdate editing permission
             backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
             today = datetime.now().date()
-            # If editing not allowed and business_date is not today, block
-            if backdate_opt and not backdate_opt.editing and business_date != today:
+            # If editing not allowed and business_date is in the past, block
+            if backdate_opt and not backdate_opt.editing and business_date < today:
                 db.session.rollback()
                 return jsonify({"error": "You do not have permission to create sales for previous dates."}), 403
             
@@ -698,8 +704,8 @@ def update_sale(id):
         # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
         today = datetime.now().date()
-        # If editing not allowed and sale.date is not today, block
-        if backdate_opt and not backdate_opt.editing and sale.date.date() != today:
+        # If editing not allowed and sale.date is in the past, block
+        if backdate_opt and not backdate_opt.editing and sale.date.date() < today:
             return jsonify({"error": "You do not have permission to edit sales for previous dates."}), 403
         
         # Check current date editing permission
@@ -1168,8 +1174,8 @@ def patch_sale(id):
         # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
         today = datetime.now().date()
-        # If editing not allowed and sale.date is not today, block
-        if backdate_opt and not backdate_opt.editing and sale.date.date() != today:
+        # If editing not allowed and sale.date is in the past, block
+        if backdate_opt and not backdate_opt.editing and sale.date.date() < today:
             return jsonify({"error": "You do not have permission to edit sales for previous dates."}), 403
         
         # Check current date editing permission
@@ -1232,7 +1238,7 @@ def create_purchase():
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
         business_date = get_business_date()
         today = datetime.now().date()
-        if backdate_opt and not backdate_opt.editing and business_date != today:
+        if backdate_opt and not backdate_opt.editing and business_date < today:
             return jsonify({'error': 'You do not have permission to create purchases for previous dates.'}), 403
         
         # Check current date editing permission
@@ -3641,7 +3647,7 @@ def create_payment():
             batch_id = (last_batch[0] + 1) if last_batch else 1
             
             for payment_type, split_amount in split_payment.items():
-                if split_amount > 0:
+                if split_amount != 0:  # Allow both positive and negative amounts
                     new_payment = Payment(
                         customer_id=payment_data.customer_id,
                         sale_id=payment_data.sale_id,
@@ -3874,7 +3880,7 @@ def create_bulk_payment():
             invoice_balance = float(invoice_data['balance'])
             
             # If split payment is used, distribute proportionally
-            if total_split > 0 and split_payment:
+            if total_split != 0 and split_payment:
                 proportion = invoice_balance / total_amount
                 # Create separate payment records for each payment type
                 mode_map = {
@@ -3885,7 +3891,7 @@ def create_bulk_payment():
                 }
                 
                 for payment_type, split_amount in split_payment.items():
-                    if split_amount > 0:
+                    if split_amount != 0:  # Allow both positive and negative amounts
                         payment_amount = split_amount * proportion
                         payment = Payment(
                             customer_id=customer_id,
@@ -9392,6 +9398,12 @@ def daily_summary_report():
     cheque_total = 0
     account_total = 0
     
+    # Debug logging
+    print(f"[DEBUG] Daily Summary for {report_date}")
+    print(f"[DEBUG] Found {len(sales_query)} sales")
+    print(f"[DEBUG] Found {len(customer_returns)} customer returns")
+    print(f"[DEBUG] Found {len(negative_payments)} negative payments")
+    
     # Track processed returns and negative payments to avoid duplicates
     processed_returns = set()
     processed_neg_payments = set()
@@ -9408,6 +9420,9 @@ def daily_summary_report():
         sale_payments = db.session.query(Payment).filter(
             Payment.sale_id == sale.id
         ).all()
+        
+        # Debug logging for this sale
+        print(f"[DEBUG] Sale {sale.invoice_number}: {len(sale_payments)} payments, customer_type: {sale.customer_type}")
         
         for payment in sale_payments:
             if payment.payment_mode == 'cash':
@@ -9486,9 +9501,21 @@ def daily_summary_report():
                 if p.customer_id == neg_payment.customer_id
             )
             
+            # Get all invoice numbers for this customer's negative payments
+            invoice_numbers = [
+                p.invoice_number for p in negative_payments 
+                if p.customer_id == neg_payment.customer_id and p.invoice_number
+            ]
+            
+            # Create a better display for invoice numbers
+            if invoice_numbers:
+                invoice_display = ', '.join(set(invoice_numbers))  # Remove duplicates
+            else:
+                invoice_display = 'Credit Payment'
+            
             sales_summary.append({
                 'customer_name': neg_payment.customer_name,
-                'invoice_no': f"NP-{neg_payment.invoice_number or 'PAYMENT'}",
+                'invoice_no': invoice_display,
                 'cash_sales': 0,
                 'card_paid': 0,
                 'bank_transfer': 0,
@@ -9500,7 +9527,41 @@ def daily_summary_report():
             })
             processed_neg_payments.add(neg_payment.customer_id)
     
+    # Calculate account_paid_cash and account_paid_cheque for existing sales
+    # Get all payments made on the report date for account sales from previous dates
+    account_payments = db.session.query(
+        Payment.sale_id,
+        Payment.payment_mode,
+        Payment.amount
+    ).join(
+        Sale, Payment.sale_id == Sale.id
+    ).filter(
+        Payment.payment_date == report_date,
+        func.date(Sale.date) < report_date,  # Only for previous date invoices
+        Sale.customer_type == 'account'
+    ).all()
+    
+    # Group account payments by sale_id
+    account_payment_totals = {}
+    for payment in account_payments:
+        if payment.sale_id not in account_payment_totals:
+            account_payment_totals[payment.sale_id] = {'cash': 0, 'cheque': 0}
+        
+        if payment.payment_mode == 'cash':
+            account_payment_totals[payment.sale_id]['cash'] += float(payment.amount)
+        elif payment.payment_mode == 'cheque':
+            account_payment_totals[payment.sale_id]['cheque'] += float(payment.amount)
+    
+    # Update sales_summary with account payment information
+    for sale_entry in sales_summary:
+        # Find the corresponding sale to get the sale_id
+        matching_sale = next((s for s in sales_query if s.invoice_number == sale_entry['invoice_no']), None)
+        if matching_sale and matching_sale.id in account_payment_totals:
+            sale_entry['account_paid_cash'] = account_payment_totals[matching_sale.id]['cash']
+            sale_entry['account_paid_cheque'] = account_payment_totals[matching_sale.id]['cheque']
+    
     # 2. Customer Payments (using payment batch_id as payment_id)
+    # Include all payments made on the selected date, but exclude those already shown in sales summary
     customer_payments = db.session.query(
         Customer.customer_name,
         Payment.id,
@@ -9508,7 +9569,8 @@ def daily_summary_report():
         Payment.payment_mode,
         Payment.amount,
         Payment.payment_date,
-        Sale.date.label('sale_date')
+        Sale.date.label('sale_date'),
+        Sale.invoice_number
     ).join(
         Customer, Payment.customer_id == Customer.id
     ).outerjoin(
@@ -9516,8 +9578,12 @@ def daily_summary_report():
     ).filter(
         Payment.payment_date == report_date,  # Payments made on the selected date
         or_(
-            Payment.sale_id.is_(None),  # On-account payments (always backdate)
-            func.date(Sale.date) < report_date  # Payments for invoices from previous dates
+            Payment.sale_id.is_(None),  # On-account payments (always show)
+            func.date(Sale.date) < report_date,  # Payments for invoices from previous dates (backdate)
+            and_(  # Same-day payments that are not already included in sales summary
+                func.date(Sale.date) == report_date,
+                Payment.amount < 0  # Only negative payments (credit invoices) for same day
+            )
         )
     ).order_by(Customer.customer_name, Payment.batch_id).all()
     
@@ -9531,14 +9597,19 @@ def daily_summary_report():
         if key not in payment_groups:
             payment_groups[key] = {
                 'customer_name': payment.customer_name,
-                'payment_id': payment_id,
+                'payment_id': payment_id,  # Use batch_id directly
                 'cash_amount': 0,
                 'card_amount': 0,
                 'bank_transfer_amount': 0,
                 'cheque_amount': 0,
                 'total_amount': 0,
-                'date': payment.payment_date.isoformat()
+                'date': payment.payment_date.isoformat(),
+                'invoice_numbers': set()
             }
+        
+        # Track invoice numbers for this payment batch
+        if payment.invoice_number:
+            payment_groups[key]['invoice_numbers'].add(payment.invoice_number)
         
         amount = float(payment.amount)
         if payment.payment_mode.lower() == 'cash':
@@ -9552,7 +9623,13 @@ def daily_summary_report():
         
         payment_groups[key]['total_amount'] += amount
     
-    customer_payments_data = list(payment_groups.values())
+    # Finalize payment data with batch ID display
+    customer_payments_data = []
+    for payment_group in payment_groups.values():
+        # Keep the original payment_id (which is the batch_id)
+        # Remove the temporary invoice_numbers set
+        payment_group.pop('invoice_numbers', None)
+        customer_payments_data.append(payment_group)
     
     # 3. Supplier Payments
     supplier_payments = db.session.query(
@@ -12144,6 +12221,12 @@ def get_current_user():
     
     user_id = get_jwt_identity()
     user = User.query.get(user_id)
+    
+    # Check if user account is still active
+    if not user or user.status != 'Active':
+        return jsonify({
+            'error': 'Account is inactive. Please contact administrator.'
+        }), 403
     
     # Check timing restrictions for current session
     timing_restriction = UserTimingRestriction.query.filter_by(user_id=user_id).first()
