@@ -178,33 +178,155 @@ export default function CustomerReturn() {
   };
 
   const handleExcel = () => {
-    const wb = XLSX.utils.book_new();
-    // Info sheet
-    const info = [
-      ['CUSTOMER RETURNS REPORT'],
-      [''],
-      ['Company:', companyDetails?.companyName || ''],
-      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
-      [''],
-      ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
-      [''],
-    ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(info);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
-    // Data sheet
-    const ws = XLSX.utils.json_to_sheet(returnData.map((item) => ({
-      'Sl.No': item.slNo,
-      'Return Date': format(new Date(item.returnDate), "dd/MM/yyyy"),
-      'Customer Name': item.customerName,
-      'Invoice No': item.invoiceNo,
-      'Product Name': item.productName,
-      'Quantity': item.quantity,
-      'Return Reason': item.returnReason,
-      'Return Amount': item.returnAmount,
-      'Status': item.refundStatus
-    })));
-    XLSX.utils.book_append_sheet(wb, ws, 'Customer Returns');
-    XLSX.writeFile(wb, `customer_returns_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
+    try {
+      if (!returnData || returnData.length === 0) {
+        alert('No data available to export');
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+      
+      // 1. Create Info Sheet
+      const info = [
+        ['CUSTOMER RETURNS REPORT'],
+        [''],
+        ['Company:', companyDetails?.companyName || ''],
+        ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+        ['', companyDetails?.telephone ? `Tel: ${companyDetails.telephone}` : ''],
+        ['', companyDetails?.mobile ? `Mobile: ${companyDetails.mobile}` : ''],
+        ['', companyDetails?.email ? `Email: ${companyDetails.email}` : ''],
+        ['', companyDetails?.website ? `Website: ${companyDetails.website}` : ''],
+        ['', companyDetails?.vatNo ? `VAT No: ${companyDetails.vatNo}` : ''],
+        ['', companyDetails?.compRegNo ? `Reg No: ${companyDetails.compRegNo}` : ''],
+        ['', companyDetails?.einlNumber ? `EINL: ${companyDetails.einlNumber}` : ''],
+        [''],
+        ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
+        ['Generated on:', format(new Date(), 'dd/MM/yyyy hh:mm a')],
+        ['']
+      ];
+      
+      const wsInfo = XLSX.utils.aoa_to_sheet(info);
+      wsInfo['!cols'] = [{ wch: 15 }, { wch: 50 }];
+      XLSX.utils.book_append_sheet(wb, wsInfo, 'Report Info');
+      
+      // 2. Create Data Sheet
+      const headers = [
+        'Sl.No',
+        'Return Date',
+        'Customer Name',
+        'Invoice No',
+        'Product Name',
+        'Quantity',
+        'Return Reason',
+        'Return Amount',
+        'Status'
+      ];
+      
+      // Prepare data rows
+      const data = returnData.map(item => [
+        item.slNo || '',
+        item.returnDate ? format(new Date(item.returnDate), 'dd/MM/yyyy') : '',
+        item.customerName || '',
+        item.invoiceNo || '',
+        item.productName || '',
+        item.quantity || 0,
+        item.returnReason || '',
+        item.returnAmount || 0,
+        item.refundStatus || ''
+      ]);
+      
+      // Add headers as first row
+      data.unshift(headers);
+      
+      // Create worksheet with all data
+      const ws = XLSX.utils.aoa_to_sheet(data);
+      
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 8 },  // Sl.No
+        { wch: 15 }, // Return Date
+        { wch: 30 }, // Customer Name
+        { wch: 15 }, // Invoice No
+        { wch: 30 }, // Product Name
+        { wch: 10, alignment: { horizontal: 'right' } }, // Quantity
+        { wch: 40 }, // Return Reason
+        { wch: 15, alignment: { horizontal: 'right' } }, // Return Amount
+        { wch: 15 }  // Status
+      ];
+      
+      // Add number formatting for numeric columns
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      for (let R = 1; R <= range.e.r; R++) {
+        // Format quantity column (0-based index 5)
+        const qtyCell = XLSX.utils.encode_cell({ r: R, c: 5 });
+        if (!ws[qtyCell]) ws[qtyCell] = {};
+        ws[qtyCell].t = 'n'; // Number type
+        
+        // Format amount column (0-based index 7)
+        const amtCell = XLSX.utils.encode_cell({ r: R, c: 7 });
+        if (!ws[amtCell]) ws[amtCell] = {};
+        ws[amtCell].t = 'n'; // Number type
+        ws[amtCell].z = '#,##0.00'; // Format as number with 2 decimal places
+      }
+      
+      // Add totals row
+      const totalRow = [
+        '', '', '', '', '',
+        { v: totals.totalQuantity, t: 'n' },
+        'Total:',
+        { v: totals.totalAmount, t: 'n', z: '#,##0.00' },
+        ''
+      ];
+      
+      XLSX.utils.sheet_add_aoa(ws, [totalRow], { origin: -1 });
+      
+      // Style header and total rows
+      for (let C = 0; C < headers.length; C++) {
+        // Style header row (row 0)
+        const headerCell = XLSX.utils.encode_cell({ r: 0, c: C });
+        ws[headerCell].s = { 
+          font: { bold: true }, 
+          fill: { fgColor: { rgb: 'FFF2CC' } }, // Light orange background
+          alignment: { horizontal: 'center', vertical: 'center' }
+        };
+        
+        // Style total row (last row)
+        const totalCell = XLSX.utils.encode_cell({ r: data.length, c: C });
+        if (ws[totalCell]) {
+          ws[totalCell].s = { 
+            font: { bold: true },
+            fill: { fgColor: { rgb: 'E6E6E6' } } // Light gray background
+          };
+        }
+      }
+      
+      // Add borders to all cells
+      const fullRange = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      for (let R = fullRange.s.r; R <= fullRange.e.r; R++) {
+        for (let C = fullRange.s.c; C <= fullRange.e.c; C++) {
+          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!ws[cellAddress]) ws[cellAddress] = { v: '' };
+          if (!ws[cellAddress].s) ws[cellAddress].s = {};
+          ws[cellAddress].s.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          };
+        }
+      }
+      
+      // Add the worksheet to the workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Customer Returns');
+      
+      // Generate filename and save
+      const filename = `Customer_Returns_${fromDate ? format(fromDate, 'yyyyMMdd') : ''}_${toDate ? format(toDate, 'yyyyMMdd') : ''}.xlsx`;
+      XLSX.writeFile(wb, filename);
+      
+    } catch (error) {
+      console.error('Error generating Excel file:', error);
+      alert('Failed to generate Excel file. Please try again.');
+    }
   };
 
   const handlePDF = () => {

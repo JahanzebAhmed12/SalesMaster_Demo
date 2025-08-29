@@ -147,32 +147,67 @@ export default function DateWiseSales() {
   };
 
   const handleExcel = () => {
-    const wb = XLSX.utils.book_new();
-    // Info sheet
-    const info = [
-      ['DATE WISE SALES REPORT'],
-      [''],
-      ['Company:', companyDetails?.companyName || ''],
-      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
-      [''],
-      ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
-      [''],
-    ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(info);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
-    // Data sheet
-    const ws = XLSX.utils.json_to_sheet(salesData.map((sale) => ({
-      'Date': format(new Date(sale.date), "dd/MM/yyyy"),
-      'Total Sales': sale.totalSales,
-      'Account Sales': sale.accountSales || 0,
-      'Cash Sales': sale.cashSales,
-      'Total Invoices': sale.totalInvoices,
-      'Average Sale': sale.averageSale,
-      'Top Product': sale.topProduct,
-      'Top Customer': sale.topCustomer
-    })));
-    XLSX.utils.book_append_sheet(wb, ws, 'Date Wise Sales');
-    XLSX.writeFile(wb, `date_wise_sales_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
+    try {
+      const wb = XLSX.utils.book_new();
+      
+      // Create header row
+      const header = [
+        'Date', 
+        'Total Sales', 
+        'Account Sales', 
+        'Cash Sales', 
+        'Total Invoices', 
+        'Average Sale', 
+        'Top Product', 
+        'Top Customer'
+      ];
+      
+      // Create data rows
+      const data = salesData.map(sale => [
+        format(new Date(sale.date), "dd/MM/yyyy"),
+        sale.totalSales,
+        sale.accountSales || 0,
+        sale.cashSales,
+        sale.totalInvoices,
+        sale.averageSale,
+        sale.topProduct || '',
+        sale.topCustomer || ''
+      ]);
+      
+      // Combine header and data
+      const excelData = [header, ...data];
+      
+      // Create worksheet
+      const ws = XLSX.utils.aoa_to_sheet(excelData);
+      
+      // Set column widths
+      const colWidths = [
+        { wch: 12 }, // Date
+        { wch: 15 }, // Total Sales
+        { wch: 15 }, // Account Sales
+        { wch: 15 }, // Cash Sales
+        { wch: 15 }, // Total Invoices
+        { wch: 15 }, // Average Sale
+        { wch: 20 }, // Top Product
+        { wch: 25 }  // Top Customer
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Date Wise Sales');
+      
+      // Generate filename
+      const fromDateStr = fromDate ? format(fromDate, "yyyyMMdd") : '';
+      const toDateStr = toDate ? format(toDate, "yyyyMMdd") : '';
+      const filename = `date_wise_sales_${fromDateStr}_to_${toDateStr}.xlsx`;
+      
+      // Save the file
+      XLSX.writeFile(wb, filename);
+      
+    } catch (error) {
+      console.error('Error exporting to Excel:', error);
+      alert('Failed to export to Excel. Please try again.');
+    }
   };
 
   const handlePDF = () => {
