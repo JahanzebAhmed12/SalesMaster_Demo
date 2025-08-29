@@ -214,114 +214,282 @@ export default function SupplierHistory() {
 
   // Export handlers
   const handlePrint = () => {
-    if (!tableRef.current) return;
-    
     // Get supplier details
     const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
     
-    const printContents = tableRef.current.innerHTML;
+    // Create a print window
     const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Supplier Statement</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{text-align:center;margin-bottom:10px;font-size:14px;}');
-      printWindow.document.write('.supplier-info{margin-bottom:15px;}');
-      printWindow.document.write('.period-info{margin-bottom:15px;font-weight:bold;}');
-      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
-      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
-      
-      // Add company header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>SUPPLIER STATEMENT</h2>');
-      if (companyDetails) {
-        printWindow.document.write(`<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
-      }
-      printWindow.document.write('</div>');
-      
-      // Add supplier information
-      if (selectedSupplierData) {
-        printWindow.document.write('<div class="supplier-info">');
-        printWindow.document.write(`<strong>Supplier:</strong> ${selectedSupplierData.supplier_name}<br>`);
-        if (selectedSupplierData.address) {
-          printWindow.document.write(`<strong>Address:</strong> ${selectedSupplierData.address}<br>`);
-        }
-        if (selectedSupplierData.telephone) {
-          printWindow.document.write(`<strong>Phone:</strong> ${selectedSupplierData.telephone}<br>`);
-        }
-        if (selectedSupplierData.email) {
-          printWindow.document.write(`<strong>Email:</strong> ${selectedSupplierData.email}`);
-        }
-        printWindow.document.write('</div>');
-      }
-      
-      // Add period information
-      printWindow.document.write('<div class="period-info">');
-      printWindow.document.write(`<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`);
-      printWindow.document.write('</div>');
-      
-      // Add the table content
-      printWindow.document.write(printContents);
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    if (!printWindow) return;
+    
+    // Create the print content
+    let printContent = `
+      <html>
+        <head>
+          <title>Supplier Statement</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 20px; }
+            .company-info { text-align: center; margin-bottom: 10px; font-size: 14px; }
+            .supplier-info { margin-bottom: 15px; }
+            .period-info { margin-bottom: 15px; font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f8f9fa; font-weight: bold; }
+            .text-right { text-align: right; }
+            .text-center { text-align: center; }
+            .footer { position: fixed; bottom: 10px; right: 10px; font-size: 8px; color: #666; }
+            @media print {
+              .no-print { display: none; }
+              body { margin: 0; padding: 10px; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>SUPPLIER STATEMENT</h2>
+            ${companyDetails ? `<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>` : ''}
+          </div>
+          
+          <div class="supplier-info">
+            <strong>Supplier:</strong> ${selectedSupplierData?.supplier_name || ''}<br>
+            ${selectedSupplierData?.address ? `<strong>Address:</strong> ${selectedSupplierData.address}<br>` : ''}
+            ${selectedSupplierData?.telephone ? `<strong>Phone:</strong> ${selectedSupplierData.telephone}<br>` : ''}
+            ${selectedSupplierData?.email ? `<strong>Email:</strong> ${selectedSupplierData.email}` : ''}
+          </div>
+          
+          <div class="period-info">
+            <strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Sl.No</th>
+                <th>Date</th>
+                <th>Invoice #</th>
+                <th>Description</th>
+                <th class="text-right">Purchase Inv.</th>
+                <th class="text-right">Paid</th>
+                <th class="text-right">Credit Adj.</th>
+                <th class="text-right">Discount Adj.</th>
+                <th class="text-right">Balance</th>
+                <th class="text-right">Running Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${statementData.map(row => `
+                <tr>
+                  <td>${row.slNo || ''}</td>
+                  <td>${row.date ? format(new Date(row.date), 'dd/MM/yyyy') : ''}</td>
+                  <td>${row.invoiceNo || ''}</td>
+                  <td>${row.description || ''}</td>
+                  <td class="text-right">£${(row.purchaseInv || 0).toFixed(2)}</td>
+                  <td class="text-right">£${(row.paid || 0).toFixed(2)}</td>
+                  <td class="text-right">£${(row.creditAdj || 0).toFixed(2)}</td>
+                  <td class="text-right">£${(row.discountAdj || 0).toFixed(2)}</td>
+                  <td class="text-right">£${(row.balance || 0).toFixed(2)}</td>
+                  <td class="text-right">£${(row.runningBalance || 0).toFixed(2)}</td>
+                </tr>
+              `).join('')}
+              
+              <!-- Totals Row -->
+              <tr style="font-weight: bold; background-color: #f8f9fa;">
+                <td colspan="4" class="text-right">TOTAL</td>
+                <td class="text-right">£${totals.purchaseInv.toFixed(2)}</td>
+                <td class="text-right">£${totals.paid.toFixed(2)}</td>
+                <td class="text-right">£${totals.creditAdj.toFixed(2)}</td>
+                <td class="text-right">£${totals.discountAdj.toFixed(2)}</td>
+                <td class="text-right">£${totals.balance.toFixed(2)}</td>
+                <td class="text-right">£${(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          
+          <div class="footer">stand100</div>
+          
+          <script>
+            // Auto-print and close after loading
+            window.onload = function() {
+              setTimeout(function() {
+                window.print();
+                setTimeout(function() { window.close(); }, 500);
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+    
+    // Write the content and open print dialog
+    printWindow.document.open();
+    printWindow.document.write(printContent);
+    printWindow.document.close();
   };
 
   const handleExcel = () => {
     // Get supplier details
     const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
     
-    // Create workbook with multiple sheets
+    // Create a new workbook
     const wb = XLSX.utils.book_new();
     
-    // Add supplier info sheet
-    const supplierInfo = [
+    // Prepare the data for the main sheet
+    const header = [
+      'Sl.No', 
+      'Date', 
+      'Invoice #', 
+      'Description', 
+      'Purchase Inv.', 
+      'Paid', 
+      'Credit Adj.', 
+      'Discount Adj.', 
+      'Balance', 
+      'Running Balance'
+    ];
+
+    // Convert data to array of arrays for better control
+    const dataArray = [
       ['SUPPLIER STATEMENT'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
       ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
-      [''],
+      ['']
+    ];
+    
+    // Add contact info if available
+    const contactInfo = [];
+    if (companyDetails?.telephone) contactInfo.push(`Tel: ${companyDetails.telephone}`);
+    if (companyDetails?.email) contactInfo.push(`Email: ${companyDetails.email}`);
+    if (contactInfo.length > 0) dataArray.push([contactInfo.join(' | ')], ['']);
+    
+    // Add supplier information
+    dataArray.push(
       ['Supplier Information:'],
       ['Name:', selectedSupplierData?.supplier_name || ''],
       ['Address:', selectedSupplierData?.address || ''],
       ['Phone:', selectedSupplierData?.telephone || ''],
       ['Email:', selectedSupplierData?.email || ''],
       [''],
+      ['Statement Details:'],
       ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      ['Type:', statementType],
       [''],
+      header // Add header row
+    );
+
+    // Add data rows
+    statementData.forEach((row) => {
+      dataArray.push([
+        row.slNo || '',
+        row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
+        row.invoiceNo || '',
+        row.description || '',
+        parseFloat(row.purchaseInv || 0).toFixed(2),
+        parseFloat(row.paid || 0).toFixed(2),
+        parseFloat(row.creditAdj || 0).toFixed(2),
+        parseFloat(row.discountAdj || 0).toFixed(2),
+        parseFloat(row.balance || 0).toFixed(2),
+        parseFloat(row.runningBalance || 0).toFixed(2)
+      ]);
+    });
+
+    // Add totals row
+    dataArray.push([
+      '',
+      'TOTAL',
+      '',
+      '',
+      parseFloat(totals.purchaseInv.toString()).toFixed(2),
+      parseFloat(totals.paid.toString()).toFixed(2),
+      parseFloat(totals.creditAdj.toString()).toFixed(2),
+      parseFloat(totals.discountAdj.toString()).toFixed(2),
+      parseFloat(totals.balance.toString()).toFixed(2),
+      statementData.length > 0 ? parseFloat(statementData[statementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
+    ]);
+
+    // Create worksheet from array data
+    const ws = XLSX.utils.aoa_to_sheet(dataArray);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 8 },   // Sl.No
+      { wch: 12 },  // Date
+      { wch: 15 },  // Invoice #
+      { wch: 40 },  // Description
+      { wch: 15 },  // Purchase Inv.
+      { wch: 12 },  // Paid
+      { wch: 12 },  // Credit Adj.
+      { wch: 12 },  // Discount Adj.
+      { wch: 12 },  // Balance
+      { wch: 15 }   // Running Balance
     ];
     
-    const wsInfo = XLSX.utils.aoa_to_sheet(supplierInfo);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Supplier Info');
+    // Apply styles to header row
+    const headerRow = dataArray.findIndex(row => row[0] === 'Sl.No');
+    if (headerRow !== -1) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: headerRow, c: C});
+        if (!ws[cellAddress]) continue;
+        ws[cellAddress].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '2B7BB9' } },
+          alignment: { horizontal: 'center' },
+          border: {
+            top: { style: 'thin', color: { rgb: '000000' } },
+            bottom: { style: 'thin', color: { rgb: '000000' } },
+            left: { style: 'thin', color: { rgb: '000000' } },
+            right: { style: 'thin', color: { rgb: '000000' } }
+          }
+        };
+      }
+    }
     
-    // Add data sheet
-    const ws = XLSX.utils.json_to_sheet(statementData.map((row: any) => ({
-      'Sl.No': row.slNo,
-      'Date': row.date,
-      'Invoice #': row.invoiceNo,
-      'Description': row.description,
-      'Purchase Inv.': row.purchaseInv,
-      'Paid': row.paid,
-      'Credit Adj.': row.creditAdj,
-      'Discount Adj.': row.discountAdj,
-      'Balance': row.balance,
-      'Running Balance': row.runningBalance
-    })));
+    // Right align numeric columns and add borders to all cells
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = 0; R <= range.e.r; ++R) {
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+        if (!ws[cellAddress]) continue;
+        
+        // Initialize cell style if it doesn't exist
+        if (!ws[cellAddress].s) ws[cellAddress].s = {};
+        
+        // Add borders to all cells
+        ws[cellAddress].s.border = {
+          top: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          bottom: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          left: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          right: { style: 'thin', color: { rgb: 'D3D3D3' } }
+        };
+        
+        // Right align numeric columns (indices 4-9)
+        if (C >= 4 && C <= 9) {
+          ws[cellAddress].s.alignment = ws[cellAddress].s.alignment || {};
+          ws[cellAddress].s.alignment.horizontal = 'right';
+        }
+      }
+    }
+    
+    // Style the title
+    ws['A1'].s = { font: { bold: true, sz: 16 }, alignment: { horizontal: 'center' } };
+    
+    // Merge title cells
+    if (!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } });
+    
+    // Set column widths
+    ws['!cols'] = colWidths;
+    
+    // Add the worksheet to the workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Supplier Statement');
     
-    XLSX.writeFile(wb, 'supplier-statement.xlsx');
+    // Generate filename with supplier name and date
+    const supplierName = selectedSupplierData?.supplier_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'supplier';
+    const dateStr = format(new Date(), 'yyyy-MM-dd');
+    
+    // Save the workbook
+    XLSX.writeFile(wb, `supplier-statement-${supplierName}-${dateStr}.xlsx`);
   };
 
   const handlePDF = () => {

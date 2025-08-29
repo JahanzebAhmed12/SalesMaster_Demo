@@ -384,6 +384,130 @@ export default function CustomerHistory() {
     }
   };
 
+  const handlePDF = () => {
+    // Get customer details
+    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    
+    // Initialize PDF with margins
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+    
+    // Set margins
+    const margin = 15; // 15mm margin on all sides
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - margin;
+    
+    // Add title
+    doc.setFontSize(16);
+    doc.text('CUSTOMER HISTORY STATEMENT', pageWidth / 2, margin + 10, { align: 'center' });
+    
+    // Add company info
+    doc.setFontSize(10);
+    if (companyDetails) {
+      const companyInfo = `${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`;
+      doc.text(companyInfo, pageWidth / 2, margin + 20, { 
+        align: 'center',
+        maxWidth: contentWidth
+      });
+    }
+    
+    // Add customer info
+    doc.setFontSize(12);
+    doc.text('Customer Information:', margin, margin + 35);
+    doc.setFontSize(10);
+    if (selectedCustomerData) {
+      doc.text(`Name: ${selectedCustomerData.customer_name}`, margin, margin + 45, { maxWidth: contentWidth });
+      if (selectedCustomerData.address) {
+        doc.text(`Address: ${selectedCustomerData.address}`, margin, margin + 55, { maxWidth: contentWidth });
+      }
+      if (selectedCustomerData.telephone) {
+        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, 75);
+      }
+      if (selectedCustomerData.email) {
+        doc.text(`Email: ${selectedCustomerData.email}`, 20, 85);
+      }
+    }
+    
+    // Add period info
+    doc.setFontSize(12);
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, margin, margin + 65);
+    
+    // Prepare table data
+    const tableColumn = ['Sl.No', 'Date', 'Invoice #', 'Account Inv.', 'Cash Inv.', 'Paid', 'Balance', 'Running Balance'];
+    const tableRows = historyData.map(row => [
+      row.slNo || '',
+      row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
+      row.invoiceNo || '',
+      parseFloat(row.accountInv || 0).toFixed(2),
+      parseFloat(row.cashInv || 0).toFixed(2),
+      parseFloat(row.paid || 0).toFixed(2),
+      parseFloat(row.balance || 0).toFixed(2),
+      parseFloat(row.runningBalance || 0).toFixed(2)
+    ]);
+    
+    // Add totals row
+    tableRows.push([
+      '',
+      'TOTAL',
+      '',
+      parseFloat(totals.accountInv.toString()).toFixed(2),
+      parseFloat(totals.cashInv.toString()).toFixed(2),
+      parseFloat(totals.paid.toString()).toFixed(2),
+      parseFloat(totals.balance.toString()).toFixed(2),
+      parseFloat(totals.runningBalance.toString()).toFixed(2)
+    ]);
+    
+    // Add table to PDF with proper margins
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      startY: margin + 80,
+      margin: { left: margin, right: margin },
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        overflow: 'linebreak',
+        lineWidth: 0.1,
+        cellWidth: 'wrap',
+        valign: 'middle'
+      },
+      headStyles: {
+        fillColor: [41, 128, 185],
+        textColor: 255,
+        fontStyle: 'bold',
+        lineWidth: 0.1
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
+      },
+      columnStyles: {
+        0: { cellWidth: 13, halign: 'center' },
+        1: { cellWidth: 20, halign: 'center' },
+        2: { cellWidth: 25, halign: 'center' },
+        3: { cellWidth: 23, halign: 'right' },
+        4: { cellWidth: 23, halign: 'right' },
+        5: { cellWidth: 23, halign: 'right' },
+        6: { cellWidth: 23, halign: 'right' },
+        7: { cellWidth: 30, halign: 'right' }
+      },
+      tableWidth: 'auto',
+      tableLineColor: [0, 0, 0],
+      tableLineWidth: 0.1
+    });
+    
+    // Add footer text "stand100" on bottom right with margin
+    doc.setFontSize(8);
+    doc.text('stand100', pageWidth - margin, pageHeight - margin, { align: 'right' });
+    
+    // Save the PDF
+    const fileName = `customer-history-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    doc.save(fileName);
+  };
+
   const handleExcel = () => {
     if (historyData.length === 0) {
       alert('No data to export. Please generate the report first.');
@@ -393,11 +517,23 @@ export default function CustomerHistory() {
     // Get customer details
     const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
     
-    // Create workbook with multiple sheets
+    // Create a new workbook
     const wb = XLSX.utils.book_new();
     
-    // Add customer info sheet
-    const customerInfo = [
+    // Prepare the data for the main sheet
+    const header = [
+      'Sl.No', 
+      'Date', 
+      'Invoice #', 
+      'Account Inv.', 
+      'Cash Inv.', 
+      'Paid', 
+      'Balance', 
+      'Running Balance'
+    ];
+
+    // Convert data to array of arrays for better control
+    const dataArray = [
       ['CUSTOMER HISTORY STATEMENT'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
@@ -411,103 +547,57 @@ export default function CustomerHistory() {
       [''],
       ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
       [''],
+      header // Add header row
     ];
-    
-    const wsInfo = XLSX.utils.aoa_to_sheet(customerInfo);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Customer Info');
-    
-    // Add data sheet with proper data mapping
-    const dataForExcel = historyData.map((row: any) => ({
-      'Sl.No': row.slNo || '',
-      'Date': row.date || '',
-      'Invoice #': row.invoiceNo || '',
-      'Account Inv.': (row.accountInv || 0).toFixed(2),
-      'Cash Inv.': (row.cashInv || 0).toFixed(2),
-      'Paid': (row.paid || 0).toFixed(2),
-      'Balance': (row.balance || 0).toFixed(2),
-      'Running Balance': (row.runningBalance || 0).toFixed(2)
-    }));
+
+    // Add data rows
+    historyData.forEach((row: any) => {
+      dataArray.push([
+        row.slNo || '',
+        row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
+        row.invoiceNo || '',
+        parseFloat(row.accountInv || 0).toFixed(2),
+        parseFloat(row.cashInv || 0).toFixed(2),
+        parseFloat(row.paid || 0).toFixed(2),
+        parseFloat(row.balance || 0).toFixed(2),
+        parseFloat(row.runningBalance || 0).toFixed(2)
+      ]);
+    });
 
     // Add totals row
-    dataForExcel.push({
-      'Sl.No': '',
-      'Date': 'TOTAL',
-      'Invoice #': '',
-      'Account Inv.': totals.accountInv.toFixed(2),
-      'Cash Inv.': totals.cashInv.toFixed(2),
-      'Paid': totals.paid.toFixed(2),
-      'Balance': totals.balance.toFixed(2),
-      'Running Balance': totals.runningBalance.toFixed(2)
-    });
+    dataArray.push([
+      '',
+      'TOTAL',
+      '',
+      parseFloat(totals.accountInv.toString()).toFixed(2),
+      parseFloat(totals.cashInv.toString()).toFixed(2),
+      parseFloat(totals.paid.toString()).toFixed(2),
+      parseFloat(totals.balance.toString()).toFixed(2),
+      parseFloat(totals.runningBalance.toString()).toFixed(2)
+    ]);
+
+    // Create worksheet from array data
+    const ws = XLSX.utils.aoa_to_sheet(dataArray);
     
-    const ws = XLSX.utils.json_to_sheet(dataForExcel);
+    // Set column widths
+    const colWidths = [
+      { wch: 8 },  // Sl.No
+      { wch: 12 }, // Date
+      { wch: 15 }, // Invoice #
+      { wch: 15 }, // Account Inv.
+      { wch: 12 }, // Cash Inv.
+      { wch: 12 }, // Paid
+      { wch: 12 }, // Balance
+      { wch: 15 }  // Running Balance
+    ];
+    ws['!cols'] = colWidths;
+    
+    // Add the worksheet to the workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Customer History');
     
-    XLSX.writeFile(wb, `customer-history-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
-  };
-
-  const handlePDF = () => {
-    // Get customer details
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    
-    const doc = new jsPDF();
-    
-    // Add title
-    doc.setFontSize(16);
-    doc.text('CUSTOMER HISTORY STATEMENT', 105, 20, { align: 'center' });
-    
-    // Add company info
-    doc.setFontSize(10);
-    if (companyDetails) {
-      doc.text(`${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
-    }
-    
-    // Add customer info
-    doc.setFontSize(12);
-    doc.text('Customer Information:', 20, 45);
-    doc.setFontSize(10);
-    if (selectedCustomerData) {
-      doc.text(`Name: ${selectedCustomerData.customer_name}`, 20, 55);
-      if (selectedCustomerData.address) {
-        doc.text(`Address: ${selectedCustomerData.address}`, 20, 65);
-      }
-      if (selectedCustomerData.telephone) {
-        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, 75);
-      }
-      if (selectedCustomerData.email) {
-        doc.text(`Email: ${selectedCustomerData.email}`, 20, 85);
-      }
-    }
-    
-    // Add period info
-    doc.setFontSize(12);
-    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, 100);
-    
-    // Add table
-    autoTable(doc, {
-      head: [[
-        'Sl.No', 'Date', 'Invoice #', 'Account Inv.', 'Cash Inv.', 'Paid', 'Balance', 'Running Balance'
-      ]],
-      body: historyData.map((row: any) => [
-        row.slNo,
-        row.date,
-        row.invoiceNo,
-        row.accountInv,
-        row.cashInv,
-        row.paid,
-        row.balance,
-        row.runningBalance
-      ]),
-      startY: 110,
-    });
-    
-    // Add footer text "stand100" on bottom right
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(8);
-    doc.text('stand100', pageWidth - 30, pageHeight - 10, { align: 'right' });
-    
-    doc.save('customer-history.pdf');
+    // Generate the Excel file
+    const fileName = `customer-history-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   };
 
   const handleCopy = async () => {

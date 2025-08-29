@@ -281,6 +281,7 @@ const baseProductSchema = {
   id: z.number(),
   productCode: z.string(),
   sageCode: z.string().nullable(),
+  name: z.string(),
   description: z.string(),
   sellingPrice: z.number(),
   taxRate: z.number(),
@@ -319,13 +320,7 @@ export const regularProductSchema = z.object({
 
 // Non-Product Schema
 export const nonProductSchema = z.object({
-  id: z.number(),
-  productCode: z.string(),
-  sageCode: z.string().nullable(),
-  description: z.string(),
-  sellingPrice: z.number(),
-  taxRate: z.number(),
-  vatCode: z.string().nullable(),
+  ...baseProductSchema,
   unitOfPurchase: z.string().nullable(),
   unitOfSale: z.string().nullable(),
   location: z.string().nullable(),

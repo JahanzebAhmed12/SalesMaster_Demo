@@ -198,138 +198,343 @@ export default function CustomerStatement() {
     // Get customer details
     const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
     
-    // Create workbook with multiple sheets
+    // Create a new workbook
     const wb = XLSX.utils.book_new();
     
-    // Add customer info sheet
-    const customerInfo = [
+    // Prepare the data for the main sheet
+    const header = [
+      'Sl.No', 
+      'Date', 
+      'Invoice #', 
+      'Description', 
+      'Credit Inv.', 
+      'Cash Inv.', 
+      'Paid', 
+      'Credit/Adj', 
+      'Discount/Adj', 
+      'Balance', 
+      'Running Balance'
+    ];
+
+    // Convert data to array of arrays for better control
+    const dataArray = [
       ['CUSTOMER STATEMENT'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
-      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
-      [''],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`]
+    ];
+    
+    // Add contact info if available
+    const contactInfo = [];
+    if (companyDetails?.telephone) contactInfo.push(`Tel: ${companyDetails.telephone}`);
+    if (companyDetails?.email) contactInfo.push(`Email: ${companyDetails.email}`);
+    if (contactInfo.length > 0) dataArray.push([contactInfo.join(' | ')], ['']);
+    
+    // Add customer information
+    dataArray.push(
       ['Customer Information:'],
       ['Name:', selectedCustomerData?.customer_name || ''],
       ['Address:', selectedCustomerData?.address || ''],
       ['Phone:', selectedCustomerData?.telephone || ''],
       ['Email:', selectedCustomerData?.email || ''],
       [''],
-      ['Statement Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
-      ['Statement Type:', statementType],
+      ['Statement Details:'],
+      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      ['Type:', statementType],
       [''],
-    ];
-    
-    const wsInfo = XLSX.utils.aoa_to_sheet(customerInfo);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Customer Info');
-    
-    // Add data sheet with proper data mapping
-    const dataForExcel = statementData.map((row: StatementData) => ({
-      'Sl.No': row.slNo || '',
-      'Date': row.date || '',
-      'Invoice #': row.invoiceNo || '',
-      'Description': row.description || '',
-      'Credit Inv.': (row.accountInv || 0).toFixed(2),
-      'Cash Inv.': (row.cashInv || 0).toFixed(2),
-      'Paid': (row.paid || 0).toFixed(2),
-      'Credit/Adj': (row.accountAdj || 0).toFixed(2),
-      'Discount/Adj': (row.discountAdj || 0).toFixed(2),
-      'Balance': (row.balance || 0).toFixed(2),
-      'Running Balance': (row.runningBalance || 0).toFixed(2)
-    }));
+      header // Add header row
+    );
+
+    // Add data rows
+    statementData.forEach((row) => {
+      dataArray.push([
+        row.slNo || '',
+        row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
+        row.invoiceNo || '',
+        row.description || '',
+        parseFloat(row.accountInv || 0).toFixed(2),
+        parseFloat(row.cashInv || 0).toFixed(2),
+        parseFloat(row.paid || 0).toFixed(2),
+        parseFloat(row.accountAdj || 0).toFixed(2),
+        parseFloat(row.discountAdj || 0).toFixed(2),
+        parseFloat(row.balance || 0).toFixed(2),
+        parseFloat(row.runningBalance || 0).toFixed(2)
+      ]);
+    });
 
     // Add totals row
-    dataForExcel.push({
-      'Sl.No': '',
-      'Date': 'TOTAL',
-      'Invoice #': '',
-      'Description': '',
-      'Credit Inv.': totals.accountInv.toFixed(2),
-      'Cash Inv.': totals.cashInv.toFixed(2),
-      'Paid': totals.paid.toFixed(2),
-      'Credit/Adj': totals.accountAdj.toFixed(2),
-      'Discount/Adj': totals.discountAdj.toFixed(2),
-      'Balance': totals.balance.toFixed(2),
-      'Running Balance': (statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)
-    });
+    dataArray.push([
+      '',
+      'TOTAL',
+      '',
+      '',
+      parseFloat(totals.accountInv.toString()).toFixed(2),
+      parseFloat(totals.cashInv.toString()).toFixed(2),
+      parseFloat(totals.paid.toString()).toFixed(2),
+      parseFloat(totals.accountAdj.toString()).toFixed(2),
+      parseFloat(totals.discountAdj.toString()).toFixed(2),
+      parseFloat(totals.balance.toString()).toFixed(2),
+      statementData.length > 0 ? parseFloat(statementData[statementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
+    ]);
+
+    // Create worksheet from array data
+    const ws = XLSX.utils.aoa_to_sheet(dataArray);
     
-    const ws = XLSX.utils.json_to_sheet(dataForExcel);
+    // Set column widths
+    const colWidths = [
+      { wch: 8 },   // Sl.No
+      { wch: 12 },  // Date
+      { wch: 15 },  // Invoice #
+      { wch: 40 },  // Description
+      { wch: 12 },  // Credit Inv.
+      { wch: 12 },  // Cash Inv.
+      { wch: 12 },  // Paid
+      { wch: 12 },  // Credit/Adj
+      { wch: 12 },  // Discount/Adj
+      { wch: 12 },  // Balance
+      { wch: 15 }   // Running Balance
+    ];
+    
+    // Apply styles to header row
+    const headerRow = dataArray.findIndex(row => row[0] === 'Sl.No');
+    if (headerRow !== -1) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: headerRow, c: C});
+        if (!ws[cellAddress]) continue;
+        ws[cellAddress].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '2B7BB9' } },
+          alignment: { horizontal: 'center' },
+          border: {
+            top: { style: 'thin', color: { rgb: '000000' } },
+            bottom: { style: 'thin', color: { rgb: '000000' } },
+            left: { style: 'thin', color: { rgb: '000000' } },
+            right: { style: 'thin', color: { rgb: '000000' } }
+          }
+        };
+      }
+    }
+    
+    // Right align numeric columns and add borders to all cells
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = 0; R <= range.e.r; ++R) {
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+        if (!ws[cellAddress]) continue;
+        
+        // Initialize cell style if it doesn't exist
+        if (!ws[cellAddress].s) ws[cellAddress].s = {};
+        
+        // Add borders to all cells
+        ws[cellAddress].s.border = {
+          top: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          bottom: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          left: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          right: { style: 'thin', color: { rgb: 'D3D3D3' } }
+        };
+        
+        // Right align numeric columns (indices 4-10)
+        if (C >= 4 && C <= 10) {
+          ws[cellAddress].s.alignment = ws[cellAddress].s.alignment || {};
+          ws[cellAddress].s.alignment.horizontal = 'right';
+        }
+      }
+    }
+    
+    // Style the title
+    ws['A1'].s = { font: { bold: true, sz: 16 }, alignment: { horizontal: 'center' } };
+    
+    // Merge title cells
+    if (!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 10 } });
+    
+    // Set column widths
+    ws['!cols'] = colWidths;
+    
+    // Freeze header row
+    ws['!freeze'] = { xSplit: 0, ySplit: headerRow + 1, topLeftCell: 'A' + (headerRow + 2), activePane: 'bottomRight' };
+    
+    // Add filter to header row
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: headerRow, c: 0 }, e: { r: range.e.r, c: range.e.c } }) };
+    
+    // Add the worksheet to the workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Customer Statement');
     
-    XLSX.writeFile(wb, `customer-statement-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.xlsx`);
+    // Generate filename with customer name and date
+    const customerName = selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer';
+    const dateStr = format(new Date(), 'yyyy-MM-dd');
+    
+    // Save the workbook
+    XLSX.writeFile(wb, `customer_statement_${customerName}_${dateStr}.xlsx`);
   };
 
   const handlePDF = () => {
+    if (statementData.length === 0) {
+      alert('No data to export. Please generate the statement first.');
+      return;
+    }
+
     // Get customer details
     const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
     
-    const doc = new jsPDF();
+    // Initialize PDF with margins
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+    
+    // Set margins
+    const margin = 15; // 15mm margin on all sides
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - (2 * margin);
     
     // Add title
     doc.setFontSize(16);
-    doc.text('CUSTOMER STATEMENT', 105, 20, { align: 'center' });
+    doc.text('CUSTOMER STATEMENT', pageWidth / 2, margin + 10, { align: 'center' });
     
     // Add company info
     doc.setFontSize(10);
     if (companyDetails) {
-      doc.text(companyDetails.companyName || '', 105, 30, { align: 'center' });
-      doc.text(`${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 38, { align: 'center' });
+      const companyInfo = `${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`;
+      doc.text(companyInfo, pageWidth / 2, margin + 20, { 
+        align: 'center',
+        maxWidth: contentWidth
+      });
     }
     
     // Add customer info
     doc.setFontSize(12);
-    doc.text('Customer Information:', 20, 50);
+    doc.text('Customer Information:', margin, margin + 35);
     doc.setFontSize(10);
-    let yPos = 60;
     if (selectedCustomerData) {
-      doc.text(`Name: ${selectedCustomerData.customer_name}`, 20, yPos);
-      yPos += 8;
+      doc.text(`Name: ${selectedCustomerData.customer_name || ''}`, margin, margin + 45, { maxWidth: contentWidth });
       if (selectedCustomerData.address) {
-        doc.text(`Address: ${selectedCustomerData.address}`, 20, yPos);
-        yPos += 8;
+        doc.text(`Address: ${selectedCustomerData.address}`, margin, margin + 55, { maxWidth: contentWidth });
       }
-      if (selectedCustomerData.telephone) {
-        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, yPos);
-        yPos += 8;
-      }
-      if (selectedCustomerData.email) {
-        doc.text(`Email: ${selectedCustomerData.email}`, 20, yPos);
-        yPos += 8;
+      if (selectedCustomerData.telephone || selectedCustomerData.email) {
+        const contactInfo = [];
+        if (selectedCustomerData.telephone) contactInfo.push(`Phone: ${selectedCustomerData.telephone}`);
+        if (selectedCustomerData.email) contactInfo.push(`Email: ${selectedCustomerData.email}`);
+        doc.text(contactInfo.join(' | '), margin, margin + 65, { maxWidth: contentWidth });
       }
     }
     
-    // Add period and statement type info
+    // Add period info
     doc.setFontSize(12);
-    doc.text(`Statement Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 20, yPos + 5);
-    doc.text(`Statement Type: ${statementType}`, 20, yPos + 15);
+    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, margin, margin + 80);
+    // doc.text(`Type: ${statementType}`, margin + 50, margin + 80);
     
-    // Add table
+    // Prepare table data
+    const tableColumn = [
+      'Sl.No', 
+      'Date', 
+      'Invoice #', 
+      'Description', 
+      'Credit Inv.', 
+      'Cash Inv.', 
+      'Paid', 
+      'Credit/Adj', 
+      'Discount/Adj', 
+      'Balance', 
+      'Running Balance'
+    ];
+    
+    const tableRows = statementData.map(row => [
+      row.slNo || '',
+      row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
+      row.invoiceNo || '',
+      row.description || '',
+      parseFloat(row.accountInv || 0).toFixed(2),
+      parseFloat(row.cashInv || 0).toFixed(2),
+      parseFloat(row.paid || 0).toFixed(2),
+      parseFloat(row.accountAdj || 0).toFixed(2),
+      parseFloat(row.discountAdj || 0).toFixed(2),
+      parseFloat(row.balance || 0).toFixed(2),
+      parseFloat(row.runningBalance || 0).toFixed(2)
+    ]);
+    
+    // Add totals row
+    tableRows.push([
+      '',
+      'TOTAL',
+      '',
+      '',
+      parseFloat(totals.accountInv.toString()).toFixed(2),
+      parseFloat(totals.cashInv.toString()).toFixed(2),
+      parseFloat(totals.paid.toString()).toFixed(2),
+      parseFloat(totals.accountAdj.toString()).toFixed(2),
+      parseFloat(totals.discountAdj.toString()).toFixed(2),
+      parseFloat(totals.balance.toString()).toFixed(2),
+      statementData.length > 0 ? parseFloat(statementData[statementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
+    ]);
+    
+    // Add table to PDF with proper margins
     autoTable(doc, {
-      head: [[
-        'Sl.No', 'Date', 'Invoice #', 'Description', 'Credit Inv.', 'Cash Inv.', 'Paid', 'Credit/Adj', 'Discount/Adj', 'Balance', 'Running Balance'
-      ]],
-      body: statementData.map((row: StatementData) => [
-        row.slNo,
-        row.date,
-        row.invoiceNo,
-        row.description,
-        row.accountInv,
-        row.cashInv,
-        row.paid,
-        row.accountAdj,
-        row.discountAdj,
-        row.balance,
-        row.runningBalance
-      ]),
-      startY: yPos + 25,
+      head: [tableColumn],
+      body: tableRows,
+      startY: margin + 90,
+      margin: { left: margin, right: margin },
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        overflow: 'linebreak',
+        lineWidth: 0.1,
+        cellWidth: 'wrap',
+        valign: 'middle',
+        textColor: [0, 0, 0]
+      },
+      headStyles: {
+        fillColor: [41, 128, 185],
+        textColor: 255,
+        fontStyle: 'bold',
+        lineWidth: 0.1,
+        fontSize: 7
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245]
+      },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },  // Sl.No
+        1: { cellWidth: 20, halign: 'center' }, // Date
+        2: { cellWidth: 17, halign: 'center' }, // Invoice #
+        3: { cellWidth: 25 },  // Description
+        4: { cellWidth: 15, halign: 'right' },  // Credit Inv.
+        5: { cellWidth: 15, halign: 'right' },  // Cash Inv.
+        6: { cellWidth: 15, halign: 'right' },  // Paid
+        7: { cellWidth: 15, halign: 'right' },  // Credit/Adj
+        8: { cellWidth: 15, halign: 'right' },  // Discount/Adj
+        9: { cellWidth: 15, halign: 'right' },  // Balance
+        10: { cellWidth: 20, halign: 'right' }  // Running Balance
+      },
+      tableWidth: 'auto',
+      tableLineColor: [0, 0, 0],
+      tableLineWidth: 0.1,
+      didDrawPage: function(data) {
+        // Footer on each page
+        doc.setFontSize(8);
+        doc.text(
+          'stand100', 
+          pageWidth - margin, 
+          pageHeight - margin, 
+          { align: 'right' }
+        );
+        
+        // Page number
+        doc.text(
+          `Page ${data.pageNumber} of ${data.pageCount}`, 
+          pageWidth / 2, 
+          pageHeight - margin,
+          { align: 'center' }
+        );
+      }
     });
     
-    // Add footer text "stand100" on bottom right
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(8);
-    doc.text('stand100', pageWidth - 30, pageHeight - 10, { align: 'right' });
-    
-    doc.save('customer-statement.pdf');
+    // Save the PDF
+    const fileName = `customer-statement-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+    doc.save(fileName);
   };
 
   const handleCopy = async () => {

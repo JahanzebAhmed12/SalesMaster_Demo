@@ -107,54 +107,95 @@ export default function PurchaseHistory() {
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Purchase History Report</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
-      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
-      printWindow.document.write('</style>');
+      printWindow.document.write(`
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          h1 { color: #2C7A7B; text-align: center; margin-bottom: 5px; }
+          .company-info { text-align: center; margin-bottom: 10px; font-size: 14px; }
+          .report-info { margin-bottom: 15px; font-size: 13px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+          th { background-color: #2C7A7B; color: white; padding: 8px; text-align: left; }
+          td { padding: 6px; border: 1px solid #ddd; }
+          .total-row { font-weight: bold; background-color: #f5f5f5; }
+          .text-right { text-align: right; }
+          .text-center { text-align: center; }
+          .footer { margin-top: 20px; font-size: 12px; text-align: center; color: #666; }
+          .page-break { page-break-after: always; }
+        </style>
+      `);
       printWindow.document.write('</head><body>');
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>PURCHASE HISTORY REPORT</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
-      printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
-      printWindow.document.write('</div>');
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th>');
-      printWindow.document.write('<th>Date</th>');
-      printWindow.document.write('<th>Supplier Name</th>');
-      printWindow.document.write('<th>Invoice No</th>');
-      printWindow.document.write('<th>Delivery No</th>');
-      printWindow.document.write('<th>Product Name</th>');
-      printWindow.document.write('<th>Quantity</th>');
-      printWindow.document.write('<th>Unit Price</th>');
-      printWindow.document.write('<th>Total Amount</th>');
-      printWindow.document.write('<th>Payment Status</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      purchaseData.forEach((purchase: PurchaseHistoryData) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${purchase.slNo}</td>`);
-        printWindow.document.write(`<td>${format(new Date(purchase.date), "dd/MM/yyyy")}</td>`);
-        printWindow.document.write(`<td>${purchase.supplierName}</td>`);
-        printWindow.document.write(`<td>${purchase.invoiceNo}</td>`);
-        printWindow.document.write(`<td>${purchase.deliveryNo}</td>`);
-        printWindow.document.write(`<td>${purchase.productName}</td>`);
-        printWindow.document.write(`<td>${purchase.quantity}</td>`);
-        printWindow.document.write(`<td>£${purchase.unitPrice.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${purchase.totalAmount.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${purchase.paymentStatus}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
       
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
+      // Header with company info
+      printWindow.document.write(`
+        <h1>PURCHASE HISTORY REPORT</h1>
+        <div class="company-info">
+          <div>${companyDetails?.companyName || ''}</div>
+          <div>${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</div>
+          <div>${companyDetails?.telephone ? 'Tel: ' + companyDetails.telephone : ''} ${companyDetails?.email ? '| Email: ' + companyDetails.email : ''}</div>
+        </div>
+        <div class="report-info">
+          <div><strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</div>
+          <div><strong>Supplier:</strong> ${supplierFilter || 'All'}</div>
+          <div><strong>Payment Status:</strong> ${paymentFilter || 'All'}</div>
+        </div>
+      `);
+      
+      // Table
+      printWindow.document.write(`
+        <table>
+          <thead>
+            <tr>
+              <th>Sl.No</th>
+              <th>Date</th>
+              <th>Supplier</th>
+              <th>Invoice No</th>
+              <th>Product Name</th>
+              <th class="text-center">Qty</th>
+              <th class="text-right">Unit Price</th>
+              <th class="text-right">Total</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+      `);
+      
+      // Table rows
+      purchaseData.forEach((purchase: PurchaseHistoryData) => {
+        printWindow.document.write(`
+          <tr>
+            <td>${purchase.slNo}</td>
+            <td>${format(new Date(purchase.date), 'dd/MM/yyyy')}</td>
+            <td>${purchase.supplierName}</td>
+            <td>${purchase.invoiceNo}</td>
+            <td>${purchase.productName}</td>
+            <td class="text-center">${purchase.quantity}</td>
+            <td class="text-right">£${purchase.unitPrice.toFixed(2)}</td>
+            <td class="text-right">£${purchase.totalAmount.toFixed(2)}</td>
+            <td>${purchase.paymentStatus}</td>
+          </tr>
+        `);
+      });
+      
+      // Totals row
+      printWindow.document.write(`
+          <tr class="total-row">
+            <td colspan="5" class="text-right"><strong>TOTALS:</strong></td>
+            <td class="text-center">${totals.totalQuantity}</td>
+            <td></td>
+            <td class="text-right">£${totals.totalAmount.toFixed(2)}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      `);
+      
+      // Footer
+      printWindow.document.write(`
+        <div class="footer">
+          <div>Generated on ${format(new Date(), 'dd/MM/yyyy hh:mm a')}</div>
+          <div>${window.location.href}</div>
+        </div>
+      `);
       
       printWindow.document.write('</body></html>');
       printWindow.document.close();
@@ -165,102 +206,298 @@ export default function PurchaseHistory() {
 
   const handleExcel = () => {
     const wb = XLSX.utils.book_new();
-    // Info sheet
-    const info = [
+    
+    // Prepare the data for the main sheet
+    const header = [
+      'Sl.No', 
+      'Date', 
+      'Supplier Name',
+      'Invoice No',
+      'Product Name',
+      'Quantity',
+      'Unit Price',
+      'Total Amount',
+      'Payment Status'
+    ];
+
+    // Convert data to array of arrays for better control
+    const dataArray = [
       ['PURCHASE HISTORY REPORT'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
       ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
-      [''],
-      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
-      [''],
+      ['']
     ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(info);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
-    // Data sheet
-    const ws = XLSX.utils.json_to_sheet(purchaseData.map((purchase: PurchaseHistoryData) => ({
-      'Sl.No': purchase.slNo,
-      'Date': format(new Date(purchase.date), "dd/MM/yyyy"),
-      'Supplier Name': purchase.supplierName,
-      'Invoice No': purchase.invoiceNo,
-      'Delivery No': purchase.deliveryNo,
-      'Product Name': purchase.productName,
-      'Quantity': purchase.quantity,
-      'Unit Price': purchase.unitPrice,
-      'Total Amount': purchase.totalAmount,
-      'Payment Status': purchase.paymentStatus
-    })));
+    
+    // Add contact info if available
+    const contactInfo = [];
+    if (companyDetails?.telephone) contactInfo.push(`Tel: ${companyDetails.telephone}`);
+    if (companyDetails?.email) contactInfo.push(`Email: ${companyDetails.email}`);
+    if (contactInfo.length > 0) dataArray.push([contactInfo.join(' | ')], ['']);
+    
+    // Add period information
+    dataArray.push(
+      ['Report Details:'],
+      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      ['Supplier:', supplierFilter],
+      ['Payment Status:', paymentFilter],
+      [''],
+      header // Add header row
+    );
+
+    // Add data rows
+    purchaseData.forEach((purchase: PurchaseHistoryData) => {
+      dataArray.push([
+        purchase.slNo || '',
+        format(new Date(purchase.date), "dd/MM/yyyy"),
+        purchase.supplierName || '',
+        purchase.invoiceNo || '',
+        purchase.productName || '',
+        purchase.quantity || 0,
+        parseFloat(purchase.unitPrice?.toString() || '0').toFixed(2),
+        parseFloat(purchase.totalAmount?.toString() || '0').toFixed(2),
+        purchase.paymentStatus || ''
+      ]);
+    });
+
+    // Add totals row
+    dataArray.push([
+      '', '', '', '', '',
+      totals.totalQuantity || 0,
+      '',
+      parseFloat(totals.totalAmount?.toString() || '0').toFixed(2),
+      ''
+    ]);
+
+    // Create worksheet from array data
+    const ws = XLSX.utils.aoa_to_sheet(dataArray);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 8 },   // Sl.No
+      { wch: 15 },  // Date
+      { wch: 30 },  // Supplier Name
+      { wch: 20 },  // Invoice No
+      { wch: 40 },  // Product Name
+      { wch: 10 },  // Quantity
+      { wch: 12 },  // Unit Price
+      { wch: 15 },  // Total Amount
+      { wch: 15 }   // Payment Status
+    ];
+    
+    // Apply styles to header row
+    const headerRow = dataArray.findIndex(row => row[0] === 'Sl.No');
+    if (headerRow !== -1) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: headerRow, c: C});
+        if (!ws[cellAddress]) continue;
+        ws[cellAddress].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '2B7BB9' } },
+          alignment: { horizontal: 'center' },
+          border: {
+            top: { style: 'thin', color: { rgb: '000000' } },
+            bottom: { style: 'thin', color: { rgb: '000000' } },
+            left: { style: 'thin', color: { rgb: '000000' } },
+            right: { style: 'thin', color: { rgb: '000000' } }
+          }
+        };
+      }
+    }
+    
+    // Right align numeric columns and add borders to all cells
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = 0; R <= range.e.r; ++R) {
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+        if (!ws[cellAddress]) continue;
+        
+        // Initialize cell style if it doesn't exist
+        if (!ws[cellAddress].s) ws[cellAddress].s = {};
+        
+        // Add borders to all cells
+        ws[cellAddress].s.border = {
+          top: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          bottom: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          left: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          right: { style: 'thin', color: { rgb: 'D3D3D3' } }
+        };
+        
+        // Right align numeric columns (indices 5-7)
+        if (C >= 5 && C <= 7) {
+          ws[cellAddress].s.alignment = ws[cellAddress].s.alignment || {};
+          ws[cellAddress].s.alignment.horizontal = 'right';
+        }
+      }
+    }
+    
+    // Style the title
+    ws['A1'].s = { font: { bold: true, sz: 16 }, alignment: { horizontal: 'center' } };
+    
+    // Merge title cells
+    if (!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } });
+    
+    // Set column widths
+    ws['!cols'] = colWidths;
+    
+    // Add the worksheet to the workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Purchase History');
-    XLSX.writeFile(wb, `purchase_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.xlsx`);
+    
+    // Generate filename with date
+    const dateStr = format(new Date(), 'yyyy-MM-dd');
+    
+    // Save the workbook
+    XLSX.writeFile(wb, `purchase-history-${dateStr}.xlsx`);
   };
 
   const handlePDF = () => {
     const doc = new jsPDF();
+    
+    // Add header
     doc.setFontSize(16);
+    doc.setTextColor(44, 122, 123); // Teal color
+    doc.setFont('helvetica', 'bold');
     doc.text('PURCHASE HISTORY REPORT', 105, 20, { align: 'center' });
+    
+    // Add company info
     doc.setFontSize(10);
-    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
-    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, 105, 40, { align: 'center' });
+    doc.setTextColor(0, 0, 0); // Black color
+    doc.setFont('helvetica', 'normal');
+    doc.text(companyDetails?.companyName || '', 105, 28, { align: 'center' });
+    
+    // Add address
+    const addressLine1 = companyDetails?.address1 || '';
+    const addressLine2 = companyDetails?.address2 ? `, ${companyDetails.address2}` : '';
+    doc.text(`${addressLine1}${addressLine2}`, 105, 32, { align: 'center' });
+    
+    // Add contact info
+    const contactInfo = [];
+    if (companyDetails?.telephone) contactInfo.push(`Tel: ${companyDetails.telephone}`);
+    if (companyDetails?.email) contactInfo.push(`Email: ${companyDetails.email}`);
+    doc.text(contactInfo.join(' | '), 105, 36, { align: 'center' });
+    
+    // Add report details
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+    doc.line(20, 42, 190, 42);
+    
+    doc.setFontSize(9);
+    doc.text([
+      `Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`,
+      `Supplier: ${supplierFilter || 'All'}`,
+      `Payment Status: ${paymentFilter || 'All'}`
+    ], 20, 48);
+    
+    // Prepare table data
     const tableData = purchaseData.map((purchase: PurchaseHistoryData) => [
       purchase.slNo.toString(),
       format(new Date(purchase.date), "dd/MM/yyyy"),
       purchase.supplierName,
       purchase.invoiceNo,
-      purchase.deliveryNo,
       purchase.productName,
       purchase.quantity.toString(),
-      `£${purchase.unitPrice.toFixed(2)}`,
-      `£${purchase.totalAmount.toFixed(2)}`,
+      `£${parseFloat(purchase.unitPrice?.toString() || '0').toFixed(2)}`,
+      `£${parseFloat(purchase.totalAmount?.toString() || '0').toFixed(2)}`,
       purchase.paymentStatus
     ]);
+    
+    // Add main table
     autoTable(doc, {
       head: [[
-        'Sl.No', 'Date', 'Supplier Name', 'Invoice No', 'Delivery No', 'Product Name', 'Qty', 'Unit Price', 'Total Amount', 'Status'
+        'Sl.No', 'Date', 'Supplier', 'Invoice No', 'Product', 'Qty', 'Unit Price', 'Total', 'Status'
       ]],
       body: tableData,
-      startY: 50,
+      startY: 60,
       styles: {
         fontSize: 7,
-        cellPadding: 1.5
-      },
-      columnStyles: {
-        0: { cellWidth: 12 }, // Sl.No
-        1: { cellWidth: 18 }, // Date
-        2: { cellWidth: 25 }, // Supplier Name
-        3: { cellWidth: 18 }, // Invoice No
-        4: { cellWidth: 18 }, // Delivery No
-        5: { cellWidth: 30 }, // Product Name
-        6: { cellWidth: 12 }, // Quantity
-        7: { cellWidth: 18 }, // Unit Price
-        8: { cellWidth: 20 }, // Total Amount
-        9: { cellWidth: 15 }  // Payment Status
+        cellPadding: 2,
+        lineColor: [200, 200, 200],
+        lineWidth: 0.2
       },
       headStyles: {
-        fillColor: [66, 139, 202],
+        fillColor: [44, 122, 123], // Teal header
         textColor: 255,
         fontStyle: 'bold',
-        fontSize: 7
+        fontSize: 7,
+        lineWidth: 0.2
+      },
+      columnStyles: {
+        0: { cellWidth: 10, halign: 'center' }, // Sl.No
+        1: { cellWidth: 15, halign: 'left' },   // Date
+        2: { cellWidth: 25, halign: 'left' },   // Supplier
+        3: { cellWidth: 20, halign: 'left' },   // Invoice No
+        4: { cellWidth: 40, halign: 'left' },   // Product
+        5: { cellWidth: 10, halign: 'right' },  // Qty
+        6: { cellWidth: 15, halign: 'right' },  // Unit Price
+        7: { cellWidth: 18, halign: 'right' },  // Total
+        8: { cellWidth: 15, halign: 'center' }  // Status
+      },
+      margin: { left: 10, right: 10 },
+      didDrawPage: function(data) {
+        // Footer on each page
+        const pageCount = doc.internal.getNumberOfPages();
+        const currentPage = data.pageNumber;
+        
+        doc.setFontSize(8);
+        doc.setTextColor(100);
+        doc.text(
+          `Page ${currentPage} of ${pageCount}`, 
+          data.settings.margin.left, 
+          doc.internal.pageSize.height - 10
+        );
+        
+        doc.text(
+          `Generated on ${format(new Date(), 'dd/MM/yyyy hh:mm a')}`, 
+          doc.internal.pageSize.width - data.settings.margin.right, 
+          doc.internal.pageSize.height - 10,
+          { align: 'right' }
+        );
+      }
+    });
+    
+    // Add totals row
+    const finalY = (doc as any).lastAutoTable.finalY || 60;
+    
+    doc.autoTable({
+      head: [['', '', '', '', 'TOTALS', totals.totalQuantity.toString(), '', `£${parseFloat(totals.totalAmount?.toString() || '0').toFixed(2)}`, '']],
+      body: [],
+      startY: finalY + 5,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+        fontStyle: 'bold',
+        fillColor: [245, 245, 245],
+        lineColor: [200, 200, 200],
+        lineWidth: 0.2
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 15 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 20 },
+        4: { cellWidth: 40, fontStyle: 'bold', halign: 'right' },
+        5: { cellWidth: 10, halign: 'right' },
+        6: { cellWidth: 15 },
+        7: { cellWidth: 18, halign: 'right' },
+        8: { cellWidth: 15 }
       },
       margin: { left: 10, right: 10 }
     });
     
-    // Add footer text "stand100" on bottom right
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(8);
-    doc.text('stand100', pageWidth - 30, pageHeight - 10, { align: 'right' });
-    
-    doc.save(`purchase_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.pdf`);
+    // Generate filename with date range
+    const dateStr = `${format(fromDate, 'yyyyMMdd')}_to_${format(toDate, 'yyyyMMdd')}`;
+    doc.save(`purchase_history_${dateStr}.pdf`);
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tDate\tSupplier Name\tInvoice No\tDelivery No\tProduct Name\tQuantity\tUnit Price\tTotal Amount\tPayment Status\n';
+    let text = 'Sl.No\tDate\tSupplier Name\tInvoice No\tProduct Name\tQuantity\tUnit Price\tTotal Amount\tPayment Status\n';
     text += purchaseData.map((purchase: PurchaseHistoryData) => [
       purchase.slNo,
       format(new Date(purchase.date), "dd/MM/yyyy"),
       purchase.supplierName,
       purchase.invoiceNo,
-      purchase.deliveryNo,
       purchase.productName,
       purchase.quantity,
       purchase.unitPrice,
@@ -428,7 +665,6 @@ export default function PurchaseHistory() {
                     <TableHead>Date</TableHead>
                     <TableHead>Supplier Name</TableHead>
                     <TableHead>Invoice No</TableHead>
-                    <TableHead>Delivery No</TableHead>
                     <TableHead>Product Name</TableHead>
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">Unit Price</TableHead>
@@ -443,16 +679,17 @@ export default function PurchaseHistory() {
                       <TableCell>{format(new Date(purchase.date), "dd/MM/yyyy")}</TableCell>
                       <TableCell>{purchase.supplierName}</TableCell>
                       <TableCell>{purchase.invoiceNo}</TableCell>
-                      <TableCell>{purchase.deliveryNo}</TableCell>
                       <TableCell>{purchase.productName}</TableCell>
                       <TableCell className="text-center">{purchase.quantity}</TableCell>
                       <TableCell className="text-center">£{purchase.unitPrice.toFixed(2)}</TableCell>
                       <TableCell className="text-center font-medium">£{purchase.totalAmount.toFixed(2)}</TableCell>
                       <TableCell className="text-center">
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          purchase.paymentStatus === 'Paid' ? 'bg-green-100 text-green-800' :
-                          purchase.paymentStatus === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          purchase.paymentStatus === 'Paid' 
+                            ? 'bg-green-100 text-green-800' 
+                            : purchase.paymentStatus === 'Pending'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
                         }`}>
                           {purchase.paymentStatus}
                         </span>

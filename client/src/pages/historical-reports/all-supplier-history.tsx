@@ -148,32 +148,153 @@ export default function AllSupplierHistory() {
 
   const handleExcel = () => {
     const wb = XLSX.utils.book_new();
-    // Info sheet
-    const info = [
+    
+    // Prepare the data for the main sheet
+    const header = [
+      'Sl.No', 
+      'Supplier Name', 
+      'Purchase Invoice', 
+      'Amount Paid', 
+      'Credit/Adj', 
+      'Discount/Adj', 
+      'Balance Outstanding', 
+      'Credit Limit', 
+      'Currency'
+    ];
+
+    // Convert data to array of arrays for better control
+    const dataArray = [
       ['ALL SUPPLIER HISTORY'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
       ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
-      [''],
-      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
-      [''],
+      ['']
     ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(info);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
-    // Data sheet
-    const ws = XLSX.utils.json_to_sheet(supplierData.map(supplier => ({
-      'Sl.No': supplier.slNo,
-      'Supplier Name': supplier.supplierName,
-      'Purchase Invoice': supplier.purchaseInvoice,
-      'Amount Paid': supplier.amountPaid,
-      'Credit/Adj': supplier.creditAdj,
-      'Discount/Adj': supplier.discountAdj,
-      'Balance Outstanding': supplier.balanceOutstanding,
-      'Credit Limit': supplier.creditLimit,
-      'Currency': supplier.currency
-    })));
+    
+    // Add contact info if available
+    const contactInfo = [];
+    if (companyDetails?.telephone) contactInfo.push(`Tel: ${companyDetails.telephone}`);
+    if (companyDetails?.email) contactInfo.push(`Email: ${companyDetails.email}`);
+    if (contactInfo.length > 0) dataArray.push([contactInfo.join(' | ')], ['']);
+    
+    // Add period information
+    dataArray.push(
+      ['Statement Details:'],
+      ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
+      ['Type:', supplierFilter],
+      [''],
+      header // Add header row
+    );
+
+    // Add data rows
+    supplierData.forEach((supplier) => {
+      dataArray.push([
+        supplier.slNo || '',
+        supplier.supplierName || '',
+        parseFloat(supplier.purchaseInvoice || 0).toFixed(2),
+        parseFloat(supplier.amountPaid || 0).toFixed(2),
+        parseFloat(supplier.creditAdj || 0).toFixed(2),
+        parseFloat(supplier.discountAdj || 0).toFixed(2),
+        parseFloat(supplier.balanceOutstanding || 0).toFixed(2),
+        supplier.creditLimit || '',
+        supplier.currency || ''
+      ]);
+    });
+
+    // Add totals row
+    dataArray.push([
+      '',
+      'TOTAL',
+      parseFloat(totals.purchaseInvoice.toString()).toFixed(2),
+      parseFloat(totals.amountPaid.toString()).toFixed(2),
+      parseFloat(totals.creditAdj.toString()).toFixed(2),
+      parseFloat(totals.discountAdj.toString()).toFixed(2),
+      parseFloat(totals.balanceOutstanding.toString()).toFixed(2),
+      '',
+      ''
+    ]);
+
+    // Create worksheet from array data
+    const ws = XLSX.utils.aoa_to_sheet(dataArray);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 8 },   // Sl.No
+      { wch: 40 },  // Supplier Name
+      { wch: 15 },  // Purchase Invoice
+      { wch: 15 },  // Amount Paid
+      { wch: 15 },  // Credit/Adj
+      { wch: 15 },  // Discount/Adj
+      { wch: 20 },  // Balance Outstanding
+      { wch: 15 },  // Credit Limit
+      { wch: 10 }   // Currency
+    ];
+    
+    // Apply styles to header row
+    const headerRow = dataArray.findIndex(row => row[0] === 'Sl.No');
+    if (headerRow !== -1) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: headerRow, c: C});
+        if (!ws[cellAddress]) continue;
+        ws[cellAddress].s = {
+          font: { bold: true, color: { rgb: 'FFFFFF' } },
+          fill: { fgColor: { rgb: '2B7BB9' } },
+          alignment: { horizontal: 'center' },
+          border: {
+            top: { style: 'thin', color: { rgb: '000000' } },
+            bottom: { style: 'thin', color: { rgb: '000000' } },
+            left: { style: 'thin', color: { rgb: '000000' } },
+            right: { style: 'thin', color: { rgb: '000000' } }
+          }
+        };
+      }
+    }
+    
+    // Right align numeric columns and add borders to all cells
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    for (let R = 0; R <= range.e.r; ++R) {
+      for (let C = 0; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
+        if (!ws[cellAddress]) continue;
+        
+        // Initialize cell style if it doesn't exist
+        if (!ws[cellAddress].s) ws[cellAddress].s = {};
+        
+        // Add borders to all cells
+        ws[cellAddress].s.border = {
+          top: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          bottom: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          left: { style: 'thin', color: { rgb: 'D3D3D3' } },
+          right: { style: 'thin', color: { rgb: 'D3D3D3' } }
+        };
+        
+        // Right align numeric columns (indices 2-6)
+        if (C >= 2 && C <= 6) {
+          ws[cellAddress].s.alignment = ws[cellAddress].s.alignment || {};
+          ws[cellAddress].s.alignment.horizontal = 'right';
+        }
+      }
+    }
+    
+    // Style the title
+    ws['A1'].s = { font: { bold: true, sz: 16 }, alignment: { horizontal: 'center' } };
+    
+    // Merge title cells
+    if (!ws['!merges']) ws['!merges'] = [];
+    ws['!merges'].push({ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } });
+    
+    // Set column widths
+    ws['!cols'] = colWidths;
+    
+    // Add the worksheet to the workbook
     XLSX.utils.book_append_sheet(wb, ws, 'All Supplier History');
-    XLSX.writeFile(wb, `all_supplier_history_${format(fromDate, "yyyyMMdd")}_${format(toDate, "yyyyMMdd")}.xlsx`);
+    
+    // Generate filename with date
+    const dateStr = format(new Date(), 'yyyy-MM-dd');
+    
+    // Save the workbook
+    XLSX.writeFile(wb, `all-supplier-history-${dateStr}.xlsx`);
   };
 
   const handlePDF = () => {
@@ -330,30 +451,10 @@ export default function AllSupplierHistory() {
                 </Select>
               </div>
             </div>
-            {/* Move action buttons below date pickers */}
+            {/* Search button below date pickers */}
             <div className="flex flex-wrap gap-2 mt-4">
               <Button className="bg-blue-500 hover:bg-blue-600" onClick={handleSearch} disabled={loading}>
                 {loading ? "Loading..." : "Search"}
-              </Button>
-              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handlePrint}>
-                <PrintIcon size={16} />
-                Print
-              </Button>
-              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handlePDF}>
-                <FileText size={16} />
-                PDF
-              </Button>
-              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handleExcel}>
-                <Download size={16} />
-                Excel
-              </Button>
-              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handleCopy}>
-                <Copy size={16} />
-                Copy
-              </Button>
-              <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                <Globe size={16} />
-                Select Currency
               </Button>
             </div>
           </CardContent>
