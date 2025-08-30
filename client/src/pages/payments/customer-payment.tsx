@@ -526,6 +526,7 @@ export default function CustomerPayment() {
         invoiceId: inv.id,
         invoiceNumber: inv.invoiceNumber,
         balance: inv.balance,
+        invoiceDate: inv.date,
         paymentMode: invoicePaymentModes.get(inv.id) || 'cash'
       }))
     };

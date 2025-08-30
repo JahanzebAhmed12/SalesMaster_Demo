@@ -2359,6 +2359,23 @@ def get_attendance_report():
         # Get present dates for payroll calculation
         present_dates = [a.date.strftime('%Y-%m-%d') for a in attendance_records if a.status == 'present']
         
+        # Create daily attendance map for detailed reports
+        daily_attendance = {}
+        current_date = from_date
+        while current_date <= to_date:
+            date_str = current_date.strftime('%Y-%m-%d')
+            # Find attendance record for this date
+            attendance_record = next((a for a in attendance_records if a.date == current_date), None)
+            if attendance_record:
+                daily_attendance[date_str] = {
+                    'status': attendance_record.status,
+                    'leave_type': attendance_record.leave_type,
+                    'holiday_name': attendance_record.holiday_name
+                }
+            else:
+                daily_attendance[date_str] = {'status': '-', 'leave_type': None, 'holiday_name': None}  # No record
+            current_date += timedelta(days=1)
+        
         employee_data = {
             'employee': {
                 'id': employee.id,
@@ -2379,6 +2396,7 @@ def get_attendance_report():
             },
             'presentDays': present_days,
             'presentDates': present_dates,
+            'dailyAttendance': daily_attendance,  # Add daily attendance data
             'pay': present_days * (float(employee.salary) if employee.salary else 0)
         }
         
@@ -3873,40 +3891,73 @@ def create_bulk_payment():
         split_payment = data.get('splitPayment', {})
         total_split = sum(split_payment.values()) if split_payment else 0
         
-        # Distribute payment across selected invoices
+        # Sequential Payment Allocation - Clean and Efficient
         payments_created = []
         
-        for invoice_data in invoices:
-            invoice_balance = float(invoice_data['balance'])
+        # Sort invoices by date (newest first) - current invoices are paid first, then older ones
+        # This ensures that the most recent invoices get priority in payment allocation
+        sorted_invoices = sorted(invoices, key=lambda x: x.get('invoiceDate', '1900-01-01'), reverse=True)
+        
+        # If split payment is used, allocate sequentially
+        if total_split != 0 and split_payment:
+            # Payment method mapping
+            mode_map = {
+                'cash': 'cash',
+                'card': 'bank', 
+                'bankTransfer': 'bank_transfer',
+                'cheque': 'cheque'
+            }
             
-            # If split payment is used, distribute proportionally
-            if total_split != 0 and split_payment:
-                proportion = invoice_balance / total_amount
-                # Create separate payment records for each payment type
-                mode_map = {
-                    'cash': 'cash',
-                    'card': 'bank', 
-                    'bankTransfer': 'bank_transfer',
-                    'cheque': 'cheque'
-                }
+            # Create available payment pool in priority order (cash first, then card, etc.)
+            payment_pool = []
+            for payment_type in ['cash', 'card', 'bankTransfer', 'cheque']:
+                amount = split_payment.get(payment_type, 0)
+                if amount > 0:
+                    payment_pool.append({
+                        'type': payment_type,
+                        'mode': mode_map[payment_type],
+                        'remaining': float(amount)
+                    })
+            
+            # Allocate payments sequentially to invoices
+            for invoice_data in sorted_invoices:
+                invoice_balance = float(invoice_data['balance'])
+                remaining_invoice_balance = invoice_balance
                 
-                for payment_type, split_amount in split_payment.items():
-                    if split_amount != 0:  # Allow both positive and negative amounts
-                        payment_amount = split_amount * proportion
-                        payment = Payment(
-                            customer_id=customer_id,
-                            sale_id=invoice_data['invoiceId'],
-                            amount=payment_amount,
-                            payment_mode=mode_map.get(payment_type, 'cash'),
-                            payment_date=payment_date,
-                            batch_id=batch_id,
-                            remarks=f"{remarks} (Batch ID: {batch_id} - {payment_type.title()})"
-                        )
-                        db.session.add(payment)
-                        payments_created.append(payment)
-            else:
-                # Original single payment mode
+                # Try to pay this invoice with available payment methods
+                for payment_method in payment_pool:
+                    if remaining_invoice_balance <= 0 or payment_method['remaining'] <= 0:
+                        continue
+                    
+                    # Calculate how much to pay with this method
+                    payment_amount = min(remaining_invoice_balance, payment_method['remaining'])
+                    
+                    # Create payment record
+                    payment = Payment(
+                        customer_id=customer_id,
+                        sale_id=invoice_data['invoiceId'],
+                        amount=payment_amount,
+                        payment_mode=payment_method['mode'],
+                        payment_date=payment_date,
+                        batch_id=batch_id,
+                        remarks=f"{remarks} (Batch ID: {batch_id} - {payment_method['type'].title()})"
+                    )
+                    db.session.add(payment)
+                    payments_created.append(payment)
+                    
+                    # Update remaining amounts
+                    remaining_invoice_balance -= payment_amount
+                    payment_method['remaining'] -= payment_amount
+                
+                # If invoice still has remaining balance, create a record for tracking
+                if remaining_invoice_balance > 0:
+                    print(f"Warning: Invoice {invoice_data['invoiceId']} has unpaid balance of {remaining_invoice_balance}")
+        else:
+            # Original single payment mode - no split payment
+            for invoice_data in sorted_invoices:
+                invoice_balance = float(invoice_data['balance'])
                 invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
+                
                 payment = Payment(
                     customer_id=customer_id,
                     sale_id=invoice_data['invoiceId'],
@@ -3920,74 +3971,77 @@ def create_bulk_payment():
                 payments_created.append(payment)
             
         # Update sale payment status for each invoice
-        for invoice_data in invoices:
+        for invoice_data in sorted_invoices:
             sale = Sale.query.get(invoice_data['invoiceId'])
             if sale:
+                # Calculate total payment made to this invoice from all payment methods
+                invoice_payments = [p for p in payments_created if p.sale_id == invoice_data['invoiceId']]
+                total_payment_for_invoice = sum(float(p.amount) for p in invoice_payments)
+                
                 current_paid = float(sale.paid_amount or 0)
-                new_paid = current_paid + invoice_data['balance']
+                new_paid = current_paid + total_payment_for_invoice
                 
                 if new_paid >= float(sale.total_amount):
                     sale.payment_status = "paid"
                     sale.paid_amount = sale.total_amount
                     sale.status = "finalized"
-                    # Set customer_type based on primary payment mode
-                    if split_payment:
-                        # Use the payment type with highest amount
-                        primary_type = max(split_payment.items(), key=lambda x: x[1])[0]
-                        type_map = {
-                            'cash': 'cash',
-                            'card': 'bank',
-                            'bankTransfer': 'bank_transfer',
-                            'cheque': 'cheque'
-                        }
-                        sale.customer_type = type_map.get(primary_type, 'cash')
+                    
+                    # Set customer_type based on the primary payment method for this invoice
+                    if invoice_payments:
+                        # Use the payment method with the highest amount for this invoice
+                        primary_payment = max(invoice_payments, key=lambda x: float(x.amount))
+                        sale.customer_type = primary_payment.payment_mode
                     else:
+                        # Fallback to original logic
                         invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
-                        if invoice_payment_mode.lower() == "cash":
-                            sale.customer_type = "cash"
-                        elif invoice_payment_mode.lower() in ["bank", "card"]:
-                            sale.customer_type = "bank"
-                        elif invoice_payment_mode.lower() == "bank_transfer":
-                            sale.customer_type = "bank_transfer"
-                        elif invoice_payment_mode.lower() == "cheque":
-                            sale.customer_type = "cheque"
+                        sale.customer_type = invoice_payment_mode
                 else:
                     sale.payment_status = "partial"
                     sale.paid_amount = new_paid
                 
                 db.session.add(sale)
         
-        # Calculate remaining amount for on-account payments
-        total_invoice_amount = sum(float(inv['balance']) for inv in invoices)
-        remaining_amount = total_amount - total_invoice_amount
-        
-        # If there's remaining amount, create on-account payments with split
-        if remaining_amount > 0:
-            if split_payment and total_split > 0:
-                proportion = remaining_amount / total_amount
-                mode_map = {
-                    'cash': 'cash',
-                    'card': 'bank', 
-                    'bankTransfer': 'bank_transfer',
-                    'cheque': 'cheque'
-                }
-                
-                for payment_type, split_amount in split_payment.items():
-                    if split_amount > 0:
-                        on_account_amount = split_amount * proportion
-                        if on_account_amount > 0:
-                            on_account_payment = Payment(
-                                customer_id=customer_id,
-                                sale_id=None,  # On account payment
-                                amount=on_account_amount,
-                                payment_mode=mode_map.get(payment_type, 'cash'),
-                                payment_date=payment_date,
-                                batch_id=batch_id,
-                                remarks=f"{remarks} (On Account - Batch ID: {batch_id} - {payment_type.title()})"
-                            )
-                            db.session.add(on_account_payment)
-                            payments_created.append(on_account_payment)
-            else:
+        # Handle remaining amounts as on-account payments (sequential allocation)
+        if split_payment and total_split > 0:
+            # Check if there are any remaining amounts in the payment pool
+            mode_map = {
+                'cash': 'cash',
+                'card': 'bank', 
+                'bankTransfer': 'bank_transfer',
+                'cheque': 'cheque'
+            }
+            
+            # Create on-account payments for any remaining amounts
+            for payment_type in ['cash', 'card', 'bankTransfer', 'cheque']:
+                remaining_amount = split_payment.get(payment_type, 0)
+                if remaining_amount > 0:
+                    # Find how much was already used for invoices
+                    used_amount = sum(
+                        float(p.amount) for p in payments_created 
+                        if p.payment_mode == mode_map[payment_type] and p.sale_id is not None
+                    )
+                    
+                    # Calculate actual remaining amount for this payment type
+                    actual_remaining = remaining_amount - used_amount
+                    
+                    if actual_remaining > 0:
+                        on_account_payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=None,  # On account payment
+                            amount=actual_remaining,
+                            payment_mode=mode_map[payment_type],
+                            payment_date=payment_date,
+                            batch_id=batch_id,
+                            remarks=f"{remarks} (On Account - Batch ID: {batch_id} - {payment_type.title()})"
+                        )
+                        db.session.add(on_account_payment)
+                        payments_created.append(on_account_payment)
+        else:
+            # Handle single payment mode on-account
+            total_invoice_amount = sum(float(inv['balance']) for inv in invoices)
+            remaining_amount = total_amount - total_invoice_amount
+            
+            if remaining_amount > 0:
                 on_account_payment = Payment(
                     customer_id=customer_id,
                     sale_id=None,  # On account payment
@@ -4247,6 +4301,20 @@ def daily_book_sales():
         bank_transfer_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank_transfer' else 0
         cheque_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'cheque' else 0
         
+        # Original logic: Show customer name if they have a gate number OR if they are cash customers
+        customer_display_name = ''
+        if sale.customer and sale.customer.customer_name:
+            # Show if customer has a gate number (original logic)
+            if sale.customer.others:
+                customer_display_name = sale.customer.customer_name
+            else:
+                # Also show for specific cash customer names even without gate number
+                customer_name_lower = sale.customer.customer_name.lower()
+                if (customer_name_lower == 'cash sale' or 
+                    customer_name_lower == 'cash customer' or 
+                    customer_name_lower == 'cash sales'):
+                    customer_display_name = sale.customer.customer_name
+        
         result.append({
             'id': sale.id,
             'slNo': idx,
@@ -4254,8 +4322,9 @@ def daily_book_sales():
             'salesman': sale.user.username if sale.user else '',
             'boxes': boxes,
             'invoiceNo': sale.invoice_number,
-            'customerName': sale.customer.customer_name if sale.customer else '',
+            'customerName': customer_display_name,
             'customerOthers': sale.customer.others if sale.customer and sale.customer.others else None,
+            'gateNumber': sale.gate_number,
             'customerId': sale.customer_id,
             'vat': float(sale.vat_amount),
             'amount': account_amount,

@@ -154,8 +154,9 @@ export default function FullAnalysis() {
 
   const handleExcel = () => {
     const wb = XLSX.utils.book_new();
-    // Info sheet
-    const info = [
+    
+    // Create header information
+    const headerData = [
       ['MONTH WISE PURCHASE / SALES'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
@@ -163,34 +164,108 @@ export default function FullAnalysis() {
       [''],
       ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
       [''],
+      [''], // Empty row before table
+      // Table headers
+      ['Month', 'Year', 'Sales', 'Returns', 'Net Sales', 'Purchase', 'Returns_Sup', 'Dumps', 'Net Purchase', 'Expenses', 'Diff']
     ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(info);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
-    // Data sheet
-    const ws = XLSX.utils.json_to_sheet(analysisData.map((item) => ({
-      'Month': item.month,
-      'Year': item.year,
-      'Sales': Number(item.sales),
-      'Returns': Number(item.returns),
-      'Net Sales': Number(item.netSales),
-      'Purchase': Number(item.purchase),
-      'Returns_Sup': Number(item.returnsSup),
-      'Dumps': Number(item.dumps),
-      'Net Purchase': Number(item.netPurchase),
-      'Expenses': Number(item.expenses),
-      'Diff': Number(item.diff)
-    })));
+    
+    // Add data rows
+    const dataRows = analysisData.map((item) => [
+      item.month,
+      item.year,
+      Number(item.sales).toFixed(2),
+      Number(item.returns).toFixed(2),
+      Number(item.netSales).toFixed(2),
+      Number(item.purchase).toFixed(2),
+      Number(item.returnsSup).toFixed(2),
+      Number(item.dumps).toFixed(2),
+      Number(item.netPurchase).toFixed(2),
+      Number(item.expenses).toFixed(2),
+      Number(item.diff).toFixed(2)
+    ]);
+    
+    // Add totals row
+    const totalsRow = [
+      'TOTAL',
+      '',
+      Number(totals.sales).toFixed(2),
+      Number(totals.returns).toFixed(2),
+      Number(totals.netSales).toFixed(2),
+      Number(totals.purchase).toFixed(2),
+      Number(totals.returnsSup).toFixed(2),
+      Number(totals.dumps).toFixed(2),
+      Number(totals.netPurchase).toFixed(2),
+      Number(totals.expenses).toFixed(2),
+      Number(totals.diff).toFixed(2)
+    ];
+    
+    // Combine header, data, and totals
+    const allData = [...headerData, ...dataRows, totalsRow];
+    
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(allData);
+    
+    // Style the header row (row 9, which is index 8)
+    const headerRowIndex = 8;
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 12 }, // Month
+      { wch: 8 },  // Year
+      { wch: 12 }, // Sales
+      { wch: 12 }, // Returns
+      { wch: 12 }, // Net Sales
+      { wch: 12 }, // Purchase
+      { wch: 12 }, // Returns_Sup
+      { wch: 10 }, // Dumps
+      { wch: 14 }, // Net Purchase
+      { wch: 12 }, // Expenses
+      { wch: 12 }  // Diff
+    ];
+    
+    // Style header cells
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: headerRowIndex, c: col });
+      if (!ws[cellAddress]) continue;
+      ws[cellAddress].s = {
+        fill: { fgColor: { rgb: "3B82F6" } },
+        font: { color: { rgb: "FFFFFF" }, bold: true },
+        alignment: { horizontal: "center" }
+      };
+    }
+    
+    // Style totals row
+    const totalsRowIndex = headerRowIndex + dataRows.length + 1;
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: totalsRowIndex, c: col });
+      if (!ws[cellAddress]) continue;
+      ws[cellAddress].s = {
+        fill: { fgColor: { rgb: "C6F6D5" } },
+        font: { bold: true },
+        alignment: { horizontal: "center" }
+      };
+    }
+    
+    // Style title cell
+    if (ws['A1']) {
+      ws['A1'].s = {
+        font: { bold: true, sz: 16 },
+        alignment: { horizontal: "center" }
+      };
+    }
+    
     XLSX.utils.book_append_sheet(wb, ws, 'Full Analysis');
     XLSX.writeFile(wb, `full_analysis_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
   };
 
   const handlePDF = () => {
-    const doc = new jsPDF('landscape'); // Use landscape orientation for better fit
+    const doc = new jsPDF('p', 'mm', 'a4'); // Portrait orientation
     doc.setFontSize(16);
-    doc.text('MONTH WISE PURCHASE / SALES', 148, 20, { align: 'center' }); // Adjust center for landscape
+    doc.text('MONTH WISE PURCHASE / SALES', 105, 20, { align: 'center' }); // Center for portrait
     doc.setFontSize(10);
-    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 148, 30, { align: 'center' });
-    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 148, 40, { align: 'center' });
+    doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
+    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
     const tableData = analysisData.map((item) => [
       item.month,
       item.year,
@@ -215,17 +290,17 @@ export default function FullAnalysis() {
         cellPadding: 1.5
       },
       columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 15 },
-        2: { cellWidth: 22 },
-        3: { cellWidth: 22 },
-        4: { cellWidth: 24 },
-        5: { cellWidth: 24 },
-        6: { cellWidth: 24 },
-        7: { cellWidth: 20 },
-        8: { cellWidth: 26 },
-        9: { cellWidth: 22 },
-        10: { cellWidth: 22 }
+        0: { cellWidth: 15 }, // Month
+        1: { cellWidth: 12 }, // Year
+        2: { cellWidth: 16 }, // Sales
+        3: { cellWidth: 16 }, // Returns
+        4: { cellWidth: 18 }, // Net Sales
+        5: { cellWidth: 18 }, // Purchase
+        6: { cellWidth: 18 }, // Returns_Sup
+        7: { cellWidth: 15 }, // Dumps
+        8: { cellWidth: 20 }, // Net Purchase
+        9: { cellWidth: 16 }, // Expenses
+        10: { cellWidth: 16 } // Diff
       },
       margin: { left: 10, right: 10 }
     });

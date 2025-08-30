@@ -1030,6 +1030,7 @@ class UserBackDateOption(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), unique=True, nullable=False)
     editing = db.Column(db.Boolean, default=False)
     deleting = db.Column(db.Boolean, default=False)
+    current_editing = db.Column(db.Boolean, default=True)
 
     user = db.relationship('User', backref=db.backref('backdate_option', uselist=False))
 
@@ -1037,7 +1038,8 @@ class UserBackDateOption(db.Model):
         return {
             'userId': self.user_id,
             'editing': self.editing,
-            'deleting': self.deleting
+            'deleting': self.deleting,
+            'current_editing': self.current_editing
         }
 
 class UserTimingRestriction(db.Model):

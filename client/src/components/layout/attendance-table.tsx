@@ -24,6 +24,7 @@ interface AttendanceTableProps {
   onDateRangeChange?: (range: { from: Date; to: Date }) => void;
   viewMode?: 'day' | 'week' | 'month' | 'range';
   onViewModeChange?: (mode: 'day' | 'week' | 'month' | 'range') => void;
+  businessDate?: Date;
 }
 
 export default function AttendanceTable({ 
@@ -31,7 +32,8 @@ export default function AttendanceTable({
   dateRange: initialDateRange,
   onDateRangeChange,
   viewMode: initialViewMode = 'day',
-  onViewModeChange
+  onViewModeChange,
+  businessDate
 }: AttendanceTableProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -41,7 +43,10 @@ export default function AttendanceTable({
 
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'range'>(initialViewMode);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(
-    initialDateRange || { 
+    initialDateRange ? {
+      from: initialDateRange.from,
+      to: initialDateRange.to
+    } : { 
       from: new Date(), 
       to: new Date() 
     }
@@ -59,6 +64,16 @@ export default function AttendanceTable({
       onDateRangeChange({ from: dateRange.from, to: dateRange.to });
     }
   }, [dateRange, onDateRangeChange]);
+
+  // Sync with parent's initial date range
+  useEffect(() => {
+    if (initialDateRange && initialDateRange.from && initialDateRange.to) {
+      setDateRange({
+        from: initialDateRange.from,
+        to: initialDateRange.to
+      });
+    }
+  }, [initialDateRange]);
 
   // Fetch attendance data when date range changes
   const { data: attendanceData, isLoading } = useQuery<EmployeeWithAttendance[]>({
@@ -86,23 +101,23 @@ export default function AttendanceTable({
   // Handle view mode changes
   const handleViewModeChange = (mode: 'day' | 'week' | 'month' | 'range') => {
     setViewMode(mode);
-    const today = new Date();
+    const referenceDate = businessDate || new Date();
     
     switch (mode) {
       case 'day':
-        setDateRange({ from: today, to: today });
+        setDateRange({ from: referenceDate, to: referenceDate });
         break;
       case 'week':
-        setDateRange({ from: startOfWeek(today), to: endOfWeek(today) });
+        setDateRange({ from: startOfWeek(referenceDate), to: endOfWeek(referenceDate) });
         break;
       case 'month':
-        setDateRange({ from: startOfMonth(today), to: endOfMonth(today) });
+        setDateRange({ from: startOfMonth(referenceDate), to: endOfMonth(referenceDate) });
         break;
       case 'range':
-        // Keep current range or default to last 7 days
+        // Keep current range or default to last 7 days from business date
         setDateRange(prev => prev || { 
-          from: subDays(today, 7), 
-          to: today 
+          from: subDays(referenceDate, 7), 
+          to: referenceDate 
         });
         break;
     }
@@ -346,8 +361,16 @@ export default function AttendanceTable({
               </div>
             </div>
             {dateRange?.from && dateRange?.to && (
-              <div className="text-sm text-muted-foreground">
-                Showing attendance from {format(dateRange.from, 'MMM d, yyyy')} to {format(dateRange.to, 'MMM d, yyyy')}
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>
+                  Showing attendance from {format(dateRange.from, 'MMM d, yyyy')} to {format(dateRange.to, 'MMM d, yyyy')}
+                </span>
+                {businessDate && (
+                  <div className="flex items-center gap-1 text-blue-600">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span className="text-xs">Business Date: {format(businessDate, 'MMM d, yyyy')}</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -359,15 +359,7 @@ export default function DailyBookHistory() {
                 </Button>
               </div>
 
-              <div className="flex gap-2">
-                <Button className="bg-blue-600 hover:bg-blue-700 flex items-center gap-1">
-                  <Printer className="w-4 h-4" />
-                  Print
-                </Button>
-                <Button className="bg-orange-500 hover:bg-orange-600 flex items-center gap-1">
-                  <ChevronUp className="w-4 h-4" />
-                </Button>
-              </div>
+           
             </div>
 
             <div className="mt-4 space-y-2">

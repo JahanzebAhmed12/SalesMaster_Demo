@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Printer, FileText, Download, RefreshCw, CalendarIcon, Mail } from "lucide-react";
+import { Printer, FileText, Download, RefreshCw, CalendarIcon, Mail, Search, X } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
@@ -18,7 +18,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { DateRange } from "react-day-picker";
+
 
 interface MonthlyStats {
   workingDays: number;
@@ -61,21 +61,49 @@ interface PayrollData {
   };
 }
 
+// Helper function to format date without timezone conversion
+const formatDateForAPI = (date: Date): string => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 export default function MonthlyReports() {
   const { toast } = useToast();
   
-  // Date range state - default to last 7 days
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
-    const today = new Date();
+  // Date state - default to last 7 days
+  const [fromDate, setFromDate] = useState<Date | undefined>(() => {
     const lastWeek = new Date();
-    lastWeek.setDate(today.getDate() - 7);
-    return {
-      from: lastWeek,
-      to: today
-    };
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    return lastWeek;
+  });
+  
+  const [toDate, setToDate] = useState<Date | undefined>(() => {
+    return new Date();
   });
 
+  // Validation function to ensure toDate is not before fromDate
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date && fromDate && date < fromDate) {
+      toast({
+        title: "Invalid Date Range",
+        description: "To date cannot be before From date",
+        variant: "destructive",
+      });
+      return;
+    }
+    setToDate(date);
+  };
+
+  const handleFromDateChange = (date: Date | undefined) => {
+    setFromDate(date);
+    // If toDate is before the new fromDate, clear toDate
+    if (date && toDate && toDate < date) {
+      setToDate(undefined);
+    }
+  };
+
   const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
+  const [employeeSearchOpen, setEmployeeSearchOpen] = useState(false);
+  const [employeeSearchTerm, setEmployeeSearchTerm] = useState("");
   const [emailAddress, setEmailAddress] = useState<string>("");
   const [isEmailSending, setIsEmailSending] = useState(false);
 
@@ -90,35 +118,49 @@ export default function MonthlyReports() {
   const { data: attendanceData = [], isLoading: isLoadingAttendance, refetch: refetchAttendance } = useQuery({
     queryKey: [
       '/api/reports/attendance',
-      dateRange?.from?.toISOString().slice(0, 10),
-      dateRange?.to?.toISOString().slice(0, 10),
+      fromDate ? formatDateForAPI(fromDate) : null,
+      toDate ? formatDateForAPI(toDate) : null,
       selectedEmployee
     ],
     queryFn: () => {
-      if (!dateRange?.from || !dateRange?.to) return [];
+      if (!fromDate || !toDate) return [];
       
-      let url = `/api/reports/attendance?from_date=${dateRange.from.toISOString().slice(0, 10)}&to_date=${dateRange.to.toISOString().slice(0, 10)}`;
+      // Use timezone-safe date formatting to avoid timezone conversion issues
+      const fromDateStr = formatDateForAPI(fromDate);
+      const toDateStr = formatDateForAPI(toDate);
+      
+      let url = `/api/reports/attendance?from_date=${fromDateStr}&to_date=${toDateStr}`;
       if (selectedEmployee !== 'all') {
         url += `&employee_id=${selectedEmployee}`;
       }
-      return apiRequest("GET", url);
+      console.log('Fetching attendance data for:', { fromDateStr, toDateStr, url });
+      return apiRequest("GET", url).then(data => {
+        console.log('Received attendance data:', data);
+        return data;
+      });
     },
-    enabled: !!dateRange?.from && !!dateRange?.to,
+    enabled: !!fromDate && !!toDate,
   });
 
   // Fetch attendance statistics
   const { data: attendanceStats, refetch: refetchStats } = useQuery({
     queryKey: [
       '/api/reports/attendance-stats',
-      dateRange?.from?.toISOString().slice(0, 10),
-      dateRange?.to?.toISOString().slice(0, 10)
+      fromDate ? formatDateForAPI(fromDate) : null,
+      toDate ? formatDateForAPI(toDate) : null
     ],
     queryFn: () => {
-      if (!dateRange?.from || !dateRange?.to) return null;
+      if (!fromDate || !toDate) return null;
       
-      return apiRequest("GET", `/api/reports/attendance-stats?from_date=${dateRange.from.toISOString().slice(0, 10)}&to_date=${dateRange.to.toISOString().slice(0, 10)}`);
+      // Use timezone-safe date formatting to avoid timezone conversion issues
+      const fromDateStr = formatDateForAPI(fromDate);
+      const toDateStr = formatDateForAPI(toDate);
+      const url = `/api/reports/attendance-stats?from_date=${fromDateStr}&to_date=${toDateStr}`;
+      
+      console.log('Fetching attendance stats for:', { fromDateStr, toDateStr, url });
+      return apiRequest("GET", url);
     },
-    enabled: !!dateRange?.from && !!dateRange?.to,
+    enabled: !!fromDate && !!toDate,
   });
 
   const handleFetchData = async () => {
@@ -154,9 +196,9 @@ export default function MonthlyReports() {
     doc.setFontSize(14);
     doc.text('Attendance Report', 105, 45, { align: 'center' });
     
-    if (dateRange?.from && dateRange?.to) {
+    if (fromDate && toDate) {
       doc.setFontSize(10);
-      doc.text(`${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}`, 105, 55, { align: 'center' });
+      doc.text(`${format(fromDate, "LLL dd, y")} - ${format(toDate, "LLL dd, y")}`, 105, 55, { align: 'center' });
     }
     
     // Add attendance table
@@ -234,10 +276,10 @@ export default function MonthlyReports() {
   };
 
   const handleDetailedPDFExport = async () => {
-    if (!dateRange?.from || !dateRange?.to) {
+    if (!fromDate || !toDate) {
       toast({
         title: "Error",
-        description: "Please select a date range first",
+        description: "Please select both from and to dates first",
         variant: "destructive",
       });
       return;
@@ -253,43 +295,76 @@ export default function MonthlyReports() {
     doc.setFontSize(14);
     doc.text('Detailed Attendance Report', 148, 32, { align: 'center' });
     doc.setFontSize(10);
-    doc.text(`${format(dateRange.from, "dd/MM/yyyy")} - ${format(dateRange.to, "dd/MM/yyyy")}`, 148, 38, { align: 'center' });
+    doc.text(`${format(fromDate, "dd/MM/yyyy")} - ${format(toDate, "dd/MM/yyyy")}`, 148, 38, { align: 'center' });
     
-    // Generate date headers
-    const dates = [];
-    const currentDate = new Date(dateRange.from);
-    while (currentDate <= dateRange.to) {
-      dates.push(format(currentDate, 'dd/MM'));
+    // Add legend
+    doc.setFontSize(8);
+    doc.text('Legend: P=Present, A=Absent, L-Sic=Sick Leave, L-Ann=Annual Leave, H-Xmas=Christmas Holiday, -=No Record', 148, 43, { align: 'center' });
+    
+    // Generate day headers (Day 1, Day 2, etc.)
+    const days = [];
+    const currentDate = new Date(fromDate);
+    let dayCount = 1;
+    while (currentDate <= toDate) {
+      days.push(`Day ${dayCount}`);
       currentDate.setDate(currentDate.getDate() + 1);
+      dayCount++;
     }
     
     // Create table headers
-    const headers = ['Employee', ...dates, 'Weekly Wage', 'Remarks'];
+    const headers = ['Employee', ...days, 'Weekly Wage', 'Remarks'];
     
     // Create table data
     const tableData = attendanceData.map((item: any) => {
       const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
-      const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays);
+      const totalDaysInPeriod = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const workingDaysInPeriod = Math.min(6, totalDaysInPeriod);
       const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
       
       const row = [item.employee.name || item.employee.fullName || 'Unknown'];
       
-      // Add daily attendance markings
-      dates.forEach(date => {
-        // This is simplified - you'd need actual daily attendance data from backend
-        // For now, showing 'P' for present days and 'A' for others
-        const dayIndex = dates.indexOf(date);
-        if (dayIndex < item.presentDays) {
-          row.push('P');
-        } else if (dayIndex < item.presentDays + item.absentDays) {
-          row.push('A');
-        } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays) {
-          row.push('L');
-        } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays + item.holidayDays) {
-          row.push('H');
-        } else {
-          row.push('-');
+      // Add daily attendance markings using actual daily data
+      const currentDate = new Date(fromDate);
+      days.forEach((day, dayIndex) => {
+        const dateStr = formatDateForAPI(currentDate);
+        const attendanceData = item.dailyAttendance?.[dateStr];
+        const status = attendanceData?.status || '-';
+        
+        // Convert status to display format with additional details
+        let displayValue = '-';
+        switch (status) {
+          case 'present':
+            displayValue = 'P';
+            break;
+          case 'absent':
+            displayValue = 'A';
+            break;
+          case 'leave':
+            const leaveType = attendanceData?.leave_type;
+            if (leaveType) {
+              // Capitalize first letter and take first 3 chars for short form
+              const shortLeaveType = leaveType.charAt(0).toUpperCase() + leaveType.slice(1, 3);
+              displayValue = `L-${shortLeaveType}`;
+            } else {
+              displayValue = 'L';
+            }
+            break;
+          case 'holiday':
+            const holidayName = attendanceData?.holiday_name;
+            if (holidayName) {
+              // Take first word or first 8 characters, whichever is shorter
+              const shortHolidayName = holidayName.split(' ')[0].slice(0, 8);
+              displayValue = `H-${shortHolidayName}`;
+            } else {
+              displayValue = 'H';
+            }
+            break;
+          default:
+            displayValue = '-';
         }
+        
+        row.push(displayValue);
+        currentDate.setDate(currentDate.getDate() + 1);
       });
       
       row.push(`£${weeklyPay.toFixed(2)}`);
@@ -299,7 +374,7 @@ export default function MonthlyReports() {
     });
     
     // Create table manually
-    let yPosition = 45;
+    let yPosition = 50;
     const cellHeight = 6;
     const startX = 10;
     const cellWidth = (297 - 20) / headers.length; // A4 landscape width minus margins
@@ -341,51 +416,81 @@ export default function MonthlyReports() {
   };
 
   const handleDetailedExcelExport = () => {
-    if (!dateRange?.from || !dateRange?.to) {
+    if (!fromDate || !toDate) {
       toast({
         title: "Error",
-        description: "Please select a date range first",
+        description: "Please select both from and to dates first",
         variant: "destructive",
       });
       return;
     }
 
-    // Generate date headers
-    const dates = [];
-    const currentDate = new Date(dateRange.from);
-    while (currentDate <= dateRange.to) {
-      dates.push(format(currentDate, 'dd/MM'));
+    // Generate day headers (Day 1, Day 2, etc.)
+    const days = [];
+    const currentDate = new Date(fromDate);
+    let dayCount = 1;
+    while (currentDate <= toDate) {
+      days.push(`Day ${dayCount}`);
       currentDate.setDate(currentDate.getDate() + 1);
+      dayCount++;
     }
     
     // Create headers
-    const headers = ['Employee', ...dates, 'Weekly Wage', 'Remarks'];
+    const headers = ['Employee', ...days, 'Weekly Wage', 'Remarks'];
     
     // Create data rows
     const worksheetData = [
       headers,
       ...attendanceData.map((item: any) => {
         const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
-        const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays);
+        const totalDaysInPeriod = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const workingDaysInPeriod = Math.min(6, totalDaysInPeriod);
         const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
         
         const row = [item.employee.name || item.employee.fullName || 'Unknown'];
         
-        // Add daily attendance markings
-        dates.forEach(date => {
-          // This is simplified - you'd need actual daily attendance data from backend
-          const dayIndex = dates.indexOf(date);
-          if (dayIndex < item.presentDays) {
-            row.push('P');
-          } else if (dayIndex < item.presentDays + item.absentDays) {
-            row.push('A');
-          } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays) {
-            row.push('L');
-          } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays + item.holidayDays) {
-            row.push('H');
-          } else {
-            row.push('-');
+        // Add daily attendance markings using actual daily data
+        const currentDate = new Date(fromDate);
+        days.forEach((day, dayIndex) => {
+          const dateStr = formatDateForAPI(currentDate);
+          const attendanceData = item.dailyAttendance?.[dateStr];
+          const status = attendanceData?.status || '-';
+          
+          // Convert status to display format with additional details
+          let displayValue = '-';
+          switch (status) {
+            case 'present':
+              displayValue = 'P';
+              break;
+            case 'absent':
+              displayValue = 'A';
+              break;
+            case 'leave':
+              const leaveType = attendanceData?.leave_type;
+              if (leaveType) {
+                // Capitalize first letter and take first 3 chars for short form
+                const shortLeaveType = leaveType.charAt(0).toUpperCase() + leaveType.slice(1, 3);
+                displayValue = `L-${shortLeaveType}`;
+              } else {
+                displayValue = 'L';
+              }
+              break;
+            case 'holiday':
+              const holidayName = attendanceData?.holiday_name;
+              if (holidayName) {
+                // Take first word or first 8 characters, whichever is shorter
+                const shortHolidayName = holidayName.split(' ')[0].slice(0, 8);
+                displayValue = `H-${shortHolidayName}`;
+              } else {
+                displayValue = 'H';
+              }
+              break;
+            default:
+              displayValue = '-';
           }
+          
+          row.push(displayValue);
+          currentDate.setDate(currentDate.getDate() + 1);
         });
         
         row.push(`£${weeklyPay.toFixed(2)}`);
@@ -394,6 +499,10 @@ export default function MonthlyReports() {
         return row;
       })
     ];
+    
+    // Add legend row
+    worksheetData.push([]);
+    worksheetData.push(['Legend: P=Present, A=Absent, L-Sic=Sick Leave, L-Ann=Annual Leave, H-Xmas=Christmas Holiday, -=No Record']);
     
     const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
     
@@ -424,10 +533,10 @@ export default function MonthlyReports() {
       return;
     }
 
-    if (!dateRange?.from || !dateRange?.to) {
+    if (!fromDate || !toDate) {
       toast({
         title: "Error",
-        description: "Please select a date range first",
+        description: "Please select both from and to dates first",
         variant: "destructive",
       });
       return;
@@ -450,7 +559,7 @@ export default function MonthlyReports() {
         doc.setFontSize(14);
         doc.text('Attendance Summary Report', 105, 45, { align: 'center' });
         doc.setFontSize(10);
-        doc.text(`${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}`, 105, 55, { align: 'center' });
+        doc.text(`${format(fromDate, "LLL dd, y")} - ${format(toDate, "LLL dd, y")}`, 105, 55, { align: 'center' });
         
         // Add summary table
         const tableData = processedAttendanceData.map(item => [
@@ -514,38 +623,74 @@ export default function MonthlyReports() {
         doc.setFontSize(14);
         doc.text('Detailed Attendance Report', 148, 32, { align: 'center' });
         doc.setFontSize(10);
-        doc.text(`${format(dateRange.from, "dd/MM/yyyy")} - ${format(dateRange.to, "dd/MM/yyyy")}`, 148, 38, { align: 'center' });
+        doc.text(`${format(fromDate, "dd/MM/yyyy")} - ${format(toDate, "dd/MM/yyyy")}`, 148, 38, { align: 'center' });
         
-        // Generate date headers
-        const dates = [];
-        const currentDate = new Date(dateRange.from);
-        while (currentDate <= dateRange.to) {
-          dates.push(format(currentDate, 'dd/MM'));
+        // Add legend
+        doc.setFontSize(8);
+        doc.text('Legend: P=Present, A=Absent, L-Sic=Sick Leave, L-Ann=Annual Leave, H-Xmas=Christmas Holiday, -=No Record', 148, 43, { align: 'center' });
+        
+        // Generate day headers (Day 1, Day 2, etc.)
+        const days = [];
+        const currentDate = new Date(fromDate);
+        let dayCount = 1;
+        while (currentDate <= toDate) {
+          days.push(`Day ${dayCount}`);
           currentDate.setDate(currentDate.getDate() + 1);
+          dayCount++;
         }
         
-        const headers = ['Employee', ...dates, 'Weekly Wage', 'Remarks'];
+        const headers = ['Employee', ...days, 'Weekly Wage', 'Remarks'];
         
         const tableData = attendanceData.map((item: any) => {
           const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
-          const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays);
+          const totalDaysInPeriod = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+          const workingDaysInPeriod = Math.min(6, totalDaysInPeriod);
           const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
           
           const row = [item.employee.name || item.employee.fullName || 'Unknown'];
           
-          dates.forEach(date => {
-            const dayIndex = dates.indexOf(date);
-            if (dayIndex < item.presentDays) {
-              row.push('P');
-            } else if (dayIndex < item.presentDays + item.absentDays) {
-              row.push('A');
-            } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays) {
-              row.push('L');
-            } else if (dayIndex < item.presentDays + item.absentDays + item.leaveDays + item.holidayDays) {
-              row.push('H');
-            } else {
-              row.push('-');
+          // Add daily attendance markings using actual daily data
+          const currentDate = new Date(fromDate);
+          days.forEach((day, dayIndex) => {
+            const dateStr = formatDateForAPI(currentDate);
+            const attendanceData = item.dailyAttendance?.[dateStr];
+            const status = attendanceData?.status || '-';
+            
+            // Convert status to display format with additional details
+            let displayValue = '-';
+            switch (status) {
+              case 'present':
+                displayValue = 'P';
+                break;
+              case 'absent':
+                displayValue = 'A';
+                break;
+              case 'leave':
+                const leaveType = attendanceData?.leave_type;
+                if (leaveType) {
+                  // Capitalize first letter and take first 3 chars for short form
+                  const shortLeaveType = leaveType.charAt(0).toUpperCase() + leaveType.slice(1, 3);
+                  displayValue = `L-${shortLeaveType}`;
+                } else {
+                  displayValue = 'L';
+                }
+                break;
+              case 'holiday':
+                const holidayName = attendanceData?.holiday_name;
+                if (holidayName) {
+                  // Take first word or first 8 characters, whichever is shorter
+                  const shortHolidayName = holidayName.split(' ')[0].slice(0, 8);
+                  displayValue = `H-${shortHolidayName}`;
+                } else {
+                  displayValue = 'H';
+                }
+                break;
+              default:
+                displayValue = '-';
             }
+            
+            row.push(displayValue);
+            currentDate.setDate(currentDate.getDate() + 1);
           });
           
           row.push(`£${weeklyPay.toFixed(2)}`);
@@ -555,7 +700,7 @@ export default function MonthlyReports() {
         });
         
         // Create table manually
-        let yPosition = 45;
+        let yPosition = 50;
         const cellHeight = 6;
         const startX = 10;
         const cellWidth = (297 - 20) / headers.length;
@@ -602,8 +747,8 @@ export default function MonthlyReports() {
         // Send email via API
         const emailData = {
           to: emailAddress,
-          subject: `${reportType === 'summary' ? 'Attendance Summary' : 'Detailed Attendance'} Report - ${format(dateRange.from!, "dd/MM/yyyy")} to ${format(dateRange.to!, "dd/MM/yyyy")}`,
-          body: `Please find attached the ${reportType === 'summary' ? 'attendance summary' : 'detailed attendance'} report for the period ${format(dateRange.from!, "dd/MM/yyyy")} to ${format(dateRange.to!, "dd/MM/yyyy")}.\n\nBest regards,\nTropifruit UK Ltd`,
+          subject: `${reportType === 'summary' ? 'Attendance Summary' : 'Detailed Attendance'} Report - ${format(fromDate!, "dd/MM/yyyy")} to ${format(toDate!, "dd/MM/yyyy")}`,
+          body: `Please find attached the ${reportType === 'summary' ? 'attendance summary' : 'detailed attendance'} report for the period ${format(fromDate!, "dd/MM/yyyy")} to ${format(toDate!, "dd/MM/yyyy")}.\n\nBest regards,\nTropifruit UK Ltd`,
           attachment: {
             filename: `${reportType}-attendance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
             content: base64data,
@@ -667,58 +812,139 @@ export default function MonthlyReports() {
           <div className="flex flex-wrap items-center gap-4 overflow-x-auto">
             <CardTitle className="flex-shrink-0">Attendance Reports & Payroll</CardTitle>
             <div className="flex flex-wrap gap-3 items-center ml-auto">
-              {/* Date Range Picker */}
-              <Popover>
+              {/* From Date Picker */}
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-medium">From:</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-[140px] justify-start text-left font-normal",
+                        !fromDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {fromDate ? format(fromDate, "dd/MM/yyyy") : "Pick date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={fromDate}
+                      onSelect={handleFromDateChange}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* To Date Picker */}
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-medium">To:</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      className={cn(
+                        "w-[140px] justify-start text-left font-normal",
+                        !toDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {toDate ? format(toDate, "dd/MM/yyyy") : "Pick date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={toDate}
+                      onSelect={handleToDateChange}
+                      disabled={(date) => fromDate ? date < fromDate : false}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+
+
+              {/* Employee Filter with Search */}
+              <Popover open={employeeSearchOpen} onOpenChange={setEmployeeSearchOpen}>
                 <PopoverTrigger asChild>
                   <Button
-                    id="date"
-                    variant={"outline"}
-                    className={cn(
-                      "w-[300px] justify-start text-left font-normal",
-                      !dateRange && "text-muted-foreground"
-                    )}
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={employeeSearchOpen}
+                    className="w-48 justify-between"
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dateRange?.from ? (
-                      dateRange.to ? (
-                        <>
-                          {format(dateRange.from, "LLL dd, y")} -{" "}
-                          {format(dateRange.to, "LLL dd, y")}
-                        </>
-                      ) : (
-                        format(dateRange.from, "LLL dd, y")
-                      )
-                    ) : (
-                      <span>Pick a date range</span>
-                    )}
+                    {selectedEmployee === "all" 
+                      ? "All Employees" 
+                      : employees.find(emp => emp.id.toString() === selectedEmployee)?.name || 
+                        employees.find(emp => emp.id.toString() === selectedEmployee)?.fullName || 
+                        "Select employee..."
+                    }
+                    <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    initialFocus
-                    mode="range"
-                    defaultMonth={dateRange?.from}
-                    selected={dateRange}
-                    onSelect={setDateRange}
-                    numberOfMonths={2}
-                  />
+                <PopoverContent className="w-48 p-0">
+                  <div className="flex items-center border-b px-3 py-2">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                    <Input
+                      placeholder="Search employees..."
+                      value={employeeSearchTerm}
+                      onChange={(e) => setEmployeeSearchTerm(e.target.value)}
+                      className="border-0 p-0 focus-visible:ring-0"
+                    />
+                    {employeeSearchTerm && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-4 w-4 p-0"
+                        onClick={() => setEmployeeSearchTerm("")}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-auto">
+                    <div
+                      className={cn(
+                        "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                        selectedEmployee === "all" && "bg-accent"
+                      )}
+                      onClick={() => {
+                        setSelectedEmployee("all");
+                        setEmployeeSearchOpen(false);
+                        setEmployeeSearchTerm("");
+                      }}
+                    >
+                      All Employees
+                    </div>
+                    {employees
+                      .filter(emp => {
+                        const name = emp.name || emp.fullName || `Employee ${emp.id}`;
+                        return name.toLowerCase().includes(employeeSearchTerm.toLowerCase());
+                      })
+                      .map(emp => (
+                        <div
+                          key={emp.id}
+                          className={cn(
+                            "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                            selectedEmployee === emp.id.toString() && "bg-accent"
+                          )}
+                          onClick={() => {
+                            setSelectedEmployee(emp.id.toString());
+                            setEmployeeSearchOpen(false);
+                            setEmployeeSearchTerm("");
+                          }}
+                        >
+                          {emp.name || emp.fullName || `Employee ${emp.id}`}
+                        </div>
+                      ))}
+                  </div>
                 </PopoverContent>
               </Popover>
-
-              {/* Employee Filter */}
-              <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="All Employees" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Employees</SelectItem>
-                  {employees.map(emp => (
-                    <SelectItem key={emp.id} value={emp.id.toString()}>
-                      {emp.name || emp.fullName || `Employee ${emp.id}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
 
               <Button onClick={handleFetchData} className="bg-blue-600 hover:bg-blue-700" disabled={isLoadingAttendance}>
                 <RefreshCw className="w-4 h-4 mr-2" />
@@ -778,10 +1004,10 @@ export default function MonthlyReports() {
               <p className="text-gray-600">3 Dolphin Way, Purfleet, RM19 1NZ</p>
               <h2 className="text-xl font-semibold mt-4">Attendance Report</h2>
               <p className="text-gray-600">
-                {dateRange?.from && dateRange?.to ? (
-                  `${format(dateRange.from, "LLL dd, y")} - ${format(dateRange.to, "LLL dd, y")}`
+                {fromDate && toDate ? (
+                  `${format(fromDate, "LLL dd, y")} - ${format(toDate, "LLL dd, y")}`
                 ) : (
-                  "Select date range"
+                  "Select from and to dates"
                 )}
               </p>
             </div>
@@ -895,17 +1121,27 @@ export default function MonthlyReports() {
             <Button variant="outline" size="icon" onClick={handleExcelExport} title="Export Excel"><Download className="w-4 h-4" /></Button>
             <Button variant="outline" size="sm" onClick={handleDetailedPDFExport} className="bg-purple-600 text-white hover:bg-purple-700">
               <FileText className="w-4 h-4 mr-1" />
-              Detailed PDF
+              PDF
             </Button>
             <Button variant="outline" size="sm" onClick={handleDetailedExcelExport} className="bg-orange-600 text-white hover:bg-orange-700">
               <Download className="w-4 h-4 mr-1" />
-              Detailed Excel
+              Excel
             </Button>
           </div>
         </div>
         <div className="px-6 pt-4 pb-6" id="payroll-print-area">
           <div className="text-sm text-gray-600 mb-4">
-            Weekly wage calculation: Full week (6 days) = Full weekly salary. Missing days are deducted proportionally.
+            <div className="bg-blue-50 p-3 rounded-lg">
+              <strong>Wage Calculation:</strong> Based on selected date range. 
+              Daily rate = Weekly salary ÷ Working days in period. 
+              Final pay = Daily rate × Present days.
+              {fromDate && toDate && (
+                <div className="mt-1 text-xs">
+                  Period: {Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1} days 
+                  ({format(fromDate, 'dd/MM/yyyy')} to {format(toDate, 'dd/MM/yyyy')})
+                </div>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto rounded-xl border">
             <table className="w-full min-w-[700px]">
@@ -926,7 +1162,9 @@ export default function MonthlyReports() {
                   <tr><td colSpan={6} className="text-center py-8">No data for selected period</td></tr>
                 ) : attendanceData.map((item: any) => {
                   const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
-                  const workingDaysInPeriod = Math.min(6, item.presentDays + item.absentDays); // Max 6 working days per week
+                  // Calculate total days in the selected period
+                  const totalDaysInPeriod = fromDate && toDate ? Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1 : 1;
+                  const workingDaysInPeriod = Math.min(6, totalDaysInPeriod); // Max 6 working days per week
                   const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
                   const attendancePercentage = workingDaysInPeriod > 0 ? Math.round((item.presentDays / workingDaysInPeriod) * 100) : 0;
                   

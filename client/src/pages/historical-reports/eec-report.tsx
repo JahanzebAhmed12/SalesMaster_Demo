@@ -121,8 +121,9 @@ export default function EecReport() {
 
   const handleExcel = () => {
     const wb = XLSX.utils.book_new();
-    // Info sheet
-    const info = [
+    
+    // Create header information
+    const headerData = [
       ['EEC REPORT'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
@@ -130,33 +131,82 @@ export default function EecReport() {
       [''],
       ['Period:', `${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`],
       [''],
+      [''], // Empty row before table
+      // Table headers
+      ['Sl.No', 'Date', 'Commodity', 'C.Code', 'Weight', 'Quantity', 'U.Price', 'Amount', 'Supplier', 'Country']
     ];
-    const wsInfo = XLSX.utils.aoa_to_sheet(info);
-    XLSX.utils.book_append_sheet(wb, wsInfo, 'Info');
-    // Data sheet
-    const ws = XLSX.utils.json_to_sheet(eecData.map((item) => ({
-      'Sl.No': item.slNo,
-      'Date': item.date,
-      'Commodity': item.commodity,
-      'C.Code': item.cCode,
-      'Weight': item.weight,
-      'Quantity': item.quantity,
-      'U.Price': Number(item.uPrice),
-      'Amount': Number(item.amount),
-      'Supplier': item.supplier,
-      'Country': item.country
-    })));
+    
+    // Add data rows
+    const dataRows = eecData.map((item) => [
+      item.slNo,
+      item.date,
+      item.commodity,
+      item.cCode,
+      item.weight,
+      item.quantity,
+      Number(item.uPrice).toFixed(2),
+      Number(item.amount).toFixed(2),
+      item.supplier,
+      item.country
+    ]);
+    
+    // Combine header and data
+    const allData = [...headerData, ...dataRows];
+    
+    // Create worksheet
+    const ws = XLSX.utils.aoa_to_sheet(allData);
+    
+    // Style the header row (row 9, which is index 8)
+    const headerRowIndex = 8;
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 8 },  // Sl.No
+      { wch: 12 }, // Date
+      { wch: 20 }, // Commodity
+      { wch: 10 }, // C.Code
+      { wch: 10 }, // Weight
+      { wch: 10 }, // Quantity
+      { wch: 12 }, // U.Price
+      { wch: 12 }, // Amount
+      { wch: 20 }, // Supplier
+      { wch: 15 }  // Country
+    ];
+    
+    // Style header cells
+    for (let col = range.s.c; col <= range.e.c; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: headerRowIndex, c: col });
+      if (!ws[cellAddress]) continue;
+      ws[cellAddress].s = {
+        fill: { fgColor: { rgb: "3B82F6" } },
+        font: { color: { rgb: "FFFFFF" }, bold: true },
+        alignment: { horizontal: "center" }
+      };
+    }
+    
+    // Style title cell
+    if (ws['A1']) {
+      ws['A1'].s = {
+        font: { bold: true, sz: 16 },
+        alignment: { horizontal: "center" }
+      };
+    }
+    
     XLSX.utils.book_append_sheet(wb, ws, 'EEC Report');
     XLSX.writeFile(wb, `eec_report_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.xlsx`);
   };
 
   const handlePDF = () => {
-    const doc = new jsPDF();
+    const doc = new jsPDF('p', 'mm', 'a4'); // Portrait orientation
+    
+    // Header
     doc.setFontSize(16);
-    doc.text('EEC REPORT', 105, 20, { align: 'center' });
+    doc.text('EEC REPORT', 105, 20, { align: 'center' }); // Center for portrait
     doc.setFontSize(10);
     doc.text(`${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`, 105, 30, { align: 'center' });
     doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
+    
     const tableData = eecData.map((item) => [
       item.slNo,
       item.date,
@@ -169,6 +219,7 @@ export default function EecReport() {
       item.supplier,
       item.country
     ]);
+    
     autoTable(doc, {
       head: [[
         'Sl.No', 'Date', 'Commodity', 'C.Code', 'Weight', 'Quantity', 'U.Price', 'Amount', 'Supplier', 'Country'
@@ -176,21 +227,32 @@ export default function EecReport() {
       body: tableData,
       startY: 50,
       styles: {
+        fontSize: 7,
+        cellPadding: 1.5,
+        overflow: 'linebreak',
+        cellWidth: 'wrap'
+      },
+      headStyles: {
+        fillColor: [59, 130, 246],
+        textColor: 255,
         fontSize: 8,
-        cellPadding: 2
+        fontStyle: 'bold'
       },
       columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 20 },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 20 },
-        4: { cellWidth: 20 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 20 },
-        7: { cellWidth: 25 },
-        8: { cellWidth: 30 },
-        9: { cellWidth: 20 }
-      }
+        0: { cellWidth: 12 }, // Sl.No
+        1: { cellWidth: 18 }, // Date
+        2: { cellWidth: 25 }, // Commodity
+        3: { cellWidth: 15 }, // C.Code
+        4: { cellWidth: 15 }, // Weight
+        5: { cellWidth: 15 }, // Quantity
+        6: { cellWidth: 18 }, // U.Price
+        7: { cellWidth: 20 }, // Amount
+        8: { cellWidth: 25 }, // Supplier
+        9: { cellWidth: 18 }  // Country
+      },
+      margin: { top: 50, right: 10, bottom: 30, left: 10 },
+      tableWidth: 'auto',
+      theme: 'striped'
     });
     
     // Add footer text "stand100" on bottom right

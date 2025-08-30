@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1737,7 +1737,7 @@ export default function DailySummary() {
                       <TableBody>
                         {productPurchaseData.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={7} className="border text-center text-gray-500 py-4">
+                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
                               No product purchase data found
                             </TableCell>
                           </TableRow>

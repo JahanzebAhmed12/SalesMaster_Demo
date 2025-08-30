@@ -166,10 +166,9 @@ const AdminFunctions = () => {
 
   
 
-  const [backDateOptions, setBackDateOptions] = useState<Record<number, { editing: boolean; deleting: boolean }>>({});
+  const [backDateOptions, setBackDateOptions] = useState<Record<number, { editing: boolean; deleting: boolean; current_editing: boolean }>>({});
 
   const [stockRestriction, setStockRestriction] = useState("sell");
-  const [currentDateEditing, setCurrentDateEditing] = useState<Record<number, boolean>>({});
 
   const [timingRestrictions, setTimingRestrictions] = useState<Record<number, { enabled: boolean; startTime: string; endTime: string }>>({});
   const [savingTimingRestrictions, setSavingTimingRestrictions] = useState(false);
@@ -323,12 +322,13 @@ const AdminFunctions = () => {
 
   useEffect(() => {
     if (Array.isArray(users) && Array.isArray(allBackDateOptions)) {
-      const map: Record<number, { editing: boolean; deleting: boolean }> = {};
+      const map: Record<number, { editing: boolean; deleting: boolean; current_editing: boolean }> = {};
       users.forEach((user: User) => {
         const found = allBackDateOptions.find((opt: any) => opt.userId === user.id);
         map[user.id] = {
           editing: found ? found.editing : false,
           deleting: found ? found.deleting : false,
+          current_editing: found ? found.current_editing : true,
         };
       });
       setBackDateOptions(map);
@@ -340,6 +340,7 @@ const AdminFunctions = () => {
       const payload = {
         editing: backDateOptions[userId]?.editing ?? false,
         deleting: backDateOptions[userId]?.deleting ?? false,
+        current_editing: backDateOptions[userId]?.current_editing ?? true,
       };
       await apiRequest("PUT", `/api/user-backdate-options/${userId}`, payload);
     },
@@ -348,28 +349,7 @@ const AdminFunctions = () => {
     },
   });
 
-  useEffect(() => {
-    if (Array.isArray(users) && Array.isArray(allBackDateOptions)) {
-      const map: Record<number, boolean> = {};
-      users.forEach((user: any) => {
-        const found = allBackDateOptions.find((opt: any) => opt.userId === user.id);
-        map[user.id] = found ? found.current_editing : true;
-      });
-      setCurrentDateEditing(map);
-    }
-  }, [users, allBackDateOptions]);
 
-  const { mutate: saveCurrentDateEditing, isPending: savingCurrentDate } = useMutation({
-    mutationFn: async (userId: number) => {
-      const payload = {
-        current_editing: currentDateEditing[userId],
-      };
-      await apiRequest("PUT", `/api/user-backdate-options/${userId}`, payload);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user-backdate-options"] });
-    },
-  });
 
   // Fetch timing restrictions
   useEffect(() => {
@@ -722,26 +702,30 @@ const AdminFunctions = () => {
   </Collapsible>
 </Card>
 
-        {/* Back Date Editing/Deleting */}
+        {/* User Date Editing Permissions */}
         <Card className="shadow-sm border border-gray-200 mb-10">
           <Collapsible>
             <CollapsibleTrigger asChild>
               <CardHeader className="cursor-pointer bg-blue-500 text-white">
                 <CardTitle className="flex items-center justify-between text-sm">
-                  Back Date Editing/Deleting
+                  User Date Editing Permissions
                   <ChevronDown className="h-4 w-4" />
                 </CardTitle>
               </CardHeader>
             </CollapsibleTrigger>
             <CollapsibleContent>
               <CardContent className="p-4">
+                <div className="text-xs mb-4 text-gray-600">
+                  Control user permissions for editing and deleting records on different dates.
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full border border-gray-200 rounded-lg bg-white">
                     <thead>
                       <tr>
                         <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Editing</th>
-                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Deleting</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Current Date Editing</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Back Date Editing</th>
+                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Back Date Deleting</th>
                         <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                       </tr>
                     </thead>
@@ -749,6 +733,22 @@ const AdminFunctions = () => {
                       {users.map(user => (
                         <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
+                          <td className="px-6 py-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={backDateOptions[user.id]?.current_editing ?? true}
+                              onChange={e =>
+                                setBackDateOptions(prev => ({
+                                  ...prev,
+                                  [user.id]: {
+                                    ...prev[user.id],
+                                    current_editing: e.target.checked,
+                                  },
+                                }))
+                              }
+                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
+                            />
+                          </td>
                           <td className="px-6 py-4 text-center">
                             <input
                               type="checkbox"
@@ -788,59 +788,6 @@ const AdminFunctions = () => {
                               onClick={() => saveBackDateOptions(user.id)}
                             >
                               {savingBackDate ? "Saving..." : "Save"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </CollapsibleContent>
-          </Collapsible>
-        </Card>
-
-        {/* Current Date Editing */}
-        <Card className="shadow-sm border border-gray-200 mb-10">
-          <Collapsible>
-            <CollapsibleTrigger asChild>
-              <CardHeader className="cursor-pointer bg-blue-500 text-white">
-                <CardTitle className="flex items-center justify-between text-sm">
-                  Current Date Editing
-                  <ChevronDown className="h-4 w-4" />
-                </CardTitle>
-              </CardHeader>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent className="p-4">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border border-gray-200 rounded-lg bg-white">
-                    <thead>
-                      <tr>
-                        <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Editing</th>
-                        <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map(user => (
-                        <tr key={user.id} className="border-t border-gray-100 hover:bg-gray-50 transition">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
-                          <td className="px-6 py-4 text-center">
-                            <input
-                              type="checkbox"
-                              checked={currentDateEditing[user.id] ?? true}
-                              onChange={e => setCurrentDateEditing(prev => ({ ...prev, [user.id]: e.target.checked }))}
-                              className="form-checkbox h-5 w-5 text-blue-600 transition duration-150 ease-in-out"
-                            />
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button
-                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 rounded disabled:opacity-50"
-                              disabled={savingCurrentDate}
-                              onClick={() => saveCurrentDateEditing(user.id)}
-                            >
-                              {savingCurrentDate ? "Saving..." : "Save"}
                             </button>
                           </td>
                         </tr>

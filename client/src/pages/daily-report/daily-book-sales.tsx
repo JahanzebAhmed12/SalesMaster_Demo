@@ -121,7 +121,7 @@ export default function DailyBookSales() {
 
   // Backdate permissions
   const { canEditBackdate } = useBackdatePermissions();
-  
+
   // Invoice permissions
   const { canEditInvoice, isInvoiceLocked } = useInvoicePermissions();
 
@@ -1258,29 +1258,25 @@ export default function DailyBookSales() {
                                   {sale.customerName}
                                   {sale.gateNumber && (
                                     <span className="text-xs text-gray-500 font-normal ml-2">
-                                      [Gate: {sale.gateNumber}]
+                                      ({sale.gateNumber})
                                     </span>
                                   )}
-                                  {sale.customerOthers && (
-                                    <span className="text-xs text-gray-500 font-normal ml-2">
-                                      ({sale.customerOthers})
-                                    </span>
-                                  )}
+
                                 </span>
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" className="w-48">
                               {(!isPastDate(sale.date) || canEditBackdate) && (
-                                <DropdownMenuItem 
-                                  className="text-sm py-2" 
+                                <DropdownMenuItem
+                                  className="text-sm py-2"
                                   onClick={() => {
-                                    const url = canEditInvoice 
+                                    const url = canEditInvoice
                                       ? `/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}`
                                       : `/data-entry/sales-invoice?invoiceNumber=${sale.invoiceNo}&readonly=true`;
                                     window.open(url, '_self');
                                   }}
                                 >
-                                  <Pencil className="mr-2 h-4 w-4" /> 
+                                  <Pencil className="mr-2 h-4 w-4" />
                                   {canEditInvoice ? 'Edit Invoice' : 'View Invoice (Read-Only)'}
                                 </DropdownMenuItem>
                               )}

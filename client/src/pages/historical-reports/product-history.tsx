@@ -9,10 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, FileText, Download, Mail } from "lucide-react";
+import { CalendarIcon, FileText, Download, Mail, Copy, Printer } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type ProductsAPI = { regularProducts: RegularProduct[]; nonProducts: NonProduct[] };
 type ProductHistoryAPI = {
@@ -114,140 +116,280 @@ export default function ProductHistory() {
   // Loading states
   const loading = loadingProducts || loadingCustomers || loadingSuppliers || loadingHistory;
 
-  // Export functions
-  const exportToExcel = () => {
+  // Clean Export Functions - All Tables Included
+  const handleExcel = () => {
     if (!searchClicked || loading) return;
 
     const wb = XLSX.utils.book_new();
     
-    // Create purchases sheet
-    const purchasesData = [
+    // Create comprehensive Excel with all data
+    const allData = [
+      // Header information
+      ['PRODUCT HISTORY REPORT'],
+      ['TROPIFRUIT UK LTD'],
+      ['3 Dolphin Way, Purfleet, RM19 1NZ'],
+      [''],
+      [`Report Period: ${fromDate ? format(fromDate, 'dd/MM/yyyy') : 'All'} to ${toDate ? format(toDate, 'dd/MM/yyyy') : 'All'}`],
+      [`Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`],
+      [''],
+      
+      // From Supplier Section
+      ['FROM SUPPLIER'],
       ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...purchases.map((row: any, idx: number) => [
-        idx + 1,
-        row.date,
-        row.supplierName,
-        row.product,
-        row.quantity,
-        row.unitPrice,
-        row.total
-      ])
-    ];
-    const purchasesWS = XLSX.utils.aoa_to_sheet(purchasesData);
-    XLSX.utils.book_append_sheet(wb, purchasesWS, 'From Supplier');
-
-    // Create supplier returns sheet
-    const supplierReturnsData = [
+        idx + 1, row.date, row.supplierName, row.product, row.quantity, row.unitPrice, row.total
+      ]),
+      [''],
+      
+      // Supplier Returns Section
+      ['SUPPLIER RETURNS'],
       ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...supplierReturns.map((row: any, idx: number) => [
-        idx + 1,
-        row.date,
-        row.invoice,
-        row.supplierName,
-        row.product,
-        row.quantity,
-        row.unitPrice,
-        row.total
-      ])
-    ];
-    const supplierReturnsWS = XLSX.utils.aoa_to_sheet(supplierReturnsData);
-    XLSX.utils.book_append_sheet(wb, supplierReturnsWS, 'Supplier Returns');
-
-    // Create sales sheet
-    const salesData = [
+        idx + 1, row.date, row.invoice, row.supplierName, row.product, row.quantity, row.unitPrice, row.total
+      ]),
+      [''],
+      
+      // Sales Section
+      ['SALES'],
       ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...sales.map((row: any, idx: number) => [
-        idx + 1,
-        row.date,
-        row.invoiceNo,
-        row.customerName,
-        row.product,
-        row.quantity,
-        row.unitPrice,
-        row.total
-      ])
-    ];
-    const salesWS = XLSX.utils.aoa_to_sheet(salesData);
-    XLSX.utils.book_append_sheet(wb, salesWS, 'Sales');
-
-    // Create customer returns sheet
-    const customerReturnsData = [
+        idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.quantity, row.unitPrice, row.total
+      ]),
+      [''],
+      
+      // Customer Returns Section
+      ['CUSTOMER RETURNS'],
       ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...customerReturns.map((row: any, idx: number) => [
-        idx + 1,
-        row.date,
-        row.invoice,
-        row.customerName,
-        row.product,
-        row.quantity,
-        row.unitPrice,
-        row.total
-      ])
-    ];
-    const customerReturnsWS = XLSX.utils.aoa_to_sheet(customerReturnsData);
-    XLSX.utils.book_append_sheet(wb, customerReturnsWS, 'Customer Returns');
-
-    // Create dumps sheet
-    const dumpsData = [
+        idx + 1, row.date, row.invoice, row.customerName, row.product, row.quantity, row.unitPrice, row.total
+      ]),
+      [''],
+      
+      // Dumps Section
+      ['DUMPS'],
       ['Sl.No', 'Date', 'Product', 'Total Qty'],
       ...dumps.map((row: any, idx: number) => [
-        idx + 1,
-        row.date,
-        row.product,
-        row.totalQty
+        idx + 1, row.date, row.product, row.totalQty
       ])
     ];
-    const dumpsWS = XLSX.utils.aoa_to_sheet(dumpsData);
-    XLSX.utils.book_append_sheet(wb, dumpsWS, 'Dumps');
 
-    // Generate filename
-    const fromDateStr = fromDate ? format(fromDate, 'yyyy-MM-dd') : '';
-    const toDateStr = toDate ? format(toDate, 'yyyy-MM-dd') : '';
-    const filename = `Product_History_${fromDateStr}_to_${toDateStr}.xlsx`;
+    const ws = XLSX.utils.aoa_to_sheet(allData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Product History');
     
+    const filename = `Product_History_${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'All'}_to_${toDate ? format(toDate, 'yyyy-MM-dd') : 'All'}.xlsx`;
     XLSX.writeFile(wb, filename);
   };
 
-  const exportToPDF = async () => {
+  const handlePDF = () => {
     if (!searchClicked || loading) return;
     
-    setIsExporting(true);
-    try {
-      const params = new URLSearchParams();
-      if (productId && productId !== "All") params.append("productId", productId);
-      if (productLike) params.append("productLike", productLike);
-      if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
-      if (toDate) params.append("toDate", toEndOfDayDateString(toDate));
-      if (customerId && customerId !== "All") params.append("customerId", customerId);
-      if (supplierId && supplierId !== "All") params.append("supplierId", supplierId);
+    const doc = new jsPDF('landscape');
+    
+    // Add header
+    doc.setFontSize(16);
+    doc.text('PRODUCT HISTORY REPORT', doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+    
+    doc.setFontSize(12);
+    doc.text('TROPIFRUIT UK LTD', doc.internal.pageSize.getWidth() / 2, 30, { align: 'center' });
+    doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', doc.internal.pageSize.getWidth() / 2, 40, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.text(`Report Period: ${fromDate ? format(fromDate, 'dd/MM/yyyy') : 'All'} to ${toDate ? format(toDate, 'dd/MM/yyyy') : 'All'}`, 20, 55);
+    doc.text(`Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 20, 65);
+    
+    let yPosition = 75;
+    
+    // Add all tables
+    const tables = [
+      { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'SALES', data: sales, headers: ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'CUSTOMER RETURNS', data: customerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'DUMPS', data: dumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
+    ];
+    
+    tables.forEach((table, index) => {
+      if (table.data.length > 0) {
+        // Add section title
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(table.title, 20, yPosition);
+        yPosition += 10;
+        
+        // Prepare table data
+        const tableData = table.data.map((row: any, idx: number) => {
+          if (table.title === 'DUMPS') {
+            return [idx + 1, row.date, row.product, row.totalQty];
+          } else if (table.title === 'FROM SUPPLIER') {
+            return [idx + 1, row.date, row.supplierName, row.product, row.quantity, row.unitPrice, row.total];
+          } else if (table.title === 'SUPPLIER RETURNS') {
+            return [idx + 1, row.date, row.invoice, row.supplierName, row.product, row.quantity, row.unitPrice, row.total];
+          } else if (table.title === 'SALES') {
+            return [idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.quantity, row.unitPrice, row.total];
+          } else { // Customer Returns
+            return [idx + 1, row.date, row.invoice, row.customerName, row.product, row.quantity, row.unitPrice, row.total];
+          }
+        });
+        
+        autoTable(doc, {
+          head: [table.headers],
+          body: tableData,
+          startY: yPosition,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [240, 240, 240] },
+          margin: { left: 20, right: 20 }
+        });
+        
+        yPosition = (doc as any).lastAutoTable.finalY + 15;
+        
+        // Add page break if needed
+        if (yPosition > doc.internal.pageSize.getHeight() - 50 && index < tables.length - 1) {
+          doc.addPage();
+          yPosition = 20;
+        }
+      }
+    });
+    
+    doc.save(`Product_History_${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'All'}_to_${toDate ? format(toDate, 'yyyy-MM-dd') : 'All'}.pdf`);
+  };
+
+  const handleCopy = async () => {
+    if (!searchClicked || loading) return;
+    
+    let text = 'PRODUCT HISTORY REPORT\n';
+    text += 'TROPIFRUIT UK LTD\n';
+    text += '3 Dolphin Way, Purfleet, RM19 1NZ\n\n';
+    text += `Report Period: ${fromDate ? format(fromDate, 'dd/MM/yyyy') : 'All'} to ${toDate ? format(toDate, 'dd/MM/yyyy') : 'All'}\n`;
+    text += `Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}\n\n`;
+    
+    // Add all sections
+    if (purchases.length > 0) {
+      text += 'FROM SUPPLIER\n';
+      text += 'Sl.No\tDate\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
+      purchases.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.supplierName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (supplierReturns.length > 0) {
+      text += 'SUPPLIER RETURNS\n';
+      text += 'Sl.No\tDate\tInvoice#\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
+      supplierReturns.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.supplierName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (sales.length > 0) {
+      text += 'SALES\n';
+      text += 'Sl.No\tDate\tInvoice\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
+      sales.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.invoiceNo}\t${row.customerName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (customerReturns.length > 0) {
+      text += 'CUSTOMER RETURNS\n';
+      text += 'Sl.No\tDate\tInvoice#\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
+      customerReturns.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.customerName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (dumps.length > 0) {
+      text += 'DUMPS\n';
+      text += 'Sl.No\tDate\tProduct\tTotal Qty\n';
+      dumps.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.product}\t${row.totalQty}\n`;
+      });
+    }
+    
+    await navigator.clipboard.writeText(text);
+    alert('Product history copied to clipboard!');
+  };
+
+  const handlePrint = () => {
+    if (!searchClicked || loading) return;
+    
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Product History Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin:20px 0;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.section-title{font-size:14px;font-weight:bold;margin:20px 0 10px 0;color:#333;}');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
       
-      const response = await fetch(`/api/reports/product-history/pdf?${params.toString()}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>PRODUCT HISTORY REPORT</h2>');
+      printWindow.document.write('<p>TROPIFRUIT UK LTD<br>3 Dolphin Way, Purfleet, RM19 1NZ</p>');
+      printWindow.document.write(`<p>Report Period: ${fromDate ? format(fromDate, 'dd/MM/yyyy') : 'All'} to ${toDate ? format(toDate, 'dd/MM/yyyy') : 'All'}</p>`);
+      printWindow.document.write(`<p>Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>`);
+      printWindow.document.write('</div>');
+      
+      // Add all sections
+      const sections = [
+        { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+        { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+        { title: 'SALES', data: sales, headers: ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+        { title: 'CUSTOMER RETURNS', data: customerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+        { title: 'DUMPS', data: dumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
+      ];
+      
+      sections.forEach(section => {
+        if (section.data.length > 0) {
+          printWindow.document.write(`<div class="section-title">${section.title}</div>`);
+          printWindow.document.write('<table>');
+          printWindow.document.write('<thead><tr>');
+          section.headers.forEach(header => {
+            printWindow.document.write(`<th>${header}</th>`);
+          });
+          printWindow.document.write('</tr></thead><tbody>');
+          
+          section.data.forEach((row: any, idx: number) => {
+            printWindow.document.write('<tr>');
+            printWindow.document.write(`<td>${idx + 1}</td>`);
+            printWindow.document.write(`<td>${row.date}</td>`);
+            
+            if (section.title === 'DUMPS') {
+              printWindow.document.write(`<td>${row.product}</td>`);
+              printWindow.document.write(`<td>${row.totalQty}</td>`);
+            } else {
+              if (section.title === 'FROM SUPPLIER' || section.title === 'SUPPLIER RETURNS') {
+                if (section.title === 'SUPPLIER RETURNS') {
+                  printWindow.document.write(`<td>${row.invoice}</td>`);
+                }
+                printWindow.document.write(`<td>${row.supplierName}</td>`);
+              } else {
+                if (section.title === 'CUSTOMER RETURNS') {
+                  printWindow.document.write(`<td>${row.invoice}</td>`);
+                }
+                printWindow.document.write(`<td>${row.customerName || row.invoiceNo}</td>`);
+              }
+              printWindow.document.write(`<td>${row.product}</td>`);
+              printWindow.document.write(`<td>${row.quantity}</td>`);
+              printWindow.document.write(`<td>${row.unitPrice}</td>`);
+              printWindow.document.write(`<td>${row.total}</td>`);
+            }
+            printWindow.document.write('</tr>');
+          });
+          
+          printWindow.document.write('</tbody></table>');
         }
       });
       
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const fromDateStr = fromDate ? format(fromDate, 'yyyy-MM-dd') : '';
-        const toDateStr = toDate ? format(toDate, 'yyyy-MM-dd') : '';
-        a.download = `Product_History_${fromDateStr}_to_${toDateStr}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        throw new Error('Failed to generate PDF');
-      }
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      alert('Failed to export PDF. Please try again.');
-    } finally {
-      setIsExporting(false);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
     }
   };
 
@@ -430,44 +572,64 @@ export default function ProductHistory() {
             
             {/* Export and Email Section */}
             {searchClicked && !loading && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-                  <div className="lg:col-span-2">
-                    <label className="block text-sm font-medium mb-2">Email Address (for sending report):</label>
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-sm font-medium mb-1">Email Address:</label>
                     <Input
                       type="email"
                       value={emailAddress}
                       onChange={(e) => setEmailAddress(e.target.value)}
                       placeholder="Enter email address"
+                      className="h-8"
                     />
                   </div>
-                  <div>
+                  <div className="flex items-center gap-2">
                     <Button
-                      onClick={exportToPDF}
+                      size="sm"
+                      onClick={handlePDF}
                       disabled={isExporting}
-                      className="w-full bg-red-600 hover:bg-red-700"
+                      className="bg-red-600 hover:bg-red-700 h-8 px-3"
                     >
-                      <FileText className="mr-2 h-4 w-4" />
-                      {isExporting ? "Exporting..." : "PDF"}
+                      <FileText className="mr-1 h-3 w-3" />
+                      PDF
                     </Button>
-                  </div>
-                  <div>
                     <Button
-                      onClick={exportToExcel}
+                      size="sm"
+                      onClick={handleExcel}
                       disabled={isExporting}
-                      className="w-full bg-green-600 hover:bg-green-700"
+                      className="bg-green-600 hover:bg-green-700 h-8 px-3"
                     >
-                      <Download className="mr-2 h-4 w-4" />
+                      <Download className="mr-1 h-3 w-3" />
                       Excel
                     </Button>
-                  </div>
-                  <div>
                     <Button
+                      size="sm"
+                      onClick={handleCopy}
+                      disabled={isExporting}
+                      variant="outline"
+                      className="h-8 px-3"
+                    >
+                      <Copy className="mr-1 h-3 w-3" />
+                      Copy
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handlePrint}
+                      disabled={isExporting}
+                      variant="outline"
+                      className="h-8 px-3"
+                    >
+                      <Printer className="mr-1 h-3 w-3" />
+                      Print
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={sendEmail}
                       disabled={isExporting || !emailAddress}
-                      className="w-full bg-purple-600 hover:bg-purple-700"
+                      className="bg-purple-600 hover:bg-purple-700 h-8 px-3"
                     >
-                      <Mail className="mr-2 h-4 w-4" />
+                      <Mail className="mr-1 h-3 w-3" />
                       {isExporting ? "Sending..." : "Email"}
                     </Button>
                   </div>
