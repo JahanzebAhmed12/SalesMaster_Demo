@@ -3879,6 +3879,11 @@ def create_bulk_payment():
         remarks = data.get('remarks', '')
         invoices = data.get('invoices', [])
         
+        # Check if this is a mixed payment
+        payment_type = data.get('paymentType', 'invoice')
+        direct_payments = data.get('directPayments', [])
+        on_account_payments = data.get('onAccountPayments', [])
+        
         # Generate a unique batch ID for this payment transaction
         # Get the highest batch_id and increment
         last_batch = db.session.query(Payment.batch_id).filter(
@@ -3894,13 +3899,33 @@ def create_bulk_payment():
         # Sequential Payment Allocation - Clean and Efficient
         payments_created = []
         
-        # Sort invoices by date (newest first) - current invoices are paid first, then older ones
-        # This ensures that the most recent invoices get priority in payment allocation
-        sorted_invoices = sorted(invoices, key=lambda x: x.get('invoiceDate', '1900-01-01'), reverse=True)
+        # Initialize sorted_invoices for all payment types
+        # For mixed payments, combine direct and on-account payments into invoices format
+        if payment_type == 'mixed':
+            # Combine direct and on-account payments into a unified invoice list
+            combined_invoices = []
+            for direct_payment in direct_payments:
+                combined_invoices.append({
+                    'invoiceId': direct_payment['invoiceId'],
+                    'invoiceDate': direct_payment.get('invoiceDate', '1900-01-01'),
+                    'balance': direct_payment['amount'],
+                    'paymentMode': direct_payment.get('paymentMode', 'cash')
+                })
+            for on_account_payment in on_account_payments:
+                combined_invoices.append({
+                    'invoiceId': on_account_payment.get('invoiceId'),
+                    'invoiceDate': on_account_payment.get('invoiceDate', '1900-01-01'),
+                    'balance': on_account_payment['amount'],
+                    'paymentMode': 'cash'  # Default for on-account
+                })
+            sorted_invoices = sorted(combined_invoices, key=lambda x: x.get('invoiceDate', '1900-01-01'), reverse=True)
+        else:
+            sorted_invoices = sorted(invoices, key=lambda x: x.get('invoiceDate', '1900-01-01'), reverse=True)
         
-        # If split payment is used, allocate sequentially
-        if total_split != 0 and split_payment:
-            # Payment method mapping
+        # Handle mixed payment type
+        if payment_type == 'mixed':
+            # Get split payment configuration
+            split_payment = data.get('splitPayment', {})
             mode_map = {
                 'cash': 'cash',
                 'card': 'bank', 
@@ -3908,98 +3933,224 @@ def create_bulk_payment():
                 'cheque': 'cheque'
             }
             
-            # Create available payment pool in priority order (cash first, then card, etc.)
+            # Create payment pool from split payment amounts
             payment_pool = []
-            for payment_type in ['cash', 'card', 'bankTransfer', 'cheque']:
-                amount = split_payment.get(payment_type, 0)
+            for payment_type_key, amount in split_payment.items():
                 if amount > 0:
                     payment_pool.append({
-                        'type': payment_type,
-                        'mode': mode_map[payment_type],
+                        'type': payment_type_key,
+                        'mode': mode_map.get(payment_type_key, 'cash'),
                         'remaining': float(amount)
                     })
             
-            # Allocate payments sequentially to invoices
-            for invoice_data in sorted_invoices:
-                invoice_balance = float(invoice_data['balance'])
-                remaining_invoice_balance = invoice_balance
+            # Process direct payments first (allocate from payment pool)
+            for direct_payment in direct_payments:
+                invoice_amount = float(direct_payment['amount'])
+                remaining_invoice_amount = invoice_amount
                 
-                # Try to pay this invoice with available payment methods
+                # Allocate from payment pool to this invoice
                 for payment_method in payment_pool:
-                    if remaining_invoice_balance <= 0 or payment_method['remaining'] <= 0:
+                    if remaining_invoice_amount <= 0 or payment_method['remaining'] <= 0:
                         continue
                     
-                    # Calculate how much to pay with this method
-                    payment_amount = min(remaining_invoice_balance, payment_method['remaining'])
+                    # Calculate how much to allocate from this payment method
+                    allocation_amount = min(remaining_invoice_amount, payment_method['remaining'])
                     
                     # Create payment record
                     payment = Payment(
                         customer_id=customer_id,
-                        sale_id=invoice_data['invoiceId'],
-                        amount=payment_amount,
+                        sale_id=direct_payment['invoiceId'],
+                        amount=allocation_amount,
                         payment_mode=payment_method['mode'],
                         payment_date=payment_date,
                         batch_id=batch_id,
-                        remarks=f"{remarks} (Batch ID: {batch_id} - {payment_method['type'].title()})"
+                        remarks=f"{remarks} (Direct Payment - {payment_method['type'].title()} - Batch ID: {batch_id})"
                     )
                     db.session.add(payment)
                     payments_created.append(payment)
                     
                     # Update remaining amounts
-                    remaining_invoice_balance -= payment_amount
-                    payment_method['remaining'] -= payment_amount
+                    remaining_invoice_amount -= allocation_amount
+                    payment_method['remaining'] -= allocation_amount
                 
-                # If invoice still has remaining balance, create a record for tracking
-                if remaining_invoice_balance > 0:
-                    print(f"Warning: Invoice {invoice_data['invoiceId']} has unpaid balance of {remaining_invoice_balance}")
-        else:
-            # Original single payment mode - no split payment
-            for invoice_data in sorted_invoices:
-                invoice_balance = float(invoice_data['balance'])
-                invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
-                
-                payment = Payment(
-                    customer_id=customer_id,
-                    sale_id=invoice_data['invoiceId'],
-                    amount=invoice_balance,
-                    payment_mode=invoice_payment_mode,
-                    payment_date=payment_date,
-                    batch_id=batch_id,
-                    remarks=f"{remarks} (Batch ID: {batch_id} - {invoice_payment_mode.title()})"
-                )
-                db.session.add(payment)
-                payments_created.append(payment)
-            
-        # Update sale payment status for each invoice
-        for invoice_data in sorted_invoices:
-            sale = Sale.query.get(invoice_data['invoiceId'])
-            if sale:
-                # Calculate total payment made to this invoice from all payment methods
-                invoice_payments = [p for p in payments_created if p.sale_id == invoice_data['invoiceId']]
-                total_payment_for_invoice = sum(float(p.amount) for p in invoice_payments)
-                
-                current_paid = float(sale.paid_amount or 0)
-                new_paid = current_paid + total_payment_for_invoice
-                
-                if new_paid >= float(sale.total_amount):
-                    sale.payment_status = "paid"
-                    sale.paid_amount = sale.total_amount
-                    sale.status = "finalized"
+                # Update sale payment status
+                sale = Sale.query.get(direct_payment['invoiceId'])
+                if sale:
+                    current_paid = float(sale.paid_amount or 0)
+                    new_paid = current_paid + invoice_amount
                     
-                    # Set customer_type based on the primary payment method for this invoice
-                    if invoice_payments:
-                        # Use the payment method with the highest amount for this invoice
-                        primary_payment = max(invoice_payments, key=lambda x: float(x.amount))
-                        sale.customer_type = primary_payment.payment_mode
+                    if new_paid >= float(sale.total_amount):
+                        sale.payment_status = "paid"
+                        sale.paid_amount = sale.total_amount
+                        sale.status = "finalized"
+                        # Set customer_type to the dominant payment mode for this invoice
+                        invoice_payments = [p for p in payments_created if p.sale_id == direct_payment['invoiceId']]
+                        if invoice_payments:
+                            dominant_payment = max(invoice_payments, key=lambda x: float(x.amount))
+                            sale.customer_type = dominant_payment.payment_mode
                     else:
-                        # Fallback to original logic
-                        invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
-                        sale.customer_type = invoice_payment_mode
-                else:
-                    sale.payment_status = "partial"
-                    sale.paid_amount = new_paid
+                        sale.payment_status = "partial"
+                        sale.paid_amount = new_paid
+                    
+                    db.session.add(sale)
+            
+            # Process on-account payments (allocate from remaining payment pool)
+            for on_account_payment in on_account_payments:
+                invoice_amount = float(on_account_payment['amount'])
+                remaining_invoice_amount = invoice_amount
                 
-                db.session.add(sale)
+                # Allocate from remaining payment pool to this invoice
+                for payment_method in payment_pool:
+                    if remaining_invoice_amount <= 0 or payment_method['remaining'] <= 0:
+                        continue
+                    
+                    # Calculate how much to allocate from this payment method
+                    allocation_amount = min(remaining_invoice_amount, payment_method['remaining'])
+                    
+                    # Create payment record
+                    payment = Payment(
+                        customer_id=customer_id,
+                        sale_id=on_account_payment.get('invoiceId'),
+                        amount=allocation_amount,
+                        payment_mode=payment_method['mode'],
+                        payment_date=payment_date,
+                        batch_id=batch_id,
+                        remarks=f"{remarks} (On-Account Payment - {payment_method['type'].title()} - Batch ID: {batch_id})"
+                    )
+                    db.session.add(payment)
+                    payments_created.append(payment)
+                    
+                    # Update remaining amounts
+                    remaining_invoice_amount -= allocation_amount
+                    payment_method['remaining'] -= allocation_amount
+                
+                # Update sale payment status for on-account payments
+                if on_account_payment.get('invoiceId'):
+                    sale = Sale.query.get(on_account_payment['invoiceId'])
+                    if sale:
+                        current_paid = float(sale.paid_amount or 0)
+                        new_paid = current_paid + invoice_amount
+                        
+                        if new_paid >= float(sale.total_amount):
+                            sale.payment_status = "paid"
+                            sale.paid_amount = sale.total_amount
+                            sale.status = "finalized"
+                            # Set customer_type to the dominant payment mode for this invoice
+                            invoice_payments = [p for p in payments_created if p.sale_id == on_account_payment['invoiceId']]
+                            if invoice_payments:
+                                dominant_payment = max(invoice_payments, key=lambda x: float(x.amount))
+                                sale.customer_type = dominant_payment.payment_mode
+                        else:
+                            sale.payment_status = "partial"
+                            sale.paid_amount = new_paid
+                        
+                        db.session.add(sale)
+        
+        # Skip additional payment processing for mixed payments (already handled above)
+        if payment_type != 'mixed':
+            # If split payment is used, allocate sequentially
+            if total_split != 0 and split_payment:
+                # Payment method mapping
+                mode_map = {
+                    'cash': 'cash',
+                    'card': 'bank', 
+                    'bankTransfer': 'bank_transfer',
+                    'cheque': 'cheque'
+                }
+                
+                # Create available payment pool in priority order (cash first, then card, etc.)
+                payment_pool = []
+                for payment_type_key in ['cash', 'card', 'bankTransfer', 'cheque']:
+                    amount = split_payment.get(payment_type_key, 0)
+                    if amount > 0:
+                        payment_pool.append({
+                            'type': payment_type_key,
+                            'mode': mode_map[payment_type_key],
+                            'remaining': float(amount)
+                        })
+                
+                # Allocate payments sequentially to invoices
+                for invoice_data in sorted_invoices:
+                    invoice_balance = float(invoice_data['balance'])
+                    remaining_invoice_balance = invoice_balance
+                    
+                    # Try to pay this invoice with available payment methods
+                    for payment_method in payment_pool:
+                        if remaining_invoice_balance <= 0 or payment_method['remaining'] <= 0:
+                            continue
+                        
+                        # Calculate how much to pay with this method
+                        payment_amount = min(remaining_invoice_balance, payment_method['remaining'])
+                        
+                        # Create payment record
+                        payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=invoice_data['invoiceId'],
+                            amount=payment_amount,
+                            payment_mode=payment_method['mode'],
+                            payment_date=payment_date,
+                            batch_id=batch_id,
+                            remarks=f"{remarks} (Batch ID: {batch_id} - {payment_method['type'].title()})"
+                        )
+                        db.session.add(payment)
+                        payments_created.append(payment)
+                        
+                        # Update remaining amounts
+                        remaining_invoice_balance -= payment_amount
+                        payment_method['remaining'] -= payment_amount
+                    
+                    # If invoice still has remaining balance, create a record for tracking
+                    if remaining_invoice_balance > 0:
+                        print(f"Warning: Invoice {invoice_data['invoiceId']} has unpaid balance of {remaining_invoice_balance}")
+            else:
+                # Original single payment mode - no split payment
+                for invoice_data in sorted_invoices:
+                    invoice_balance = float(invoice_data['balance'])
+                    invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
+                    
+                    payment = Payment(
+                        customer_id=customer_id,
+                        sale_id=invoice_data['invoiceId'],
+                        amount=invoice_balance,
+                        payment_mode=invoice_payment_mode,
+                        payment_date=payment_date,
+                        batch_id=batch_id,
+                        remarks=f"{remarks} (Batch ID: {batch_id} - {invoice_payment_mode.title()})"
+                    )
+                    db.session.add(payment)
+                    payments_created.append(payment)
+            
+        # Update sale payment status for each invoice (skip for mixed payments as already handled)
+        if payment_type != 'mixed':
+            for invoice_data in sorted_invoices:
+                sale = Sale.query.get(invoice_data['invoiceId'])
+                if sale:
+                    # Calculate total payment made to this invoice from all payment methods
+                    invoice_payments = [p for p in payments_created if p.sale_id == invoice_data['invoiceId']]
+                    total_payment_for_invoice = sum(float(p.amount) for p in invoice_payments)
+                    
+                    current_paid = float(sale.paid_amount or 0)
+                    new_paid = current_paid + total_payment_for_invoice
+                    
+                    if new_paid >= float(sale.total_amount):
+                        sale.payment_status = "paid"
+                        sale.paid_amount = sale.total_amount
+                        sale.status = "finalized"
+                        
+                        # Set customer_type based on the primary payment method for this invoice
+                        if invoice_payments:
+                            # Use the payment method with the highest amount for this invoice
+                            primary_payment = max(invoice_payments, key=lambda x: float(x.amount))
+                            sale.customer_type = primary_payment.payment_mode
+                        else:
+                            # Fallback to original logic
+                            invoice_payment_mode = invoice_data.get('paymentMode', 'cash')
+                            sale.customer_type = invoice_payment_mode
+                    else:
+                        sale.payment_status = "partial"
+                        sale.paid_amount = new_paid
+                    
+                    db.session.add(sale)
         
         # Handle remaining amounts as on-account payments (sequential allocation)
         if split_payment and total_split > 0:
@@ -4085,24 +4236,70 @@ def get_payments_by_batch(batch_id):
     try:
         payments = Payment.query.filter(Payment.batch_id == batch_id).all()
         
-        # Include invoice information for each payment
-        payment_details = []
+        if not payments:
+            return jsonify({"error": "Payment batch not found"}), 404
+        
+        # Get customer info from first payment
+        customer = payments[0].customer if payments else None
+        
+        # Aggregate payments by payment mode for receipt display
+        payment_summary = {}
+        invoice_list = []
+        
         for payment in payments:
-            payment_dict = payment.to_dict()
-            if payment.sale:
-                payment_dict['invoiceNumber'] = payment.sale.invoice_number
-                payment_dict['invoiceAmount'] = float(payment.sale.total_amount)
-            else:
-                payment_dict['invoiceNumber'] = 'On Account'
-                payment_dict['invoiceAmount'] = None
+            mode = payment.payment_mode
+            amount = float(payment.amount)
             
-            payment_details.append(payment_dict)
+            # Aggregate by payment mode
+            if mode not in payment_summary:
+                payment_summary[mode] = {
+                    'paymentMode': mode,
+                    'totalAmount': 0,
+                    'invoices': []
+                }
+            
+            payment_summary[mode]['totalAmount'] += amount
+            
+            # Track invoices for this payment mode
+            if payment.sale:
+                invoice_info = {
+                    'invoiceNumber': payment.sale.invoice_number,
+                    'amount': amount
+                }
+                payment_summary[mode]['invoices'].append(invoice_info)
+                invoice_list.append(payment.sale.invoice_number)
+            else:
+                # On-account payment
+                invoice_info = {
+                    'invoiceNumber': 'On Account',
+                    'amount': amount
+                }
+                payment_summary[mode]['invoices'].append(invoice_info)
+        
+        # Convert to list format for receipt
+        payment_details = []
+        for mode_data in payment_summary.values():
+            # Create one entry per payment mode showing total amount
+            payment_details.append({
+                'id': batch_id,  # Use batch_id as id
+                'batchId': batch_id,
+                'paymentMode': mode_data['paymentMode'],
+                'amount': mode_data['totalAmount'],
+                'paymentDate': payments[0].payment_date.isoformat() if payments else None,
+                'invoices': mode_data['invoices'],
+                'invoiceNumber': ', '.join([inv['invoiceNumber'] for inv in mode_data['invoices']]) if mode_data['invoices'] else 'On Account',
+                'invoiceAmount': sum([inv['amount'] for inv in mode_data['invoices']]) if mode_data['invoices'] else mode_data['totalAmount'],
+                'customerName': customer.customer_name if customer else 'Unknown',
+                'remarks': payments[0].remarks if payments else ''
+            })
         
         return jsonify({
             'batchId': batch_id,
             'payments': payment_details,
             'totalAmount': sum(float(p.amount) for p in payments),
-            'paymentCount': len(payments)
+            'paymentCount': len(payment_details),  # Count of payment modes, not individual payments
+            'customer': customer.to_dict() if customer else None,
+            'invoiceNumbers': list(set(invoice_list))  # Unique invoice numbers
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -4301,19 +4498,10 @@ def daily_book_sales():
         bank_transfer_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank_transfer' else 0
         cheque_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'cheque' else 0
         
-        # Original logic: Show customer name if they have a gate number OR if they are cash customers
+        # Show all customers - removed gate number restriction
         customer_display_name = ''
         if sale.customer and sale.customer.customer_name:
-            # Show if customer has a gate number (original logic)
-            if sale.customer.others:
-                customer_display_name = sale.customer.customer_name
-            else:
-                # Also show for specific cash customer names even without gate number
-                customer_name_lower = sale.customer.customer_name.lower()
-                if (customer_name_lower == 'cash sale' or 
-                    customer_name_lower == 'cash customer' or 
-                    customer_name_lower == 'cash sales'):
-                    customer_display_name = sale.customer.customer_name
+            customer_display_name = sale.customer.customer_name
         
         result.append({
             'id': sale.id,

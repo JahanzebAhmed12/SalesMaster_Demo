@@ -79,13 +79,7 @@ export default function DotMatrixPaymentPrintPage() {
         const response = await apiRequest('GET', `/api/payments/batch/${batchId}`);
         console.log('Payment data:', response);
 
-        // Get customer details from the first payment
-        if (response.payments && response.payments.length > 0) {
-          const customerId = response.payments[0].customerId;
-          const customerResponse = await apiRequest('GET', `/api/customers/${customerId}`);
-          response.customer = customerResponse;
-        }
-
+        // Customer data is already included in the response
         setData(response);
       } catch (err) {
         console.error('Error fetching payment:', err);

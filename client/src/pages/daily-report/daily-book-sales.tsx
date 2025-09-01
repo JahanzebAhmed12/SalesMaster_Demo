@@ -1251,17 +1251,17 @@ export default function DailyBookSales() {
                         <TableCell className="text-xs sm:text-sm">{format(new Date(sale.date), "MM/dd/yy")}</TableCell>
                         <TableCell className="text-xs sm:text-sm">{sale.invoiceNo}</TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
+
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
                                 <span>
-                                  {sale.customerName}
+                                  {sale.customerName || 'Unknown Customer'}
                                   {sale.gateNumber && (
                                     <span className="text-xs text-gray-500 font-normal ml-2">
                                       ({sale.gateNumber})
                                     </span>
                                   )}
-
                                 </span>
                               </Button>
                             </DropdownMenuTrigger>

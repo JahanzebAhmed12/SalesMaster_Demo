@@ -9,6 +9,33 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt, FileCheck, Mail } from "lucide-react";
+
+// PaymentTypeSelector Component
+const PaymentTypeSelector = ({ 
+  invoiceId, 
+  currentType, 
+  onTypeChange, 
+  disabled = false 
+}: {
+  invoiceId: number;
+  currentType: PaymentType;
+  onTypeChange: (invoiceId: number, type: PaymentType) => void;
+  disabled?: boolean;
+}) => (
+  <Select 
+    value={currentType} 
+    onValueChange={(value: PaymentType) => onTypeChange(invoiceId, value)}
+    disabled={disabled}
+  >
+    <SelectTrigger className="w-32 h-8 text-xs">
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="direct">Direct</SelectItem>
+      <SelectItem value="on-account">On-Account</SelectItem>
+    </SelectContent>
+  </Select>
+);
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -28,10 +55,19 @@ type InvoiceWithBalance = Sale & {
   runningBal: number;
 };
 
+type PaymentType = 'direct' | 'on-account';
+
+interface InvoicePaymentConfig {
+  invoiceId: number;
+  paymentType: PaymentType;
+  amount: number;
+}
+
 export default function CustomerPayment() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(new Set());
   const [invoicePaymentModes, setInvoicePaymentModes] = useState<Map<number, string>>(new Map());
+  const [invoicePaymentConfigs, setInvoicePaymentConfigs] = useState<Map<number, InvoicePaymentConfig>>(new Map());
   const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
@@ -44,7 +80,7 @@ export default function CustomerPayment() {
     bankTransfer: "",
     cheque: ""
   });
-  const [isOnAccountMode, setIsOnAccountMode] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<'invoice' | 'on-account' | 'mixed'>('invoice');
   const [onAccountInvoiceId, setOnAccountInvoiceId] = useState<number | null>(null);
   const [emailAddress, setEmailAddress] = useState("");
   const queryClient = useQueryClient();
@@ -100,6 +136,18 @@ export default function CustomerPayment() {
   useEffect(() => {
     setEmailAddress("");
   }, [selectedCustomerId]);
+
+  // Handle payment mode changes
+  useEffect(() => {
+    // Clear selections when switching payment modes
+    setSelectedInvoiceIds(new Set());
+    setInvoicePaymentModes(new Map());
+    setInvoicePaymentConfigs(new Map());
+    setOnAccountInvoiceId(null);
+    setReceivedAmount(0);
+    setRemarks("");
+    resetSplitPayment();
+  }, [paymentMode]);
 
   // Fetch customers
   const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
@@ -247,6 +295,7 @@ export default function CustomerPayment() {
   const handleInvoiceSelection = (invoiceId: number, checked: boolean) => {
     const newSelection = new Set(selectedInvoiceIds);
     const newPaymentModes = new Map(invoicePaymentModes);
+    const newConfigs = new Map(invoicePaymentConfigs);
 
     if (checked) {
       newSelection.add(invoiceId);
@@ -254,13 +303,27 @@ export default function CustomerPayment() {
       if (!newPaymentModes.has(invoiceId)) {
         newPaymentModes.set(invoiceId, 'cash');
       }
+
+      // For mixed payment mode, set default payment type to direct
+      if (paymentMode === 'mixed') {
+        const invoice = displayedInvoices.find(inv => inv.id === invoiceId);
+        if (invoice) {
+          newConfigs.set(invoiceId, {
+            invoiceId,
+            paymentType: 'direct',
+            amount: invoice.balance
+          });
+        }
+      }
     } else {
       newSelection.delete(invoiceId);
       newPaymentModes.delete(invoiceId);
+      newConfigs.delete(invoiceId);
     }
 
     setSelectedInvoiceIds(newSelection);
     setInvoicePaymentModes(newPaymentModes);
+    setInvoicePaymentConfigs(newConfigs);
 
     // Auto-calculate total amount for selected invoices
     const selectedInvoices = displayedInvoices.filter(inv => newSelection.has(inv.id));
@@ -285,16 +348,27 @@ export default function CustomerPayment() {
     if (checked) {
       const allIds = new Set(displayedInvoices.map(inv => inv.id));
       const newPaymentModes = new Map(invoicePaymentModes);
+      const newConfigs = new Map(invoicePaymentConfigs);
 
       // Set default payment mode for all invoices
       displayedInvoices.forEach(inv => {
         if (!newPaymentModes.has(inv.id)) {
           newPaymentModes.set(inv.id, 'cash');
         }
+
+        // For mixed payment mode, set default payment type to direct
+        if (paymentMode === 'mixed') {
+          newConfigs.set(inv.id, {
+            invoiceId: inv.id,
+            paymentType: 'direct',
+            amount: inv.balance
+          });
+        }
       });
 
       setSelectedInvoiceIds(allIds);
       setInvoicePaymentModes(newPaymentModes);
+      setInvoicePaymentConfigs(newConfigs);
       const totalAmount = displayedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
       // Set split payment to cash by default
       setSplitPayment({
@@ -307,6 +381,7 @@ export default function CustomerPayment() {
     } else {
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
+      setInvoicePaymentConfigs(new Map());
       setReceivedAmount(0);
       resetSplitPayment();
     }
@@ -317,6 +392,23 @@ export default function CustomerPayment() {
     const newPaymentModes = new Map(invoicePaymentModes);
     newPaymentModes.set(invoiceId, paymentMode);
     setInvoicePaymentModes(newPaymentModes);
+  };
+
+  // Handle payment type change for mixed payments
+  const handlePaymentTypeChange = (invoiceId: number, paymentType: PaymentType) => {
+    const invoice = displayedInvoices.find(inv => inv.id === invoiceId);
+    if (!invoice) return;
+
+    const newConfigs = new Map(invoicePaymentConfigs);
+    newConfigs.set(invoiceId, {
+      invoiceId,
+      paymentType,
+      amount: invoice.balance
+    });
+    setInvoicePaymentConfigs(newConfigs);
+
+    // Recalculate totals when payment type changes
+    calculateMixedPaymentTotals(newConfigs);
   };
 
   // Handle split payment amount changes
@@ -355,21 +447,108 @@ export default function CustomerPayment() {
     });
   };
 
-  // Handle on-account payment mode toggle
-  const handleOnAccountModeToggle = () => {
-    setIsOnAccountMode(!isOnAccountMode);
-    if (!isOnAccountMode) {
-      // Switching to on-account mode - clear invoice selections
-      setSelectedInvoiceIds(new Set());
-      setInvoicePaymentModes(new Map());
-      setReceivedAmount(0);
-      resetSplitPayment();
-    } else {
-      // Switching back to invoice mode - clear on-account data
-      setOnAccountInvoiceId(null);
-      setReceivedAmount(0);
-      resetSplitPayment();
+  // Validation helper for mixed payments
+  const validateMixedPayment = () => {
+    if (!selectedCustomerId || receivedAmount === 0 || !paymentDate) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a customer, enter a valid amount, and select a payment date.",
+        variant: "destructive",
+      });
+      return false;
     }
+
+    // Check permission for the selected payment date
+    if (!canCreatePaymentForDate(paymentDate)) {
+      const isToday = format(paymentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+      toast({
+        title: "Permission Denied",
+        description: isToday 
+          ? "You don't have permission to create payments for today"
+          : "You don't have permission to create payments for past dates",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    // Validate split payment amounts
+    const totalSplitAmount = Object.values(splitPayment).reduce((sum, val) => {
+      return sum + (parseFloat(val as string) || 0);
+    }, 0);
+
+    if (Math.abs(totalSplitAmount - receivedAmount) > 0.01) {
+      toast({
+        title: "Validation Error",
+        description: `Split payment total (£${totalSplitAmount.toFixed(2)}) must equal received amount (£${receivedAmount.toFixed(2)}).`,
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    // Validate that at least one invoice is selected
+    if (selectedInvoiceIds.size === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please select at least one invoice for mixed payment.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
+  // Handle mixed payment submission
+  const handleMixedPaymentSubmit = () => {
+    if (!validateMixedPayment()) {
+      return;
+    }
+
+    const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+    const directPayments: any[] = [];
+    const onAccountPayments: any[] = [];
+
+    // Separate invoices by payment type
+    selectedInvoices.forEach(invoice => {
+      const config = invoicePaymentConfigs.get(invoice.id);
+      const paymentType = config?.paymentType || 'direct';
+
+      if (paymentType === 'direct') {
+        directPayments.push({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: invoice.balance,
+          paymentMode: invoicePaymentModes.get(invoice.id) || 'cash'
+        });
+      } else {
+        onAccountPayments.push({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: invoice.balance
+        });
+      }
+    });
+
+    // Add any additional on-account amount (if total received > selected invoices)
+    const additionalOnAccount = receivedAmount - paymentBreakdown.selectedInvoicesTotal;
+    if (additionalOnAccount > 0) {
+      onAccountPayments.push({
+        amount: additionalOnAccount
+      });
+    }
+
+    const mixedPaymentPayload = {
+      customerId: parseInt(selectedCustomerId),
+      amount: receivedAmount,
+      paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
+      remarks: remarks || "Mixed payment (direct + on-account)",
+      splitPayment: getSplitPaymentNumbers(),
+      directPayments,
+      onAccountPayments,
+      paymentType: 'mixed'
+    };
+
+    createPaymentMutation.mutate(mixedPaymentPayload);
   };
 
   // Handle on-account payment submission
@@ -416,7 +595,7 @@ export default function CustomerPayment() {
       saleId: onAccountInvoiceId,
       amount: receivedAmount,
       paymentMode: primaryPaymentMode,
-      paymentDate: format(paymentDate, "yyyy-MM-dd"),
+      paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: remarks || (onAccountInvoiceId ? "On-account payment for invoice" : "On-account payment"),
       splitPayment: getSplitPaymentNumbers()
     };
@@ -454,6 +633,7 @@ export default function CustomerPayment() {
     setRemarks('');
     setSelectedInvoiceIds(new Set());
     setInvoicePaymentModes(new Map());
+    setInvoicePaymentConfigs(new Map());
     resetSplitPayment();
   };
 
@@ -474,7 +654,7 @@ export default function CustomerPayment() {
 
       // Handle update
       const paymentData = {
-        batchId: editingPayment.batchId,
+        batchId: (editingPayment as any).batchId,
         amount: receivedAmount,
         paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
         remarks: remarks,
@@ -485,8 +665,14 @@ export default function CustomerPayment() {
     }
 
     // Handle on-account payment
-    if (isOnAccountMode) {
+    if (paymentMode === 'on-account') {
       handleOnAccountPayment();
+      return;
+    }
+
+    // Handle mixed payment
+    if (paymentMode === 'mixed') {
+      handleMixedPaymentSubmit();
       return;
     }
 
@@ -518,7 +704,7 @@ export default function CustomerPayment() {
     const paymentPayload = {
       customerId: parseInt(selectedCustomerId),
       amount: receivedAmount,
-      paymentDate: format(paymentDate, "yyyy-MM-dd"),
+      paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: remarks,
       invoiceIds: Array.from(selectedInvoiceIds),
       splitPayment: getSplitPaymentNumbers(),
@@ -828,9 +1014,38 @@ export default function CustomerPayment() {
   const displayedInvoices = calculateRunningBalance();
   const totalOutstandingBalance = displayedInvoices.reduce((sum, invoice) => sum + invoice.balance, 0);
 
-  // Calculate selected invoices total
-  const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
-  const selectedTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
+  // Calculate mixed payment totals
+  const calculateMixedPaymentTotals = (configs?: Map<number, InvoicePaymentConfig>) => {
+    const currentConfigs = configs || invoicePaymentConfigs;
+    const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+    
+    let directPaymentTotal = 0;
+    let onAccountTotal = 0;
+    
+    selectedInvoices.forEach(invoice => {
+      const config = currentConfigs.get(invoice.id);
+      if (config?.paymentType === 'direct') {
+        directPaymentTotal += invoice.balance;
+      } else if (config?.paymentType === 'on-account') {
+        onAccountTotal += invoice.balance;
+      } else {
+        // Default to direct payment for invoice mode
+        directPaymentTotal += invoice.balance;
+      }
+    });
+
+    return {
+      directPaymentTotal,
+      onAccountTotal,
+      selectedInvoicesTotal: directPaymentTotal + onAccountTotal,
+      remainingForOnAccount: receivedAmount - (directPaymentTotal + onAccountTotal)
+    };
+  };
+
+  // Calculate selected invoices total based on payment mode
+  const paymentBreakdown = calculateMixedPaymentTotals();
+  const selectedTotal = paymentMode === 'mixed' ? paymentBreakdown.selectedInvoicesTotal : 
+    displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id)).reduce((sum, inv) => sum + inv.balance, 0);
   const remainingBalance = selectedTotal - receivedAmount;
 
   return (
@@ -855,18 +1070,25 @@ export default function CustomerPayment() {
             <div className="mb-4">
               <div className="flex items-center gap-4">
                 <Button
-                  variant={!isOnAccountMode ? "default" : "outline"}
-                  onClick={() => !isOnAccountMode || handleOnAccountModeToggle()}
+                  variant={paymentMode === 'invoice' ? "default" : "outline"}
+                  onClick={() => setPaymentMode('invoice')}
                   className="flex items-center gap-2"
                 >
                   Invoice Payment
                 </Button>
                 <Button
-                  variant={isOnAccountMode ? "default" : "outline"}
-                  onClick={() => isOnAccountMode || handleOnAccountModeToggle()}
+                  variant={paymentMode === 'on-account' ? "default" : "outline"}
+                  onClick={() => setPaymentMode('on-account')}
                   className="flex items-center gap-2"
                 >
                   On-Account Payment
+                </Button>
+                <Button
+                  variant={paymentMode === 'mixed' ? "default" : "outline"}
+                  onClick={() => setPaymentMode('mixed')}
+                  className="flex items-center gap-2"
+                >
+                  Mixed Payment
                 </Button>
               </div>
             </div>
@@ -895,14 +1117,36 @@ export default function CustomerPayment() {
                 </Select>
               </div>
 
-              {!isOnAccountMode ? (
+              {paymentMode === 'invoice' || paymentMode === 'mixed' ? (
                 <div>
-                  <Label>Selected Invoices Total:</Label>
+                  <Label>{paymentMode === 'mixed' ? 'Payment Breakdown:' : 'Selected Invoices Total:'}</Label>
                   <div className="p-2 border rounded bg-gray-50">
-                    <span className="font-semibold text-lg">£{selectedTotal.toFixed(2)}</span>
-                    <span className="text-sm text-gray-500 ml-2">
-                      ({selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} selected)
-                    </span>
+                    {paymentMode === 'mixed' ? (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-sm">
+                          <span>Direct Payments:</span>
+                          <span className="font-semibold">£{paymentBreakdown.directPaymentTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>On-Account Payments:</span>
+                          <span className="font-semibold">£{paymentBreakdown.onAccountTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm border-t pt-1">
+                          <span className="font-semibold">Total Selected:</span>
+                          <span className="font-semibold text-lg">£{selectedTotal.toFixed(2)}</span>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          ({selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} selected)
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="font-semibold text-lg">£{selectedTotal.toFixed(2)}</span>
+                        <span className="text-sm text-gray-500 ml-2">
+                          ({selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} selected)
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -916,7 +1160,7 @@ export default function CustomerPayment() {
                         </span>
                         <div className="text-sm text-gray-600 mt-1">
                           Balance: £{displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.balance.toFixed(2) || "0.00"}
-                          {displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.balance < 0 && (
+                          {(displayedInvoices.find(inv => inv.id === onAccountInvoiceId)?.balance || 0) < 0 && (
                             <span className="text-red-600 ml-2">(Credit Invoice)</span>
                           )}
                         </div>
@@ -1079,14 +1323,41 @@ export default function CustomerPayment() {
               </div>
 
               <div>
-                <Label>Remaining Balance:</Label>
+                <Label>{paymentMode === 'mixed' ? 'Payment Summary:' : 'Remaining Balance:'}</Label>
                 <div className="p-2 border rounded bg-gray-50">
-                  <span className={`font-semibold text-lg ${remainingBalance > 0 ? 'text-red-600' : remainingBalance < 0 ? 'text-green-600' : 'text-gray-900'}`}>
-                    £{remainingBalance.toFixed(2)}
-                  </span>
-                  <span className="text-sm text-gray-500 ml-2">
-                    {remainingBalance > 0 ? 'remaining' : remainingBalance < 0 ? 'overpaid' : 'exact'}
-                  </span>
+                  {paymentMode === 'mixed' ? (
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span>Total Received:</span>
+                        <span className="font-semibold">£{receivedAmount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Direct Payments:</span>
+                        <span>£{paymentBreakdown.directPaymentTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>On-Account:</span>
+                        <span>£{paymentBreakdown.onAccountTotal.toFixed(2)}</span>
+                      </div>
+                      {paymentBreakdown.remainingForOnAccount !== 0 && (
+                        <div className="flex justify-between border-t pt-1">
+                          <span>Additional On-Account:</span>
+                          <span className={paymentBreakdown.remainingForOnAccount > 0 ? 'text-green-600' : 'text-red-600'}>
+                            £{paymentBreakdown.remainingForOnAccount.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <span className={`font-semibold text-lg ${remainingBalance > 0 ? 'text-red-600' : remainingBalance < 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                        £{remainingBalance.toFixed(2)}
+                      </span>
+                      <span className="text-sm text-gray-500 ml-2">
+                        {remainingBalance > 0 ? 'remaining' : remainingBalance < 0 ? 'overpaid' : 'exact'}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1107,16 +1378,18 @@ export default function CustomerPayment() {
                   disabled={
                     (isEditing
                       ? updatePaymentMutation.isPending
-                      : isOnAccountMode 
+                      : paymentMode === 'on-account' 
                         ? createOnAccountMutation.isPending || receivedAmount === 0
                         : createPaymentMutation.isPending || selectedInvoiceIds.size === 0)
                   }
                 >
                   {isEditing
                     ? (updatePaymentMutation.isPending ? 'Updating...' : 'Update Payment')
-                    : isOnAccountMode
+                    : paymentMode === 'on-account'
                       ? (createOnAccountMutation.isPending ? 'Processing...' : 'Record On-Account Payment')
-                      : (createPaymentMutation.isPending ? 'Processing...' : 'Record Payment')
+                      : paymentMode === 'mixed'
+                        ? (createPaymentMutation.isPending ? 'Processing...' : 'Record Mixed Payment')
+                        : (createPaymentMutation.isPending ? 'Processing...' : 'Record Payment')
                   }
                 </Button>
               </div>
@@ -1129,7 +1402,9 @@ export default function CustomerPayment() {
           <CardHeader>
             <div className="flex justify-between items-center">
               <CardTitle>
-                {isOnAccountMode ? "Outstanding Invoices (Select for On-Account Payment)" : "Outstanding Invoices"}
+                {paymentMode === 'on-account' ? "Outstanding Invoices (Select for On-Account Payment)" : 
+                 paymentMode === 'mixed' ? "Outstanding Invoices (Select Payment Type)" : 
+                 "Outstanding Invoices"}
               </CardTitle>
               <div className="flex items-center gap-2">
                 <Input
@@ -1148,7 +1423,7 @@ export default function CustomerPayment() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {!isOnAccountMode && (
+                  {paymentMode !== 'on-account' && (
                     <TableHead className="w-12">
                       <input
                         type="checkbox"
@@ -1164,15 +1439,16 @@ export default function CustomerPayment() {
                   <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead>Type</TableHead>
+                  {paymentMode === 'mixed' && <TableHead>Payment Type</TableHead>}
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Running Balance</TableHead>
-                  {isOnAccountMode && <TableHead>Action</TableHead>}
+                  {paymentMode === 'on-account' && <TableHead>Action</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {displayedInvoices.map((invoice) => (
                   <TableRow key={invoice.id} className={selectedInvoiceIds.has(invoice.id) ? 'bg-blue-50' : ''}>
-                    {!isOnAccountMode && (
+                    {paymentMode !== 'on-account' && (
                       <TableCell>
                         <input
                           type="checkbox"
@@ -1196,15 +1472,28 @@ export default function CustomerPayment() {
                         <span className="text-blue-600 text-xs bg-blue-50 px-2 py-1 rounded">Invoice</span>
                       )}
                     </TableCell>
+                    {paymentMode === 'mixed' && (
+                      <TableCell>
+                        {selectedInvoiceIds.has(invoice.id) ? (
+                          <PaymentTypeSelector
+                            invoiceId={invoice.id}
+                            currentType={invoicePaymentConfigs.get(invoice.id)?.paymentType || 'direct'}
+                            onTypeChange={handlePaymentTypeChange}
+                          />
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
-                      {!isOnAccountMode && selectedInvoiceIds.has(invoice.id) ? (
+                      {paymentMode !== 'on-account' && selectedInvoiceIds.has(invoice.id) ? (
                         <span className="text-green-600 text-sm">Selected</span>
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right">£{invoice.runningBal.toFixed(2)}</TableCell>
-                    {isOnAccountMode && (
+                    {paymentMode === 'on-account' && (
                       <TableCell>
                         <Button
                           size="sm"
@@ -1224,7 +1513,7 @@ export default function CustomerPayment() {
                 ))}
                 {displayedInvoices.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={isOnAccountMode ? 10 : 9} className="text-center py-4">
+                    <TableCell colSpan={paymentMode === 'on-account' ? 10 : paymentMode === 'mixed' ? 10 : 9} className="text-center py-4">
                       No outstanding invoices found
                     </TableCell>
                   </TableRow>
