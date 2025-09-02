@@ -70,10 +70,11 @@ export default function OnAccCustomer() {
       const params = new URLSearchParams({
         customerId: selectedCustomer,
         fromDate: format(fromDate, "yyyy-MM-dd"),
-        toDate: format(toDate, "yyyy-MM-dd")
+        toDate: format(toDate, "yyyy-MM-dd"),
+        paymentType: "on-account" // Filter to show only on-account payments
       });
       const all = await apiRequest("GET", `/api/payments/history?${params}`);
-      return all; // <-- Remove filter, return all payments
+      return all;
     }
   });
 

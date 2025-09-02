@@ -424,15 +424,22 @@ export default function DotMatrixPaymentPrintPage() {
                 fontFamily: 'monospace',
                 fontSize: '12pt'
               }}>
-                {payment.paymentMode === 'cash' ? 'Cash Payment' :
-                  payment.paymentMode === 'bank' ? 'Card Payment' :
-                    payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
-                      payment.paymentMode === 'cheque' ? 'Cheque Payment' :
-                        'Payment'}
+                {(() => {
+                  const basePaymentType = payment.paymentMode === 'cash' ? 'Cash' :
+                    payment.paymentMode === 'bank' ? 'Card' :
+                      payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
+                        payment.paymentMode === 'cheque' ? 'Cheque' : 'Payment';
+                  
+                  // Add payment type prefix for on-account payments
+                  if (payment.paymentType === 'on-account') {
+                    return `On-Account ${basePaymentType}`;
+                  }
+                  return `${basePaymentType} Payment`;
+                })()}
               </div>
 
               {/* Invoice Number - positioned 5mm below payment description */}
-              {payment.invoiceNumber && (
+              {payment.invoiceNumber && payment.invoiceNumber !== 'On Account' && (
                 <div style={{
                   position: 'absolute',
                   top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight) + 5}mm`,
@@ -441,7 +448,9 @@ export default function DotMatrixPaymentPrintPage() {
                   fontFamily: 'monospace',
                   fontSize: '10pt'
                 }}>
-                  Inv: {payment.invoiceNumber}
+                  {payment.paymentType === 'on-account' ? 
+                    `On-Account Payment for Inv: ${payment.invoiceNumber}` : 
+                    `Inv: ${payment.invoiceNumber}`}
                 </div>
               )}
 

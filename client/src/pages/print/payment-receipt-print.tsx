@@ -150,14 +150,25 @@ const PaymentReceiptPrint = () => {
             <tr key={idx}>
               <td style={{ border: "1px solid #888", padding: 4 }}>
                 <div>
-                  {payment.paymentMode === 'cash' ? 'Cash Payment' : 
-                   payment.paymentMode === 'bank' ? 'Card Payment' :
-                   payment.paymentMode === 'bank_transfer' ? 'Bank Transfer Payment' :
-                   payment.paymentMode === 'cheque' ? 'Cheque Payment' :
-                   'Payment'}
+                  {(() => {
+                    const basePaymentType = payment.paymentMode === 'cash' ? 'Cash' : 
+                      payment.paymentMode === 'bank' ? 'Card' :
+                      payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
+                      payment.paymentMode === 'cheque' ? 'Cheque' : 'Payment';
+                    
+                    // Add payment type prefix for on-account payments
+                    if (payment.paymentType === 'on-account') {
+                      return `On-Account ${basePaymentType} Payment`;
+                    }
+                    return `${basePaymentType} Payment`;
+                  })()}
                 </div>
-                {payment.invoiceNumber && (
-                  <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>Inv: {payment.invoiceNumber}</div>
+                {payment.invoiceNumber && payment.invoiceNumber !== 'On Account' && (
+                  <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>
+                    {payment.paymentType === 'on-account' ? 
+                      `On-Account Payment for Inv: ${payment.invoiceNumber}` : 
+                      `Inv: ${payment.invoiceNumber}`}
+                  </div>
                 )}
               </td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>1</td>

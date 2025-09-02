@@ -3672,6 +3672,7 @@ def create_payment():
                         amount=split_amount,
                         payment_mode=mode_map.get(payment_type, 'cash'),
                         payment_date=payment_data.payment_date,
+                        payment_type='on-account',
                         remarks=payment_data.remarks,
                         batch_id=batch_id
                     )
@@ -3684,6 +3685,7 @@ def create_payment():
                 amount=payment_data.amount,
                 payment_mode=payment_data.payment_mode,
                 payment_date=payment_data.payment_date,
+                payment_type='on-account',
                 remarks=payment_data.remarks
             )
             print("Created payment object:", new_payment.to_dict())  # Debug log
@@ -3964,6 +3966,7 @@ def create_bulk_payment():
                         payment_mode=payment_method['mode'],
                         payment_date=payment_date,
                         batch_id=batch_id,
+                        payment_type='direct',
                         remarks=f"{remarks} (Direct Payment - {payment_method['type'].title()} - Batch ID: {batch_id})"
                     )
                     db.session.add(payment)
@@ -4015,6 +4018,7 @@ def create_bulk_payment():
                         payment_mode=payment_method['mode'],
                         payment_date=payment_date,
                         batch_id=batch_id,
+                        payment_type='on-account',
                         remarks=f"{remarks} (On-Account Payment - {payment_method['type'].title()} - Batch ID: {batch_id})"
                     )
                     db.session.add(payment)
@@ -4090,6 +4094,7 @@ def create_bulk_payment():
                             payment_mode=payment_method['mode'],
                             payment_date=payment_date,
                             batch_id=batch_id,
+                            payment_type='direct',
                             remarks=f"{remarks} (Batch ID: {batch_id} - {payment_method['type'].title()})"
                         )
                         db.session.add(payment)
@@ -4115,6 +4120,7 @@ def create_bulk_payment():
                         payment_mode=invoice_payment_mode,
                         payment_date=payment_date,
                         batch_id=batch_id,
+                        payment_type='direct',
                         remarks=f"{remarks} (Batch ID: {batch_id} - {invoice_payment_mode.title()})"
                     )
                     db.session.add(payment)
@@ -4242,55 +4248,30 @@ def get_payments_by_batch(batch_id):
         # Get customer info from first payment
         customer = payments[0].customer if payments else None
         
-        # Aggregate payments by payment mode for receipt display
-        payment_summary = {}
+        # Return individual payment records with payment type information
+        payment_details = []
         invoice_list = []
         
         for payment in payments:
-            mode = payment.payment_mode
-            amount = float(payment.amount)
-            
-            # Aggregate by payment mode
-            if mode not in payment_summary:
-                payment_summary[mode] = {
-                    'paymentMode': mode,
-                    'totalAmount': 0,
-                    'invoices': []
-                }
-            
-            payment_summary[mode]['totalAmount'] += amount
-            
-            # Track invoices for this payment mode
+            # Get invoice information
+            invoice_number = None
             if payment.sale:
-                invoice_info = {
-                    'invoiceNumber': payment.sale.invoice_number,
-                    'amount': amount
-                }
-                payment_summary[mode]['invoices'].append(invoice_info)
-                invoice_list.append(payment.sale.invoice_number)
+                invoice_number = payment.sale.invoice_number
+                invoice_list.append(invoice_number)
             else:
-                # On-account payment
-                invoice_info = {
-                    'invoiceNumber': 'On Account',
-                    'amount': amount
-                }
-                payment_summary[mode]['invoices'].append(invoice_info)
-        
-        # Convert to list format for receipt
-        payment_details = []
-        for mode_data in payment_summary.values():
-            # Create one entry per payment mode showing total amount
+                invoice_number = 'On Account'
+            
             payment_details.append({
-                'id': batch_id,  # Use batch_id as id
+                'id': payment.id,
                 'batchId': batch_id,
-                'paymentMode': mode_data['paymentMode'],
-                'amount': mode_data['totalAmount'],
-                'paymentDate': payments[0].payment_date.isoformat() if payments else None,
-                'invoices': mode_data['invoices'],
-                'invoiceNumber': ', '.join([inv['invoiceNumber'] for inv in mode_data['invoices']]) if mode_data['invoices'] else 'On Account',
-                'invoiceAmount': sum([inv['amount'] for inv in mode_data['invoices']]) if mode_data['invoices'] else mode_data['totalAmount'],
+                'paymentMode': payment.payment_mode,
+                'paymentType': payment.payment_type,
+                'amount': float(payment.amount),
+                'paymentDate': payment.payment_date.isoformat(),
+                'invoiceNumber': invoice_number,
+                'invoiceAmount': float(payment.amount),
                 'customerName': customer.customer_name if customer else 'Unknown',
-                'remarks': payments[0].remarks if payments else ''
+                'remarks': payment.remarks or ''
             })
         
         return jsonify({
@@ -4370,6 +4351,7 @@ def get_payment_history():
         from_date = request.args.get('fromDate')
         to_date = request.args.get('toDate')
         payment_mode = request.args.get('paymentMode')
+        payment_type = request.args.get('paymentType')
         
         # Build query
         query = Payment.query
@@ -4387,6 +4369,20 @@ def get_payment_history():
         # Filter by payment mode if provided
         if payment_mode and payment_mode != 'All':
             query = query.filter(Payment.payment_mode == payment_mode)
+        
+        # Filter by payment type if provided (for on-account filtering)
+        if payment_type == 'on-account':
+            # Show only on-account payments (including legacy on-account payments where sale_id is NULL)
+            query = query.filter(or_(
+                Payment.payment_type == 'on-account',
+                and_(Payment.payment_type.is_(None), Payment.sale_id.is_(None))
+            ))
+        elif payment_type == 'direct':
+            # Show only direct payments (including legacy direct payments where sale_id is not NULL)
+            query = query.filter(or_(
+                Payment.payment_type == 'direct',
+                and_(Payment.payment_type.is_(None), Payment.sale_id.isnot(None))
+            ))
         
         # Order by payment date descending
         query = query.order_by(Payment.payment_date.desc())
@@ -4413,6 +4409,7 @@ def get_payment_history():
                 'batchId': payment.batch_id,
                 'paymentDate': payment.payment_date.isoformat(),
                 'paymentMode': payment.payment_mode,
+                'paymentType': payment.payment_type,
                 'amount': float(payment.amount),
                 'customerName': customer_name,
                 'customerId': payment.customer_id,
