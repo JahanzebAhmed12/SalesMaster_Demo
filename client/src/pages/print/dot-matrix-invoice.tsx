@@ -248,7 +248,7 @@ export default function DotMatrixInvoicePrintPage() {
         @media print {
           @page { 
             size: 186mm 200mm; 
-            margin: 0;
+            margin: 3mm;
             padding: 0;
           }
           html, body { 
