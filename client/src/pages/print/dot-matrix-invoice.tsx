@@ -114,7 +114,7 @@ export default function DotMatrixInvoicePrintPage() {
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       // Convert response to blob
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -124,24 +124,24 @@ export default function DotMatrixInvoicePrintPage() {
       // Try multiple approaches for mobile PDF printing
       const isMobileSafari = /iPhone|iPad/.test(navigator.userAgent);
       const isAndroid = /Android/.test(navigator.userAgent);
-      
+
       if (isMobileSafari) {
         // iOS Safari: Open PDF directly and let user print manually
         console.log('iOS detected - opening PDF for manual printing...');
         window.open(url, '_blank');
-        
+
         // Show user instruction
         alert('PDF opened in new tab. Tap the Share button and select Print to print the invoice.');
-        
+
         setTimeout(() => window.URL.revokeObjectURL(url), 10000);
-        
+
       } else if (isAndroid) {
         // Android: Try multiple approaches
         console.log('Android detected - trying multiple print approaches...');
-        
+
         // Approach 1: Try opening with print intent
         const printWindow = window.open(url, '_blank', 'width=800,height=600');
-        
+
         if (printWindow) {
           // Wait for PDF to load, then try to trigger print
           setTimeout(() => {
@@ -153,7 +153,7 @@ export default function DotMatrixInvoicePrintPage() {
               alert('PDF opened in new tab. Use your browser menu (⋮) and select Print to print the invoice.');
             }
           }, 2000); // Longer delay for Android
-          
+
           setTimeout(() => window.URL.revokeObjectURL(url), 15000);
         } else {
           // Popup blocked - download instead
@@ -165,15 +165,15 @@ export default function DotMatrixInvoicePrintPage() {
           a.click();
           document.body.removeChild(a);
           window.URL.revokeObjectURL(url);
-          
+
           alert('PDF downloaded. Open the downloaded file and use your device\'s print option.');
         }
-        
+
       } else {
         // Desktop or other mobile browsers
         console.log('Desktop/other browser - using standard approach...');
         const printWindow = window.open(url, '_blank', 'width=800,height=600');
-        
+
         if (printWindow) {
           printWindow.onload = () => {
             setTimeout(() => {
@@ -181,7 +181,7 @@ export default function DotMatrixInvoicePrintPage() {
               printWindow.print();
             }, 1000);
           };
-          
+
           setTimeout(() => window.URL.revokeObjectURL(url), 10000);
         } else {
           // Fallback: download the PDF

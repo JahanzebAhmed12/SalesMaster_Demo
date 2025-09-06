@@ -22,7 +22,7 @@ import { useLocation } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt } from "lucide-react";
-import classNames from 'classnames';
+
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { isPastDate } from "@/lib/utils";
@@ -45,6 +45,11 @@ interface SalesEntry {
   bankTransfer?: number;
   cheque?: number;
   credit?: number;
+  hasPayments?: boolean;
+  paymentSource?: string;
+  isPaidViaCustomerPayment?: boolean;
+  isFullyPaid?: boolean;
+  totalPaid?: number;
 }
 
 export default function DailyBookSales() {
@@ -101,11 +106,25 @@ export default function DailyBookSales() {
   });
 
   // Map 'account' to 'amount' for compatibility
-  const salesData: SalesEntry[] = rawSalesData.map((item: any) => ({
-    ...item,
-    amount: item.amount !== undefined ? item.amount : item.account !== undefined ? item.account : 0,
-    credit: item.credit !== undefined ? item.credit : 0,
-  }));
+  const salesData: SalesEntry[] = rawSalesData.map((item: any) => {
+    // Debug: Check if payment status fields exist
+    if (item.id === 1) {
+      console.log('Sample data item:', {
+        id: item.id,
+        invoiceNo: item.invoiceNo,
+        hasPayments: item.hasPayments,
+        paymentSource: item.paymentSource,
+        isPaidViaCustomerPayment: item.isPaidViaCustomerPayment,
+        isFullyPaid: item.isFullyPaid
+      });
+    }
+    
+    return {
+      ...item,
+      amount: item.amount !== undefined ? item.amount : item.account !== undefined ? item.account : 0,
+      credit: item.credit !== undefined ? item.credit : 0,
+    };
+  });
 
   const totalBoxes = useMemo(() => salesData.reduce((sum, item) => sum + item.boxes, 0), [salesData]);
   const totalVAT = useMemo(() => salesData.reduce((sum, item) => sum + item.vat, 0), [salesData]);
@@ -370,16 +389,25 @@ export default function DailyBookSales() {
       return;
     }
 
+    // Check if any selected sales were paid via customer payment page
+    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
+    
+    if (customerPaymentSales.length > 0) {
+      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      return;
+    }
+
     if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to cash payment?`)) {
       return;
     }
 
     setIsUpdatingPayments(true);
     try {
-      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
 
-      // Process each selected sale
-      for (const sale of selectedSalesData) {
+      // Process each valid sale
+      for (const sale of validSalesData) {
         // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
 
@@ -448,7 +476,7 @@ export default function DailyBookSales() {
         }
       }
 
-      alert(`Successfully updated ${selectedSales.size} sales to cash payment.`);
+      alert(`Successfully updated ${validSalesData.length} sales to cash payment.`);
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
@@ -466,16 +494,25 @@ export default function DailyBookSales() {
       return;
     }
 
+    // Check if any selected sales were paid via customer payment page
+    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
+    
+    if (customerPaymentSales.length > 0) {
+      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      return;
+    }
+
     if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to card payment?`)) {
       return;
     }
 
     setIsUpdatingPayments(true);
     try {
-      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
 
-      // Process each selected sale
-      for (const sale of selectedSalesData) {
+      // Process each valid sale
+      for (const sale of validSalesData) {
         // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
 
@@ -544,7 +581,7 @@ export default function DailyBookSales() {
         }
       }
 
-      alert(`Successfully updated ${selectedSales.size} sales to card payment.`);
+      alert(`Successfully updated ${validSalesData.length} sales to card payment.`);
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
@@ -562,16 +599,25 @@ export default function DailyBookSales() {
       return;
     }
 
+    // Check if any selected sales were paid via customer payment page
+    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
+    
+    if (customerPaymentSales.length > 0) {
+      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      return;
+    }
+
     if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to account payment?`)) {
       return;
     }
 
     setIsUpdatingPayments(true);
     try {
-      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
 
-      // Process each selected sale - reverse any existing payments back to account
-      for (const sale of selectedSalesData) {
+      // Process each valid sale - reverse any existing payments back to account
+      for (const sale of validSalesData) {
         // Calculate the total invoice amount (account + cash + bank)
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
 
@@ -606,7 +652,7 @@ export default function DailyBookSales() {
         }
       }
 
-      alert(`Successfully updated ${selectedSales.size} sales to account payment.`);
+      alert(`Successfully updated ${validSalesData.length} sales to account payment.`);
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
@@ -624,15 +670,24 @@ export default function DailyBookSales() {
       return;
     }
 
+    // Check if any selected sales were paid via customer payment page
+    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
+    
+    if (customerPaymentSales.length > 0) {
+      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      return;
+    }
+
     if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to bank transfer payment?`)) {
       return;
     }
 
     setIsUpdatingPayments(true);
     try {
-      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
 
-      for (const sale of selectedSalesData) {
+      for (const sale of validSalesData) {
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
 
         // Reverse existing payments
@@ -676,7 +731,7 @@ export default function DailyBookSales() {
         });
       }
 
-      alert(`Successfully updated ${selectedSales.size} sales to bank transfer payment.`);
+      alert(`Successfully updated ${validSalesData.length} sales to bank transfer payment.`);
       setSelectedSales(new Set());
       refetchSales();
     } catch (error) {
@@ -694,15 +749,24 @@ export default function DailyBookSales() {
       return;
     }
 
+    // Check if any selected sales were paid via customer payment page
+    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
+    
+    if (customerPaymentSales.length > 0) {
+      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      return;
+    }
+
     if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to cheque payment?`)) {
       return;
     }
 
     setIsUpdatingPayments(true);
     try {
-      const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
 
-      for (const sale of selectedSalesData) {
+      for (const sale of validSalesData) {
         const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
 
         // Reverse existing payments
@@ -746,7 +810,7 @@ export default function DailyBookSales() {
         });
       }
 
-      alert(`Successfully updated ${selectedSales.size} sales to cheque payment.`);
+      alert(`Successfully updated ${validSalesData.length} sales to cheque payment.`);
       setSelectedSales(new Set());
       refetchSales();
     } catch (error) {
@@ -787,6 +851,12 @@ export default function DailyBookSales() {
   };
   const pay = async (sale: SalesEntry, mode: 'cash' | 'bank' | 'bank_transfer' | 'cheque') => {
     try {
+      // Check if this sale was paid via customer payment page
+      if (sale.isPaidViaCustomerPayment) {
+        alert('Cannot update payment method for invoices paid via Customer Payment page. Please use the Customer Payment page to modify this payment.');
+        return;
+      }
+
       const modeDisplayName = mode === 'cash' ? 'Cash' :
         mode === 'bank' ? 'Card' :
           mode === 'bank_transfer' ? 'Bank Transfer' :
@@ -1182,8 +1252,25 @@ export default function DailyBookSales() {
                 </div>
               </div>
 
-              {/* Search row */}
-              <div className="flex justify-end">
+              {/* Search row and legend */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                {/* Payment status legend */}
+                <div className="flex flex-wrap gap-4 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
+                    <span>Unpaid</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
+                    <span>Paid (Customer Payment)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div>
+                    <span>Paid (Daily Book)</span>
+                  </div>
+                </div>
+                
+                {/* Search */}
                 <div className="relative w-full sm:w-48">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                   <Input
@@ -1239,7 +1326,17 @@ export default function DailyBookSales() {
                     </TableRow>
                   ) : (
                     salesData.map((sale) => (
-                      <TableRow key={sale.id}>
+                      <TableRow 
+                        key={sale.id}
+                        className={cn(
+                          // Base row styling
+                          '',
+                          // Conditional payment status styling
+                          !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200', // Unpaid invoices - red highlight
+                          sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200', // Paid via customer payment - green highlight
+                          sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200' // Paid via daily book - blue highlight
+                        )}
+                      >
                         <TableCell>
                           <input
                             type="checkbox"

@@ -36,6 +36,7 @@ export default function CustomerPayment() {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(new Set());
   const [invoicePaymentModes, setInvoicePaymentModes] = useState<Map<number, string>>(new Map());
+  const [invoicePaymentConfigs, setInvoicePaymentConfigs] = useState<Map<number, any>>(new Map());
 
   const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
@@ -165,6 +166,30 @@ export default function CustomerPayment() {
     return acc;
   }, []) || [];
 
+  // Calculate balances for each invoice
+  const invoicesWithBalance = outstandingInvoices?.map((invoice) => {
+    const paid = invoice.paidAmount || 0;
+    const balance = invoice.totalAmount - paid;
+    return { ...invoice, balance, paid };
+  }) || [];
+
+  const filteredInvoices = invoicesWithBalance.filter((invoice) =>
+    invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const calculateRunningBalance = () => {
+    let runningBal = 0;
+    return filteredInvoices.map((invoice) => {
+      runningBal += invoice.balance;
+      return { ...invoice, runningBal };
+    });
+  };
+
+  const displayedInvoices = calculateRunningBalance();
+
+  // Payment mode - for now defaulting to 'mixed' but this could be a state variable if needed
+  const paymentMode = 'mixed';
+
   // Mutation for updating a payment
   const updatePaymentMutation = useMutation<any, Error, any>({
     mutationFn: (paymentData) => apiRequest("PUT", `/api/payments/batch/${paymentData.batchId}`, paymentData),
@@ -191,7 +216,7 @@ export default function CustomerPayment() {
 
   // Mutation for creating a new payment
   const createPaymentMutation = useMutation<any, Error, any>({
-    mutationFn: (paymentData) => apiRequest("POST", "/api/payments/bulk", paymentData),
+    mutationFn: (paymentData) => apiRequest("POST", "/api/payments/customer-bulk", paymentData),
     onSuccess: (response) => {
       let paymentSummary = `ID: ${response.paymentId}`;
       const paymentParts = [];
@@ -819,26 +844,6 @@ export default function CustomerPayment() {
     }
   };
 
-  // Calculate balances for each invoice
-  const invoicesWithBalance = outstandingInvoices?.map((invoice) => {
-    const paid = invoice.paidAmount || 0;
-    const balance = invoice.totalAmount - paid;
-    return { ...invoice, balance, paid };
-  }) || [];
-
-  const filteredInvoices = invoicesWithBalance.filter((invoice) =>
-    invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const calculateRunningBalance = () => {
-    let runningBal = 0;
-    return filteredInvoices.map((invoice) => {
-      runningBal += invoice.balance;
-      return { ...invoice, runningBal };
-    });
-  };
-
-  const displayedInvoices = calculateRunningBalance();
   const totalOutstandingBalance = displayedInvoices.reduce((sum, invoice) => sum + invoice.balance, 0);
 
 

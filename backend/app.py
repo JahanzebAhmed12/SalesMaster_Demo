@@ -4293,13 +4293,21 @@ def get_customer_outstanding_invoices(customer_id):
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
 
-        # Fetch sales where there's an outstanding balance (including credit invoices)
-        # This includes both positive balances (unpaid invoices) and negative balances (credit invoices)
-        outstanding_sales = Sale.query.filter(
+        # Fetch all sales for this customer
+        all_sales = Sale.query.filter(
             Sale.customer_id == customer_id,
-            or_(Sale.status == 'pending', Sale.status == 'paid', Sale.status == 'finalized'),
-            Sale.total_amount != (Sale.paid_amount or 0)  # Changed to != to include credit invoices
+            or_(Sale.status == 'pending', Sale.status == 'paid', Sale.status == 'finalized')
         ).all()
+        
+        outstanding_sales = []
+        for sale in all_sales:
+            # Calculate total payments for this sale from Payment records
+            total_payments = sum(float(p.amount) for p in sale.payments)
+            outstanding_balance = float(sale.total_amount) - total_payments
+            
+            # Include sales with outstanding balance (positive or negative for credit invoices)
+            if abs(outstanding_balance) > 0.01:  # Allow for small rounding differences
+                outstanding_sales.append(sale)
 
         return jsonify([sale.to_dict() for sale in outstanding_sales]), 200
     except Exception as e:
@@ -4470,7 +4478,14 @@ def daily_book_sales():
     result = []
     for idx, sale in enumerate(sales, 1):
         boxes = sum(item.quantity for item in sale.items)
-        cash_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cash')
+        # Only include payments made via daily book sales (not customer payment page)
+        daily_book_payments = [p for p in sale.payments if not p.batch_id]  # batch_id indicates customer payment page
+        
+        cash_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() == 'cash')
+        bank_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() in ['bank', 'card'])
+        bank_transfer_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() == 'bank_transfer')
+        cheque_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() == 'cheque')
+        
         # Calculate account amount and credit amount based on total_amount sign
         total_amount = float(sale.total_amount)
         
@@ -4487,9 +4502,7 @@ def daily_book_sales():
             account_amount = 0
             credit_amount = 0
         
-        bank_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() in ['bank', 'card'])
-        bank_transfer_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'bank_transfer')
-        cheque_paid = sum(float(p.amount) for p in sale.payments if p.payment_mode and p.payment_mode.lower() == 'cheque')
+
         
         bank_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank' else 0
         bank_transfer_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank_transfer' else 0
@@ -4499,6 +4512,25 @@ def daily_book_sales():
         customer_display_name = ''
         if sale.customer and sale.customer.customer_name:
             customer_display_name = sale.customer.customer_name
+        
+        # Check if invoice has any payments and determine payment source
+        has_payments = len(sale.payments) > 0
+        payment_source = None
+        is_paid_via_customer_payment = False
+        
+        if has_payments:
+            # Check if any payment has a batch_id (indicates customer payment page)
+            for payment in sale.payments:
+                if payment.batch_id:
+                    is_paid_via_customer_payment = True
+                    payment_source = 'customer_payment'
+                    break
+            if not payment_source:
+                payment_source = 'daily_book'
+        
+        # Determine payment status for visual indicators (include ALL payments)
+        total_paid = sum(float(p.amount) for p in sale.payments)  # All payments for status calculation
+        is_fully_paid = total_paid >= float(sale.total_amount) * 0.99  # Allow for small rounding differences
         
         result.append({
             'id': sale.id,
@@ -4520,7 +4552,12 @@ def daily_book_sales():
             'bankAmount': bank_amount,
             'bankTransferAmount': bank_transfer_amount,
             'chequeAmount': cheque_amount,
-            'credit': credit_amount
+            'credit': credit_amount,
+            'hasPayments': has_payments,
+            'paymentSource': payment_source,
+            'isPaidViaCustomerPayment': is_paid_via_customer_payment,
+            'isFullyPaid': is_fully_paid,
+            'totalPaid': total_paid
         })
     return jsonify(result)
 
@@ -12370,6 +12407,210 @@ def send_supplier_statement_email_api():
 
 
         
+# Payment endpoints for customer payment functionality
+@app.route('/api/payments/customer-bulk', methods=['POST'])
+@jwt_required()
+def create_customer_bulk_payment():
+    """Create bulk payments for customer payment page"""
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        # Validate required fields
+        customer_id = data.get('customerId')
+        amount = data.get('amount', 0)
+        payment_date = data.get('paymentDate')
+        split_payment = data.get('splitPayment', {})
+        invoice_ids = data.get('invoiceIds', [])
+        on_account_amount = data.get('onAccountAmount', 0)
+        remarks = data.get('remarks', '')
+        
+        if not customer_id or not payment_date:
+            return jsonify({"error": "Customer ID and payment date are required"}), 400
+        
+        # Parse payment date
+        try:
+            payment_date_obj = datetime.strptime(payment_date, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"error": "Invalid payment date format"}), 400
+        
+        # Generate batch ID for grouping payments - use sequential ID
+        # Get the highest existing batch_id and increment by 1
+        max_batch_id = db.session.query(func.max(Payment.batch_id)).scalar() or 0
+        batch_id = max_batch_id + 1
+        
+        payments_created = []
+        
+        # Create payments for each payment mode with amount > 0
+        payment_modes = {
+            'cash': split_payment.get('cash', 0),
+            'bank': split_payment.get('card', 0),  # Card payments stored as 'bank'
+            'bank_transfer': split_payment.get('bankTransfer', 0),
+            'cheque': split_payment.get('cheque', 0)
+        }
+        
+        # Calculate total invoice amount for distribution
+        total_invoice_amount = 0
+        if invoice_ids:
+            invoices = Sale.query.filter(Sale.id.in_(invoice_ids)).all()
+            for invoice in invoices:
+                # Calculate outstanding balance
+                paid_amount = sum(float(p.amount) for p in invoice.payments)
+                outstanding = float(invoice.total_amount) - paid_amount
+                total_invoice_amount += max(0, outstanding)  # Only positive outstanding amounts
+        
+        # Distribute payments proportionally between invoices and on-account
+        total_payment_amount = sum(payment_modes.values())
+        
+        for mode, mode_amount in payment_modes.items():
+            if mode_amount <= 0:
+                continue
+                
+            # Calculate how much of this payment mode goes to invoices vs on-account
+            if total_payment_amount > 0:
+                invoice_portion = (total_invoice_amount / total_payment_amount) * mode_amount
+                on_account_portion = (on_account_amount / total_payment_amount) * mode_amount
+            else:
+                invoice_portion = 0
+                on_account_portion = mode_amount
+            
+            # Create payment for invoices if there are any
+            if invoice_portion > 0 and invoice_ids:
+                # Distribute among selected invoices proportionally
+                remaining_amount = invoice_portion
+                
+                for invoice_id in invoice_ids:
+                    if remaining_amount <= 0:
+                        break
+                        
+                    invoice = Sale.query.get(invoice_id)
+                    if not invoice:
+                        continue
+                    
+                    # Calculate outstanding balance for this invoice
+                    paid_amount = sum(float(p.amount) for p in invoice.payments)
+                    outstanding = float(invoice.total_amount) - paid_amount
+                    
+                    if outstanding <= 0:
+                        continue
+                    
+                    # Calculate payment amount for this invoice
+                    if total_invoice_amount > 0:
+                        invoice_payment = min(remaining_amount, outstanding, 
+                                            (outstanding / total_invoice_amount) * invoice_portion)
+                    else:
+                        invoice_payment = min(remaining_amount, outstanding)
+                    
+                    if invoice_payment > 0:
+                        payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=invoice_id,
+                            amount=invoice_payment,
+                            payment_mode=mode,
+                            payment_date=payment_date_obj,
+                            batch_id=batch_id,
+                            payment_type='direct',
+                            remarks=f"{remarks} - Invoice payment via customer payment page"
+                        )
+                        db.session.add(payment)
+                        payments_created.append(payment)
+                        remaining_amount -= invoice_payment
+            
+            # Create on-account payment if there's an on-account portion
+            if on_account_portion > 0:
+                payment = Payment(
+                    customer_id=customer_id,
+                    sale_id=None,  # No specific invoice
+                    amount=on_account_portion,
+                    payment_mode=mode,
+                    payment_date=payment_date_obj,
+                    batch_id=batch_id,
+                    payment_type='on-account',
+                    remarks=f"{remarks} - On-account payment via customer payment page"
+                )
+                db.session.add(payment)
+                payments_created.append(payment)
+        
+        # Commit all payments
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Created {len(payments_created)} payments",
+            "paymentId": batch_id,
+            "paymentsCreated": len(payments_created)
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to create payments: {str(e)}"}), 500
+
+@app.route('/api/payments/batch/<int:batch_id>', methods=['PUT'])
+@jwt_required()
+def update_batch_payment(batch_id):
+    """Update a batch of payments"""
+    try:
+        data = request.get_json()
+        
+        # Get all payments in this batch
+        payments = Payment.query.filter_by(batch_id=batch_id).all()
+        if not payments:
+            return jsonify({"error": "Payment batch not found"}), 404
+        
+        # Update payment details
+        new_amount = data.get('amount', 0)
+        new_date = data.get('paymentDate')
+        new_remarks = data.get('remarks', '')
+        new_split_payment = data.get('splitPayment', {})
+        
+        if new_date:
+            try:
+                new_date_obj = datetime.strptime(new_date, '%Y-%m-%d').date()
+            except ValueError:
+                return jsonify({"error": "Invalid payment date format"}), 400
+        else:
+            new_date_obj = payments[0].payment_date
+        
+        # Delete existing payments in batch
+        Payment.query.filter_by(batch_id=batch_id).delete()
+        
+        # Create new payments with updated amounts
+        payment_modes = {
+            'cash': new_split_payment.get('cash', 0),
+            'bank': new_split_payment.get('card', 0),
+            'bank_transfer': new_split_payment.get('bankTransfer', 0),
+            'cheque': new_split_payment.get('cheque', 0)
+        }
+        
+        customer_id = payments[0].customer_id
+        
+        for mode, mode_amount in payment_modes.items():
+            if mode_amount > 0:
+                payment = Payment(
+                    customer_id=customer_id,
+                    sale_id=None,  # Simplified for batch update
+                    amount=mode_amount,
+                    payment_mode=mode,
+                    payment_date=new_date_obj,
+                    batch_id=batch_id,
+                    payment_type='on-account',
+                    remarks=f"{new_remarks} - Updated payment"
+                )
+                db.session.add(payment)
+        
+        db.session.commit()
+        
+        return jsonify({"success": True, "message": "Payment batch updated successfully"})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to update payment batch: {str(e)}"}), 500
+
+
+
+
+
+
 @app.route('/api/reports/eec-report', methods=['GET'])
 @jwt_required()
 def eec_report():
