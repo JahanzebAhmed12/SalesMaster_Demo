@@ -2488,8 +2488,19 @@ const SalesInvoice = () => {
                         toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
                         return;
                       }
-                      // Save and print invoice (previously only printed)
-                      handleSaveInvoiceWithWhatsapp(mailInvoice, true);
+                      
+                      if (currentSale) {
+                        // In edit/readonly mode, just print the existing invoice
+                        const printUrl = invoicePrintFormat === 'DOTMATRIX'
+                          ? `/print/dot-matrix-invoice/${currentSale.invoiceNumber}`
+                          : invoicePrintFormat === 'A5'
+                            ? `/print/a5-invoice/${currentSale.invoiceNumber}`
+                            : `/print/invoice/${currentSale.invoiceNumber}`;
+                        window.open(printUrl, '_blank');
+                      } else {
+                        // For new invoices, save and print
+                        handleSaveInvoiceWithWhatsapp(mailInvoice, true);
+                      }
                     }}
                     disabled={saleItems.length === 0 || isReadOnly}
                   >

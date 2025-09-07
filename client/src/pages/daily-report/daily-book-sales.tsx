@@ -11,21 +11,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split } from "lucide-react";
+import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
-import React from 'react';
+import { cn, isPastDate } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useLocation } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt } from "lucide-react";
 
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
-import { isPastDate } from "@/lib/utils";
 
 interface SalesEntry {
   id: number;
@@ -65,6 +62,14 @@ export default function DailyBookSales() {
   const [loadingUserType, setLoadingUserType] = useState(true);
   const [selectedSales, setSelectedSales] = useState<Set<number>>(new Set());
   const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
+
+  // Fetch settings including invoice print format
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => apiRequest("GET", "/api/settings"),
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+  const invoicePrintFormat = settings?.invoicePrintFormat || "A4";
 
   // Split payment dialog state
   const [splitPaymentDialog, setSplitPaymentDialog] = useState<{
@@ -1037,6 +1042,15 @@ export default function DailyBookSales() {
     }
   };
 
+  const handlePrintTicket = (invoiceNo: string) => {
+    const printUrl = invoicePrintFormat === 'DOTMATRIX'
+      ? `/print/dot-matrix-invoice/${invoiceNo}`
+      : invoicePrintFormat === 'A5'
+        ? `/print/a5-invoice/${invoiceNo}`
+        : `/print/invoice/${invoiceNo}`;
+    window.open(printUrl, '_blank');
+  };
+
   if (loadingUserType) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -1377,11 +1391,18 @@ export default function DailyBookSales() {
                                   {canEditInvoice ? 'Edit Invoice' : 'View Invoice (Read-Only)'}
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/invoice/${sale.invoiceNo}`, '_blank')}>
+                              <DropdownMenuItem 
+                                className="text-sm py-2" 
+                                onClick={() => {
+                                  const printUrl = invoicePrintFormat === 'DOTMATRIX'
+                                    ? `/print/dot-matrix-invoice/${sale.invoiceNo}`
+                                    : invoicePrintFormat === 'A5'
+                                      ? `/print/a5-invoice/${sale.invoiceNo}`
+                                      : `/print/invoice/${sale.invoiceNo}`;
+                                  window.open(printUrl, '_blank');
+                                }}
+                              >
                                 <Printer className="mr-2 h-4 w-4" /> Print Ticket
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/packing-list/${sale.invoiceNo}`, '_blank')}>
-                                <Package className="mr-2 h-4 w-4" /> Print Pickingticket
                               </DropdownMenuItem>
                               <DropdownMenuItem className="text-sm py-2" onClick={() => sendInvoiceEmail(sale)}>
                                 <Mail className="mr-2 h-4 w-4" /> Email

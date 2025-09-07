@@ -7,8 +7,10 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useLocation } from "wouter";
 
 export default function DailyAccounts() {
+  const [, navigate] = useLocation();
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [trigger, setTrigger] = useState(0);
@@ -202,12 +204,29 @@ export default function DailyAccounts() {
               <CardContent className="p-4">
                 <h3 className="font-semibold mb-3 text-blue-600">Receivables Cash</h3>
                 <div className="space-y-2">
-                  {receivablesCash.map((item: any, index: number) => (
-                    <div key={index} className="flex justify-between">
-                      <span>{item.item}</span>
-                      <span className="font-mono">{Number(item.amount).toFixed(2)}</span>
-                    </div>
-                  ))}
+                  {receivablesCash.map((item: any, index: number) => {
+                    let onClick = undefined;
+                    
+                    // Set up navigation based on the item
+                    if (item.item === 'Sales Cash') {
+                      onClick = () => navigate('/daily-report/daily-book-sales');
+                    } else if (item.item === 'Account Cash (C/F)') {
+                      onClick = () => navigate('/payments/customer-payment-history');
+                    } else if (item.item === 'On Account Cash') {
+                      onClick = () => navigate('/data-entry/on-acc-customer');
+                    }
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        className={`flex justify-between ${onClick ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}`}
+                        onClick={onClick}
+                      >
+                        <span>{item.item}</span>
+                        <span className="font-mono">{Number(item.amount).toFixed(2)}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
