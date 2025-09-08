@@ -290,25 +290,22 @@ export default function MonthlyReports() {
     // Add header
     doc.setFontSize(16);
     doc.text('TROPIFRUIT UK LTD', 148, 15, { align: 'center' });
-    doc.setFontSize(12);
-    doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 148, 22, { align: 'center' });
+  
     doc.setFontSize(14);
-    doc.text('Detailed Attendance Report', 148, 32, { align: 'center' });
+    doc.text('Detailed Attendance Report Stand (73 and 100) ', 148, 32, { align: 'center' });
     doc.setFontSize(10);
     doc.text(`${format(fromDate, "dd/MM/yyyy")} - ${format(toDate, "dd/MM/yyyy")}`, 148, 38, { align: 'center' });
     
-    // Add legend
-    doc.setFontSize(8);
-    doc.text('Legend: P=Present, A=Absent, L-Sic=Sick Leave, L-Ann=Annual Leave, H-Xmas=Christmas Holiday, -=No Record', 148, 43, { align: 'center' });
+  
     
-    // Generate day headers (Day 1, Day 2, etc.)
+    // Generate day headers with day names (Monday, Tuesday, etc.)
     const days = [];
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const currentDate = new Date(fromDate);
-    let dayCount = 1;
     while (currentDate <= toDate) {
-      days.push(`Day ${dayCount}`);
+      const dayName = dayNames[currentDate.getDay()];
+      days.push(dayName);
       currentDate.setDate(currentDate.getDate() + 1);
-      dayCount++;
     }
     
     // Create table headers
@@ -425,14 +422,14 @@ export default function MonthlyReports() {
       return;
     }
 
-    // Generate day headers (Day 1, Day 2, etc.)
+    // Generate day headers with day names (Monday, Tuesday, etc.)
     const days = [];
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const currentDate = new Date(fromDate);
-    let dayCount = 1;
     while (currentDate <= toDate) {
-      days.push(`Day ${dayCount}`);
+      const dayName = dayNames[currentDate.getDay()];
+      days.push(dayName);
       currentDate.setDate(currentDate.getDate() + 1);
-      dayCount++;
     }
     
     // Create headers

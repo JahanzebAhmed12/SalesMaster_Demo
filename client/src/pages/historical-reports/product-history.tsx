@@ -675,17 +675,32 @@ export default function ProductHistory() {
                       <TableCell colSpan={7} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
-                    purchases.map((row: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-center">{idx + 1}</TableCell>
-                        <TableCell className="text-center">{row.date}</TableCell>
-                        <TableCell className="text-center">{row.supplierName}</TableCell>
-                        <TableCell className="text-center">{row.product}</TableCell>
-                        <TableCell className="text-center">{row.quantity}</TableCell>
-                        <TableCell className="text-center">{row.unitPrice}</TableCell>
-                        <TableCell className="text-center">{row.total}</TableCell>
+                    purchases.map((purchase, idx) => (
+                      <TableRow key={`purchase-${idx}`}>
+                        <TableCell className="text-right">{idx + 1}</TableCell>
+                        <TableCell>{purchase.date}</TableCell>
+                        <TableCell>{purchase.supplierName}</TableCell>
+                        <TableCell>{purchase.product}</TableCell>
+                        <TableCell className="text-right">{purchase.quantity}</TableCell>
+                        <TableCell className="text-right">{purchase.unitPrice}</TableCell>
+                        <TableCell className="text-right">{purchase.total}</TableCell>
                       </TableRow>
                     ))
+                  )}
+                  {purchases.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={4} className="text-right">Total</TableCell>
+                      <TableCell className="text-right">
+                        {purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {purchases.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * (Number(p.quantity) || 0), 0) / 
+                         (purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0) || 1)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {purchases.reduce((sum, p) => sum + (Number(p.total) || 0), 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -721,18 +736,33 @@ export default function ProductHistory() {
                       <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
-                    supplierReturns.map((row: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-center">{idx + 1}</TableCell>
-                        <TableCell className="text-center">{row.date}</TableCell>
-                        <TableCell className="text-center">{row.invoice}</TableCell>
-                        <TableCell className="text-center">{row.supplierName}</TableCell>
-                        <TableCell className="text-center">{row.product}</TableCell>
-                        <TableCell className="text-center">{row.quantity}</TableCell>
-                        <TableCell className="text-center">{row.unitPrice}</TableCell>
-                        <TableCell className="text-center">{row.total}</TableCell>
+                    supplierReturns.map((returnItem, idx) => (
+                      <TableRow key={`return-${idx}`}>
+                        <TableCell className="text-right">{idx + 1}</TableCell>
+                        <TableCell>{returnItem.date}</TableCell>
+                        <TableCell>{returnItem.invoice}</TableCell>
+                        <TableCell>{returnItem.supplierName}</TableCell>
+                        <TableCell>{returnItem.product}</TableCell>
+                        <TableCell className="text-right">{returnItem.quantity}</TableCell>
+                        <TableCell className="text-right">{returnItem.unitPrice}</TableCell>
+                        <TableCell className="text-right">{returnItem.total}</TableCell>
                       </TableRow>
                     ))
+                  )}
+                  {supplierReturns.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={5} className="text-right">Total</TableCell>
+                      <TableCell className="text-right">
+                        {supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {supplierReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
+                         (supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {supplierReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -768,18 +798,33 @@ export default function ProductHistory() {
                       <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
-                    sales.map((row: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-center">{idx + 1}</TableCell>
-                        <TableCell className="text-center">{row.date}</TableCell>
-                        <TableCell className="text-center">{row.invoiceNo}</TableCell>
-                        <TableCell className="text-center">{row.customerName}</TableCell>
-                        <TableCell className="text-center">{row.product}</TableCell>
-                        <TableCell className="text-center">{row.quantity}</TableCell>
-                        <TableCell className="text-center">{row.unitPrice}</TableCell>
-                        <TableCell className="text-center">{row.total}</TableCell>
+                    sales.map((sale, idx) => (
+                      <TableRow key={`sale-${idx}`}>
+                        <TableCell className="text-right">{idx + 1}</TableCell>
+                        <TableCell>{sale.date}</TableCell>
+                        <TableCell>{sale.invoiceNo}</TableCell>
+                        <TableCell>{sale.customerName}</TableCell>
+                        <TableCell>{sale.product}</TableCell>
+                        <TableCell className="text-right">{sale.quantity}</TableCell>
+                        <TableCell className="text-right">{sale.unitPrice}</TableCell>
+                        <TableCell className="text-right">{sale.total}</TableCell>
                       </TableRow>
                     ))
+                  )}
+                  {sales.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={5} className="text-right">Total</TableCell>
+                      <TableCell className="text-right">
+                        {sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {sales.reduce((sum, s) => sum + (Number(s.unitPrice) || 0) * (Number(s.quantity) || 0), 0) / 
+                         (sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0) || 1)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {sales.reduce((sum, s) => sum + (Number(s.total) || 0), 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -815,18 +860,33 @@ export default function ProductHistory() {
                       <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
-                    customerReturns.map((row: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-center">{idx + 1}</TableCell>
-                        <TableCell className="text-center">{row.date}</TableCell>
-                        <TableCell className="text-center">{row.invoice}</TableCell>
-                        <TableCell className="text-center">{row.customerName}</TableCell>
-                        <TableCell className="text-center">{row.product}</TableCell>
-                        <TableCell className="text-center">{row.quantity}</TableCell>
-                        <TableCell className="text-center">{row.unitPrice}</TableCell>
-                        <TableCell className="text-center">{row.total}</TableCell>
+                    customerReturns.map((returnItem, idx) => (
+                      <TableRow key={`customer-return-${idx}`}>
+                        <TableCell className="text-right">{idx + 1}</TableCell>
+                        <TableCell>{returnItem.date}</TableCell>
+                        <TableCell>{returnItem.invoice}</TableCell>
+                        <TableCell>{returnItem.customerName}</TableCell>
+                        <TableCell>{returnItem.product}</TableCell>
+                        <TableCell className="text-right">{returnItem.quantity}</TableCell>
+                        <TableCell className="text-right">{returnItem.unitPrice}</TableCell>
+                        <TableCell className="text-right">{returnItem.total}</TableCell>
                       </TableRow>
                     ))
+                  )}
+                  {customerReturns.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={5} className="text-right">Total</TableCell>
+                      <TableCell className="text-right">
+                        {customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {customerReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
+                         (customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {customerReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -858,14 +918,22 @@ export default function ProductHistory() {
                       <TableCell colSpan={4} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
-                    dumps.map((row: any, idx: number) => (
-                      <TableRow key={idx}>
-                        <TableCell className="text-center">{idx + 1}</TableCell>
-                        <TableCell className="text-center">{row.date}</TableCell>
-                        <TableCell className="text-center">{row.product}</TableCell>
-                        <TableCell className="text-center">{row.totalQty}</TableCell>
+                    dumps.map((dump, idx) => (
+                      <TableRow key={`dump-${idx}`}>
+                        <TableCell className="text-right">{idx + 1}</TableCell>
+                        <TableCell>{dump.date}</TableCell>
+                        <TableCell>{dump.product}</TableCell>
+                        <TableCell className="text-right">{dump.totalQty}</TableCell>
                       </TableRow>
                     ))
+                  )}
+                  {dumps.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell colSpan={3} className="text-right">Total</TableCell>
+                      <TableCell className="text-right">
+                        {dumps.reduce((sum, d) => sum + (Number(d.totalQty) || 0), 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
