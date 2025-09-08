@@ -215,20 +215,52 @@ export default function DotMatrixPaymentPrintPage() {
   if (error) return <div className="p-4 print:hidden text-red-500">Error: {error}</div>;
   if (!data) return <div className="p-4 print:hidden">No payment found.</div>;
 
-  const { payments, totalAmount, customer } = data;
-  const paymentDate = payments[0]?.paymentDate;
+  // Process payments to group by payment method and sort by invoice number
+  const processedPayments = [...(data.payments || [])].sort((a, b) => {
+    // First sort by payment method (cash, card, bank_transfer, cheque, others)
+    const paymentMethodOrder = {
+      'cash': 0,
+      'card': 1,
+      'bank': 1, // 'bank' is an alias for 'card'
+      'bank_transfer': 2,
+      'transfer': 2, // alias for bank_transfer
+      'cheque': 3
+    };
+    
+    const aMethod = a.paymentMode?.toLowerCase();
+    const bMethod = b.paymentMode?.toLowerCase();
+    const aOrder = aMethod in paymentMethodOrder ? paymentMethodOrder[aMethod as keyof typeof paymentMethodOrder] : 4;
+    const bOrder = bMethod in paymentMethodOrder ? paymentMethodOrder[bMethod as keyof typeof paymentMethodOrder] : 4;
+    
+    if (aOrder !== bOrder) {
+      return aOrder - bOrder;
+    }
+    
+    // Then sort by invoice number (on-account payments last)
+    if (a.invoiceNumber === 'On Account' && b.invoiceNumber !== 'On Account') return 1;
+    if (a.invoiceNumber !== 'On Account' && b.invoiceNumber === 'On Account') return -1;
+    if (a.invoiceNumber === 'On Account' && b.invoiceNumber === 'On Account') return 0;
+    
+    // Extract numeric part of invoice number for proper numeric sorting
+    const aNum = parseInt(a.invoiceNumber) || 0;
+    const bNum = parseInt(b.invoiceNumber) || 0;
+    return aNum - bNum;
+  });
 
-  // Calculate pagination
+  const { totalAmount, customer } = data;
+  const paymentDate = processedPayments[0]?.paymentDate;
+
+  // Calculate pagination with processed payments
   const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
-  const totalPages = Math.ceil((payments?.length || 0) / itemsPerPage);
+  const totalPages = Math.ceil(processedPayments.length / itemsPerPage);
   const pages = [];
 
   for (let i = 0; i < totalPages; i++) {
     const startIndex = i * itemsPerPage;
-    const endIndex = Math.min(startIndex + itemsPerPage, payments?.length || 0);
+    const endIndex = Math.min(startIndex + itemsPerPage, processedPayments.length);
     pages.push({
       pageNumber: i + 1,
-      payments: payments?.slice(startIndex, endIndex) || [],
+      payments: processedPayments.slice(startIndex, endIndex),
       isLastPage: i === totalPages - 1
     });
   }

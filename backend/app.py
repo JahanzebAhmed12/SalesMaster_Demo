@@ -4928,11 +4928,50 @@ def customer_history():
     running_balance = 0
     sl_no = 1
     for sale in sales:
-        account_inv = float(sale.total_amount) if sale.customer_type == 'account' else 0
-        cash_inv = float(sale.total_amount) if sale.customer_type == 'cash' else 0
+        # Check if any payments were made via customer payment page
+        sale_payments = Payment.query.filter(
+            Payment.sale_id == sale.id,
+            Payment.payment_type == 'direct'
+        ).all()
+        
+        is_paid_via_customer_payment = any(
+            payment.payment_type == 'direct' and 
+            payment.remarks and 
+            'Invoice payment via customer payment page' in payment.remarks
+            for payment in sale_payments
+        )
+        
+        
+        if is_paid_via_customer_payment:
+            # If paid via customer payment page, show actual payment allocation
+            # Sum up payments by mode for this specific invoice
+            cash_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cash')
+            card_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank')
+            bank_transfer_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank_transfer')
+            cheque_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cheque')
+            
+            
+            # Show the actual payment allocation - cash payments go to cash_inv, others to account_inv
+            account_inv = card_payments + bank_transfer_payments + cheque_payments
+            cash_inv = cash_payments
+        else:
+            # Regular logic based on customer type
+            account_inv = float(sale.total_amount) if sale.customer_type == 'account' else 0
+            cash_inv = float(sale.total_amount) if sale.customer_type == 'cash' else 0
+        
         paid = float(sale.paid_amount or 0)
-        balance = float(sale.total_amount) - paid
-        running_balance += balance
+        
+        if is_paid_via_customer_payment:
+            # For invoices paid via customer payment page, balance should be 0 (fully paid)
+            # But we need to adjust running balance based on payment method
+            balance = 0  # Invoice is fully paid
+            # Cash payments reduce the running balance (negative impact)
+            # Account payments don't affect running balance (already accounted for)
+            running_balance -= cash_payments  # Subtract cash payments from running balance
+        else:
+            # Regular logic for unpaid invoices
+            balance = float(sale.total_amount) - paid
+            running_balance += balance
         history.append({
             'id': sl_no,
             'slNo': sl_no,
@@ -9715,19 +9754,33 @@ def daily_summary_report():
         # Debug logging for this sale
         print(f"[DEBUG] Sale {sale.invoice_number}: {len(sale_payments)} payments, customer_type: {sale.customer_type}")
         
-        for payment in sale_payments:
-            if payment.payment_mode == 'cash':
-                cash_amount += float(payment.amount)
-            elif payment.payment_mode == 'bank':  # Card payments are stored as 'bank' in backend
-                card_amount += float(payment.amount)
-            elif payment.payment_mode == 'bank_transfer':
-                bank_transfer_amount += float(payment.amount)
-            elif payment.payment_mode == 'cheque':
-                cheque_amount += float(payment.amount)
+        # Check if any payments were made via customer payment page
+        is_paid_via_customer_payment = any(
+            payment.payment_type == 'direct' and 
+            payment.remarks and 
+            'Invoice payment via customer payment page' in payment.remarks
+            for payment in sale_payments
+        )
         
-        # If it's an account sale and no payments, add to account total
-        if sale.customer_type == 'account' and not sale_payments:
+        if is_paid_via_customer_payment:
+            # If paid via customer payment page, show total amount in account column
             account_amount = float(sale.total_amount or 0)
+            print(f"[DEBUG] Sale {sale.invoice_number} paid via customer payment page - showing in account column")
+        else:
+            # Regular payment processing
+            for payment in sale_payments:
+                if payment.payment_mode == 'cash':
+                    cash_amount += float(payment.amount)
+                elif payment.payment_mode == 'bank':  # Card payments are stored as 'bank' in backend
+                    card_amount += float(payment.amount)
+                elif payment.payment_mode == 'bank_transfer':
+                    bank_transfer_amount += float(payment.amount)
+                elif payment.payment_mode == 'cheque':
+                    cheque_amount += float(payment.amount)
+            
+            # If it's an account sale and no payments, add to account total
+            if sale.customer_type == 'account' and not sale_payments:
+                account_amount = float(sale.total_amount or 0)
         
         # Check for negative quantities in sale items or negative total amount
         negative_items = db.session.query(SaleItem).filter(
@@ -12424,6 +12477,7 @@ def create_customer_bulk_payment():
         invoice_ids = data.get('invoiceIds', [])
         on_account_amount = data.get('onAccountAmount', 0)
         remarks = data.get('remarks', '')
+        payment_distribution = data.get('paymentDistribution', [])
         
         if not customer_id or not payment_date:
             return jsonify({"error": "Customer ID and payment date are required"}), 400
@@ -12440,6 +12494,43 @@ def create_customer_bulk_payment():
         batch_id = max_batch_id + 1
         
         payments_created = []
+        
+        # Use payment distribution from frontend if available, otherwise fall back to proportional distribution
+        if payment_distribution:
+            print(f"Using payment distribution from frontend: {payment_distribution}")
+            
+            # Create payments based on the frontend's payment distribution
+            for payment_item in payment_distribution:
+                if payment_item.get('isOnAccount', False):
+                    # On-account payment
+                    payment = Payment(
+                        customer_id=customer_id,
+                        sale_id=None,  # No specific invoice
+                        amount=float(payment_item.get('amount', 0)),
+                        payment_mode=payment_item.get('paymentMode', 'cash'),
+                        payment_date=payment_date_obj,
+                        batch_id=batch_id,
+                        payment_type='on-account',
+                        remarks=f"{remarks} - On-account payment via customer payment page"
+                    )
+                else:
+                    # Invoice payment
+                    payment = Payment(
+                        customer_id=customer_id,
+                        sale_id=payment_item.get('invoiceId'),
+                        amount=float(payment_item.get('amount', 0)),
+                        payment_mode=payment_item.get('paymentMode', 'cash'),
+                        payment_date=payment_date_obj,
+                        batch_id=batch_id,
+                        payment_type='direct',
+                        remarks=f"{remarks} - Invoice payment via customer payment page"
+                    )
+                
+                db.session.add(payment)
+                payments_created.append(payment)
+        else:
+            # Fallback to proportional distribution (original logic)
+            print("No payment distribution provided, using proportional distribution")
         
         # Create payments for each payment mode with amount > 0
         payment_modes = {
@@ -12514,6 +12605,7 @@ def create_customer_bulk_payment():
                         )
                         db.session.add(payment)
                         payments_created.append(payment)
+                            
                         remaining_amount -= invoice_payment
             
             # Create on-account payment if there's an on-account portion

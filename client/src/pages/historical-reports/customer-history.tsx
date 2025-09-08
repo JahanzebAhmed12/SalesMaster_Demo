@@ -47,7 +47,7 @@ export default function CustomerHistory() {
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
-  const [filterType, setFilterType] = useState("Cast");
+  const [filterType, setFilterType] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -718,8 +718,8 @@ export default function CustomerHistory() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Cast">Cash</SelectItem>
-                    <SelectItem value="Credit">Credit</SelectItem>
+                    <SelectItem value="Cash">Cash</SelectItem>
+                    <SelectItem value="Account">Account</SelectItem>
                     <SelectItem value="All">All</SelectItem>
                   </SelectContent>
                 </Select>
