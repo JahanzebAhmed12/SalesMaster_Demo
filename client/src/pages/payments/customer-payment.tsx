@@ -50,7 +50,7 @@ export default function CustomerPayment() {
     bankTransfer: "",
     cheque: ""
   });
-  const [onAccountAmount, setOnAccountAmount] = useState<number>(0);
+  let [onAccountAmount, setOnAccountAmount] = useState<number>(0);
   const [emailAddress, setEmailAddress] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -108,8 +108,11 @@ export default function CustomerPayment() {
 
   // Reset on-account amount when customer changes
   useEffect(() => {
-    setOnAccountAmount(0);
-  }, [selectedCustomerId]);
+    // Only reset if no invoices are selected to avoid interfering with invoice selection
+    if (selectedInvoiceIds.size === 0) {
+      setOnAccountAmount(0);
+    }
+  }, [selectedCustomerId, selectedInvoiceIds.size]);
 
   // Fetch customers
   const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
@@ -294,15 +297,21 @@ export default function CustomerPayment() {
     const invoicesTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
     const totalAmount = invoicesTotal + onAccountAmount;
 
-    // If using split payment, distribute evenly to cash by default
-    if (totalAmount !== 0) {
+
+    // Only auto-set split payment if no split payment has been entered yet
+    const currentSplitTotal = Object.values(splitPayment).reduce((sum, val) => {
+      return sum + (parseFloat(val as string) || 0);
+    }, 0);
+    
+    if (totalAmount !== 0 && currentSplitTotal === 0) {
+      // If using split payment, distribute evenly to cash by default
       setSplitPayment({
         cash: totalAmount.toString(),
         card: "",
         bankTransfer: "",
         cheque: ""
       });
-    } else {
+    } else if (totalAmount === 0) {
       resetSplitPayment();
     }
     setReceivedAmount(totalAmount);
@@ -336,13 +345,22 @@ export default function CustomerPayment() {
       setInvoicePaymentConfigs(newConfigs);
       const invoicesTotal = displayedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
       const totalAmount = invoicesTotal + onAccountAmount;
-      // Set split payment to cash by default
-      setSplitPayment({
-        cash: totalAmount.toString(),
-        card: "",
-        bankTransfer: "",
-        cheque: ""
-      });
+      
+      
+      // Only auto-set split payment if no split payment has been entered yet
+      const currentSplitTotal = Object.values(splitPayment).reduce((sum, val) => {
+        return sum + (parseFloat(val as string) || 0);
+      }, 0);
+      
+      if (currentSplitTotal === 0) {
+        // Set split payment to cash by default
+        setSplitPayment({
+          cash: totalAmount.toString(),
+          card: "",
+          bankTransfer: "",
+          cheque: ""
+        });
+      }
       setReceivedAmount(totalAmount);
     } else {
       setSelectedInvoiceIds(new Set());
@@ -369,38 +387,46 @@ export default function CustomerPayment() {
     const invoicesTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
     const totalAmount = invoicesTotal + amount;
     
-    // Update split payment and received amount
-    setSplitPayment({
-      cash: totalAmount.toString(),
-      card: "",
-      bankTransfer: "",
-      cheque: ""
-    });
+    // Only auto-update split payment if no split payment has been entered yet
+    const currentSplitTotal = Object.values(splitPayment).reduce((sum, val) => {
+      return sum + (parseFloat(val as string) || 0);
+    }, 0);
+    
+    if (currentSplitTotal === 0) {
+      // Update split payment and received amount
+      setSplitPayment({
+        cash: totalAmount.toString(),
+        card: "",
+        bankTransfer: "",
+        cheque: ""
+      });
+    }
     setReceivedAmount(totalAmount);
   };
 
   // Handle split payment amount changes
   const handleSplitPaymentChange = (type: string, value: string) => {
-    setSplitPayment(prev => ({
-      ...prev,
-      [type]: value
-    }));
-    // Update total received amount
-    const newSplitPayment = {
-      ...splitPayment,
-      [type]: value
-    };
-    const newTotal = Object.values(newSplitPayment).reduce((sum, val) => {
-      const numVal = parseFloat(val as string) || 0;
-      return sum + numVal;
-    }, 0);
-    setReceivedAmount(newTotal);
+    setSplitPayment(prev => {
+      const newSplitPayment = {
+        ...prev,
+        [type]: value
+      };
+      
+      // Update total received amount using the new values
+      const newTotal = Object.values(newSplitPayment).reduce((sum, val) => {
+        const numVal = parseFloat(val as string) || 0;
+        return sum + numVal;
+      }, 0);
+      setReceivedAmount(newTotal);
+      
+      return newSplitPayment;
+    });
   };
 
   // Convert split payment strings to numbers for backend
   const getSplitPaymentNumbers = () => ({
     cash: parseFloat(splitPayment.cash) || 0,
-    card: parseFloat(splitPayment.card) || 0,
+    bank: parseFloat(splitPayment.card) || 0, // Map 'card' to 'bank' for backend
     bankTransfer: parseFloat(splitPayment.bankTransfer) || 0,
     cheque: parseFloat(splitPayment.cheque) || 0
   });
@@ -481,31 +507,138 @@ export default function CustomerPayment() {
       return;
     }
 
-    const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+    // Get selected invoices and sort them by date (newest first)
+    const selectedInvoices = displayedInvoices
+      .filter(inv => selectedInvoiceIds.has(inv.id))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    // Get payment amounts by mode
+    const cashAmount = parseFloat(splitPayment.cash) || 0;
+    const cardAmount = parseFloat(splitPayment.card) || 0;
+    const totalPayment = receivedAmount;
+    
+    const paymentDistribution: Array<{
+      invoiceId?: number;
+      invoiceNumber?: string;
+      amount: number;
+      isOnAccount: boolean;
+      paymentMode: string;
+    }> = [];
+    
+    // Create a copy of invoices with their balances
+    const invoiceBalances = new Map<number, { balance: number, invoice: any }>();
+    selectedInvoices.forEach(inv => {
+      invoiceBalances.set(inv.id, { balance: inv.balance, invoice: inv });
+    });
+    
+    let remainingCash = cashAmount;
+    let remainingCard = cardAmount;
+    
+    // Process each invoice one by one, fully paying with one payment method
+    // Invoices are sorted by date (newest first), so we pay newest invoices first
+    for (const inv of selectedInvoices) {
+      const invoiceData = invoiceBalances.get(inv.id);
+      if (!invoiceData) continue;
+      
+      const { balance: currentBalance, invoice } = invoiceData;
+      
+      // Skip if invoice is already paid or no payment left
+      if (currentBalance <= 0) continue;
+      
+      // Try to pay with cash first if available
+      if (remainingCash > 0) {
+        const paymentAmount = Math.min(remainingCash, currentBalance);
+        if (paymentAmount > 0) {
+          paymentDistribution.push({
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            amount: Number(paymentAmount.toFixed(2)),
+            isOnAccount: false,
+            paymentMode: 'cash'
+          });
+          remainingCash = Number((remainingCash - paymentAmount).toFixed(2));
+          invoiceData.balance = Number((currentBalance - paymentAmount).toFixed(2));
+          
+          // If invoice is fully paid with cash, move to next invoice
+          if (invoiceData.balance <= 0) {
+            continue;
+          }
+        }
+      }
+      
+      // If still balance left, try to pay with card
+      if (invoiceData.balance > 0 && remainingCard > 0) {
+        const paymentAmount = Math.min(remainingCard, invoiceData.balance);
+        if (paymentAmount > 0) {
+          paymentDistribution.push({
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            amount: Number(paymentAmount.toFixed(2)),
+            isOnAccount: false,
+            paymentMode: 'bank'
+          });
+          remainingCard = Number((remainingCard - paymentAmount).toFixed(2));
+          invoiceData.balance = Number((invoiceData.balance - paymentAmount).toFixed(2));
+        }
+      }
+    }
+    
+    // Allocate remaining payment methods to on-account payments
+    // On-account payments are processed AFTER all invoices are fully paid
+    let remainingOnAccount = onAccountAmount;
+    if (remainingOnAccount > 0) {
+      // Prefer cash for on-account if available, otherwise use card
+      if (remainingCash > 0) {
+        const onAccountPayment = Math.min(remainingCash, remainingOnAccount);
+        if (onAccountPayment > 0) {
+          paymentDistribution.push({
+            amount: Number(onAccountPayment.toFixed(2)),
+            isOnAccount: true,
+            paymentMode: 'cash'
+          });
+          remainingCash = Number((remainingCash - onAccountPayment).toFixed(2));
+          remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
+        }
+      } 
+      // Only use card for on-account if there's no cash left
+      else if (remainingCard > 0) {
+        const onAccountPayment = Math.min(remainingCard, remainingOnAccount);
+        if (onAccountPayment > 0) {
+          paymentDistribution.push({
+            amount: Number(onAccountPayment.toFixed(2)),
+            isOnAccount: true,
+            paymentMode: 'bank'
+          });
+          remainingCard = Number((remainingCard - onAccountPayment).toFixed(2));
+          remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
+        }
+      }
+    }
     
     // Build payment payload
     const paymentPayload = {
       customerId: parseInt(selectedCustomerId),
-      amount: receivedAmount,
+      amount: totalPayment,
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: remarks || "Customer payment",
       splitPayment: getSplitPaymentNumbers(),
       invoiceIds: Array.from(selectedInvoiceIds),
       onAccountAmount: onAccountAmount,
-      paymentSource: 'customer_payment', // Mark as customer payment
-      invoices: selectedInvoices.map(inv => ({
-        invoiceId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        balance: inv.balance,
-        invoiceDate: inv.date,
-        paymentMode: invoicePaymentModes.get(inv.id) || 'cash'
-      }))
+      paymentSource: 'customer_payment',
+      paymentDistribution: paymentDistribution,
+      invoices: paymentDistribution
+        .filter(p => !p.isOnAccount)
+        .map(p => ({
+          invoiceId: p.invoiceId!,
+          invoiceNumber: p.invoiceNumber!,
+          amount: p.amount,
+          paymentMode: p.paymentMode
+        }))
     };
+
 
     createPaymentMutation.mutate(paymentPayload);
   };
-
-
 
   const handleEditPayment = (batchPayment: any) => {
     setEditingPayment(batchPayment);

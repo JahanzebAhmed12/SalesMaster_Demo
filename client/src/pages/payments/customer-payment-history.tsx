@@ -118,7 +118,7 @@ export default function CustomerPaymentHistory() {
       body: (Array.isArray(paymentHistory) ? paymentHistory : []).map((payment) => [
         // skip serial number and payment id
         payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
-        payment.paymentMode,
+        payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode,
         // payment.id, // removed
         `£${Number(payment.amount).toFixed(2)}`,
         payment.invoiceNumber || '-',
@@ -137,7 +137,7 @@ export default function CustomerPaymentHistory() {
     const ws = XLSX.utils.json_to_sheet((paymentHistory || []).map((payment) => ({
       //'Sl.No': idx + 1,
       'Payment Date': payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
-      'Payment mode': payment.paymentMode,
+      'Payment mode': payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode,
       // 'Payment Id': payment.id,
       'Recd Amt': payment.amount,
       'Inv No.': payment.invoiceNumber || '-',
@@ -172,7 +172,7 @@ export default function CustomerPaymentHistory() {
       ]],
       body: (Array.isArray(paymentHistory) ? paymentHistory : []).map((payment) => [
         payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
-        payment.paymentMode,
+        payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode,
         `£${Number(payment.amount).toFixed(2)}`,
         payment.invoiceNumber || '-',
         payment.invoiceDate ? format(new Date(payment.invoiceDate), 'dd/MM/yyyy') : '-',
@@ -441,7 +441,9 @@ export default function CustomerPaymentHistory() {
                         <TableCell className="text-center">
                           {payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : ''}
                         </TableCell>
-                        <TableCell className="text-center">{payment.paymentMode}</TableCell>
+                        <TableCell className="text-center">
+                          {payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode}
+                        </TableCell>
                         <TableCell className="text-center">£{payment.amount.toFixed(2)}</TableCell>
                         <TableCell className="text-center">
                           {payment.invoiceNumber || '-'}

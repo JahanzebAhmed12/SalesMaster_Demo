@@ -98,6 +98,7 @@ export default function ProdCustomerHistory() {
   // Totals
   const totalQuantity = historyData.reduce((sum: number, row: any) => sum + (row.quantity || 0), 0);
   const totalAmount = historyData.reduce((sum: number, row: any) => sum + (row.total || 0), 0);
+  const averagePrice = totalQuantity > 0 ? totalAmount / totalQuantity : 0;
 
   const loading = loadingCustomers || loadingProducts || loadingHistory;
 
@@ -187,7 +188,7 @@ export default function ProdCustomerHistory() {
       '',
       'TOTAL',
       totalQuantity,
-      '',
+      averagePrice,
       totalAmount
     ]);
 
@@ -289,6 +290,12 @@ export default function ProdCustomerHistory() {
     doc.setFontSize(8);
     doc.text('stand100', pageWidth - 30, pageHeight - 10);
     
+    doc.autoTable({
+      head: [['', 'TOTAL', totalQuantity.toFixed(2), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]],
+      bodyStyles: { fontStyle: 'bold' },
+      startY: doc.lastAutoTable.finalY + 10
+    });
+    
     doc.save(`prod_customer_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };
 
@@ -309,7 +316,7 @@ export default function ProdCustomerHistory() {
       ].join('\t')).join('\n');
       
       // Add totals row
-      text += `\n\tTOTAL\t${totalQuantity}\t\t${totalAmount.toFixed(2)}`;
+      text += `\n\tTOTAL\t${totalQuantity}\t\t${averagePrice.toFixed(2)}\t\t${totalAmount.toFixed(2)}`;
       
       await navigator.clipboard.writeText(text);
       alert('Data copied to clipboard!');
@@ -512,7 +519,7 @@ export default function ProdCustomerHistory() {
                     <TableCell></TableCell>
                     <TableCell className="text-center">TOTAL</TableCell>
                     <TableCell className="text-center">{totalQuantity}</TableCell>
-                    <TableCell></TableCell>
+                    <TableCell className="text-center">{averagePrice.toFixed(2)}</TableCell>
                     <TableCell className="text-center">{totalAmount.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
