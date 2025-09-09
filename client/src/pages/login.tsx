@@ -11,9 +11,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { ShoppingCart } from "lucide-react";
 
 export default function Login() {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
-  const [rememberMe, setRememberMe] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -110,22 +109,6 @@ export default function Login() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200"
                   required
                 />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="remember"
-                    checked={rememberMe}
-                    onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                  />
-                  <Label htmlFor="remember" className="text-sm text-gray-600">
-                    Remember me
-                  </Label>
-                </div>
-                <a href="#" className="text-sm text-primary hover:text-blue-700">
-                  Forgot password?
-                </a>
               </div>
 
               <Button
