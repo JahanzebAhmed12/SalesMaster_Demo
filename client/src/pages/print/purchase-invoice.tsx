@@ -99,6 +99,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
                 <input 
                   type="number" 
+                  min="0"
                   step="0.01"
                   style={{ 
                     border: "none", 
@@ -110,11 +111,25 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                   }}
                   className="no-print-border"
                   placeholder="0.00"
+                  onKeyDown={(e) => {
+                    // Only prevent negative numbers and invalid characters
+                    if (e.key === '-' || ['e', 'E', '+'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onPaste={(e) => {
+                    // Get pasted data and validate it's a non-negative number
+                    const pasteData = e.clipboardData.getData('text/plain');
+                    if (isNaN(Number(pasteData)) || Number(pasteData) < 0) {
+                      e.preventDefault();
+                    }
+                  }}
                 />
               </td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
                 <input 
                   type="number" 
+                  min="0"
                   step="0.01"
                   style={{ 
                     border: "none", 
@@ -126,6 +141,19 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                   }}
                   className="no-print-border"
                   placeholder="0.00"
+                  onKeyDown={(e) => {
+                    // Only prevent negative numbers and invalid characters
+                    if (e.key === '-' || ['e', 'E', '+'].includes(e.key)) {
+                      e.preventDefault();
+                    }
+                  }}
+                  onPaste={(e) => {
+                    // Get pasted data and validate it's a non-negative number
+                    const pasteData = e.clipboardData.getData('text/plain');
+                    if (isNaN(Number(pasteData)) || Number(pasteData) < 0) {
+                      e.preventDefault();
+                    }
+                  }}
                 />
               </td>
               <td style={{ border: "1px solid #888", padding: 4 }}>{item.remarks || "-"}</td>

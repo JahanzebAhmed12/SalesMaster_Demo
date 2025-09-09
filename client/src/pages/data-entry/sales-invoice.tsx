@@ -16,7 +16,7 @@ import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
 import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { format, subDays } from 'date-fns';
+import { format, parseISO, subDays } from 'date-fns';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import jsPDF from "jspdf";
 import logo from "@/public/printlogo.png";
@@ -131,6 +131,8 @@ const SalesInvoice = () => {
   const [customPorterage, setCustomPorterage] = useState<string>(porterageDetails.porterageCharge);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
   const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
+  const [isEditingDate, setIsEditingDate] = useState(false);
+  const [editableDate, setEditableDate] = useState<Date | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -308,6 +310,8 @@ const SalesInvoice = () => {
           setVehicleDetails(data.vehicleDetails || "");
           setGateNumber(data.gateNumber || "");
           setNotes(data.notes || "");
+          // Set the editable date when loading the sale
+          setEditableDate(data.date ? parseISO(data.date) : new Date());
           // Set other fields as needed
         });
     }
@@ -533,10 +537,19 @@ const SalesInvoice = () => {
       console.log("createdBy:", response.createdBy);
       console.log("createdByUsername:", response.createdByUsername);
 
+      // Invalidate relevant queries
+      const customerId = response.customer_id || response.customerId;
       queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
       queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["currentStock"] });
+      
+      // Invalidate customer's outstanding invoices
+      if (customerId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/customers", customerId.toString(), "outstanding_invoices"] 
+        });
+      }
       setCurrentSale(response);
       setIsCreatingSale(false);
       toast({
@@ -1940,10 +1953,85 @@ const SalesInvoice = () => {
         <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
           <div className="flex justify-between items-start mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-4">INVOICE</h1>
+              <div className="flex items-center justify-between mb-4">
+                <h1 className="text-2xl font-bold text-gray-900">INVOICE</h1>
+                {currentSale && !isReadOnly && canEditInvoice && (
+                  <div className="relative">
+                    {isEditingDate ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={editableDate ? format(editableDate, 'yyyy-MM-dd') : ''}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              setEditableDate(parseISO(e.target.value));
+                            }
+                          }}
+                          className="w-40 text-sm h-8"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={async () => {
+                            if (!editableDate || !currentSale) return;
+                            
+                            try {
+                              const updatedSale = {
+                                ...currentSale,
+                                date: format(editableDate, 'yyyy-MM-dd'),
+                              };
+                              
+                              await apiRequest(
+                                'PATCH',
+                                `/api/sales/${currentSale.invoiceNumber}`,
+                                { date: format(editableDate, 'yyyy-MM-dd') }
+                              );
+                              
+                              setCurrentSale(updatedSale);
+                              setIsEditingDate(false);
+                              toast({
+                                title: 'Success',
+                                description: 'Invoice date updated successfully',
+                              });
+                            } catch (error) {
+                              console.error('Error updating invoice date:', error);
+                              toast({
+                                title: 'Error',
+                                description: 'Failed to update invoice date',
+                                variant: 'destructive',
+                              });
+                            }
+                          }}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditableDate(currentSale?.date ? parseISO(currentSale.date) : new Date());
+                            setIsEditingDate(false);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-sm text-muted-foreground"
+                        onClick={() => setIsEditingDate(true)}
+                      >
+                        {currentSale?.date ? format(parseISO(currentSale.date), 'PPP') : 'No date'}
+                        <Pencil className="ml-2 h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-4">
-                  <span>Date: {new Date().toLocaleString('en-GB', {
+                  <span>Date: {currentSale?.date ? format(parseISO(currentSale.date), 'PP') : new Date().toLocaleString('en-GB', {
                     day: '2-digit',
                     month: '2-digit',
                     year: 'numeric',

@@ -61,6 +61,16 @@ export default function EecReport() {
     enabled: !!fromDate && !!toDate,
   });
 
+  // Calculate totals
+  const totals = eecData.reduce(
+    (acc, item) => ({
+      weight: acc.weight + (item.weight || 0),
+      quantity: acc.quantity + (item.quantity || 0),
+      amount: acc.amount + (item.amount || 0),
+    }),
+    { weight: 0, quantity: 0, amount: 0 }
+  );
+
   const { data: companyDetails } = useQuery<CompanyDetails>({
     queryKey: ["/api/company-details"],
     queryFn: () => apiRequest("GET", "/api/company-details"),
@@ -107,6 +117,15 @@ export default function EecReport() {
         printWindow.document.write(`<td>${item.country}</td>`);
         printWindow.document.write('</tr>');
       });
+      // Add total row
+      printWindow.document.write('<tr style="font-weight:bold;background-color:#f9f9f9;">');
+      printWindow.document.write('<td colspan="4" style="text-align:right;">Total:</td>');
+      printWindow.document.write(`<td>${totals.weight.toLocaleString()}</td>`);
+      printWindow.document.write(`<td>${totals.quantity.toLocaleString()}</td>`);
+      printWindow.document.write('<td></td>');
+      printWindow.document.write(`<td>£${totals.amount.toFixed(2)}</td>`);
+      printWindow.document.write('<td colspan="2"></td>');
+      printWindow.document.write('</tr>');
       printWindow.document.write('</tbody></table>');
       
       // Add footer text
@@ -150,6 +169,19 @@ export default function EecReport() {
       item.country
     ]);
     
+    // Add total row
+    dataRows.push([
+      '', '', '', '',
+      totals.weight,
+      totals.quantity,
+      '',
+      totals.amount.toFixed(2),
+      '', ''
+    ]);
+    
+    // Style the total row
+    const totalRowIndex = dataRows.length - 1; // Last row is the total row
+    
     // Combine header and data
     const allData = [...headerData, ...dataRows];
     
@@ -183,6 +215,22 @@ export default function EecReport() {
         font: { color: { rgb: "FFFFFF" }, bold: true },
         alignment: { horizontal: "center" }
       };
+    }
+    
+    // Style total row
+    for (let col = 0; col <= 9; col++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: totalRowIndex + headerData.length, c: col });
+      if (!ws[cellAddress]) continue;
+      ws[cellAddress].s = {
+        font: { bold: true },
+        fill: { fgColor: { rgb: "F3F4F6" } }
+      };
+      
+      // Style numeric cells with number format
+      if (col === 4 || col === 5 || col === 7) { // Weight, Quantity, Amount columns
+        ws[cellAddress].t = 'n'; // Set cell type to number
+        ws[cellAddress].z = col === 7 ? '#,##0.00' : '#,##0';
+      }
     }
     
     // Style title cell
@@ -220,10 +268,30 @@ export default function EecReport() {
       item.country
     ]);
     
+    // Add total row
+    tableData.push([
+      '', '', '', '',
+      totals.weight,
+      totals.quantity,
+      '',
+      `£${totals.amount.toFixed(2)}`,
+      '', ''
+    ]);
+    
     autoTable(doc, {
       head: [[
         'Sl.No', 'Date', 'Commodity', 'C.Code', 'Weight', 'Quantity', 'U.Price', 'Amount', 'Supplier', 'Country'
       ]],
+      foot: [
+        [
+          { content: 'Total:', colSpan: 4, styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: totals.weight.toLocaleString(), styles: { fontStyle: 'bold' } },
+          { content: totals.quantity.toLocaleString(), styles: { fontStyle: 'bold' } },
+          '',
+          { content: `£${totals.amount.toFixed(2)}`, styles: { fontStyle: 'bold' } },
+          { content: '', colSpan: 2 }
+        ]
+      ],
       body: tableData,
       startY: 50,
       styles: {
@@ -266,6 +334,7 @@ export default function EecReport() {
 
   const handleCopy = async () => {
     let text = 'Sl.No\tDate\tCommodity\tC.Code\tWeight\tQuantity\tU.Price\tAmount\tSupplier\tCountry\n';
+    // Add data rows
     text += eecData.map((item) => [
       item.slNo,
       item.date,
@@ -278,6 +347,16 @@ export default function EecReport() {
       item.supplier,
       item.country
     ].join('\t')).join('\n');
+    
+    // Add total row
+    text += '\n' + [
+      '', '', '', '',
+      totals.weight,
+      totals.quantity,
+      '',
+      totals.amount.toFixed(2),
+      '', ''
+    ].join('\t');
     await navigator.clipboard.writeText(text);
   };
 

@@ -26,20 +26,131 @@ export default function Dashboard() {
 
   const { data: chartData, isLoading: chartLoading } = useQuery({
     queryKey: ["/api/dashboard/charts", range, profitRange],
-    queryFn: () => apiRequest("GET", `/api/dashboard/charts?range=${range}&profitRange=${profitRange}`),
+    queryFn: () => apiRequest("GET", `/api/dashboard/charts?range=${range}&profitRange=${profitRange}`)
   });
 
-  const { data: expiringDocs, isLoading: expiringDocsLoading } = useQuery({
-    queryKey: ["/api/employees/documents/expiring"],
-    queryFn: () => apiRequest("GET", "/api/employees/documents/expiring"),
+  // Fetch all employee documents
+  const { data: allEmployees, isLoading: employeesLoading } = useQuery({
+    queryKey: ["/api/employees"],
+    queryFn: async () => {
+      const data = await apiRequest("GET", "/api/employees");
+      return data;
+    },
+  });
+
+  // Fetch documents for all employees
+  const { data: allDocs, isLoading: allDocsLoading } = useQuery({
+    queryKey: ["all-employee-documents", allEmployees],
+    queryFn: async () => {
+      if (!allEmployees) return [];
+      
+      console.log('All employees data:', allEmployees);
+      
+      // Create a map of employee IDs to names for quick lookup
+      const employeeMap = new Map(
+        allEmployees.map((emp: any) => {
+          console.log(`Employee ${emp.id} fields:`, Object.keys(emp));
+          return [emp.id, emp.fullName || emp.full_name || emp.name || 'Unknown'];
+        })
+      );
+      
+      // Fetch documents for each employee
+      const docsPromises = allEmployees.map((emp: any) => {
+        console.log(`Fetching documents for employee ${emp.id} (${emp.fullName || emp.full_name || emp.name || 'Unknown'})`);
+        return apiRequest("GET", `/api/employees/${emp.id}/documents`)
+          .then(docs => {
+            console.log(`Documents for employee ${emp.id}:`, docs);
+            if (!Array.isArray(docs)) {
+              console.warn(`Expected array of documents for employee ${emp.id}, got:`, docs);
+              return [];
+            }
+            return docs.map((doc: any) => {
+              const docData = {
+                ...doc,
+                employeeId: emp.id,
+                employeeName: employeeMap.get(emp.id) || 'Unknown Employee',
+                documentName: doc.documentName || doc.document_name || 'Unnamed Document',
+                endDate: doc.endDate || doc.end_date || null
+              };
+              console.log(`Processed document for employee ${emp.id}:`, docData);
+              return docData;
+            });
+          })
+          .catch((error) => {
+            console.error(`Error fetching documents for employee ${emp.id}:`, error);
+            return [];
+          });
+      });
+      
+      const docsArrays = await Promise.all(docsPromises);
+      const allDocs = docsArrays.flat();
+      console.log('All processed documents:', allDocs);
+      return allDocs;
+    },
+    enabled: !!allEmployees && allEmployees.length > 0,
     refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
   });
 
-  const { data: expiringEquipment, isLoading: expiringEquipmentLoading } = useQuery({
-    queryKey: ["/api/equipment/expiring"],
-    queryFn: () => apiRequest("GET", "/api/equipment/expiring"),
+  const { data: allEquipment, isLoading: equipmentLoading } = useQuery({
+    queryKey: ["/api/equipment"],
+    queryFn: () => apiRequest("GET", "/api/equipment"),
     refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
   });
+
+  // Process documents to add status
+  const processedDocs = React.useMemo(() => {
+    if (!allDocs) return [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return allDocs.map((doc: any) => {
+      if (!doc.endDate) return { ...doc, status: 'valid' };
+      
+      const endDate = new Date(doc.endDate);
+      endDate.setHours(0, 0, 0, 0);
+      
+      const diffTime = endDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      let status = 'valid'; // Default status (green)
+      if (diffDays <= 7) status = 'warning'; // Red if 1 week or less
+      else if (diffDays <= 30) status = 'expiring'; // Yellow if 1 month or less
+      
+      return {
+        ...doc,
+        daysUntilExpiry: Math.max(0, diffDays),
+        status
+      };
+    });
+  }, [allDocs]);
+
+  // Process equipment to add status
+  const processedEquipment = React.useMemo(() => {
+    if (!allEquipment) return [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    return allEquipment.map((eq: any) => {
+      if (!eq.endDate) return { ...eq, expiryDate: null, status: 'valid' };
+      
+      const expiryDate = new Date(eq.endDate);
+      expiryDate.setHours(0, 0, 0, 0);
+      
+      const diffTime = expiryDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      let status = 'valid'; // Default status (green)
+      if (diffDays <= 7) status = 'warning'; // Red if 1 week or less
+      else if (diffDays <= 30) status = 'expiring'; // Yellow if 1 month or less
+      
+      return {
+        ...eq,
+        expiryDate: eq.endDate,
+        daysUntilExpiry: Math.max(0, diffDays),
+        status
+      };
+    });
+  }, [allEquipment]);
 
   React.useEffect(() => {
     const getApiUrl = (endpoint: string) => {
@@ -79,137 +190,171 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Employee Document Expiration Alerts */}
-        {!expiringDocsLoading && expiringDocs && expiringDocs.length > 0 && (
-          <Card className="border-orange-200 bg-orange-50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="text-orange-600 h-5 w-5" />
-                <CardTitle className="text-orange-800">Document Expiration Alerts</CardTitle>
-                <Badge variant="secondary" className="bg-orange-200 text-orange-800">
-                  {expiringDocs.length} {expiringDocs.length === 1 ? 'Alert' : 'Alerts'}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {expiringDocs.slice(0, 5).map((alert: any) => (
-                  <div 
-                    key={alert.id} 
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                      alert.isExpiringSoon 
-                        ? 'bg-red-50 border-red-200' 
-                        : 'bg-yellow-50 border-yellow-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-full ${
-                        alert.isExpiringSoon ? 'bg-red-100' : 'bg-yellow-100'
-                      }`}>
-                        <User className={`h-4 w-4 ${
-                          alert.isExpiringSoon ? 'text-red-600' : 'text-yellow-600'
-                        }`} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{alert.employeeName}</p>
-                        <p className="text-sm text-gray-600">{alert.documentName}</p>
-                      </div>
+        {/* Employee Documents Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <User className="text-blue-600 h-5 w-5" />
+              <CardTitle>Employee Documents</CardTitle>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {processedDocs.length} {processedDocs.length === 1 ? 'Document' : 'Documents'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {processedDocs.map((doc: any) => (
+                <div 
+                  key={doc.id}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    doc.status === 'warning' 
+                      ? 'bg-red-50 border-red-200' 
+                      : doc.status === 'expiring'
+                        ? 'bg-yellow-50 border-yellow-200'
+                        : 'bg-green-50 border-green-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${
+                      doc.status === 'warning' 
+                        ? 'bg-red-100' 
+                        : doc.status === 'expiring'
+                          ? 'bg-yellow-100'
+                          : 'bg-green-100'
+                    }`}>
+                      <User className={`h-4 w-4 ${
+                        doc.status === 'warning' 
+                          ? 'text-red-600' 
+                          : doc.status === 'expiring'
+                            ? 'text-yellow-600'
+                            : 'text-green-600'
+                      }`} />
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-1 text-sm text-gray-600">
-                        <Calendar className="h-4 w-4" />
-                        <span>{new Date(alert.endDate).toLocaleDateString()}</span>
-                      </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{doc.employeeName || 'Unknown Employee'}</p>
+                      <p className="text-sm text-gray-600">{doc.documentName || 'Unnamed Document'}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-1 text-sm text-gray-600">
+                      <Calendar className="h-4 w-4" />
+                      <span>{doc.endDate ? new Date(doc.endDate).toLocaleDateString() : 'No expiry'}</span>
+                    </div>
+                    {doc.endDate && (
                       <p className={`text-sm font-medium ${
-                        alert.isExpiringSoon ? 'text-red-600' : 'text-yellow-600'
+                        doc.status === 'warning' 
+                          ? 'text-red-600' 
+                          : doc.status === 'expiring'
+                            ? 'text-yellow-600'
+                            : 'text-green-600'
                       }`}>
-                        {alert.daysUntilExpiry === 0 
+                        {doc.daysUntilExpiry === 0 
                           ? 'Expires today' 
-                          : alert.daysUntilExpiry === 1 
+                          : doc.daysUntilExpiry === 1 
                             ? 'Expires tomorrow'
-                            : `Expires in ${alert.daysUntilExpiry} days`
+                            : doc.daysUntilExpiry < 0
+                              ? 'Expired'
+                              : `Expires in ${doc.daysUntilExpiry} days`
                         }
                       </p>
-                    </div>
+                    )}
                   </div>
-                ))}
-                {expiringDocs.length > 5 && (
-                  <div className="text-center pt-2">
-                    <p className="text-sm text-gray-600">
-                      And {expiringDocs.length - 5} more documents expiring soon...
-                    </p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                </div>
+              ))}
+              {processedDocs.length === 0 && (
+                <p className="text-center text-gray-500 py-4">No documents found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-        {/* Equipment Expiration Alerts */}
-        {!expiringEquipmentLoading && expiringEquipment && expiringEquipment.length > 0 && (
-          <Card className="border-red-200 bg-red-50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="text-red-600 h-5 w-5" />
-                <CardTitle className="text-red-800">Equipment Expiration Alerts</CardTitle>
-                <Badge variant="secondary" className="bg-red-200 text-red-800">
-                  {expiringEquipment.length} {expiringEquipment.length === 1 ? 'Alert' : 'Alerts'}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {expiringEquipment.slice(0, 5).map((alert: any) => (
-                  <div 
-                    key={alert.id} 
-                    className={`flex items-center justify-between p-3 rounded-lg border ${
-                      alert.isExpiringSoon 
-                        ? 'bg-red-50 border-red-200' 
-                        : 'bg-yellow-50 border-yellow-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-full ${
-                        alert.isExpiringSoon ? 'bg-red-100' : 'bg-yellow-100'
-                      }`}>
-                        <Settings className={`h-4 w-4 ${
-                          alert.isExpiringSoon ? 'text-red-600' : 'text-yellow-600'
-                        }`} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">{alert.description}</p>
-                        <p className="text-sm text-gray-600">Equipment</p>
-                      </div>
+        {/* Equipment Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Settings className="text-purple-600 h-5 w-5" />
+              <CardTitle>Equipment</CardTitle>
+              <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                {processedEquipment.length} {processedEquipment.length === 1 ? 'Item' : 'Items'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {processedEquipment.map((eq: any) => (
+                <div 
+                  key={eq.id}
+                  className={`flex items-center justify-between p-3 rounded-lg border ${
+                    eq.status === 'warning' 
+                      ? 'bg-red-50 border-red-200' 
+                      : eq.status === 'expiring'
+                        ? 'bg-yellow-50 border-yellow-200'
+                        : 'bg-green-50 border-green-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${
+                      eq.status === 'warning' 
+                        ? 'bg-red-100' 
+                        : eq.status === 'expiring'
+                          ? 'bg-yellow-100'
+                          : 'bg-green-100'
+                    }`}>
+                      <Settings className={`h-4 w-4 ${
+                        eq.status === 'warning' 
+                          ? 'text-red-600' 
+                          : eq.status === 'expiring'
+                            ? 'text-yellow-600'
+                            : 'text-green-600'
+                      }`} />
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-1 text-sm text-gray-600">
-                        <Calendar className="h-4 w-4" />
-                        <span>{new Date(alert.endDate).toLocaleDateString()}</span>
-                      </div>
-                      <p className={`text-sm font-medium ${
-                        alert.isExpiringSoon ? 'text-red-600' : 'text-yellow-600'
-                      }`}>
-                        {alert.daysUntilExpiry === 0 
-                          ? 'Expires today' 
-                          : alert.daysUntilExpiry === 1 
-                            ? 'Expires tomorrow'
-                            : `Expires in ${alert.daysUntilExpiry} days`
-                        }
-                      </p>
+                    <div>
+                      <p className="font-medium text-gray-900">{eq.description || 'No Description'}</p>
+                      <p className="text-sm text-gray-600">Equipment</p>
                     </div>
                   </div>
-                ))}
-                {expiringEquipment.length > 5 && (
-                  <div className="text-center pt-2">
-                    <p className="text-sm text-gray-600">
-                      And {expiringEquipment.length - 5} more equipment expiring soon...
-                    </p>
+                  <div className="text-right">
+                    {eq.expiryDate ? (
+                      <>
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Calendar className="h-4 w-4" />
+                          <span>{new Date(eq.expiryDate).toLocaleDateString()}</span>
+                        </div>
+                        <p className={`text-sm font-medium ${
+                          eq.status === 'warning' 
+                            ? 'text-red-600' 
+                            : eq.status === 'expiring'
+                              ? 'text-yellow-600'
+                              : 'text-green-600'
+                        }`}>
+                          {eq.daysUntilExpiry === 0 
+                            ? 'Expires today' 
+                            : eq.daysUntilExpiry === 1 
+                              ? 'Expires tomorrow'
+                              : eq.daysUntilExpiry < 0
+                                ? 'Expired'
+                                : `Expires in ${eq.daysUntilExpiry} days`
+                          }
+                        </p>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-end">
+                        <div className="flex items-center gap-1 text-sm text-gray-400">
+                          <Calendar className="h-4 w-4 opacity-50" />
+                          <span>No expiry</span>
+                        </div>
+                        <p className="text-xs text-gray-400">No expiration date set</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                </div>
+              ))}
+              {processedEquipment.length === 0 && (
+                <p className="text-center text-gray-500 py-4">No equipment found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

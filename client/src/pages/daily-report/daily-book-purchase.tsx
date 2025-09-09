@@ -46,6 +46,7 @@ export default function DailyBookPurchase() {
   const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);
   const [loadingUserType, setLoadingUserType] = useState(true);
   const [filteredPurchaseData, setFilteredPurchaseData] = useState<PurchaseEntry[]>([]);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>({ key: 'invNo', direction: 'desc' });
   const [, navigate] = useLocation();
 
   // Backdate permissions
@@ -87,15 +88,56 @@ export default function DailyBookPurchase() {
     // eslint-disable-next-line
   }, []);
 
+  // Sort function
+  const sortData = (data: PurchaseEntry[]) => {
+    if (!sortConfig) return data;
+    
+    return [...data].sort((a, b) => {
+      const aValue = a[sortConfig.key as keyof PurchaseEntry];
+      const bValue = b[sortConfig.key as keyof PurchaseEntry];
+      
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  };
+
   useEffect(() => {
     if (loadingUserType) return;
+    let filteredData = [...purchaseData];
+    
     if (dailyBookType === 'own' && user) {
-      // If your purchase data has a 'purchaser' or 'username' field, use that. Here, we use 'supplier' as placeholder.
-      setFilteredPurchaseData(purchaseData.filter((item) => item.supplier === user.username));
-    } else {
-      setFilteredPurchaseData(purchaseData);
+      filteredData = filteredData.filter((item) => item.supplier === user.username);
     }
-  }, [purchaseData, dailyBookType, user, loadingUserType]);
+    
+    setFilteredPurchaseData(sortData(filteredData));
+  }, [purchaseData, dailyBookType, user, loadingUserType, sortConfig]);
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const SortableHeader = ({ label, sortKey }: { label: string; sortKey: string }) => (
+    <div 
+      className="flex items-center cursor-pointer hover:text-primary"
+      onClick={() => requestSort(sortKey)}
+    >
+      {label}
+      {sortConfig?.key === sortKey && (
+        <span className="ml-1">
+          {sortConfig.direction === 'asc' ? '↑' : '↓'}
+        </span>
+      )}
+    </div>
+  );
 
   const handleSearch = () => {
     setFilters({
@@ -424,7 +466,9 @@ export default function DailyBookPurchase() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Supplier</TableHead>
-                    <TableHead className="text-center">Inv.No</TableHead>
+                    <TableHead className="text-center">
+                      <SortableHeader label="Inv.No" sortKey="invNo" />
+                    </TableHead>
                     <TableHead className="text-center">Invoice Amt</TableHead>
                   </TableRow>
                 </TableHeader>

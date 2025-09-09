@@ -62,6 +62,7 @@ export default function DailyBookSales() {
   const [loadingUserType, setLoadingUserType] = useState(true);
   const [selectedSales, setSelectedSales] = useState<Set<number>>(new Set());
   const [isUpdatingPayments, setIsUpdatingPayments] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>({ key: 'invoiceNo', direction: 'desc' });
 
   // Fetch settings including invoice print format
   const { data: settings } = useQuery({
@@ -110,8 +111,24 @@ export default function DailyBookSales() {
     refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
   });
 
+  // Sort function
+  const sortedSales = [...rawSalesData].sort((a, b) => {
+    if (!sortConfig) return 0;
+    
+    const aValue = a[sortConfig.key as keyof typeof a];
+    const bValue = b[sortConfig.key as keyof typeof b];
+    
+    if (aValue < bValue) {
+      return sortConfig.direction === 'asc' ? -1 : 1;
+    }
+    if (aValue > bValue) {
+      return sortConfig.direction === 'asc' ? 1 : -1;
+    }
+    return 0;
+  });
+
   // Map 'account' to 'amount' for compatibility
-  const salesData: SalesEntry[] = rawSalesData.map((item: any) => {
+  const salesData: SalesEntry[] = sortedSales.map((item: any) => {
     // Debug: Check if payment status fields exist
     if (item.id === 1) {
       console.log('Sample data item:', {
@@ -1051,6 +1068,28 @@ export default function DailyBookSales() {
     window.open(printUrl, '_blank');
   };
 
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const SortableHeader = ({ label, sortKey }: { label: string; sortKey: string }) => (
+    <div 
+      className="flex items-center cursor-pointer hover:text-primary"
+      onClick={() => requestSort(sortKey)}
+    >
+      {label}
+      {sortConfig?.key === sortKey && (
+        <span className="ml-1">
+          {sortConfig.direction === 'asc' ? '↑' : '↓'}
+        </span>
+      )}
+    </div>
+  );
+
   if (loadingUserType) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -1311,7 +1350,9 @@ export default function DailyBookSales() {
                       />
                     </TableHead>
                     <TableHead className="min-w-[80px] sm:min-w-[100px]">Date</TableHead>
-                    <TableHead className="min-w-[90px] sm:min-w-[120px]">Invoice</TableHead>
+                    <TableHead className="w-[150px]">
+                      <SortableHeader label="Invoice No" sortKey="invoiceNo" />
+                    </TableHead>
                     <TableHead className="min-w-[120px] sm:min-w-[200px]">Customer</TableHead>
                     <TableHead className="min-w-[80px] sm:min-w-[100px] text-right">
                       <span className="hidden sm:inline">Accounts</span>
