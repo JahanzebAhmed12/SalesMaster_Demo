@@ -344,7 +344,7 @@ export default function DotMatrixInvoicePrintPage() {
           width: '186mm',
           height: '200mm',
           margin: '0 auto',
-          padding: '3mm',
+          padding: '0mm',
           boxSizing: 'border-box',
           fontFamily: 'monospace',
           color: '#000',
