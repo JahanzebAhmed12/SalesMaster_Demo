@@ -585,7 +585,7 @@ function Router() {
       <Route path="/print/employee-joining-form/:id">
         <EmployeeJoiningForm />
       </Route>
-      <Route path="/print/payment-receipt/:saleId/:paymentType">
+      <Route path="/print/payment-receipt/:paymentId/:paymentType">
         <PaymentReceiptPrint />
       </Route>
 

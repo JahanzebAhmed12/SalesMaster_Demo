@@ -69,10 +69,10 @@ export default function CustomerPayment() {
   // Check if user can edit a payment based on date
   const canEditPayment = (paymentDate: string) => {
     if (!userPermissions) return false;
-    
+
     const today = format(new Date(), 'yyyy-MM-dd');
     const paymentDateFormatted = format(new Date(paymentDate), 'yyyy-MM-dd');
-    
+
     if (paymentDateFormatted === today) {
       // For current date payments, check current_editing permission
       return userPermissions.current_editing !== false;
@@ -85,10 +85,10 @@ export default function CustomerPayment() {
   // Check if user can create new payments for a specific date
   const canCreatePaymentForDate = (date: Date) => {
     if (!userPermissions) return false;
-    
+
     const today = format(new Date(), 'yyyy-MM-dd');
     const selectedDateFormatted = format(date, 'yyyy-MM-dd');
-    
+
     if (selectedDateFormatted === today) {
       // For current date, check current_editing permission
       return userPermissions.current_editing !== false;
@@ -141,29 +141,34 @@ export default function CustomerPayment() {
 
     const existingBatch = acc.find(batch => batch.batchId === batchId);
     if (existingBatch) {
-      existingBatch.totalAmount += payment.amount;
-      // Only add invoice number if it's not already in the list
+      // Only add positive amounts to the total (credits are applied automatically)
+      if (payment.amount > 0) {
+        existingBatch.totalAmount += payment.amount;
+
+        // Aggregate positive amounts by payment mode
+        const mode = payment.paymentMode;
+        if (mode === 'cash') existingBatch.cashAmount += payment.amount;
+        else if (mode === 'bank') existingBatch.cardAmount += payment.amount;
+        else if (mode === 'bank_transfer') existingBatch.bankTransferAmount += payment.amount;
+        else if (mode === 'cheque') existingBatch.chequeAmount += payment.amount;
+      }
+
+      // Always add invoice numbers
       const invoiceNumber = payment.invoiceNumber || 'On Account';
       if (!existingBatch.invoices.includes(invoiceNumber)) {
         existingBatch.invoices.push(invoiceNumber);
       }
-      // Aggregate by payment mode
-      const mode = payment.paymentMode;
-      if (mode === 'cash') existingBatch.cashAmount += payment.amount;
-      else if (mode === 'bank') existingBatch.cardAmount += payment.amount;
-      else if (mode === 'bank_transfer') existingBatch.bankTransferAmount += payment.amount;
-      else if (mode === 'cheque') existingBatch.chequeAmount += payment.amount;
     } else {
       acc.push({
         batchId: batchId,
         paymentDate: payment.paymentDate,
-        totalAmount: payment.amount,
+        totalAmount: payment.amount > 0 ? payment.amount : 0, // Only positive amounts
         remarks: payment.remarks,
         invoices: [payment.invoiceNumber || 'On Account'],
-        cashAmount: payment.paymentMode === 'cash' ? payment.amount : 0,
-        cardAmount: payment.paymentMode === 'bank' ? payment.amount : 0,
-        bankTransferAmount: payment.paymentMode === 'bank_transfer' ? payment.amount : 0,
-        chequeAmount: payment.paymentMode === 'cheque' ? payment.amount : 0,
+        cashAmount: payment.paymentMode === 'cash' && payment.amount > 0 ? payment.amount : 0,
+        cardAmount: payment.paymentMode === 'bank' && payment.amount > 0 ? payment.amount : 0,
+        bankTransferAmount: payment.paymentMode === 'bank_transfer' && payment.amount > 0 ? payment.amount : 0,
+        chequeAmount: payment.paymentMode === 'cheque' && payment.amount > 0 ? payment.amount : 0,
       });
     }
     return acc;
@@ -215,6 +220,26 @@ export default function CustomerPayment() {
     },
   });
 
+  // Mutation for deleting a payment
+  const deletePaymentMutation = useMutation<any, Error, any>({
+    mutationFn: (batchId: number) => apiRequest("DELETE", `/api/payments/batch/${batchId}`),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Payment deleted successfully. All related transactions have been reverted.",
+      });
+      refetchOutstandingInvoices();
+      refetchPaymentHistory();
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete payment.",
+        variant: "destructive",
+      });
+    },
+  });
+
 
 
   // Mutation for creating a new payment
@@ -227,7 +252,7 @@ export default function CustomerPayment() {
       const cardAmount = parseFloat(splitPayment.card) || 0;
       const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
       const chequeAmount = parseFloat(splitPayment.cheque) || 0;
-      
+
       if (cashAmount > 0) paymentParts.push(`Cash: £${cashAmount.toFixed(2)}`);
       if (cardAmount > 0) paymentParts.push(`Card: £${cardAmount.toFixed(2)}`);
       if (bankTransferAmount > 0) paymentParts.push(`Bank Transfer: £${bankTransferAmount.toFixed(2)}`);
@@ -247,6 +272,7 @@ export default function CustomerPayment() {
       setRemarks("");
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
+      setOnAccountAmount(0);
       resetSplitPayment();
     },
     onError: (error) => {
@@ -257,6 +283,8 @@ export default function CustomerPayment() {
       });
     },
   });
+
+  // Mutation for deleting a payment
 
   // Handle checkbox selection
   const handleInvoiceSelection = (invoiceId: number, checked: boolean) => {
@@ -298,22 +326,8 @@ export default function CustomerPayment() {
     const totalAmount = invoicesTotal + onAccountAmount;
 
 
-    // Only auto-set split payment if no split payment has been entered yet
-    const currentSplitTotal = Object.values(splitPayment).reduce((sum, val) => {
-      return sum + (parseFloat(val as string) || 0);
-    }, 0);
-    
-    if (totalAmount !== 0 && currentSplitTotal === 0) {
-      // If using split payment, distribute evenly to cash by default
-      setSplitPayment({
-        cash: totalAmount.toString(),
-        card: "",
-        bankTransfer: "",
-        cheque: ""
-      });
-    } else if (totalAmount === 0) {
-      resetSplitPayment();
-    }
+    // Update received amount but don't auto-fill split payment
+    // User should manually enter the amount they want to pay
     setReceivedAmount(totalAmount);
   };
 
@@ -345,22 +359,9 @@ export default function CustomerPayment() {
       setInvoicePaymentConfigs(newConfigs);
       const invoicesTotal = displayedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
       const totalAmount = invoicesTotal + onAccountAmount;
-      
-      
-      // Only auto-set split payment if no split payment has been entered yet
-      const currentSplitTotal = Object.values(splitPayment).reduce((sum, val) => {
-        return sum + (parseFloat(val as string) || 0);
-      }, 0);
-      
-      if (currentSplitTotal === 0) {
-        // Set split payment to cash by default
-        setSplitPayment({
-          cash: totalAmount.toString(),
-          card: "",
-          bankTransfer: "",
-          cheque: ""
-        });
-      }
+
+
+      // Update received amount but don't auto-fill split payment
       setReceivedAmount(totalAmount);
     } else {
       setSelectedInvoiceIds(new Set());
@@ -381,46 +382,26 @@ export default function CustomerPayment() {
   // Handle on-account amount change
   const handleOnAccountAmountChange = (amount: number) => {
     setOnAccountAmount(amount);
-    
+
     // Recalculate total payment amount
     const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
     const invoicesTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
     const totalAmount = invoicesTotal + amount;
-    
-    // Only auto-update split payment if no split payment has been entered yet
-    const currentSplitTotal = Object.values(splitPayment).reduce((sum, val) => {
-      return sum + (parseFloat(val as string) || 0);
-    }, 0);
-    
-    if (currentSplitTotal === 0) {
-      // Update split payment and received amount
-      setSplitPayment({
-        cash: totalAmount.toString(),
-        card: "",
-        bankTransfer: "",
-        cheque: ""
-      });
-    }
+
+    // Update received amount but don't auto-update split payment
+    // User needs to manually enter split payment amounts
     setReceivedAmount(totalAmount);
   };
 
   // Handle split payment amount changes
   const handleSplitPaymentChange = (type: string, value: string) => {
-    setSplitPayment(prev => {
-      const newSplitPayment = {
-        ...prev,
-        [type]: value
-      };
-      
-      // Update total received amount using the new values
-      const newTotal = Object.values(newSplitPayment).reduce((sum, val) => {
-        const numVal = parseFloat(val as string) || 0;
-        return sum + numVal;
-      }, 0);
-      setReceivedAmount(newTotal);
-      
-      return newSplitPayment;
-    });
+    setSplitPayment(prev => ({
+      ...prev,
+      [type]: value
+    }));
+
+    // Don't automatically update receivedAmount - let user set it manually
+    // The receivedAmount should represent the total payment (split payments + on-account)
   };
 
   // Convert split payment strings to numbers for backend
@@ -453,7 +434,8 @@ export default function CustomerPayment() {
     }
 
     // Check if there's something to pay (invoices or on-account amount)
-    if (selectedInvoiceIds.size === 0 && onAccountAmount === 0) {
+    // In edit mode, we're more lenient as we're updating an existing payment
+    if (!isEditing && selectedInvoiceIds.size === 0 && onAccountAmount === 0) {
       toast({
         title: "Validation Error",
         description: "Please select at least one invoice or enter an on-account amount.",
@@ -476,7 +458,7 @@ export default function CustomerPayment() {
       const isToday = format(paymentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
       toast({
         title: "Permission Denied",
-        description: isToday 
+        description: isToday
           ? "You don't have permission to create payments for today"
           : "You don't have permission to create payments for past dates",
         variant: "destructive",
@@ -484,15 +466,16 @@ export default function CustomerPayment() {
       return false;
     }
 
-    // Validate split payment amounts
+    // Validate payment amounts
     const totalSplitAmount = Object.values(splitPayment).reduce((sum, val) => {
       return sum + (parseFloat(val as string) || 0);
     }, 0);
 
-    if (Math.abs(totalSplitAmount - receivedAmount) > 0.01) {
+    // The received amount should equal the split payment total (on-account is separate)
+    if (Math.abs(receivedAmount - totalSplitAmount) > 0.01) {
       toast({
         title: "Validation Error",
-        description: `Split payment total (£${totalSplitAmount.toFixed(2)}) must equal received amount (£${receivedAmount.toFixed(2)}).`,
+        description: `Received amount (£${receivedAmount.toFixed(2)}) must equal split payment total (£${totalSplitAmount.toFixed(2)}).`,
         variant: "destructive",
       });
       return false;
@@ -502,21 +485,23 @@ export default function CustomerPayment() {
   };
 
   // Handle unified payment submission
-  const handleUnifiedPaymentSubmit = () => {
+  const handleUnifiedPaymentSubmit = (isEditMode = false) => {
     if (!validatePayment()) {
       return;
     }
 
-    // Get selected invoices and sort them by date (newest first)
+    // Get selected invoices and sort them by date (oldest first for sequential payment)
     const selectedInvoices = displayedInvoices
       .filter(inv => selectedInvoiceIds.has(inv.id))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
+      .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+
     // Get payment amounts by mode
     const cashAmount = parseFloat(splitPayment.cash) || 0;
     const cardAmount = parseFloat(splitPayment.card) || 0;
+    const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
+    const chequeAmount = parseFloat(splitPayment.cheque) || 0;
     const totalPayment = receivedAmount;
-    
+
     const paymentDistribution: Array<{
       invoiceId?: number;
       invoiceNumber?: string;
@@ -524,97 +509,112 @@ export default function CustomerPayment() {
       isOnAccount: boolean;
       paymentMode: string;
     }> = [];
-    
-    // Create a copy of invoices with their balances
-    const invoiceBalances = new Map<number, { balance: number, invoice: any }>();
-    selectedInvoices.forEach(inv => {
-      invoiceBalances.set(inv.id, { balance: inv.balance, invoice: inv });
-    });
-    
-    let remainingCash = cashAmount;
-    let remainingCard = cardAmount;
-    
-    // Process each invoice one by one, fully paying with one payment method
-    // Invoices are sorted by date (newest first), so we pay newest invoices first
-    for (const inv of selectedInvoices) {
-      const invoiceData = invoiceBalances.get(inv.id);
-      if (!invoiceData) continue;
-      
-      const { balance: currentBalance, invoice } = invoiceData;
-      
-      // Skip if invoice is already paid or no payment left
-      if (currentBalance <= 0) continue;
-      
-      // Try to pay with cash first if available
-      if (remainingCash > 0) {
-        const paymentAmount = Math.min(remainingCash, currentBalance);
-        if (paymentAmount > 0) {
-          paymentDistribution.push({
-            invoiceId: invoice.id,
-            invoiceNumber: invoice.invoiceNumber,
-            amount: Number(paymentAmount.toFixed(2)),
-            isOnAccount: false,
-            paymentMode: 'cash'
-          });
-          remainingCash = Number((remainingCash - paymentAmount).toFixed(2));
-          invoiceData.balance = Number((currentBalance - paymentAmount).toFixed(2));
-          
-          // If invoice is fully paid with cash, move to next invoice
-          if (invoiceData.balance <= 0) {
-            continue;
-          }
-        }
-      }
-      
-      // If still balance left, try to pay with card
-      if (invoiceData.balance > 0 && remainingCard > 0) {
-        const paymentAmount = Math.min(remainingCard, invoiceData.balance);
-        if (paymentAmount > 0) {
-          paymentDistribution.push({
-            invoiceId: invoice.id,
-            invoiceNumber: invoice.invoiceNumber,
-            amount: Number(paymentAmount.toFixed(2)),
-            isOnAccount: false,
-            paymentMode: 'bank'
-          });
-          remainingCard = Number((remainingCard - paymentAmount).toFixed(2));
-          invoiceData.balance = Number((invoiceData.balance - paymentAmount).toFixed(2));
-        }
+
+    // Available payment methods in order of preference
+    let remainingPayments = [
+      { mode: 'cash', amount: cashAmount },
+      { mode: 'bank', amount: cardAmount },
+      { mode: 'bank_transfer', amount: bankTransferAmount },
+      { mode: 'cheque', amount: chequeAmount }
+    ].filter(p => p.amount > 0);
+
+    // Sequential payment logic: Handle credit invoices and positive invoices together
+    // Step 1: Separate credit and positive invoices
+    let totalCredits = 0;
+    let creditInvoices = [];
+    let positiveInvoices = [];
+
+    for (const invoice of selectedInvoices) {
+      if (invoice.balance < 0) {
+        creditInvoices.push(invoice);
+        totalCredits += Math.abs(invoice.balance);
+      } else if (invoice.balance > 0) {
+        positiveInvoices.push(invoice);
       }
     }
-    
-    // Allocate remaining payment methods to on-account payments
-    // On-account payments are processed AFTER all invoices are fully paid
-    let remainingOnAccount = onAccountAmount;
-    if (remainingOnAccount > 0) {
-      // Prefer cash for on-account if available, otherwise use card
-      if (remainingCash > 0) {
-        const onAccountPayment = Math.min(remainingCash, remainingOnAccount);
+
+    // Step 2: Apply credits to positive invoices first, then use payment methods
+    let remainingCredit = totalCredits;
+
+    for (const invoice of positiveInvoices) {
+      let invoiceBalance = invoice.balance;
+      let totalPaymentForThisInvoice = 0;
+
+      // First, apply available credit to this invoice
+      if (remainingCredit > 0) {
+        const creditToApply = Math.min(remainingCredit, invoiceBalance);
+        if (creditToApply > 0) {
+          totalPaymentForThisInvoice += creditToApply;
+          invoiceBalance -= creditToApply;
+          remainingCredit -= creditToApply;
+        }
+      }
+
+      // Then, pay remaining balance with available payment methods
+      for (const payment of remainingPayments) {
+        if (payment.amount <= 0 || invoiceBalance <= 0) continue;
+
+        const paymentAmount = Math.min(payment.amount, invoiceBalance);
+        if (paymentAmount > 0) {
+          totalPaymentForThisInvoice += paymentAmount;
+          payment.amount = Number((payment.amount - paymentAmount).toFixed(2));
+          invoiceBalance = Number((invoiceBalance - paymentAmount).toFixed(2));
+        }
+      }
+
+      // Create a single payment record for this invoice (combining credit + cash payment)
+      if (totalPaymentForThisInvoice > 0) {
+        // Find the primary payment mode used
+        const primaryMode = remainingPayments.find(p => {
+          const originalAmount = p.mode === 'cash' ? (parseFloat(splitPayment.cash) || 0) :
+            p.mode === 'bank' ? (parseFloat(splitPayment.card) || 0) :
+              p.mode === 'bank_transfer' ? (parseFloat(splitPayment.bankTransfer) || 0) :
+                p.mode === 'cheque' ? (parseFloat(splitPayment.cheque) || 0) : 0;
+          return originalAmount > p.amount; // This payment method was used
+        })?.mode || 'cash';
+
+        paymentDistribution.push({
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: Number(totalPaymentForThisInvoice.toFixed(2)),
+          isOnAccount: false,
+          paymentMode: primaryMode
+        });
+      }
+    }
+
+    // Step 3: Create payment records for credit invoices (for audit trail)
+    for (const invoice of creditInvoices) {
+      paymentDistribution.push({
+        invoiceId: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: Number(invoice.balance.toFixed(2)), // Negative amount
+        isOnAccount: false,
+        paymentMode: 'cash' // Default mode for credit application
+      });
+    }
+
+    // Handle on-account payment with remaining amounts
+    if (onAccountAmount > 0) {
+      let remainingOnAccount = onAccountAmount;
+
+      for (const payment of remainingPayments) {
+        if (payment.amount <= 0 || remainingOnAccount <= 0) continue;
+
+        const onAccountPayment = Math.min(payment.amount, remainingOnAccount);
         if (onAccountPayment > 0) {
           paymentDistribution.push({
             amount: Number(onAccountPayment.toFixed(2)),
             isOnAccount: true,
-            paymentMode: 'cash'
+            paymentMode: payment.mode
           });
-          remainingCash = Number((remainingCash - onAccountPayment).toFixed(2));
-          remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
-        }
-      } 
-      // Only use card for on-account if there's no cash left
-      else if (remainingCard > 0) {
-        const onAccountPayment = Math.min(remainingCard, remainingOnAccount);
-        if (onAccountPayment > 0) {
-          paymentDistribution.push({
-            amount: Number(onAccountPayment.toFixed(2)),
-            isOnAccount: true,
-            paymentMode: 'bank'
-          });
-          remainingCard = Number((remainingCard - onAccountPayment).toFixed(2));
+
+          payment.amount = Number((payment.amount - onAccountPayment).toFixed(2));
           remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
         }
       }
     }
-    
+
     // Build payment payload
     const paymentPayload = {
       customerId: parseInt(selectedCustomerId),
@@ -636,11 +636,20 @@ export default function CustomerPayment() {
         }))
     };
 
-
-    createPaymentMutation.mutate(paymentPayload);
+    if (isEditMode && editingPayment) {
+      // For edit mode, add the batch ID and use update mutation
+      const editPayload = {
+        ...paymentPayload,
+        batchId: (editingPayment as any).batchId
+      };
+      updatePaymentMutation.mutate(editPayload);
+    } else {
+      // For new payments, use create mutation
+      createPaymentMutation.mutate(paymentPayload);
+    }
   };
 
-  const handleEditPayment = (batchPayment: any) => {
+  const handleEditPayment = async (batchPayment: any) => {
     setEditingPayment(batchPayment);
     setReceivedAmount(batchPayment.totalAmount);
     setPaymentDate(new Date(batchPayment.paymentDate));
@@ -654,8 +663,38 @@ export default function CustomerPayment() {
       cheque: batchPayment.chequeAmount ? batchPayment.chequeAmount.toString() : ""
     });
 
-    // Clear any selected invoices when editing
-    setSelectedInvoiceIds(new Set());
+    // Fetch the original payment details to get invoice IDs
+    try {
+      const batchDetails = await apiRequest("GET", `/api/payments/batch/${batchPayment.batchId}`);
+      const invoiceIds = new Set<number>();
+
+      // Extract invoice IDs and on-account amounts from the batch payments
+      let totalOnAccount = 0;
+      
+      batchDetails.payments?.forEach((payment: any) => {
+        if (payment.invoiceId && payment.invoiceNumber !== 'On Account') {
+          // Use the invoiceId directly from the payment
+          invoiceIds.add(payment.invoiceId);
+          console.log(`[EDIT DEBUG] Added invoice ID ${payment.invoiceId} from payment`);
+        } else if (payment.invoiceNumber === 'On Account' || !payment.invoiceId) {
+          // This is an on-account payment
+          totalOnAccount += parseFloat(payment.amount || 0);
+          console.log(`[EDIT DEBUG] Added on-account amount: ${payment.amount}`);
+        }
+      });
+      
+      console.log(`[EDIT DEBUG] Final invoice IDs:`, Array.from(invoiceIds));
+      console.log(`[EDIT DEBUG] Final on-account amount:`, totalOnAccount);
+
+      setSelectedInvoiceIds(invoiceIds);
+      setOnAccountAmount(totalOnAccount);
+    } catch (error) {
+      console.error('Failed to fetch batch details for editing:', error);
+      // Fallback: clear selected invoices but keep the payment amount
+      setSelectedInvoiceIds(new Set());
+      setOnAccountAmount(0);
+    }
+
     setInvoicePaymentModes(new Map());
     setIsEditing(true);
 
@@ -671,7 +710,14 @@ export default function CustomerPayment() {
     setSelectedInvoiceIds(new Set());
     setInvoicePaymentModes(new Map());
     setInvoicePaymentConfigs(new Map());
+    setOnAccountAmount(0);
     resetSplitPayment();
+  };
+
+  const handleDeletePayment = (batchId: number) => {
+    if (window.confirm('Are you sure you want to delete this payment? This will revert all related transactions.')) {
+      deletePaymentMutation.mutate(batchId);
+    }
   };
 
   const handlePaymentSubmit = () => {
@@ -681,7 +727,7 @@ export default function CustomerPayment() {
         const isToday = format(new Date(editingPayment.paymentDate), 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
         toast({
           title: "Permission Denied",
-          description: isToday 
+          description: isToday
             ? "You don't have permission to edit payments for today"
             : "You don't have permission to edit past date payments",
           variant: "destructive",
@@ -689,15 +735,8 @@ export default function CustomerPayment() {
         return;
       }
 
-      // Handle update
-      const paymentData = {
-        batchId: (editingPayment as any).batchId,
-        amount: receivedAmount,
-        paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
-        remarks: remarks,
-        splitPayment: getSplitPaymentNumbers()
-      };
-      updatePaymentMutation.mutate(paymentData);
+      // Use the same sequential payment distribution logic for editing
+      handleUnifiedPaymentSubmit(true); // Pass true to indicate this is an edit
       return;
     }
 
@@ -736,23 +775,23 @@ export default function CustomerPayment() {
 
     try {
       const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
-      
+
       // Generate PDF data for email attachment
       const doc = new jsPDF();
-      
+
       // Add company header
       doc.setFontSize(16);
       doc.text('CUSTOMER PAYMENT HISTORY', 105, 20, { align: 'center' });
-      
+
       doc.setFontSize(12);
       doc.text('TROPIFRUIT UK LTD', 105, 30, { align: 'center' });
       doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 105, 40, { align: 'center' });
-      
+
       // Add customer info
       doc.setFontSize(10);
       doc.text(`Customer: ${selectedCustomer?.customer_name || 'Unknown'}`, 20, 55);
       doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 65);
-      
+
       // Prepare table data
       const tableData = groupedPaymentHistory.map((batch: any) => [
         batch.batchId.toString(),
@@ -767,7 +806,7 @@ export default function CustomerPayment() {
         `£${batch.totalAmount.toFixed(2)}`,
         batch.remarks || '-'
       ]);
-      
+
       // Add table
       autoTable(doc, {
         head: [['Payment ID', 'Date', 'Invoice No.', 'Payment Mode', 'Amount', 'Remarks']],
@@ -800,17 +839,17 @@ export default function CustomerPayment() {
         }
       });
 
-      toast({ 
-        title: "Success", 
-        description: "Payment history emailed successfully" 
+      toast({
+        title: "Success",
+        description: "Payment history emailed successfully"
       });
       setEmailAddress(""); // Reset email field after successful send
     } catch (error) {
       console.error('Error sending email:', error);
-      toast({ 
-        title: "Error", 
-        description: "Failed to send email. Please try again.", 
-        variant: "destructive" 
+      toast({
+        title: "Error",
+        description: "Failed to send email. Please try again.",
+        variant: "destructive"
       });
     }
   };
@@ -818,23 +857,23 @@ export default function CustomerPayment() {
   // Export functions
   const handlePDF = () => {
     if (groupedPaymentHistory.length === 0) return;
-    
+
     const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
     const doc = new jsPDF();
-    
+
     // Add company header
     doc.setFontSize(16);
     doc.text('CUSTOMER PAYMENT HISTORY', 105, 20, { align: 'center' });
-    
+
     doc.setFontSize(12);
     doc.text('TROPIFRUIT UK LTD', 105, 30, { align: 'center' });
     doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 105, 40, { align: 'center' });
-    
+
     // Add customer info
     doc.setFontSize(10);
     doc.text(`Customer: ${selectedCustomer?.customer_name || 'Unknown'}`, 20, 55);
     doc.text(`Generated: ${format(new Date(), "dd/MM/yyyy HH:mm")}`, 20, 65);
-    
+
     // Prepare table data
     const tableData = groupedPaymentHistory.map((batch: any) => [
       batch.batchId.toString(),
@@ -849,7 +888,7 @@ export default function CustomerPayment() {
       `£${batch.totalAmount.toFixed(2)}`,
       batch.remarks || '-'
     ]);
-    
+
     // Add table
     autoTable(doc, {
       head: [['Payment ID', 'Date', 'Invoice No.', 'Payment Mode', 'Amount', 'Remarks']],
@@ -858,19 +897,19 @@ export default function CustomerPayment() {
       styles: { fontSize: 8 },
       headStyles: { fillColor: [240, 240, 240] },
     });
-    
+
     // Save PDF
     doc.save(`Payment_History_${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Customer'}_${format(new Date(), "yyyy-MM-dd")}.pdf`);
   };
 
   const handleExcel = () => {
     if (groupedPaymentHistory.length === 0) return;
-    
+
     const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
-    
+
     // Create workbook
     const wb = XLSX.utils.book_new();
-    
+
     // Add data sheet
     const ws = XLSX.utils.json_to_sheet(groupedPaymentHistory.map((batch: any) => ({
       'Payment ID': batch.batchId,
@@ -883,16 +922,16 @@ export default function CustomerPayment() {
       'Total Amount': batch.totalAmount.toFixed(2),
       'Remarks': batch.remarks || '-'
     })));
-    
+
     XLSX.utils.book_append_sheet(wb, ws, 'Payment History');
-    
+
     // Save file
     XLSX.writeFile(wb, `Payment_History_${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Customer'}_${format(new Date(), "yyyy-MM-dd")}.xlsx`);
   };
 
   const handleCopy = () => {
     if (groupedPaymentHistory.length === 0) return;
-    
+
     const headers = ['Payment ID', 'Date', 'Invoice No.', 'Payment Mode', 'Amount', 'Remarks'];
     const rows = groupedPaymentHistory.map((batch: any) => [
       batch.batchId,
@@ -907,9 +946,9 @@ export default function CustomerPayment() {
       `£${batch.totalAmount.toFixed(2)}`,
       batch.remarks || '-'
     ]);
-    
+
     const csvContent = [headers, ...rows].map(row => row.join('\t')).join('\n');
-    
+
     navigator.clipboard.writeText(csvContent).then(() => {
       toast({ title: "Success", description: "Payment history copied to clipboard" });
     }).catch(() => {
@@ -919,7 +958,7 @@ export default function CustomerPayment() {
 
   const handlePrint = () => {
     if (groupedPaymentHistory.length === 0) return;
-    
+
     const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
@@ -933,25 +972,25 @@ export default function CustomerPayment() {
       printWindow.document.write('.customer-info{margin-bottom:15px;font-weight:bold;}');
       printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
-      
+
       // Add header
       printWindow.document.write('<div class="header">');
       printWindow.document.write('<h2>CUSTOMER PAYMENT HISTORY</h2>');
       printWindow.document.write('<p>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ</p>');
       printWindow.document.write('</div>');
-      
+
       // Add customer info
       printWindow.document.write('<div class="customer-info">');
       printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomer?.customer_name || 'Unknown'}<br>`);
       printWindow.document.write(`<strong>Generated:</strong> ${format(new Date(), "dd/MM/yyyy HH:mm")}`);
       printWindow.document.write('</div>');
-      
+
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
       printWindow.document.write('<th>Payment ID</th><th>Date</th><th>Invoice No.</th><th>Payment Mode</th><th>Amount</th><th>Remarks</th>');
       printWindow.document.write('</tr></thead><tbody>');
-      
+
       groupedPaymentHistory.forEach((batch: any) => {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${batch.batchId}</td>`);
@@ -968,7 +1007,7 @@ export default function CustomerPayment() {
         printWindow.document.write(`<td>${batch.remarks || '-'}</td>`);
         printWindow.document.write('</tr>');
       });
-      
+
       printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
@@ -1151,7 +1190,7 @@ export default function CustomerPayment() {
                           const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                           toast({
                             title: "Permission Denied",
-                            description: isToday 
+                            description: isToday
                               ? "You don't have permission to create payments for today"
                               : "You don't have permission to select past dates",
                             variant: "destructive",
@@ -1178,13 +1217,13 @@ export default function CustomerPayment() {
               </div>
 
               <div>
-                <Label htmlFor="received-amount">Received Amount:</Label>
+                <Label htmlFor="received-amount">Split Payment Amount:</Label>
                 <Input
                   id="received-amount"
                   type="number"
                   value={receivedAmount}
                   onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)}
-                  placeholder="Enter amount (negative for credit invoices)"
+                  placeholder="Enter split payment amount (cash/card/etc.)"
                   step="0.01"
                 />
                 {receivedAmount < 0 && (
@@ -1211,15 +1250,27 @@ export default function CustomerPayment() {
                 <div className="p-2 border rounded bg-gray-50">
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span>Total Amount:</span>
+                      <span>Split Payment Amount:</span>
                       <span className="font-semibold">£{receivedAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>On-Account Amount:</span>
+                      <span className="font-semibold">£{onAccountAmount.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Split Payment Total:</span>
                       <span className="font-semibold">£{((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0)).toFixed(2)}</span>
                     </div>
+                    <div className="flex justify-between text-xs">
+                      <span>Total Payment Amount:</span>
+                      <span className="font-semibold text-blue-600">
+                        £{(((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0)) + onAccountAmount).toFixed(2)}
+                      </span>
+                    </div>
                     <div className="text-xs text-gray-500">
-                      {receivedAmount > 0 ? 'Ready to process payment' : 'Enter payment details'}
+                      {Math.abs(receivedAmount - ((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0))) <= 0.01
+                        ? 'Split payment amounts match received amount'
+                        : 'Received amount should equal split payment total'}
                     </div>
                   </div>
                 </div>
@@ -1339,7 +1390,7 @@ export default function CustomerPayment() {
                 )}
               </TableBody>
             </Table>
-            
+
             {/* Summary Row */}
             {displayedInvoices.length > 0 && (
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
@@ -1475,6 +1526,36 @@ export default function CustomerPayment() {
                               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                                 <path d="m15 5 4 4" />
+                              </svg>
+                            </Button>
+                          )}
+                          {canEditPayment(batch.paymentDate) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeletePayment(batch.batchId)}
+                              title="Delete Payment"
+                              className="text-red-600 hover:text-red-800"
+                              disabled={deletePaymentMutation.isPending}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 6h18" />
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                              </svg>
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled
+                              title="You don't have permission to delete this payment"
+                              className="text-gray-400 cursor-not-allowed"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M3 6h18" />
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
                               </svg>
                             </Button>
                           )}
