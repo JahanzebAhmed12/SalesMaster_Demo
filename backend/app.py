@@ -5191,6 +5191,51 @@ def get_purchase_invoice_by_purchase_id(purchase_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/purchase-invoices/<int:invoice_id>', methods=['DELETE'])
+@jwt_required()
+def delete_purchase_invoice(invoice_id):
+    """Delete a purchase invoice and reverse all stock updates"""
+    try:
+        # Get the invoice
+        invoice = PurchaseInvoice.query.get_or_404(invoice_id)
+        
+        # Get all invoice items to reverse stock updates
+        invoice_items = PurchaseInvoiceItem.query.filter_by(invoice_id=invoice_id).all()
+        
+        # Reverse stock updates for each item
+        for item in invoice_items:
+            # Reverse the stock update (negative quantity to reduce stock)
+            success, result = update_product_stock(
+                product_id=item.product_id,
+                product_type='regular',  # Default assumption, same as create
+                quantity_change=-item.quantity,  # Negative to reverse the purchase
+                movement_type='purchase_reversal',
+                reference_id=invoice.id,
+                reference_type='purchase_invoice_delete',
+                remarks=f"Reversed purchase invoice {invoice_id} deletion",
+                user_id=None  # TODO: Get user_id from JWT if needed
+            )
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock reversal failed for product {item.product_id}: {result}"}), 400
+        
+        # Delete invoice items first (foreign key constraint)
+        PurchaseInvoiceItem.query.filter_by(invoice_id=invoice_id).delete()
+        
+        # Delete the invoice
+        db.session.delete(invoice)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": f"Purchase invoice {invoice_id} deleted successfully and stock updated"
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to delete purchase invoice: {str(e)}"}), 500
+
 @app.route('/api/purchase-invoices/<int:invoice_id>', methods=['PUT'])
 @jwt_required()
 def update_purchase_invoice(invoice_id):
