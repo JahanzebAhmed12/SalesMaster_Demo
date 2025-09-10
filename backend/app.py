@@ -4514,35 +4514,49 @@ def daily_book_sales():
     result = []
     for idx, sale in enumerate(sales, 1):
         boxes = sum(item.quantity for item in sale.items)
-        # Only include payments made via daily book sales (not customer payment page)
-        daily_book_payments = [p for p in sale.payments if not p.batch_id]  # batch_id indicates customer payment page
+        # Check if invoice was paid via customer payment page (has batch_id payments)
+        customer_payment_payments = [p for p in sale.payments if p.batch_id]
+        daily_book_payments = [p for p in sale.payments if not p.batch_id]
         
-        cash_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() == 'cash')
-        bank_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() in ['bank', 'card'])
-        bank_transfer_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() == 'bank_transfer')
-        cheque_paid = sum(float(p.amount) for p in daily_book_payments if p.payment_mode and p.payment_mode.lower() == 'cheque')
+        # For current date invoices paid via customer payment, always show in accounts
+        is_current_date = sale.date.date() == datetime.now().date()
+        is_paid_via_customer_payment = len(customer_payment_payments) > 0
         
-        # Calculate account amount and credit amount based on total_amount sign
         total_amount = float(sale.total_amount)
         
-        if sale.customer_type and sale.customer_type.lower() == 'account':
+        if is_current_date and is_paid_via_customer_payment:
+            # Current date invoices paid via customer payment always go to accounts
             if total_amount >= 0:
-                # Positive amount goes to accounts column
                 account_amount = total_amount
                 credit_amount = 0
             else:
-                # Negative amount goes to credit column
                 account_amount = 0
                 credit_amount = abs(total_amount)
+            cash_amount = 0
+            bank_amount = 0
+            bank_transfer_amount = 0
+            cheque_amount = 0
         else:
-            account_amount = 0
-            credit_amount = 0
-        
-
-        
-        bank_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank' else 0
-        bank_transfer_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'bank_transfer' else 0
-        cheque_amount = float(sale.total_amount) if sale.customer_type and sale.customer_type.lower() == 'cheque' else 0
+            # Use customer_type to determine category (for non-customer-payment invoices or past dates)
+            if sale.customer_type and sale.customer_type.lower() == 'account':
+                if total_amount >= 0:
+                    account_amount = total_amount
+                    credit_amount = 0
+                else:
+                    account_amount = 0
+                    credit_amount = abs(total_amount)
+                cash_amount = 0
+                bank_amount = 0
+                bank_transfer_amount = 0
+                cheque_amount = 0
+            else:
+                account_amount = 0
+                credit_amount = 0
+                # Calculate payment amounts based on customer_type
+                cash_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'cash' else 0
+                bank_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'bank' else 0
+                bank_transfer_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'bank_transfer' else 0
+                cheque_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'cheque' else 0
         
         # Show all customers - removed gate number restriction
         customer_display_name = ''
@@ -4581,13 +4595,10 @@ def daily_book_sales():
             'customerId': sale.customer_id,
             'vat': float(sale.vat_amount),
             'amount': account_amount,
-            'cash': cash_paid,
-            'bank': bank_paid,
-            'bankTransfer': bank_transfer_paid,
-            'cheque': cheque_paid,
-            'bankAmount': bank_amount,
-            'bankTransferAmount': bank_transfer_amount,
-            'chequeAmount': cheque_amount,
+            'cash': cash_amount,
+            'bank': bank_amount,
+            'bankTransfer': bank_transfer_amount,
+            'cheque': cheque_amount,
             'credit': credit_amount,
             'hasPayments': has_payments,
             'paymentSource': payment_source,
@@ -9835,33 +9846,31 @@ def daily_summary_report():
         # Debug logging for this sale
         print(f"[DEBUG] Sale {sale.invoice_number}: {len(sale_payments)} payments, customer_type: {sale.customer_type}")
         
-        # Check if any payments were made via customer payment page
-        is_paid_via_customer_payment = any(
-            payment.payment_type == 'direct' and 
-            payment.remarks and 
-            'Invoice payment via customer payment page' in payment.remarks
-            for payment in sale_payments
-        )
+        # Check if any payments were made via customer payment page (have batch_id)
+        customer_payment_payments = [p for p in sale_payments if p.batch_id]
+        is_paid_via_customer_payment = len(customer_payment_payments) > 0
         
-        if is_paid_via_customer_payment:
-            # If paid via customer payment page, show total amount in account column
+        # For current date invoices paid via customer payment, always show in account column
+        is_current_date = True  # We're already filtering by report_date
+        
+        if is_current_date and is_paid_via_customer_payment:
+            # Current date invoices paid via customer payment always go to accounts
             account_amount = float(sale.total_amount or 0)
             print(f"[DEBUG] Sale {sale.invoice_number} paid via customer payment page - showing in account column")
         else:
-            # Regular payment processing
-            for payment in sale_payments:
-                if payment.payment_mode == 'cash':
-                    cash_amount += float(payment.amount)
-                elif payment.payment_mode == 'bank':  # Card payments are stored as 'bank' in backend
-                    card_amount += float(payment.amount)
-                elif payment.payment_mode == 'bank_transfer':
-                    bank_transfer_amount += float(payment.amount)
-                elif payment.payment_mode == 'cheque':
-                    cheque_amount += float(payment.amount)
-            
-            # If it's an account sale and no payments, add to account total
-            if sale.customer_type == 'account' and not sale_payments:
+            # Regular payment processing based on customer_type
+            if sale.customer_type == 'account':
                 account_amount = float(sale.total_amount or 0)
+            else:
+                # For non-account sales, show based on customer_type
+                if sale.customer_type == 'cash':
+                    cash_amount = float(sale.total_amount or 0)
+                elif sale.customer_type == 'bank':
+                    card_amount = float(sale.total_amount or 0)
+                elif sale.customer_type == 'bank_transfer':
+                    bank_transfer_amount = float(sale.total_amount or 0)
+                elif sale.customer_type == 'cheque':
+                    cheque_amount = float(sale.total_amount or 0)
         
         # Check for negative quantities in sale items or negative total amount
         negative_items = db.session.query(SaleItem).filter(
@@ -13053,6 +13062,73 @@ def update_email_config():
     global mail
     mail = init_mail(current_app)
     return jsonify({'success': True})
+
+@app.route('/api/email-config', methods=['GET'])
+@jwt_required()
+def get_email_configuration():
+    """Get current email configuration (without sensitive data)"""
+    try:
+        from mail_utils import load_email_config
+        
+        config = {
+            "server": app.config.get('MAIL_SERVER', 'Not configured'),
+            "port": app.config.get('MAIL_PORT', 'Not configured'),
+            "use_tls": app.config.get('MAIL_USE_TLS', False),
+            "use_ssl": app.config.get('MAIL_USE_SSL', False),
+            "username": app.config.get('MAIL_USERNAME', 'Not configured'),
+            "default_sender": app.config.get('MAIL_DEFAULT_SENDER', 'Not configured'),
+            "config_source": "config_file" if load_email_config() else "environment_variables"
+        }
+        
+        return jsonify(config)
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to get email configuration: {str(e)}"}), 500
+
+@app.route('/api/test-email', methods=['POST'])
+@jwt_required()
+def test_email_configuration():
+    """Test email configuration by sending a simple test email"""
+    try:
+        data = request.get_json()
+        test_email = data.get('email')
+        
+        if not test_email:
+            return jsonify({"error": "Email address required"}), 400
+        
+        # Import required modules
+        from flask_mail import Message
+        import re
+        
+        # Validate email
+        email_regex = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
+        if not re.match(email_regex, test_email):
+            return jsonify({"error": "Invalid email address"}), 400
+        
+        # Check if mail is initialized
+        if not mail:
+            return jsonify({"error": "Email system not initialized"}), 500
+        
+        # Send test email
+        msg = Message(
+            subject="Test Email - Sales Master Dashboard",
+            sender=mail.default_sender,
+            recipients=[test_email]
+        )
+        msg.body = "This is a test email from Sales Master Dashboard. If you receive this, your email configuration is working correctly."
+        
+        mail.send(msg)
+        
+        return jsonify({
+            "success": True,
+            "message": f"Test email sent successfully to {test_email}"
+        })
+        
+    except Exception as e:
+        print(f"[EMAIL TEST ERROR] {str(e)}")
+        import traceback
+        print(f"[EMAIL TEST ERROR] Full traceback: {traceback.format_exc()}")
+        return jsonify({"error": f"Failed to send test email: {str(e)}"}), 500
 
 @app.route('/api/send-email', methods=['POST'])
 @jwt_required()

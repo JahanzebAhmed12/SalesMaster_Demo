@@ -20,24 +20,37 @@ def save_email_config(config):
         json.dump(config, f, indent=2)
 
 def init_mail(app):
-    email_config = load_email_config()
-    if email_config:
-        app.config['MAIL_SERVER'] = email_config.get('MAIL_SERVER', 'smtp.gmail.com')
-        app.config['MAIL_PORT'] = int(email_config.get('MAIL_PORT', 587))
-        app.config['MAIL_USE_TLS'] = email_config.get('MAIL_USE_TLS', True)
-        app.config['MAIL_USE_SSL'] = email_config.get('MAIL_USE_SSL', False)
-        app.config['MAIL_USERNAME'] = email_config.get('MAIL_EMAIL')
-        app.config['MAIL_PASSWORD'] = email_config.get('MAIL_PASSWORD')
-        app.config['MAIL_DEFAULT_SENDER'] = email_config.get('MAIL_DEFAULT_SENDER', email_config.get('MAIL_EMAIL'))
-    else:
-        app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-        app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-        app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
-        app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'false').lower() == 'true'
-        app.config['MAIL_USERNAME'] = os.getenv('MAIL_EMAIL')
-        app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-        app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', app.config.get('MAIL_USERNAME'))
-    return Mail(app)
+    try:
+        email_config = load_email_config()
+        if email_config:
+            print(f"[EMAIL CONFIG] Using config file: {email_config.get('MAIL_SERVER', 'smtp.gmail.com')}")
+            app.config['MAIL_SERVER'] = email_config.get('MAIL_SERVER', 'smtp.gmail.com')
+            app.config['MAIL_PORT'] = int(email_config.get('MAIL_PORT', 587))
+            app.config['MAIL_USE_TLS'] = email_config.get('MAIL_USE_TLS', True)
+            app.config['MAIL_USE_SSL'] = email_config.get('MAIL_USE_SSL', False)
+            app.config['MAIL_USERNAME'] = email_config.get('MAIL_EMAIL')
+            app.config['MAIL_PASSWORD'] = email_config.get('MAIL_PASSWORD')
+            app.config['MAIL_DEFAULT_SENDER'] = email_config.get('MAIL_DEFAULT_SENDER', email_config.get('MAIL_EMAIL'))
+        else:
+            print(f"[EMAIL CONFIG] Using environment variables: {os.getenv('MAIL_SERVER', 'smtp.gmail.com')}")
+            app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+            app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
+            app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
+            app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'false').lower() == 'true'
+            app.config['MAIL_USERNAME'] = os.getenv('MAIL_EMAIL')
+            app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+            app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', app.config.get('MAIL_USERNAME'))
+        
+        # Log configuration (without password)
+        print(f"[EMAIL CONFIG] Server: {app.config.get('MAIL_SERVER')}:{app.config.get('MAIL_PORT')}")
+        print(f"[EMAIL CONFIG] TLS: {app.config.get('MAIL_USE_TLS')}, SSL: {app.config.get('MAIL_USE_SSL')}")
+        print(f"[EMAIL CONFIG] Username: {app.config.get('MAIL_USERNAME')}")
+        print(f"[EMAIL CONFIG] Default Sender: {app.config.get('MAIL_DEFAULT_SENDER')}")
+        
+        return Mail(app)
+    except Exception as e:
+        print(f"[EMAIL CONFIG ERROR] Failed to initialize mail: {str(e)}")
+        return None
 
 def render_invoice_html(sale, customer, company=None, now=None, logo_path=None, invoice_footer=None):
     if company is None:
@@ -114,26 +127,49 @@ def generate_history_pdf(html_content):
     return pdf.read()
 
 def send_invoice_email(mail, recipient, sale, customer):
-    # Get company details
-    company = Company.query.first()
-    from models import SystemSettings
-    settings = SystemSettings.query.first()
-    invoice_footer = settings.invoice_footer if settings and hasattr(settings, 'invoice_footer') else ''
-    # For email, use static URL for logo
-    html_content = render_invoice_html(sale, customer, company, logo_path='/static/printlogo.png', invoice_footer=invoice_footer)
-    # For PDF, use absolute file path for logo
-    static_dir = os.path.join(os.path.dirname(__file__), 'static')
-    logo_file_path = os.path.join(static_dir, 'printlogo.png')
-    pdf_html_content = render_invoice_html(sale, customer, company, logo_path=logo_file_path, invoice_footer=invoice_footer)
-    pdf_bytes = generate_invoice_pdf(pdf_html_content)
-    subject = f"Your Invoice #{sale.invoice_number}"
-    body = f"Dear Customer,\n\nPlease find attached your invoice #{sale.invoice_number}.\n\nThank you."
-    msg = Message(subject, recipients=[recipient], body=body, html=html_content)
+    try:
+        print(f"[EMAIL DEBUG] Sending invoice email to {recipient} for invoice {sale.invoice_number}")
+        
+        # Get company details
+        company = Company.query.first()
+        from models import SystemSettings
+        settings = SystemSettings.query.first()
+        invoice_footer = settings.invoice_footer if settings and hasattr(settings, 'invoice_footer') else ''
+        
+        # For email, use static URL for logo
+        html_content = render_invoice_html(sale, customer, company, logo_path='/static/printlogo.png', invoice_footer=invoice_footer)
+        
+        # For PDF, use absolute file path for logo
+        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        logo_file_path = os.path.join(static_dir, 'printlogo.png')
+        
+        # Check if logo file exists
+        if not os.path.exists(logo_file_path):
+            print(f"[EMAIL WARNING] Logo file not found at {logo_file_path}, using fallback")
+            logo_file_path = None
+        
+        pdf_html_content = render_invoice_html(sale, customer, company, logo_path=logo_file_path, invoice_footer=invoice_footer)
+        pdf_bytes = generate_invoice_pdf(pdf_html_content)
+        
+        subject = f"Your Invoice #{sale.invoice_number}"
+        body = f"Dear Customer,\n\nPlease find attached your invoice #{sale.invoice_number}.\n\nThank you."
+        msg = Message(subject, recipients=[recipient], body=body, html=html_content)
 
-    if pdf_bytes:
-        msg.attach(f"invoice_{sale.invoice_number}.pdf", "application/pdf", pdf_bytes)
-    
-    mail.send(msg)
+        if pdf_bytes:
+            msg.attach(f"invoice_{sale.invoice_number}.pdf", "application/pdf", pdf_bytes)
+            print(f"[EMAIL DEBUG] PDF attachment added for invoice {sale.invoice_number}")
+        else:
+            print(f"[EMAIL WARNING] Failed to generate PDF for invoice {sale.invoice_number}")
+        
+        mail.send(msg)
+        print(f"[EMAIL SUCCESS] Invoice email sent successfully to {recipient}")
+        return True
+        
+    except Exception as e:
+        print(f"[EMAIL ERROR] Failed to send invoice email to {recipient}: {str(e)}")
+        import traceback
+        print(f"[EMAIL ERROR] Full traceback: {traceback.format_exc()}")
+        return False
 
 def send_customer_statement_email(mail, recipient, customer, statement_data, from_date, to_date, statement_type="Full Statement"):
     """Send customer statement email with PDF attachment"""
