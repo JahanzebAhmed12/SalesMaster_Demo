@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { format } from "date-fns";
 
-interface BusinessDate {
+export interface BusinessDate {
   currentDate: string;
   nextDate: string;
   isNextDay: boolean;
@@ -15,31 +16,62 @@ export function useBusinessDate() {
     staleTime: 10000, // Consider data stale after 10 seconds
   });
 
-  const formatBusinessDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+  const getBusinessDate = (): Date | null => {
+    if (!data?.currentDate) return null;
+    const date = new Date(data.currentDate);
+    return isNaN(date.getTime()) ? null : date;
   };
 
-  const formatShortDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+  const formatBusinessDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return isNaN(date.getTime()) 
+        ? '' 
+        : date.toLocaleDateString('en-GB', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          });
+    } catch (error) {
+      console.error('Error formatting business date:', error);
+      return '';
+    }
+  };
+
+  const formatShortDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return isNaN(date.getTime())
+        ? ''
+        : format(date, 'dd/MM/yyyy');
+    } catch (error) {
+      console.error('Error formatting short date:', error);
+      return '';
+    }
+  };
+
+  const formatForApi = (date: Date | string | null | undefined): string => {
+    if (!date) return '';
+    try {
+      const d = date instanceof Date ? date : new Date(date);
+      return isNaN(d.getTime()) ? '' : format(d, 'yyyy-MM-dd');
+    } catch (error) {
+      console.error('Error formatting date for API:', error);
+      return '';
+    }
   };
 
   return {
-    businessDate: data,
+    businessDate: getBusinessDate(),
     currentDate: data?.currentDate,
     nextDate: data?.nextDate,
+    isNextDay: data?.isNextDay ?? false,
     isLoading,
     error,
     refetch,
     formatBusinessDate,
     formatShortDate,
+    formatForApi,
   };
 }

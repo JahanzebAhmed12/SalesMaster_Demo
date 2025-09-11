@@ -10,10 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Trash2, FileText, Download, Copy, Printer, Search, Save, Info, Loader2, Package, BarChart3, PoundSterling, TrendingUp } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import type { DumpEntry, InsertDumpEntry, Supplier } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -27,10 +28,27 @@ interface Product {
 }
 
 export default function Dumps() {
-  const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
-  const [toDate, setToDate] = useState<Date | undefined>(new Date());
+  // Get business date
+  const { businessDate } = useBusinessDate();
+  
+  // State
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
   const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
   const [productFilter, setProductFilter] = useState<string>("all");
+
+  // Initialize dates with business date when available
+  useEffect(() => {
+    if (businessDate) {
+      const businessDateObj = new Date(businessDate);
+      setFromDate(businessDateObj);
+      setToDate(businessDateObj);
+    } else {
+      const today = new Date();
+      setFromDate(today);
+      setToDate(today);
+    }
+  }, []);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
   const [newDump, setNewDump] = useState({

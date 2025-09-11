@@ -9,6 +9,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
+import { useBusinessDate } from '@/hooks/use-business-date';
 import PageLayout from '@/components/common/page-layout';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -27,15 +28,48 @@ interface SalesReportData {
 }
 
 export default function ProductSalesReport() {
-  const [fromDate, setFromDate] = useState<Date>();
-  const [toDate, setToDate] = useState<Date>();
+  // Initialize with current date, will be updated when businessDate loads
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [queryFromDate, setQueryFromDate] = useState<Date>();
   const [queryToDate, setQueryToDate] = useState<Date>();
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
+  
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
 
-  const formattedFromDate = queryFromDate ? format(queryFromDate, "yyyy-MM-dd") : undefined;
-  const formattedToDate = queryToDate ? format(queryToDate, "yyyy-MM-dd") : undefined;
+  // Update dates when business date changes
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        const businessDateObj = new Date(businessDate);
+        if (isNaN(businessDateObj.getTime())) {
+          console.error('Invalid business date:', businessDate);
+          return;
+        }
+        
+        const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
+        setFromDate(businessDateObj);
+        setToDate(businessDateObj);
+        setFilters(prev => ({
+          ...prev,
+          fromDate: formattedDate,
+          toDate: formattedDate
+        }));
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, []);
+
+
+  const formattedFromDate = queryFromDate ? format(queryFromDate, "yyyy-MM-dd") : '';
+  const formattedToDate = queryToDate ? format(queryToDate, "yyyy-MM-dd") : '';
 
   const { data: salesData = [], isLoading } = useQuery({
     queryKey: ['product-sales-report', formattedFromDate, formattedToDate],
@@ -70,11 +104,31 @@ export default function ProductSalesReport() {
 
   // Set default dates to today for both fromDate and toDate
   useEffect(() => {
-    const today = new Date();
-    setFromDate(today);
-    setToDate(today);
-    setQueryFromDate(today);
-    setQueryToDate(today);
+    const handleFromDateChange = (date: Date | undefined) => {
+      if (date) {
+        setFromDate(date);
+        setQueryFromDate(date);
+      }
+    };
+
+    const handleToDateChange = (date: Date | undefined) => {
+      if (date) {
+        setToDate(date);
+        setQueryToDate(date);
+      }
+    };
+
+    // Format date for display
+    const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'dd/MM/yyyy') => {
+      if (!date) return '';
+      try {
+        const d = date instanceof Date ? date : new Date(date);
+        return isNaN(d.getTime()) ? '' : format(d, formatStr);
+      } catch (error) {
+        console.error('Error formatting date:', error);
+        return '';
+      }
+    };
   }, []);
 
   // Auto search when both dates are set

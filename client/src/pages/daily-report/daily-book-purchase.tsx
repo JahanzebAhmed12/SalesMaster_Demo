@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,22 +26,80 @@ interface PurchaseEntry {
   slNo: number;
   date: string;
   supplier: string;
-  supplierId: number; // Add this line
+  supplierId: number; 
   invNo: number;
   invoiceAmt: number;
 }
 
 export default function DailyBookPurchase() {
   const { toast } = useToast();
+  
+  // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
 
   const [filters, setFilters] = useState({
     fromDate: format(new Date(), "yyyy-MM-dd"),
     toDate: format(new Date(), "yyyy-MM-dd"),
     search: "",
   });
+  
+  const handleFromDateChange = (date: Date | undefined) => {
+    if (date) {
+      const formattedDate = format(date, 'yyyy-MM-dd');
+      setFromDate(date);
+      setFilters(prev => ({ 
+        ...prev, 
+        fromDate: formattedDate 
+      }));
+    }
+  };
+
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date) {
+      const formattedDate = format(date, 'yyyy-MM-dd');
+      setToDate(date);
+      setFilters(prev => ({ 
+        ...prev, 
+        toDate: formattedDate 
+      }));
+    }
+  };
+
+  // Update dates when business date changes
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        const businessDateObj = new Date(businessDate);
+        if (isNaN(businessDateObj.getTime())) {
+          console.error('Invalid business date:', businessDate);
+          return;
+        }
+        
+        // Format the date for the API
+        const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
+        
+        // Update both the date states and filters
+        setFromDate(businessDateObj);
+        setToDate(businessDateObj);
+        setFilters(prev => ({
+          ...prev,
+          fromDate: formattedDate,
+          toDate: formattedDate
+        }));
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, [businessDate, isLoadingBusinessDate]);
 
   const [user, setUser] = useState<any>(null);
   const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);

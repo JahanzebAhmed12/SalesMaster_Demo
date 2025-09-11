@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -33,14 +34,45 @@ interface ProfitLossItem {
 }
 
 export default function ProfitLoss() {
+  // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
+  
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [trigger, setTrigger] = useState(0); // for manual search
   const tableRef = useRef<HTMLDivElement>(null);
   const [showProfit, setShowProfit] = useState(true);
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
+  
+  // Update dates when business date changes
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        const businessDateObj = new Date(businessDate);
+        if (isNaN(businessDateObj.getTime())) {
+          console.error('Invalid business date:', businessDate);
+          return;
+        }
+        
+        // Only update if dates are different to prevent unnecessary re-renders
+        if (businessDateObj.getTime() !== fromDate.getTime() || businessDateObj.getTime() !== toDate.getTime()) {
+          setFromDate(businessDateObj);
+          setToDate(businessDateObj);
+          setTrigger(prev => prev + 1); // Trigger a refresh of the data
+        }
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, []);
 
   // Fetch profit/loss data from backend
   const { data: profitData = [], isLoading, isError } = useQuery({
@@ -54,6 +86,8 @@ export default function ProfitLoss() {
       return apiRequest("GET", `/api/reports/profit-loss?${params.toString()}`);
     },
     enabled: !!fromDate && !!toDate,
+    staleTime: 5 * 60 * 1000, // 5 minutes before data is considered stale
+    refetchOnWindowFocus: false, // Don't refetch when window regains focus
   });
 
   const totals = {
@@ -72,8 +106,13 @@ export default function ProfitLoss() {
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
+  // Fetch settings once on component mount
   useEffect(() => {
-    apiRequest("GET", "/api/settings").then(settings => setShowProfit(settings.showProfit !== false));
+    const fetchSettings = async () => {
+      const settings = await apiRequest("GET", "/api/settings");
+      setShowProfit(settings.showProfit !== false);
+    };
+    fetchSettings();
   }, []);
 
   // Export handlers

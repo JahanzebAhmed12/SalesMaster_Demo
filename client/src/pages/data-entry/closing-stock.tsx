@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { isPastDate } from "@/lib/utils";
-
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 interface StockItem {
   id: number;
@@ -58,7 +58,17 @@ export default function ClosingStock() {
   
   // Backdate permissions
   const { canEditBackdate, canDeleteBackdate } = useBackdatePermissions();
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const { businessDate } = useBusinessDate();
+  const [selectedDate, setSelectedDate] = useState("");
+  
+  // Initialize with business date when available
+  useEffect(() => {
+    if (businessDate) {
+      setSelectedDate(format(new Date(businessDate), "yyyy-MM-dd"));
+    } else {
+      setSelectedDate(format(new Date(), "yyyy-MM-dd"));
+    }
+  }, []);
   const [addProductId, setAddProductId] = useState("");
   const [addQuantity, setAddQuantity] = useState("");
   const [editRowId, setEditRowId] = useState<number | null>(null);

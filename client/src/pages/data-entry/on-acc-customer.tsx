@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import PageLayout from "@/components/common/page-layout";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +26,24 @@ type PaymentWithBatch = Payment & {
 };
 
 export default function OnAccCustomer() {
+  const { currentDate: businessDate } = useBusinessDate();
   const [selectedCustomer, setSelectedCustomer] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
+
+  // Initialize dates with business date when available
+  useEffect(() => {
+    if (businessDate) {
+      const businessDateObj = new Date(businessDate);
+      setFromDate(businessDateObj);
+      setToDate(businessDateObj);
+    } else {
+      const today = new Date();
+      setFromDate(today);
+      setToDate(today);
+    }
+  }, [businessDate]);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [recordsPerPage, setRecordsPerPage] = useState("10");
   const [newPayment, setNewPayment] = useState<{
@@ -37,7 +53,7 @@ export default function OnAccCustomer() {
     remarks: string;
     saleId: number | null;
   }>({
-    paymentDate: new Date(),
+    paymentDate: businessDate ? new Date(businessDate) : new Date(),
     amount: 0,
     paymentMode: "CASH",
     remarks: "",

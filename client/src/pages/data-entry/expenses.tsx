@@ -92,7 +92,17 @@ export default function Expenses() {
     queryFn: () => apiRequest("GET", "/api/business-date"),
     enabled: dialogOpen, // Only fetch when dialog is open
   });
-
+  useEffect(() => {
+    if (businessDate) {
+      const businessDateObj = new Date(businessDate);
+      setFromDate(businessDateObj);
+      setToDate(businessDateObj);
+    } else {
+      const today = new Date();
+      setFromDate(today);
+      setToDate(today);
+    }
+  }, []);
   useEffect(() => {
     if (dialogOpen && businessDateData?.business_date) {
       setNewExpense((prev) => ({

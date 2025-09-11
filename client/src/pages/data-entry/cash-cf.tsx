@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,20 +12,34 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import React from "react";
 
 export default function CashCF() {
-  const [fromDate, setFromDate] = useState<Date>(new Date());
+  // Get business date
+  const { businessDate } = useBusinessDate();
+  
+  // State
+  const [fromDate, setFromDate] = useState<Date | undefined>();
   const [pounds, setPounds] = useState("");
   const [coins, setCoins] = useState("");
   const [justSaved, setJustSaved] = useState(false);
   const queryClient = useQueryClient();
+  
+  // Initialize date with business date when available
+  useEffect(() => {
+    if (businessDate) {
+      setFromDate(new Date(businessDate));
+    } else {
+      setFromDate(new Date());
+    }
+  }, []);
 
   // Fetch C/F for selected date
   const { data, isLoading, isError } = useQuery<{ id?: number; date?: string; pounds?: number; coins?: number; createdAt?: string }>({
     queryKey: ["cash-cf", fromDate],
     queryFn: async () => {
-      const dateStr = format(fromDate, "yyyy-MM-dd");
+      const dateStr = fromDate ? format(fromDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
       return apiRequest("GET", `/api/cash-cf?date=${dateStr}`);
     },
   });
@@ -86,7 +100,7 @@ export default function CashCF() {
   });
 
   const handleSave = () => {
-    if (pounds || coins) {
+    if ((pounds || coins) && fromDate) {
       saveMutation.mutate({
         date: format(fromDate, "yyyy-MM-dd"),
         pounds: pounds || "0",
@@ -96,7 +110,7 @@ export default function CashCF() {
   };
 
   const handleDelete = () => {
-    if (data && data.id) {
+    if (data && data.id && fromDate) {
       deleteMutation.mutate(format(fromDate, "yyyy-MM-dd"));
     }
   };

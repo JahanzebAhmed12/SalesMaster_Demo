@@ -26,18 +26,32 @@ import autoTable from 'jspdf-autotable';
 export default function Banking() {
   const { currentDate: businessDate } = useBusinessDate();
   const { user } = useAuth();
-  const [fromDate, setFromDate] = useState<Date>(new Date());
-  const [toDate, setToDate] = useState<Date>(new Date());
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
+
+  // Initialize dates with business date when available
+  React.useEffect(() => {
+    if (businessDate) {
+      const businessDateObj = new Date(businessDate);
+      setFromDate(businessDateObj);
+      setToDate(businessDateObj);
+    } else {
+      const today = new Date();
+      setFromDate(today);
+      setToDate(today);
+    }
+  }, []);
+
   const [newEntry, setNewEntry] = useState({
     date: businessDate ? new Date(businessDate) : new Date(),
     remarks: "",
     paymentType: "CASH",
     amount: 0,
     payingNumber: "",
-    bags: [{ number: "", payingNumber: "", amount: 0 }], // Array of bag objects with number, payingNumber and amount
+    bags: [{ number: "", payingNumber: "", amount: 0 }],
     chequeNumber: "",
-    bagNumber: "", // Bag number for CHEQUE payments
-    chequePayingNumber: "" // Paying number for CHEQUE payments
+    bagNumber: "",
+    chequePayingNumber: ""
   });
   const [emailAddress, setEmailAddress] = useState("");
   const queryClient = useQueryClient();

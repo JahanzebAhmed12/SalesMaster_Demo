@@ -4,8 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { FileText, Download, Copy, Printer } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { CalendarIcon, FileText, Download, Copy, Printer } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -33,11 +38,37 @@ interface SalesAnalysisResponse {
 }
 
 export default function SalesAnalysis() {
-  const today = new Date();
-  const [fromDate, setFromDate] = useState<Date>(today);
-  const [toDate, setToDate] = useState<Date>(today);
+  // Initialize with current date, will be updated when businessDate loads
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const tableRef = useRef<HTMLDivElement>(null);
+
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
+
+  // Update dates when business date changes
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        const businessDateObj = new Date(businessDate);
+        if (isNaN(businessDateObj.getTime())) {
+          console.error('Invalid business date:', businessDate);
+          return;
+        }
+        
+        // Update both the date states
+        setFromDate(businessDateObj);
+        setToDate(businessDateObj);
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, []);
 
   const { data: companyDetails } = useQuery<any>({
     queryKey: ['/api/company-details'],
@@ -49,7 +80,7 @@ export default function SalesAnalysis() {
     queryFn: () =>
       apiRequest(
         "GET",
-        `/api/reports/sales-analysis?fromDate=${fromDate.toISOString().slice(0, 10)}&toDate=${toDate.toISOString().slice(0, 10)}&search=${encodeURIComponent(searchTerm)}`
+        `/api/reports/sales-analysis?fromDate=${formatForApi(fromDate)}&toDate=${formatForApi(toDate)}&search=${encodeURIComponent(searchTerm)}`
       ),
     enabled: !!fromDate && !!toDate,
   });
@@ -58,11 +89,22 @@ export default function SalesAnalysis() {
     refetch();
   };
 
-  // Auto-search on mount
   useEffect(() => {
     handleSearch();
     // eslint-disable-next-line
   }, []);
+
+  const handleFromDateChange = (date: Date | undefined) => {
+    if (date) {
+      setFromDate(date);
+    }
+  };
+
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date) {
+      setToDate(date);
+    }
+  };
 
   const handleExport = (format: string) => {
     console.log(`Exporting to ${format}`);

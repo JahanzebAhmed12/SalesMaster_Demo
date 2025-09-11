@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -39,6 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
 import * as XLSX from 'xlsx';
+import { useBusinessDate } from "@/hooks/use-business-date";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -110,6 +111,9 @@ export default function ReturnToSupplier() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
+  // Get business date
+  const { businessDate } = useBusinessDate();
+  
   // State
   const [selectedSupplier, setSelectedSupplier] = useState<number | undefined>();
   const [fromDate, setFromDate] = useState<Date | undefined>();
@@ -118,15 +122,32 @@ export default function ReturnToSupplier() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingReturn, setEditingReturn] = useState<SupplierReturn | null>(null);
-  const [invoiceFromDate, setInvoiceFromDate] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [invoiceToDate, setInvoiceToDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [invoiceFromDate, setInvoiceFromDate] = useState("");
+  const [invoiceToDate, setInvoiceToDate] = useState("");
   const tableRef = useRef<HTMLDivElement>(null);
+  
+  // Initialize dates with business date when available
+  useEffect(() => {
+    if (businessDate) {
+      const businessDateObj = new Date(businessDate);
+      setFromDate(businessDateObj);
+      setToDate(businessDateObj);
+      setInvoiceFromDate(format(subDays(businessDateObj, 30), "yyyy-MM-dd"));
+      setInvoiceToDate(format(businessDateObj, "yyyy-MM-dd"));
+    } else {
+      const today = new Date();
+      setFromDate(today);
+      setToDate(today);
+      setInvoiceFromDate(format(subDays(today, 30), "yyyy-MM-dd"));
+      setInvoiceToDate(format(today, "yyyy-MM-dd"));
+    }
+  }, []);
 
   // Form
   const form = useForm<SupplierReturnFormData>({
     resolver: zodResolver(supplierReturnSchema),
     defaultValues: {
-      date: format(new Date(), 'yyyy-MM-dd'),
+      date: businessDate ? format(new Date(businessDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
       productType: 'regular',
       quantity: 1,
       unitPrice: 0,

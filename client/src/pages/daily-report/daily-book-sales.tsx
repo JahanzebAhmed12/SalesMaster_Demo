@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 interface SalesEntry {
   id: number;
@@ -50,10 +51,75 @@ interface SalesEntry {
 }
 
 export default function DailyBookSales() {
-  // Set default state to today and all filters
-  const today = new Date();
-  const [fromDate, setFromDate] = useState<Date>(today);
-  const [toDate, setToDate] = useState<Date>(today);
+  // Initialize state with current date, will be updated when businessDate loads
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
+  
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
+  
+  // Update dates when business date changes
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        // Only update if the dates are different to avoid unnecessary re-renders
+        if (!fromDate || fromDate.getTime() !== businessDate.getTime()) {
+          setFromDate(new Date(businessDate));
+        }
+        if (!toDate || toDate.getTime() !== businessDate.getTime()) {
+          setToDate(new Date(businessDate));
+        }
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, [businessDate, isLoadingBusinessDate, fromDate, toDate]);
+
+  // Format date for display with different formats
+  const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'MM/dd/yy') => {
+    try {
+      if (!date) return '';
+      
+      // Handle string dates
+      if (typeof date === 'string') {
+        // Try parsing the date string
+        const parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) return '';
+        return format(parsedDate, formatStr);
+      }
+      
+      // Handle Date objects
+      if (date instanceof Date) {
+        if (isNaN(date.getTime())) return '';
+        return format(date, formatStr);
+      }
+      
+      return '';
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
+  };
+
+  // Handle date changes
+  const handleFromDateChange = (date: Date | undefined) => {
+    if (date) {
+      setFromDate(date);
+    }
+  };
+
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date) {
+      setToDate(date);
+    }
+  };
+
+  // Use formatForApi from useBusinessDate hook
+
   const [paymentType, setPaymentType] = useState("All");
   const [userFilter, setUserFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -89,7 +155,7 @@ export default function DailyBookSales() {
   });
 
   // Fetch sales data from backend with auto-refresh every 20 seconds
-  const { data: rawSalesData = [], isLoading: isLoadingSales, refetch: refetchSales } = useQuery<any[]>({
+  const { data: rawSalesData = [] as SalesEntry[], isLoading: isLoadingSales, refetch: refetchSales } = useQuery<SalesEntry[]>({
     queryKey: [
       "daily-book-sales",
       fromDate,
@@ -111,24 +177,29 @@ export default function DailyBookSales() {
     refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
   });
 
-  // Sort function
-  const sortedSales = [...rawSalesData].sort((a, b) => {
-    if (!sortConfig) return 0;
-    
-    const aValue = a[sortConfig.key as keyof typeof a];
-    const bValue = b[sortConfig.key as keyof typeof b];
-    
-    if (aValue < bValue) {
-      return sortConfig.direction === 'asc' ? -1 : 1;
-    }
-    if (aValue > bValue) {
-      return sortConfig.direction === 'asc' ? 1 : -1;
-    }
-    return 0;
-  });
+  // Sort data
+  const sortedData = useMemo(() => {
+    return [...rawSalesData].sort((a, b) => {
+      if (!sortConfig) return 0;
+      const aValue = a[sortConfig.key as keyof typeof a];
+      const bValue = b[sortConfig.key as keyof typeof b];
+
+      if (aValue === bValue) return 0;
+      if (aValue === null || aValue === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (bValue === null || bValue === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }, [rawSalesData, sortConfig]);
 
   // Map 'account' to 'amount' for compatibility
-  const salesData: SalesEntry[] = sortedSales.map((item: any) => {
+  const salesData: SalesEntry[] = sortedData.map((item: any) => {
     // Debug: Check if payment status fields exist
     if (item.id === 1) {
       console.log('Sample data item:', {
@@ -241,7 +312,7 @@ export default function DailyBookSales() {
       printWindow.document.write('</tr></thead><tbody>');
       salesData.forEach(sale => {
         printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${format(new Date(sale.date), "MM/dd/yy")}</td>`);
+        printWindow.document.write(`<td>${formatDateForDisplay(sale.date)}</td>`);
         printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
         printWindow.document.write(`<td>${sale.customerName}</td>`);
         printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
@@ -284,6 +355,10 @@ export default function DailyBookSales() {
   const handlePDF = () => {
     const doc = new jsPDF();
     let yPosition = 20;
+    
+    // Format dates for PDF title
+    const fromDateStr = fromDate ? formatDateForDisplay(fromDate, 'dd/MM/yyyy') : 'All';
+    const toDateStr = toDate ? formatDateForDisplay(toDate, 'dd/MM/yyyy') : 'All';
 
     // Add company details following the specific structure
     if (companyDetails) {
@@ -316,7 +391,7 @@ export default function DailyBookSales() {
     yPosition += 10;
 
     doc.setFontSize(10);
-    doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}`, 105, yPosition, { align: 'center' });
+    doc.text(`Period: ${fromDateStr} to ${toDateStr}`, 105, yPosition, { align: 'center' });
     yPosition += 12;
 
     // Add table with proper column widths that fit on page
@@ -324,17 +399,21 @@ export default function DailyBookSales() {
       head: [[
         'Date', 'Invoice', 'Customer Name', 'Accounts', 'Cash', 'Card', 'Transfer', 'Cheque', 'Credit'
       ]],
-      body: salesData.map((item: SalesEntry) => [
-        format(new Date(item.date), "MM/dd/yy"),
-        item.invoiceNo,
-        item.customerName,
-        `£${Number(item.amount ?? 0).toFixed(2)}`,
-        `£${Number(item.cash ?? 0).toFixed(2)}`,
-        `£${Number(item.bank ?? 0).toFixed(2)}`,
-        `£${Number(item.bankTransfer ?? 0).toFixed(2)}`,
-        `£${Number(item.cheque ?? 0).toFixed(2)}`,
-        `£${Number(item.credit ?? 0).toFixed(2)}`
-      ]),
+      body: salesData.map((item: SalesEntry) => {
+        // Use the business date from the item if available, otherwise use the current business date
+        const saleDate = item.date ? new Date(item.date) : businessDate;
+        return [
+          format(saleDate, "MM/dd/yy"),
+          item.invoiceNo,
+          item.customerName,
+          `£${Number(item.amount ?? 0).toFixed(2)}`,
+          `£${Number(item.cash ?? 0).toFixed(2)}`,
+          `£${Number(item.bank ?? 0).toFixed(2)}`,
+          `£${Number(item.bankTransfer ?? 0).toFixed(2)}`,
+          `£${Number(item.cheque ?? 0).toFixed(2)}`,
+          `£${Number(item.credit ?? 0).toFixed(2)}`
+        ];
+      }),
       startY: yPosition,
       styles: {
         fontSize: 7,
@@ -441,7 +520,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.cash,
               paymentMode: 'cash',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed cash payment via daily book sales`
             });
           }
@@ -452,7 +531,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.bank,
               paymentMode: 'bank',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed bank payment via daily book sales`
             });
           }
@@ -463,7 +542,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.bankTransfer,
               paymentMode: 'bank_transfer',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed bank transfer payment via daily book sales`
             });
           }
@@ -474,7 +553,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.cheque,
               paymentMode: 'cheque',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed cheque payment via daily book sales`
             });
           }
@@ -546,7 +625,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.cash,
               paymentMode: 'cash',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed cash payment via daily book sales`
             });
           }
@@ -557,7 +636,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.bank,
               paymentMode: 'bank',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed bank payment via daily book sales`
             });
           }
@@ -568,7 +647,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.bankTransfer,
               paymentMode: 'bank_transfer',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed bank transfer payment via daily book sales`
             });
           }
@@ -579,7 +658,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.cheque,
               paymentMode: 'cheque',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed cheque payment via daily book sales`
             });
           }
@@ -651,7 +730,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.cash,
               paymentMode: 'cash',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed cash payment to account via daily book sales`
             });
           }
@@ -662,7 +741,7 @@ export default function DailyBookSales() {
               saleId: sale.id,
               amount: -sale.bank,
               paymentMode: 'bank',
-              paymentDate: format(new Date(), 'yyyy-MM-dd'),
+              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
               remarks: `Reversed bank payment to account via daily book sales`
             });
           }
@@ -1125,7 +1204,7 @@ export default function DailyBookSales() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
+                      {fromDate ? formatDateForDisplay(fromDate, 'yyyyMMdd') : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -1151,7 +1230,7 @@ export default function DailyBookSales() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
+                      {toDate ? formatDateForDisplay(toDate, 'yyyyMMdd') : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -1400,7 +1479,7 @@ export default function DailyBookSales() {
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
-                        <TableCell className="text-xs sm:text-sm">{format(new Date(sale.date), "MM/dd/yy")}</TableCell>
+                        <TableCell className="text-xs sm:text-sm">{formatDateForDisplay(sale.date, 'MM/dd/yy')}</TableCell>
                         <TableCell className="text-xs sm:text-sm">{sale.invoiceNo}</TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
 
@@ -1571,7 +1650,7 @@ export default function DailyBookSales() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
                   <div className="flex justify-between sm:block">
                     <span className="font-semibold">Date Range:</span>
-                    <span className="sm:block">{fromDate ? format(fromDate, 'MM-dd') : '-'} to {toDate ? format(toDate, 'MM-dd') : '-'}</span>
+                    <span className="sm:block">{formatDateForDisplay(fromDate, 'MM-dd')} to {formatDateForDisplay(toDate, 'MM-dd')}</span>
                   </div>
                   <div className="flex justify-between sm:block">
                     <span className="font-semibold">Total Boxes:</span>

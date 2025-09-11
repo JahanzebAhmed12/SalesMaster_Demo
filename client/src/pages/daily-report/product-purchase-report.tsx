@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -32,12 +33,22 @@ interface PurchaseItem {
 export default function ProductPurchaseReport() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  
+  // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [showAll, setShowAll] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
+  const [trigger, setTrigger] = useState(0);
+  
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
   
   const [filters, setFilters] = useState({
     fromDate: format(new Date(), "yyyy-MM-dd"),
@@ -45,25 +56,41 @@ export default function ProductPurchaseReport() {
     showAll: "All",
     search: "",
   });
+  
+  // Set initial dates to business date on first load
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        const businessDateObj = new Date(businessDate);
+        if (isNaN(businessDateObj.getTime())) {
+          console.error('Invalid business date:', businessDate);
+          return;
+        }
+        
+        const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
+        setFromDate(businessDateObj);
+        setToDate(businessDateObj);
+        setFilters(prev => ({
+          ...prev,
+          fromDate: formattedDate,
+          toDate: formattedDate
+        }));
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, []);
 
   // Fetch purchase data
-  const {
-    data: purchaseData = [],
-    isLoading,
-    isError,
-    error,
-    refetch
-  } = useQuery<PurchaseItem[]>({
-    queryKey: ["/api/reports/product-purchase", filters],
+  const { data: purchaseData = [], isLoading, isError, error, refetch } = useQuery<PurchaseItem[]>({
+    queryKey: ["/api/reports/product-purchase", filters, trigger],
     queryFn: () => {
       const fromDateStr = filters.fromDate ? `${filters.fromDate} 00:00:00` : '';
       const toDateStr = filters.toDate ? `${filters.toDate} 23:59:59` : '';
-      const params = new URLSearchParams();
-      if (fromDateStr) params.append("fromDate", fromDateStr);
-      if (toDateStr) params.append("toDate", toDateStr);
-      if (filters.showAll) params.append("showAll", filters.showAll);
-      if (filters.search) params.append("search", filters.search);
-      return apiRequest("GET", `/api/reports/product-purchase?${params.toString()}`);
+      
+      return apiRequest("GET", 
+        `/api/reports/product-purchase?fromDate=${fromDateStr}&toDate=${toDateStr}&showAll=${filters.showAll}&search=${encodeURIComponent(filters.search || '')}`
+      );
     },
   });
 
@@ -72,13 +99,36 @@ export default function ProductPurchaseReport() {
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
-  const handleSearch = () => {
-    setFilters({
-      fromDate: format(fromDate, "yyyy-MM-dd"),
-      toDate: format(toDate, "yyyy-MM-dd"),
-      showAll: showAll,
-      search: searchTerm,
-    });
+  const handleFromDateChange = (date: Date | undefined) => {
+    if (date) {
+      setFromDate(date);
+      setFilters(prev => ({
+        ...prev,
+        fromDate: format(date, 'yyyy-MM-dd')
+      }));
+    }
+  };
+
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date) {
+      setToDate(date);
+      setFilters(prev => ({
+        ...prev,
+        toDate: format(date, 'yyyy-MM-dd')
+      }));
+    }
+  };
+  
+  // Format date for display
+  const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'dd/MM/yyyy') => {
+    if (!date) return '';
+    try {
+      const d = date instanceof Date ? date : new Date(date);
+      return isNaN(d.getTime()) ? '' : format(d, formatStr);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
   };
 
   const totalQuantity = purchaseData.reduce((sum, item) => sum + item.quantity, 0);
@@ -423,13 +473,17 @@ export default function ProductPurchaseReport() {
     setLocation(`/reports/product-purchase-history?productId=${productId}&productType=regular&fromDate=${fromDateStr}&toDate=${toDateStr}&productName=${encodeURIComponent(productDescription)}`);
   };
 
-  // Auto search when both dates are selected
-  useEffect(() => {
+  const handleSearch = () => {
     if (fromDate && toDate) {
-      handleSearch();
+      setFilters(prev => ({
+        ...prev,
+        fromDate: format(fromDate, 'yyyy-MM-dd'),
+        toDate: format(toDate, 'yyyy-MM-dd'),
+        showAll,
+        search: searchTerm
+      }));
     }
-    // eslint-disable-next-line
-  }, [fromDate, toDate]);
+  };
 
   if (isError) {
     toast({
@@ -469,14 +523,14 @@ export default function ProductPurchaseReport() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
+                      {fromDate ? format(fromDate, "PPP") : <span>Pick a date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
                       mode="single"
                       selected={fromDate}
-                      onSelect={(date) => date && setFromDate(date)}
+                      onSelect={handleFromDateChange}
                       initialFocus
                     />
                   </PopoverContent>
@@ -494,14 +548,14 @@ export default function ProductPurchaseReport() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
+                      {toDate ? format(toDate, "PPP") : <span>Pick a date</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
                       mode="single"
                       selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
+                      onSelect={handleToDateChange}
                       initialFocus
                     />
                   </PopoverContent>

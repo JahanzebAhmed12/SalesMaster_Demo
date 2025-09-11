@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -37,8 +38,23 @@ interface StockItem {
 }
 
 export default function StockCheck() {
+  // Initialize with current date, will be updated when businessDate loads
   const [osDate, setOsDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
+    const [filters, setFilters] = useState({
+      osDate: format(new Date(), "yyyy-MM-dd"),
+      toDate: format(new Date(), "yyyy-MM-dd"),
+      showAll: "All",
+      search: "",
+    });
+    
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
+  
   const [stockFilter, setStockFilter] = useState("Show All");
   const [searchTerm, setSearchTerm] = useState("");
   const [emails, setEmails] = useState('');
@@ -47,6 +63,30 @@ export default function StockCheck() {
   const { toast } = useToast();
   const tableRef = useRef<HTMLDivElement>(null);
   const [, setLocation] = useLocation();
+  
+  // Update dates when business date changes
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        const businessDateObj = new Date(businessDate);
+        if (isNaN(businessDateObj.getTime())) {
+          console.error('Invalid business date:', businessDate);
+          return;
+        }
+        
+        const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
+        setOsDate(businessDateObj);
+        setToDate(businessDateObj);
+        setFilters(prev => ({
+          ...prev,
+          fromDate: formattedDate,
+          toDate: formattedDate
+        }));
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, []);
 
   // Navigation handlers for clickable columns
   const handleNewStockClick = (item: StockItem) => {
@@ -73,11 +113,11 @@ export default function StockCheck() {
 
   // Query for stock check data
   const { data: stockData = [], isLoading, error, refetch } = useQuery<StockItem[]>({
-    queryKey: ["stock-check", format(osDate, "yyyy-MM-dd"), format(toDate, "yyyy-MM-dd"), searchTerm],
+    queryKey: ["stock-check", formatForApi(osDate), formatForApi(toDate), searchTerm],
     queryFn: async () => {
       const params = new URLSearchParams({
-        fromDate: format(osDate, "yyyy-MM-dd"),
-        toDate: format(toDate, "yyyy-MM-dd"),
+        fromDate: formatForApi(osDate) || format(osDate, "yyyy-MM-dd"),
+        toDate: formatForApi(toDate) || format(toDate, "yyyy-MM-dd"),
         search: searchTerm
       });
       return apiRequest("GET", `/api/reports/stock-check?${params}`);
@@ -96,6 +136,30 @@ export default function StockCheck() {
       title: "Export",
       description: `Exporting to ${format} format...`,
     });
+  };
+
+  const handleOsDateChange = (date: Date | undefined) => {
+    if (date) {
+      setOsDate(date);
+    }
+  };
+
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date) {
+      setToDate(date);
+    }
+  };
+  
+  // Format date for display
+  const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'dd/MM/yyyy') => {
+    if (!date) return '';
+    try {
+      const d = date instanceof Date ? date : new Date(date);
+      return isNaN(d.getTime()) ? '' : format(d, formatStr);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
   };
 
   const filteredData = stockData.filter(item => {
