@@ -4228,7 +4228,20 @@ def create_bulk_payment():
                             )
                             db.session.add(payment)
                             payments_created.append(payment)
-                                
+                            
+                            # Update the invoice's customer_type based on the payment mode
+                            invoice = Sale.query.get(invoice_id)
+                            if invoice:
+                                # Only update if the payment fully or partially pays the invoice
+                                if invoice_payment > 0:
+                                    # If this payment fully pays the invoice, update the customer_type
+                                    if invoice_payment >= float(invoice.total_amount) - float(invoice.paid_amount or 0):
+                                        invoice.customer_type = mode
+                                    # If this is a partial payment and there's no existing payment, update the customer_type
+                                    elif float(invoice.paid_amount or 0) == 0:
+                                        invoice.customer_type = mode
+                                    db.session.add(invoice)
+                            
                             remaining_amount -= invoice_payment
                 
                 # Create on-account payment if there's an on-account portion
@@ -12700,24 +12713,45 @@ def create_customer_bulk_payment():
                         if total_invoice_amount > 0:
                             invoice_payment = min(remaining_amount, outstanding, 
                                                 (outstanding / total_invoice_amount) * invoice_portion)
-                    else:
-                        invoice_payment = min(remaining_amount, outstanding)
-                    
-                    if invoice_payment > 0:
-                        payment = Payment(
-                            customer_id=customer_id,
-                            sale_id=invoice_id,
-                            amount=invoice_payment,
-                            payment_mode=mode,
-                            payment_date=payment_date_obj,
-                            batch_id=batch_id,
-                            payment_type='direct',
-                            remarks=f"{remarks} - Invoice payment via customer payment page"
-                        )
-                        db.session.add(payment)
-                        payments_created.append(payment)
+                        else:
+                            invoice_payment = min(remaining_amount, outstanding)
+                        
+                        if invoice_payment > 0:
+                            payment = Payment(
+                                customer_id=customer_id,
+                                sale_id=invoice_id,
+                                amount=invoice_payment,
+                                payment_mode=mode,
+                                payment_date=payment_date_obj,
+                                batch_id=batch_id,
+                                payment_type='direct',
+                                remarks=f"{remarks} - Invoice payment via customer payment page"
+                            )
+                            db.session.add(payment)
+                            payments_created.append(payment)
                             
-                        remaining_amount -= invoice_payment
+                            # Update the invoice's customer_type based on the payment mode
+                            invoice = Sale.query.get(invoice_id)
+                            if invoice:
+                                current_paid = sum(float(p.amount) for p in invoice.payments) + invoice_payment
+                                total_amount = float(invoice.total_amount)
+                                
+                                if current_paid >= total_amount:
+                                    # If this payment fully pays the invoice, update the customer_type
+                                    invoice.customer_type = mode
+                                    invoice.payment_status = "paid"
+                                    invoice.paid_amount = total_amount
+                                    invoice.status = "finalized"
+                                else:
+                                    # If this is a partial payment and there's no existing payment, update the customer_type
+                                    if float(invoice.paid_amount or 0) == 0:
+                                        invoice.customer_type = mode
+                                    invoice.payment_status = "partial"
+                                    invoice.paid_amount = current_paid
+                                
+                                db.session.add(invoice)
+                            
+                            remaining_amount -= invoice_payment
             
             # Create on-account payment if there's an on-account portion
             if on_account_portion > 0:

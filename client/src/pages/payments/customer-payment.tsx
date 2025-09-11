@@ -30,6 +30,21 @@ type InvoiceWithBalance = Sale & {
   runningBal: number;
 };
 
+type SplitPayment = {
+  cash: string;
+  card: string;
+  bankTransfer: string;
+  cheque: string;
+};
+
+type PaymentDistribution = {
+  invoiceId?: number;
+  invoiceNumber?: string;
+  amount: number;
+  isOnAccount: boolean;
+  paymentMode: string;
+};
+
 
 
 export default function CustomerPayment() {
@@ -41,15 +56,20 @@ export default function CustomerPayment() {
   const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
+
   const [searchTerm, setSearchTerm] = useState<string>("");
+
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [splitPayment, setSplitPayment] = useState({
+  const [splitPayment, setSplitPayment] = useState<SplitPayment>({
     cash: "",
     card: "",
     bankTransfer: "",
     cheque: ""
   });
+
+  const [paymentDistribution, setPaymentDistribution] = useState<PaymentDistribution[]>([]);
+
   let [onAccountAmount, setOnAccountAmount] = useState<number>(0);
   const [emailAddress, setEmailAddress] = useState("");
   const queryClient = useQueryClient();
@@ -550,37 +570,38 @@ export default function CustomerPayment() {
         }
       }
 
-      // Then, pay remaining balance with available payment methods
+      // Track payments per payment method for this invoice
+      const paymentsForThisInvoice = [];
+
+      // Pay remaining balance with available payment methods
       for (const payment of remainingPayments) {
         if (payment.amount <= 0 || invoiceBalance <= 0) continue;
 
         const paymentAmount = Math.min(payment.amount, invoiceBalance);
         if (paymentAmount > 0) {
+          // Track this payment
+          paymentsForThisInvoice.push({
+            mode: payment.mode,
+            amount: paymentAmount
+          });
+
+          // Update running totals
           totalPaymentForThisInvoice += paymentAmount;
           payment.amount = Number((payment.amount - paymentAmount).toFixed(2));
           invoiceBalance = Number((invoiceBalance - paymentAmount).toFixed(2));
+          
+          // Add to payment distribution
+          paymentDistribution.push({
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            amount: paymentAmount,
+            isOnAccount: false,
+            paymentMode: payment.mode
+          });
         }
       }
 
-      // Create a single payment record for this invoice (combining credit + cash payment)
-      if (totalPaymentForThisInvoice > 0) {
-        // Find the primary payment mode used
-        const primaryMode = remainingPayments.find(p => {
-          const originalAmount = p.mode === 'cash' ? (parseFloat(splitPayment.cash) || 0) :
-            p.mode === 'bank' ? (parseFloat(splitPayment.card) || 0) :
-              p.mode === 'bank_transfer' ? (parseFloat(splitPayment.bankTransfer) || 0) :
-                p.mode === 'cheque' ? (parseFloat(splitPayment.cheque) || 0) : 0;
-          return originalAmount > p.amount; // This payment method was used
-        })?.mode || 'cash';
-
-        paymentDistribution.push({
-          invoiceId: invoice.id,
-          invoiceNumber: invoice.invoiceNumber,
-          amount: Number(totalPaymentForThisInvoice.toFixed(2)),
-          isOnAccount: false,
-          paymentMode: primaryMode
-        });
-      }
+      // Note: Payment distribution is now added during the payment processing loop
     }
 
     // Step 3: Create payment records for credit invoices (for audit trail)
@@ -625,23 +646,251 @@ export default function CustomerPayment() {
       invoiceIds: Array.from(selectedInvoiceIds),
       onAccountAmount: onAccountAmount,
       paymentSource: 'customer_payment',
-      paymentDistribution: paymentDistribution,
+      // Ensure paymentDistribution includes all necessary fields
+      paymentDistribution: paymentDistribution.map(p => ({
+        invoiceId: p.invoiceId,
+        invoiceNumber: p.invoiceNumber,
+        amount: Number(p.amount.toFixed(2)),
+        isOnAccount: Boolean(p.isOnAccount),
+        paymentMode: p.paymentMode || 'cash'
+      })),
+      // For backward compatibility
       invoices: paymentDistribution
-        .filter(p => !p.isOnAccount)
+        .filter(p => !p.isOnAccount && p.invoiceId)
         .map(p => ({
           invoiceId: p.invoiceId!,
-          invoiceNumber: p.invoiceNumber!,
-          amount: p.amount,
-          paymentMode: p.paymentMode
+          invoiceNumber: p.invoiceNumber || '',
+          amount: Number(p.amount.toFixed(2)),
+          paymentMode: p.paymentMode || 'cash'
         }))
     };
 
     if (isEditMode && editingPayment) {
-      // For edit mode, add the batch ID and use update mutation
+      console.log('Preparing edit payload with paymentDistribution:', paymentDistribution);
+      
+      // Always use the current payment distribution from state if it exists
+      let editPaymentDistribution = paymentDistribution.length > 0 
+        ? [...paymentDistribution] 
+        : [];
+      
+      console.log('Edit payment distribution before processing:', editPaymentDistribution);
+      
+      // If we have payment distribution, use it as is
+      if (editPaymentDistribution.length > 0) {
+        console.log('Using existing payment distribution');
+        
+        // Update amounts in existing payment distribution based on current split payment
+        const cashAmount = parseFloat(splitPayment.cash) || 0;
+        const cardAmount = parseFloat(splitPayment.card) || 0;
+        const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
+        const chequeAmount = parseFloat(splitPayment.cheque) || 0;
+        
+        // Clear existing distribution and rebuild with current amounts
+        editPaymentDistribution = [];
+        
+        // Get selected invoices for proper association
+        const invoiceList = selectedInvoices.length > 0 ? selectedInvoices : [];
+        
+        // If we have selected invoices, distribute payments across them
+        if (invoiceList.length > 0) {
+          // For simplicity, apply all payments to the first selected invoice
+          // In a more complex scenario, you might want to distribute proportionally
+          const targetInvoice = invoiceList[0];
+          
+          if (cashAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: cashAmount,
+              isOnAccount: false,
+              paymentMode: 'cash'
+            });
+          }
+          if (cardAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: cardAmount,
+              isOnAccount: false,
+              paymentMode: 'bank'
+            });
+          }
+          if (bankTransferAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: bankTransferAmount,
+              isOnAccount: false,
+              paymentMode: 'bank_transfer'
+            });
+          }
+          if (chequeAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: chequeAmount,
+              isOnAccount: false,
+              paymentMode: 'cheque'
+            });
+          }
+        } else {
+          // No invoices selected, treat as on-account
+          if (cashAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: cashAmount,
+              isOnAccount: true,
+              paymentMode: 'cash'
+            });
+          }
+          if (cardAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: cardAmount,
+              isOnAccount: true,
+              paymentMode: 'bank'
+            });
+          }
+          if (bankTransferAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: bankTransferAmount,
+              isOnAccount: true,
+              paymentMode: 'bank_transfer'
+            });
+          }
+          if (chequeAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: chequeAmount,
+              isOnAccount: true,
+              paymentMode: 'cheque'
+            });
+          }
+        }
+      } else {
+        console.log('No payment distribution found, reconstructing from split payment');
+        const cashAmount = parseFloat(splitPayment.cash) || 0;
+        const cardAmount = parseFloat(splitPayment.card) || 0;
+        const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
+        const chequeAmount = parseFloat(splitPayment.cheque) || 0;
+        
+        // Get selected invoices for proper association
+        const invoiceList = selectedInvoices.length > 0 ? selectedInvoices : [];
+        
+        console.log('Reconstructing with invoices:', invoiceList.map(inv => ({ id: inv.id, number: inv.invoiceNumber })));
+        
+        // If we have selected invoices, distribute payments across them
+        if (invoiceList.length > 0) {
+          const targetInvoice = invoiceList[0];
+          
+          if (cashAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: cashAmount,
+              isOnAccount: false,
+              paymentMode: 'cash'
+            });
+          }
+          if (cardAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: cardAmount,
+              isOnAccount: false,
+              paymentMode: 'bank'
+            });
+          }
+          if (bankTransferAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: bankTransferAmount,
+              isOnAccount: false,
+              paymentMode: 'bank_transfer'
+            });
+          }
+          if (chequeAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: targetInvoice.id,
+              invoiceNumber: targetInvoice.invoiceNumber,
+              amount: chequeAmount,
+              isOnAccount: false,
+              paymentMode: 'cheque'
+            });
+          }
+        } else {
+          // No invoices selected, treat as on-account
+          if (cashAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: cashAmount,
+              isOnAccount: true,
+              paymentMode: 'cash'
+            });
+          }
+          if (cardAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: cardAmount,
+              isOnAccount: true,
+              paymentMode: 'bank'
+            });
+          }
+          if (bankTransferAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: bankTransferAmount,
+              isOnAccount: true,
+              paymentMode: 'bank_transfer'
+            });
+          }
+          if (chequeAmount > 0) {
+            editPaymentDistribution.push({
+              invoiceId: undefined,
+              invoiceNumber: 'On Account',
+              amount: chequeAmount,
+              isOnAccount: true,
+              paymentMode: 'cheque'
+            });
+          }
+        }
+      }
+
+      console.log('Final edit payment distribution:', editPaymentDistribution);
+
+      // Create the edit payload with all necessary fields
       const editPayload = {
         ...paymentPayload,
-        batchId: (editingPayment as any).batchId
+        batchId: (editingPayment as any).batchId,
+        // Include the full payment distribution
+        paymentDistribution: editPaymentDistribution.map(p => ({
+          invoiceId: p.invoiceId,
+          invoiceNumber: p.invoiceNumber,
+          amount: Number(p.amount.toFixed(2)),
+          isOnAccount: Boolean(p.isOnAccount),
+          paymentMode: p.paymentMode || 'cash'
+        })),
+        // For backward compatibility - ensure we include all invoice payments
+        invoices: editPaymentDistribution
+          .filter(p => !p.isOnAccount && p.invoiceId)
+          .map(p => ({
+            invoiceId: p.invoiceId!,
+            invoiceNumber: p.invoiceNumber || `INV-${p.invoiceId}`,
+            amount: p.amount,
+            paymentMode: p.paymentMode || 'cash'
+          }))
       };
+      
+      console.log('Edit payload:', JSON.stringify(editPayload, null, 2));
       updatePaymentMutation.mutate(editPayload);
     } else {
       // For new payments, use create mutation
@@ -650,41 +899,114 @@ export default function CustomerPayment() {
   };
 
   const handleEditPayment = async (batchPayment: any) => {
+    console.log('Starting handleEditPayment with batchPayment:', batchPayment);
     setEditingPayment(batchPayment);
     setReceivedAmount(batchPayment.totalAmount);
     setPaymentDate(new Date(batchPayment.paymentDate));
     setRemarks(batchPayment.remarks || '');
 
-    // Set split payment amounts from batch
-    setSplitPayment({
-      cash: batchPayment.cashAmount ? batchPayment.cashAmount.toString() : "",
-      card: batchPayment.cardAmount ? batchPayment.cardAmount.toString() : "",
-      bankTransfer: batchPayment.bankTransferAmount ? batchPayment.bankTransferAmount.toString() : "",
-      cheque: batchPayment.chequeAmount ? batchPayment.chequeAmount.toString() : ""
-    });
+    // Initialize payment distribution array
+    const initialPaymentDistribution: PaymentDistribution[] = [];
+    const invoiceIds = new Set<number>();
+    let totalOnAccount = 0;
 
-    // Fetch the original payment details to get invoice IDs
     try {
-      const batchDetails = await apiRequest("GET", `/api/payments/batch/${batchPayment.batchId}`);
-      const invoiceIds = new Set<number>();
+      // First, set the split payment UI state from the batch payment
+      const splitPayment = {
+        cash: batchPayment.cashAmount ? batchPayment.cashAmount.toString() : "",
+        card: batchPayment.cardAmount ? batchPayment.cardAmount.toString() : "",
+        bankTransfer: batchPayment.bankTransferAmount ? batchPayment.bankTransferAmount.toString() : "",
+        cheque: batchPayment.chequeAmount ? batchPayment.chequeAmount.toString() : ""
+      };
+      console.log('Setting split payment:', splitPayment);
+      setSplitPayment(splitPayment);
 
-      // Extract invoice IDs and on-account amounts from the batch payments
-      let totalOnAccount = 0;
+      // Fetch the payment details to get the full payment distribution
+      console.log('Fetching batch details for batch ID:', batchPayment.batchId);
+      const batchDetails = await apiRequest("GET", `/api/payments/batch/${batchPayment.batchId}`);
+      console.log('Received batch details:', batchDetails);
       
-      batchDetails.payments?.forEach((payment: any) => {
-        if (payment.invoiceId && payment.invoiceNumber !== 'On Account') {
-          // Use the invoiceId directly from the payment
-          invoiceIds.add(payment.invoiceId);
-          console.log(`[EDIT DEBUG] Added invoice ID ${payment.invoiceId} from payment`);
-        } else if (payment.invoiceNumber === 'On Account' || !payment.invoiceId) {
-          // This is an on-account payment
-          totalOnAccount += parseFloat(payment.amount || 0);
-          console.log(`[EDIT DEBUG] Added on-account amount: ${payment.amount}`);
-        }
-      });
+      if (batchDetails.payments && Array.isArray(batchDetails.payments)) {
+        console.log('Processing', batchDetails.payments.length, 'payments');
+        
+        // First, collect all invoice IDs and on-account amounts
+        batchDetails.payments.forEach((payment: any, index: number) => {
+          console.log(`Processing payment ${index + 1}:`, payment);
+          
+          if (payment.amount > 0) {
+            const paymentEntry: PaymentDistribution = {
+              invoiceId: payment.invoiceId,
+              invoiceNumber: payment.invoiceNumber || `INV-${payment.invoiceId || 'ON-ACCOUNT'}`,
+              amount: parseFloat(payment.amount),
+              isOnAccount: payment.isOnAccount || !payment.invoiceId,
+              paymentMode: payment.paymentMode || 'cash'
+            };
+            
+            if (payment.invoiceId) {
+              invoiceIds.add(payment.invoiceId);
+            } else {
+              totalOnAccount += paymentEntry.amount;
+            }
+            
+            console.log('Adding payment entry:', paymentEntry);
+            initialPaymentDistribution.push(paymentEntry);
+          }
+        });
+      }
+
+      console.log('Loaded payment distribution:', initialPaymentDistribution);
       
-      console.log(`[EDIT DEBUG] Final invoice IDs:`, Array.from(invoiceIds));
-      console.log(`[EDIT DEBUG] Final on-account amount:`, totalOnAccount);
+      // Update all the states at once to prevent multiple re-renders
+      setSelectedInvoiceIds(invoiceIds);
+      setOnAccountAmount(totalOnAccount);
+      setPaymentDistribution(initialPaymentDistribution);
+      
+      // Process each payment in the batch to collect invoice IDs and on-account amounts
+      if (batchDetails.payments) {
+        batchDetails.payments.forEach((payment: any) => {
+          if (payment.invoiceId && payment.invoiceNumber !== 'On Account') {
+            invoiceIds.add(payment.invoiceId);
+          } else if (payment.invoiceNumber === 'On Account' || !payment.invoiceId) {
+            totalOnAccount += parseFloat(payment.amount || 0);
+          }
+        });
+
+        // Second pass: ensure all payment methods are properly set
+        const paymentMethods = {
+          cash: 0,
+          bank: 0, // card
+          bank_transfer: 0,
+          cheque: 0
+        };
+
+        batchDetails.payments.forEach((payment: any) => {
+          if (payment.paymentMode && payment.amount > 0) {
+            // Map backend payment modes to frontend format
+            switch (payment.paymentMode) {
+              case 'cash':
+                paymentMethods.cash += parseFloat(payment.amount);
+                break;
+              case 'bank': // card
+                paymentMethods.bank += parseFloat(payment.amount);
+                break;
+              case 'bank_transfer':
+                paymentMethods.bank_transfer += parseFloat(payment.amount);
+                break;
+              case 'cheque':
+                paymentMethods.cheque += parseFloat(payment.amount);
+                break;
+            }
+          }
+        });
+
+        // Update split payment state with the actual payment distribution
+        setSplitPayment({
+          cash: paymentMethods.cash > 0 ? paymentMethods.cash.toString() : "",
+          card: paymentMethods.bank > 0 ? paymentMethods.bank.toString() : "",
+          bankTransfer: paymentMethods.bank_transfer > 0 ? paymentMethods.bank_transfer.toString() : "",
+          cheque: paymentMethods.cheque > 0 ? paymentMethods.cheque.toString() : ""
+        });
+      }
 
       setSelectedInvoiceIds(invoiceIds);
       setOnAccountAmount(totalOnAccount);
