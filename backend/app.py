@@ -3758,6 +3758,9 @@ def handle_delete_payment_batch(batch_id, user_id):
                     else:
                         sale.payment_status = "paid"
                     
+                    # Reset customer_type to 'account' when payments are deleted
+                    if sale.customer_type != 'account':
+                        sale.customer_type = 'account'
                     db.session.add(sale)
         
         # Delete all payments in the batch
