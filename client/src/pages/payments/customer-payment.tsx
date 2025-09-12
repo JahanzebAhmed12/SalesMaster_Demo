@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import { CalendarIcon, CreditCard, FileText, Download, Copy, Printer, Search, Receipt, FileCheck, Mail } from "lucide-react";
+import Pagination from "@/components/ui/pagination";
+import { useTablePagination } from "@/hooks/useTablePagination";
 
 
 import { format } from "date-fns";
@@ -19,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { isPastDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { useBusinessDate } from "@/hooks/useBusinessDate";
 import type { Customer, Sale, Payment, InsertPayment } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -53,7 +56,7 @@ export default function CustomerPayment() {
   const [invoicePaymentModes, setInvoicePaymentModes] = useState<Map<number, string>>(new Map());
   const [invoicePaymentConfigs, setInvoicePaymentConfigs] = useState<Map<number, any>>(new Map());
 
-  const [paymentDate, setPaymentDate] = useState<Date | undefined>(new Date());
+  const [paymentDate, setPaymentDate] = useState<Date | undefined>();
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
 
@@ -76,6 +79,9 @@ export default function CustomerPayment() {
   const { toast } = useToast();
   const { user } = useAuth();
 
+  // Business date
+  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
+
   // Backdate permissions
   const { canEditBackdate } = useBackdatePermissions();
 
@@ -88,13 +94,13 @@ export default function CustomerPayment() {
 
   // Check if user can edit a payment based on date
   const canEditPayment = (paymentDate: string) => {
-    if (!userPermissions) return false;
+    if (!userPermissions || !businessDate) return false;
 
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const businessDateFormatted = format(businessDate, 'yyyy-MM-dd');
     const paymentDateFormatted = format(new Date(paymentDate), 'yyyy-MM-dd');
 
-    if (paymentDateFormatted === today) {
-      // For current date payments, check current_editing permission
+    if (paymentDateFormatted === businessDateFormatted) {
+      // For business date payments, check current_editing permission
       return userPermissions.current_editing !== false;
     } else {
       // For back date payments, check editing permission
@@ -104,22 +110,29 @@ export default function CustomerPayment() {
 
   // Check if user can create new payments for a specific date
   const canCreatePaymentForDate = (date: Date) => {
-    if (!userPermissions) return false;
+    if (!userPermissions || !businessDate) return false;
 
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const businessDateFormatted = format(businessDate, 'yyyy-MM-dd');
     const selectedDateFormatted = format(date, 'yyyy-MM-dd');
 
-    if (selectedDateFormatted === today) {
-      // For current date, check current_editing permission
+    if (selectedDateFormatted === businessDateFormatted) {
+      // For business date, check current_editing permission
       return userPermissions.current_editing !== false;
-    } else if (isPastDate(date)) {
-      // For past dates, check editing permission
+    } else if (date < businessDate) {
+      // For past dates (before business date), check editing permission
       return userPermissions.editing === true;
     } else {
-      // For future dates, allow (assuming future dates are always allowed)
+      // For future dates (after business date), allow (assuming future dates are always allowed)
       return true;
     }
   };
+
+  // Set initial payment date to business date
+  useEffect(() => {
+    if (businessDate && !paymentDate) {
+      setPaymentDate(businessDate);
+    }
+  }, [businessDate, paymentDate]);
 
   // Reset email field when customer changes
   useEffect(() => {
@@ -155,65 +168,111 @@ export default function CustomerPayment() {
   });
 
   // Group payment history by batch ID
-  const groupedPaymentHistory = paymentHistory?.reduce((acc: any[], payment: any) => {
-    const batchId = payment.batchId;
-    if (!batchId) return acc;
+  const groupedPaymentHistory = useMemo(() => {
+    return paymentHistory?.reduce((acc: any[], payment: any) => {
+      const batchId = payment.batchId;
+      if (!batchId) return acc;
 
-    const existingBatch = acc.find(batch => batch.batchId === batchId);
-    if (existingBatch) {
-      // Only add positive amounts to the total (credits are applied automatically)
-      if (payment.amount > 0) {
-        existingBatch.totalAmount += payment.amount;
+      const existingBatch = acc.find(batch => batch.batchId === batchId);
+      if (existingBatch) {
+        // Only add positive amounts to the total (credits are applied automatically)
+        if (payment.amount > 0) {
+          existingBatch.totalAmount += payment.amount;
 
-        // Aggregate positive amounts by payment mode
-        const mode = payment.paymentMode;
-        if (mode === 'cash') existingBatch.cashAmount += payment.amount;
-        else if (mode === 'bank') existingBatch.cardAmount += payment.amount;
-        else if (mode === 'bank_transfer') existingBatch.bankTransferAmount += payment.amount;
-        else if (mode === 'cheque') existingBatch.chequeAmount += payment.amount;
+          // Aggregate positive amounts by payment mode
+          const mode = payment.paymentMode;
+          if (mode === 'cash') existingBatch.cashAmount += payment.amount;
+          else if (mode === 'bank') existingBatch.cardAmount += payment.amount;
+          else if (mode === 'bank_transfer') existingBatch.bankTransferAmount += payment.amount;
+          else if (mode === 'cheque') existingBatch.chequeAmount += payment.amount;
+        }
+
+        // Always add invoice numbers
+        const invoiceNumber = payment.invoiceNumber || 'On Account';
+        if (!existingBatch.invoices.includes(invoiceNumber)) {
+          existingBatch.invoices.push(invoiceNumber);
+        }
+      } else {
+        acc.push({
+          batchId: batchId,
+          paymentDate: payment.paymentDate,
+          totalAmount: payment.amount > 0 ? payment.amount : 0, // Only positive amounts
+          remarks: payment.remarks,
+          invoices: [payment.invoiceNumber || 'On Account'],
+          cashAmount: payment.paymentMode === 'cash' && payment.amount > 0 ? payment.amount : 0,
+          cardAmount: payment.paymentMode === 'bank' && payment.amount > 0 ? payment.amount : 0,
+          bankTransferAmount: payment.paymentMode === 'bank_transfer' && payment.amount > 0 ? payment.amount : 0,
+          chequeAmount: payment.paymentMode === 'cheque' && payment.amount > 0 ? payment.amount : 0,
+        });
       }
-
-      // Always add invoice numbers
-      const invoiceNumber = payment.invoiceNumber || 'On Account';
-      if (!existingBatch.invoices.includes(invoiceNumber)) {
-        existingBatch.invoices.push(invoiceNumber);
-      }
-    } else {
-      acc.push({
-        batchId: batchId,
-        paymentDate: payment.paymentDate,
-        totalAmount: payment.amount > 0 ? payment.amount : 0, // Only positive amounts
-        remarks: payment.remarks,
-        invoices: [payment.invoiceNumber || 'On Account'],
-        cashAmount: payment.paymentMode === 'cash' && payment.amount > 0 ? payment.amount : 0,
-        cardAmount: payment.paymentMode === 'bank' && payment.amount > 0 ? payment.amount : 0,
-        bankTransferAmount: payment.paymentMode === 'bank_transfer' && payment.amount > 0 ? payment.amount : 0,
-        chequeAmount: payment.paymentMode === 'cheque' && payment.amount > 0 ? payment.amount : 0,
-      });
-    }
-    return acc;
-  }, []) || [];
+      return acc;
+    }, []) || [];
+  }, [paymentHistory]);
 
   // Calculate balances for each invoice
-  const invoicesWithBalance = outstandingInvoices?.map((invoice) => {
-    const paid = invoice.paidAmount || 0;
-    const balance = invoice.totalAmount - paid;
-    return { ...invoice, balance, paid };
-  }) || [];
-
-  const filteredInvoices = invoicesWithBalance.filter((invoice) =>
-    invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
+  const invoicesWithBalance = useMemo(() =>
+    outstandingInvoices?.map((invoice) => {
+      const paid = invoice.paidAmount || 0;
+      const balance = invoice.totalAmount - paid;
+      return { ...invoice, balance, paid };
+    }) || [],
+    [outstandingInvoices]
   );
 
-  const calculateRunningBalance = () => {
+  const filteredInvoices = useMemo(() =>
+    invoicesWithBalance.filter((invoice) =>
+      invoice.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase())
+    ),
+    [invoicesWithBalance, searchTerm]
+  );
+
+  const calculateRunningBalance = useMemo(() => {
     let runningBal = 0;
     return filteredInvoices.map((invoice) => {
       runningBal += invoice.balance;
       return { ...invoice, runningBal };
     });
-  };
+  }, [filteredInvoices]);
 
-  const displayedInvoices = calculateRunningBalance();
+  const displayedInvoices = calculateRunningBalance;
+
+  // Pagination for outstanding invoices
+  const {
+    currentPage: invoicesCurrentPage,
+    totalPages: invoicesTotalPages,
+    itemsPerPage: invoicesItemsPerPage,
+    startIndex: invoicesStartIndex,
+    endIndex: invoicesEndIndex,
+    paginationProps: invoicesPaginationProps
+  } = useTablePagination({
+    totalItems: displayedInvoices.length,
+    initialItemsPerPage: 25
+  });
+
+  const paginatedInvoices = useMemo(() =>
+    displayedInvoices.slice(invoicesStartIndex, invoicesEndIndex),
+    [displayedInvoices, invoicesStartIndex, invoicesEndIndex]
+  );
+
+  // Pagination for payment history
+  const {
+    currentPage: historyCurrentPage,
+    totalPages: historyTotalPages,
+    itemsPerPage: historyItemsPerPage,
+    startIndex: historyStartIndex,
+    endIndex: historyEndIndex,
+    paginationProps: historyPaginationProps
+  } = useTablePagination({
+    totalItems: groupedPaymentHistory.length,
+    initialItemsPerPage: 10
+  });
+
+  const paginatedPaymentHistory = useMemo(() =>
+    groupedPaymentHistory
+      .sort((a: any, b: any) => b.batchId - a.batchId)
+      .slice(historyStartIndex, historyEndIndex),
+    [groupedPaymentHistory, historyStartIndex, historyEndIndex]
+  );
 
   // Payment mode - for now defaulting to 'mixed' but this could be a state variable if needed
   const paymentMode = 'mixed';
@@ -475,11 +534,11 @@ export default function CustomerPayment() {
 
     // Check permission for the selected payment date
     if (!canCreatePaymentForDate(paymentDate)) {
-      const isToday = format(paymentDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+      const isBusinessDate = businessDate && format(paymentDate, 'yyyy-MM-dd') === format(businessDate, 'yyyy-MM-dd');
       toast({
         title: "Permission Denied",
-        description: isToday
-          ? "You don't have permission to create payments for today"
+        description: isBusinessDate
+          ? "You don't have permission to create payments for the current business date"
           : "You don't have permission to create payments for past dates",
         variant: "destructive",
       });
@@ -514,6 +573,13 @@ export default function CustomerPayment() {
     const selectedInvoices = displayedInvoices
       .filter(inv => selectedInvoiceIds.has(inv.id))
       .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+
+    // Debug logging for edit mode
+    if (isEditMode) {
+      console.log('DEBUG - selectedInvoiceIds:', Array.from(selectedInvoiceIds));
+      console.log('DEBUG - displayedInvoices IDs:', displayedInvoices.map(inv => inv.id));
+      console.log('DEBUG - selectedInvoices after filter:', selectedInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber })));
+    }
 
     // Get payment amounts by mode
     const cashAmount = parseFloat(splitPayment.cash) || 0;
@@ -589,7 +655,7 @@ export default function CustomerPayment() {
           totalPaymentForThisInvoice += paymentAmount;
           payment.amount = Number((payment.amount - paymentAmount).toFixed(2));
           invoiceBalance = Number((invoiceBalance - paymentAmount).toFixed(2));
-          
+
           // Add to payment distribution
           paymentDistribution.push({
             invoiceId: invoice.id,
@@ -641,7 +707,7 @@ export default function CustomerPayment() {
       customerId: parseInt(selectedCustomerId),
       amount: totalPayment,
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
-      remarks: remarks || "Customer payment",
+      remarks: isEditMode ? remarks : (remarks || "Payment"),
       splitPayment: getSplitPaymentNumbers(),
       invoiceIds: Array.from(selectedInvoiceIds),
       onAccountAmount: onAccountAmount,
@@ -666,230 +732,31 @@ export default function CustomerPayment() {
     };
 
     if (isEditMode && editingPayment) {
-      console.log('Preparing edit payload with paymentDistribution:', paymentDistribution);
-      
-      // Always use the current payment distribution from state if it exists
-      let editPaymentDistribution = paymentDistribution.length > 0 
-        ? [...paymentDistribution] 
-        : [];
-      
-      console.log('Edit payment distribution before processing:', editPaymentDistribution);
-      
-      // If we have payment distribution, use it as is
-      if (editPaymentDistribution.length > 0) {
-        console.log('Using existing payment distribution');
-        
-        // Update amounts in existing payment distribution based on current split payment
-        const cashAmount = parseFloat(splitPayment.cash) || 0;
-        const cardAmount = parseFloat(splitPayment.card) || 0;
-        const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
-        const chequeAmount = parseFloat(splitPayment.cheque) || 0;
-        
-        // Clear existing distribution and rebuild with current amounts
-        editPaymentDistribution = [];
-        
-        // Get selected invoices for proper association
-        const invoiceList = selectedInvoices.length > 0 ? selectedInvoices : [];
-        
-        // If we have selected invoices, distribute payments across them
-        if (invoiceList.length > 0) {
-          // For simplicity, apply all payments to the first selected invoice
-          // In a more complex scenario, you might want to distribute proportionally
-          const targetInvoice = invoiceList[0];
-          
-          if (cashAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: cashAmount,
-              isOnAccount: false,
-              paymentMode: 'cash'
-            });
-          }
-          if (cardAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: cardAmount,
-              isOnAccount: false,
-              paymentMode: 'bank'
-            });
-          }
-          if (bankTransferAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: bankTransferAmount,
-              isOnAccount: false,
-              paymentMode: 'bank_transfer'
-            });
-          }
-          if (chequeAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: chequeAmount,
-              isOnAccount: false,
-              paymentMode: 'cheque'
-            });
-          }
-        } else {
-          // No invoices selected, treat as on-account
-          if (cashAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: cashAmount,
-              isOnAccount: true,
-              paymentMode: 'cash'
-            });
-          }
-          if (cardAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: cardAmount,
-              isOnAccount: true,
-              paymentMode: 'bank'
-            });
-          }
-          if (bankTransferAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: bankTransferAmount,
-              isOnAccount: true,
-              paymentMode: 'bank_transfer'
-            });
-          }
-          if (chequeAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: chequeAmount,
-              isOnAccount: true,
-              paymentMode: 'cheque'
-            });
-          }
-        }
-      } else {
-        console.log('No payment distribution found, reconstructing from split payment');
-        const cashAmount = parseFloat(splitPayment.cash) || 0;
-        const cardAmount = parseFloat(splitPayment.card) || 0;
-        const bankTransferAmount = parseFloat(splitPayment.bankTransfer) || 0;
-        const chequeAmount = parseFloat(splitPayment.cheque) || 0;
-        
-        // Get selected invoices for proper association
-        const invoiceList = selectedInvoices.length > 0 ? selectedInvoices : [];
-        
-        console.log('Reconstructing with invoices:', invoiceList.map(inv => ({ id: inv.id, number: inv.invoiceNumber })));
-        
-        // If we have selected invoices, distribute payments across them
-        if (invoiceList.length > 0) {
-          const targetInvoice = invoiceList[0];
-          
-          if (cashAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: cashAmount,
-              isOnAccount: false,
-              paymentMode: 'cash'
-            });
-          }
-          if (cardAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: cardAmount,
-              isOnAccount: false,
-              paymentMode: 'bank'
-            });
-          }
-          if (bankTransferAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: bankTransferAmount,
-              isOnAccount: false,
-              paymentMode: 'bank_transfer'
-            });
-          }
-          if (chequeAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: targetInvoice.id,
-              invoiceNumber: targetInvoice.invoiceNumber,
-              amount: chequeAmount,
-              isOnAccount: false,
-              paymentMode: 'cheque'
-            });
-          }
-        } else {
-          // No invoices selected, treat as on-account
-          if (cashAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: cashAmount,
-              isOnAccount: true,
-              paymentMode: 'cash'
-            });
-          }
-          if (cardAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: cardAmount,
-              isOnAccount: true,
-              paymentMode: 'bank'
-            });
-          }
-          if (bankTransferAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: bankTransferAmount,
-              isOnAccount: true,
-              paymentMode: 'bank_transfer'
-            });
-          }
-          if (chequeAmount > 0) {
-            editPaymentDistribution.push({
-              invoiceId: undefined,
-              invoiceNumber: 'On Account',
-              amount: chequeAmount,
-              isOnAccount: true,
-              paymentMode: 'cheque'
-            });
-          }
-        }
-      }
+      console.log('Edit mode: Building payment distribution from current state');
+      console.log('Selected invoices:', selectedInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber })));
+      console.log('Split payment:', splitPayment);
+
+      // For edit mode, use backend's sequential logic for proper multi-invoice distribution
+      console.log('Edit mode: Using backend sequential logic for multiple invoices');
+      console.log('Selected invoice IDs:', Array.from(selectedInvoiceIds));
+
+      // Don't build editPaymentDistribution - let the backend handle the distribution
+      // This will trigger the backend's fallback logic which properly handles multiple invoices
+      const editPaymentDistribution: PaymentDistribution[] = [];
 
       console.log('Final edit payment distribution:', editPaymentDistribution);
 
-      // Create the edit payload with all necessary fields
+      // Create the edit payload - don't send paymentDistribution for multiple invoices
+      // Let the backend handle the sequential distribution
       const editPayload = {
         ...paymentPayload,
         batchId: (editingPayment as any).batchId,
-        // Include the full payment distribution
-        paymentDistribution: editPaymentDistribution.map(p => ({
-          invoiceId: p.invoiceId,
-          invoiceNumber: p.invoiceNumber,
-          amount: Number(p.amount.toFixed(2)),
-          isOnAccount: Boolean(p.isOnAccount),
-          paymentMode: p.paymentMode || 'cash'
-        })),
-        // For backward compatibility - ensure we include all invoice payments
-        invoices: editPaymentDistribution
-          .filter(p => !p.isOnAccount && p.invoiceId)
-          .map(p => ({
-            invoiceId: p.invoiceId!,
-            invoiceNumber: p.invoiceNumber || `INV-${p.invoiceId}`,
-            amount: p.amount,
-            paymentMode: p.paymentMode || 'cash'
-          }))
+        // Don't send paymentDistribution - let backend use sequential logic
+        paymentDistribution: [], // Empty array will trigger backend fallback
+        // Keep the invoices array for backward compatibility
+        invoices: []
       };
-      
+
       console.log('Edit payload:', JSON.stringify(editPayload, null, 2));
       updatePaymentMutation.mutate(editPayload);
     } else {
@@ -925,14 +792,14 @@ export default function CustomerPayment() {
       console.log('Fetching batch details for batch ID:', batchPayment.batchId);
       const batchDetails = await apiRequest("GET", `/api/payments/batch/${batchPayment.batchId}`);
       console.log('Received batch details:', batchDetails);
-      
+
       if (batchDetails.payments && Array.isArray(batchDetails.payments)) {
         console.log('Processing', batchDetails.payments.length, 'payments');
-        
+
         // First, collect all invoice IDs and on-account amounts
         batchDetails.payments.forEach((payment: any, index: number) => {
           console.log(`Processing payment ${index + 1}:`, payment);
-          
+
           if (payment.amount > 0) {
             const paymentEntry: PaymentDistribution = {
               invoiceId: payment.invoiceId,
@@ -941,13 +808,13 @@ export default function CustomerPayment() {
               isOnAccount: payment.isOnAccount || !payment.invoiceId,
               paymentMode: payment.paymentMode || 'cash'
             };
-            
+
             if (payment.invoiceId) {
               invoiceIds.add(payment.invoiceId);
             } else {
               totalOnAccount += paymentEntry.amount;
             }
-            
+
             console.log('Adding payment entry:', paymentEntry);
             initialPaymentDistribution.push(paymentEntry);
           }
@@ -955,12 +822,12 @@ export default function CustomerPayment() {
       }
 
       console.log('Loaded payment distribution:', initialPaymentDistribution);
-      
+
       // Update all the states at once to prevent multiple re-renders
       setSelectedInvoiceIds(invoiceIds);
       setOnAccountAmount(totalOnAccount);
       setPaymentDistribution(initialPaymentDistribution);
-      
+
       // Process each payment in the batch to collect invoice IDs and on-account amounts
       if (batchDetails.payments) {
         batchDetails.payments.forEach((payment: any) => {
@@ -1046,11 +913,11 @@ export default function CustomerPayment() {
     if (isEditing && editingPayment) {
       // Check permission for editing the payment
       if (!canEditPayment(editingPayment.paymentDate)) {
-        const isToday = format(new Date(editingPayment.paymentDate), 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+        const isBusinessDate = businessDate && format(new Date(editingPayment.paymentDate), 'yyyy-MM-dd') === format(businessDate, 'yyyy-MM-dd');
         toast({
           title: "Permission Denied",
-          description: isToday
-            ? "You don't have permission to edit payments for today"
+          description: isBusinessDate
+            ? "You don't have permission to edit payments for the current business date"
             : "You don't have permission to edit past date payments",
           variant: "destructive",
         });
@@ -1359,270 +1226,228 @@ export default function CustomerPayment() {
       <div className="max-w-7xl mx-auto p-4 space-y-6">
         {/* Payment Form */}
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4">
             {/* Payment Header */}
-            <div className="mb-4">
+            <div className="mb-3">
               <h3 className="text-lg font-semibold text-gray-900">Customer Payment</h3>
-              <p className="text-sm text-gray-600">Select invoices to pay and/or add on-account credit</p>
+              <p className="text-xs text-gray-600">Select invoices to pay and/or add on-account credit</p>
             </div>
 
-            {/* First Row: Customer Selection and Invoice/Split Payment */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-              <div>
-                <Label htmlFor="customer">Select Customer:</Label>
-                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingCustomers ? (
-                      <SelectItem value="disabled" disabled>Loading customers...</SelectItem>
-                    ) : customers && customers.length > 0 ? (
-                      customers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.customer_name}
-                        </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="disabled" disabled>No customers found</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+            {/* Compact Form Layout */}
+            <div className="space-y-3">
+              {/* Row 1: Customer, Payment Date, Total Amount */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <Label htmlFor="customer" className="text-sm">Customer:</Label>
+                  <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isLoadingCustomers ? (
+                        <SelectItem value="disabled" disabled>Loading...</SelectItem>
+                      ) : customers && customers.length > 0 ? (
+                        customers.map((customer) => (
+                          <SelectItem key={customer.id} value={customer.id.toString()}>
+                            {customer.customer_name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="disabled" disabled>No customers found</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-sm">Payment Date:</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-9",
+                          !paymentDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {paymentDate ? format(paymentDate, "dd/MM/yyyy") : "Pick date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={paymentDate}
+                        onSelect={(date) => {
+                          if (date && !canCreatePaymentForDate(date)) {
+                            const isBusinessDate = businessDate && format(date, 'yyyy-MM-dd') === format(businessDate, 'yyyy-MM-dd');
+                            toast({
+                              title: "Permission Denied",
+                              description: isBusinessDate
+                                ? "You don't have permission to create payments for the current business date"
+                                : "You don't have permission to select past dates",
+                              variant: "destructive",
+                            });
+                            return;
+                          }
+                          setPaymentDate(date);
+                        }}
+                        disabled={(date) => !canCreatePaymentForDate(date)}
+                        defaultMonth={businessDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {businessDate && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      Business: {format(businessDate, "dd/MM/yyyy")}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-sm">Payment Summary:</Label>
+                  <div className="p-2 border rounded bg-gray-50 h-9 flex items-center justify-between">
+                    <span className="text-sm">Total:</span>
+                    <span className="font-semibold text-lg">£{receivedAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} + £{onAccountAmount.toFixed(2)} on-account
+                  </div>
+                </div>
               </div>
 
+              {/* Row 2: Split Payment */}
               <div>
-                <Label>Payment Breakdown:</Label>
+                <Label className="text-sm">Split Payment:</Label>
                 <div className="p-2 border rounded bg-gray-50">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span>Selected Invoices:</span>
-                      <span className="font-semibold">£{(displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id)).reduce((sum, inv) => sum + inv.balance, 0)).toFixed(2)}</span>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs min-w-[40px]">Cash:</Label>
+                      <Input
+                        type="number"
+                        value={splitPayment.cash}
+                        onChange={(e) => handleSplitPaymentChange('cash', e.target.value)}
+                        className="h-8 text-sm"
+                        step="0.01"
+                        placeholder="0.00"
+                      />
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span>On-Account Amount:</span>
-                      <span className="font-semibold">£{onAccountAmount.toFixed(2)}</span>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs min-w-[40px]">Card:</Label>
+                      <Input
+                        type="number"
+                        value={splitPayment.card}
+                        onChange={(e) => handleSplitPaymentChange('card', e.target.value)}
+                        className="h-8 text-sm"
+                        step="0.01"
+                        placeholder="0.00"
+                      />
                     </div>
-                    <div className="flex justify-between text-sm border-t pt-1">
-                      <span className="font-semibold">Total Payment:</span>
-                      <span className="font-semibold text-lg">£{receivedAmount.toFixed(2)}</span>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs min-w-[40px]">Transfer:</Label>
+                      <Input
+                        type="number"
+                        value={splitPayment.bankTransfer}
+                        onChange={(e) => handleSplitPaymentChange('bankTransfer', e.target.value)}
+                        className="h-8 text-sm"
+                        step="0.01"
+                        placeholder="0.00"
+                      />
                     </div>
-                    <div className="text-xs text-gray-500">
-                      ({selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} selected)
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs min-w-[40px]">Cheque:</Label>
+                      <Input
+                        type="number"
+                        value={splitPayment.cheque}
+                        onChange={(e) => handleSplitPaymentChange('cheque', e.target.value)}
+                        className="h-8 text-sm"
+                        step="0.01"
+                        placeholder="0.00"
+                      />
                     </div>
+                  </div>
+                  <div className="text-xs text-center mt-2 pt-2 border-t">
+                    Split Total: £{((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0)).toFixed(2)}
                   </div>
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="on-account-amount">On-Account Amount:</Label>
-                <Input
-                  id="on-account-amount"
-                  type="number"
-                  value={onAccountAmount}
-                  onChange={(e) => handleOnAccountAmountChange(parseFloat(e.target.value) || 0)}
-                  placeholder="Enter on-account amount"
-                  step="0.01"
-                  min="0"
-                />
-                <div className="text-xs text-gray-500 mt-1">
-                  Additional credit to add to customer account
+              {/* Row 3: On-Account, Received Amount, Remarks */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <Label htmlFor="on-account-amount" className="text-sm">On-Account:</Label>
+                  <Input
+                    id="on-account-amount"
+                    type="number"
+                    value={onAccountAmount}
+                    onChange={(e) => handleOnAccountAmountChange(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="h-9"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="received-amount" className="text-sm">Split Amount:</Label>
+                  <Input
+                    id="received-amount"
+                    type="number"
+                    value={receivedAmount}
+                    onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)}
+                    placeholder="Enter amount"
+                    className="h-9"
+                    step="0.01"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="remarks" className="text-sm">Remarks:</Label>
+                  <Input
+                    id="remarks"
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Enter remarks"
+                    className="h-9"
+                  />
                 </div>
               </div>
-            </div>
 
-            {/* Second Row: Split Payment - Full Width */}
-            <div className="mb-4">
-              <Label>Split Payment:</Label>
-              <div className="p-4 border rounded bg-gray-50 space-y-3">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <div className="flex items-center gap-3">
-                    <Label className="text-sm font-medium min-w-[60px]">Cash:</Label>
-                    <Input
-                      type="number"
-                      value={splitPayment.cash}
-                      onChange={(e) => handleSplitPaymentChange('cash', e.target.value)}
-                      className="flex-1 h-9 text-sm"
-                      step="0.01"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Label className="text-sm font-medium min-w-[60px]">Card:</Label>
-                    <Input
-                      type="number"
-                      value={splitPayment.card}
-                      onChange={(e) => handleSplitPaymentChange('card', e.target.value)}
-                      className="flex-1 h-9 text-sm"
-                      step="0.01"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Label className="text-sm font-medium min-w-[60px]">Transfer:</Label>
-                    <Input
-                      type="number"
-                      value={splitPayment.bankTransfer}
-                      onChange={(e) => handleSplitPaymentChange('bankTransfer', e.target.value)}
-                      className="flex-1 h-9 text-sm"
-                      step="0.01"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Label className="text-sm font-medium min-w-[60px]">Cheque:</Label>
-                    <Input
-                      type="number"
-                      value={splitPayment.cheque}
-                      onChange={(e) => handleSplitPaymentChange('cheque', e.target.value)}
-                      className="flex-1 h-9 text-sm"
-                      step="0.01"
-                      placeholder="0.00"
-                    />
-                  </div>
+              {/* Row 4: Action Buttons */}
+              <div className="flex items-center justify-between pt-2">
+                <div className="text-xs text-gray-500">
+                  {Math.abs(receivedAmount - ((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0))) <= 0.01
+                    ? '✓ Split amounts match'
+                    : '⚠ Split amounts should match received amount'}
                 </div>
-                <div className="text-sm font-semibold text-gray-700 border-t pt-2 text-center">
-                  Total: £{((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0)).toFixed(2)}
-                </div>
-              </div>
-            </div>
 
-            {/* Third Row: Payment Date and Received Amount */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <div>
-                <Label>Payment Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <div className="flex items-center gap-2">
+                  {isEditing && (
                     <Button
                       variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !paymentDate && "text-muted-foreground"
-                      )}
+                      size="sm"
+                      onClick={handleCancelEdit}
+                      disabled={createPaymentMutation.isPending || updatePaymentMutation.isPending}
                     >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {paymentDate ? format(paymentDate, "dd/MM/yyyy") : "Pick a date"}
+                      Cancel
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={paymentDate}
-                      onSelect={(date) => {
-                        if (date && !canCreatePaymentForDate(date)) {
-                          const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
-                          toast({
-                            title: "Permission Denied",
-                            description: isToday
-                              ? "You don't have permission to create payments for today"
-                              : "You don't have permission to select past dates",
-                            variant: "destructive",
-                          });
-                          return;
-                        }
-                        setPaymentDate(date);
-                      }}
-                      disabled={(date) => !canCreatePaymentForDate(date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                {userPermissions && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    {userPermissions.current_editing === false && (
-                      <p>Current date editing is disabled</p>
-                    )}
-                    {userPermissions.editing !== true && (
-                      <p>Past date editing is disabled - contact admin for permissions</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="received-amount">Split Payment Amount:</Label>
-                <Input
-                  id="received-amount"
-                  type="number"
-                  value={receivedAmount}
-                  onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)}
-                  placeholder="Enter split payment amount (cash/card/etc.)"
-                  step="0.01"
-                />
-                {receivedAmount < 0 && (
-                  <div className="text-xs text-blue-600 mt-1">
-                    Negative amount for credit invoice payment
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-              <div>
-                <Label htmlFor="remarks">Remarks:</Label>
-                <Input
-                  id="remarks"
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Enter remarks"
-                />
-              </div>
-
-              <div>
-                <Label>Payment Status:</Label>
-                <div className="p-2 border rounded bg-gray-50">
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span>Split Payment Amount:</span>
-                      <span className="font-semibold">£{receivedAmount.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>On-Account Amount:</span>
-                      <span className="font-semibold">£{onAccountAmount.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Split Payment Total:</span>
-                      <span className="font-semibold">£{((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0)).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span>Total Payment Amount:</span>
-                      <span className="font-semibold text-blue-600">
-                        £{(((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0)) + onAccountAmount).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {Math.abs(receivedAmount - ((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0))) <= 0.01
-                        ? 'Split payment amounts match received amount'
-                        : 'Received amount should equal split payment total'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-end gap-2">
-                {isEditing && (
+                  )}
                   <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={handleCancelEdit}
-                    disabled={createPaymentMutation.isPending || updatePaymentMutation.isPending}
+                    size="sm"
+                    onClick={handlePaymentSubmit}
+                    disabled={
+                      isEditing
+                        ? updatePaymentMutation.isPending
+                        : createPaymentMutation.isPending || (selectedInvoiceIds.size === 0 && onAccountAmount === 0)
+                    }
                   >
-                    Cancel
+                    {isEditing
+                      ? (updatePaymentMutation.isPending ? 'Updating...' : 'Update Payment')
+                      : (createPaymentMutation.isPending ? 'Processing...' : 'Record Payment')
+                    }
                   </Button>
-                )}
-                <Button
-                  className="w-full"
-                  onClick={handlePaymentSubmit}
-                  disabled={
-                    isEditing
-                      ? updatePaymentMutation.isPending
-                      : createPaymentMutation.isPending || (selectedInvoiceIds.size === 0 && onAccountAmount === 0)
-                  }
-                >
-                  {isEditing
-                    ? (updatePaymentMutation.isPending ? 'Updating...' : 'Update Payment')
-                    : (createPaymentMutation.isPending ? 'Processing...' : 'Record Payment')
-                  }
-                </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -1669,7 +1494,7 @@ export default function CustomerPayment() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayedInvoices.map((invoice) => (
+                {paginatedInvoices.map((invoice) => (
                   <TableRow key={invoice.id} className={selectedInvoiceIds.has(invoice.id) ? 'bg-blue-50' : ''}>
                     <TableCell>
                       <input
@@ -1703,7 +1528,7 @@ export default function CustomerPayment() {
                     <TableCell className="text-right">£{invoice.runningBal.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
-                {displayedInvoices.length === 0 && (
+                {paginatedInvoices.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-4">
                       No outstanding invoices found
@@ -1712,6 +1537,13 @@ export default function CustomerPayment() {
                 )}
               </TableBody>
             </Table>
+
+            {/* Pagination for Outstanding Invoices */}
+            {invoicesTotalPages > 1 && (
+              <div className="mt-4">
+                <Pagination {...invoicesPaginationProps} />
+              </div>
+            )}
 
             {/* Summary Row */}
             {displayedInvoices.length > 0 && (
@@ -1802,7 +1634,7 @@ export default function CustomerPayment() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {groupedPaymentHistory.sort((a: any, b: any) => b.batchId - a.batchId).map((batch: any) => (
+                  {paginatedPaymentHistory.map((batch: any) => (
                     <TableRow key={batch.batchId}>
                       <TableCell className="font-mono">{batch.batchId}</TableCell>
                       <TableCell>{format(new Date(batch.paymentDate), "dd/MM/yyyy")}</TableCell>
@@ -1907,7 +1739,7 @@ export default function CustomerPayment() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {groupedPaymentHistory.length === 0 && (
+                  {paginatedPaymentHistory.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={7} className="text-center py-4">
                         No payment history found
@@ -1916,6 +1748,13 @@ export default function CustomerPayment() {
                   )}
                 </TableBody>
               </Table>
+
+              {/* Pagination for Payment History */}
+              {historyTotalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination {...historyPaginationProps} />
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

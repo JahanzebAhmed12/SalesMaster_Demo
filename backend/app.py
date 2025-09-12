@@ -3886,69 +3886,70 @@ def manage_payment_batch(batch_id):
             # Use payment distribution from frontend if available
             if payment_distribution:
                 print(f"[EDIT DEBUG] Using payment distribution from frontend: {payment_distribution}")
+                
+                # Create payments based on the frontend's sequential payment distribution
+                for payment_item in payment_distribution:
+                    if payment_item.get('isOnAccount', False):
+                        # On-account payment
+                        payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=None,  # No specific invoice
+                            amount=float(payment_item.get('amount', 0)),
+                            payment_mode=payment_item.get('paymentMode', 'cash'),
+                            payment_date=payment_date_obj,
+                            batch_id=batch_id,
+                            payment_type='on-account',
+                            remarks=f"{remarks} - On-account payment (Updated)"
+                        )
+                    else:
+                        # Invoice payment
+                        payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=payment_item.get('invoiceId'),
+                            amount=float(payment_item.get('amount', 0)),
+                            payment_mode=payment_item.get('paymentMode', 'cash'),
+                            payment_date=payment_date_obj,
+                            batch_id=batch_id,
+                            payment_type='direct',
+                            remarks=f"{remarks} - Invoice payment (Updated)"
+                        )
+                        
+                        # Update sale payment status
+                        sale = Sale.query.get(payment_item.get('invoiceId'))
+                        if sale:
+                            current_paid = float(sale.paid_amount or 0)
+                            new_paid = current_paid + float(payment_item.get('amount', 0))
+                            
+                            if new_paid >= float(sale.total_amount):
+                                sale.payment_status = "paid"
+                                sale.paid_amount = sale.total_amount
+                                sale.status = "finalized"
+                                # Preserve original customer_type for daily book categorization
+                                sale.customer_type = original_sale_types.get(payment_item.get('invoiceId'), payment_item.get('paymentMode', 'cash'))
+                            else:
+                                sale.payment_status = "partial"
+                                sale.paid_amount = new_paid
+                                # Preserve original customer_type
+                                sale.customer_type = original_sale_types.get(payment_item.get('invoiceId'), sale.customer_type)
+                            
+                            db.session.add(sale)
+                    
+                    db.session.add(payment)
+                    payments_created.append(payment)
+            
             else:
                 print(f"[EDIT DEBUG] No payment distribution from frontend, using fallback logic")
-            
-            # Create payments based on the frontend's sequential payment distribution
-            for payment_item in payment_distribution:
-                if payment_item.get('isOnAccount', False):
-                    # On-account payment
-                    payment = Payment(
-                        customer_id=customer_id,
-                        sale_id=None,  # No specific invoice
-                        amount=float(payment_item.get('amount', 0)),
-                        payment_mode=payment_item.get('paymentMode', 'cash'),
-                        payment_date=payment_date_obj,
-                        batch_id=batch_id,
-                        payment_type='on-account',
-                        remarks=f"{remarks} - On-account payment (Updated)"
-                    )
-                else:
-                    # Invoice payment
-                    payment = Payment(
-                        customer_id=customer_id,
-                        sale_id=payment_item.get('invoiceId'),
-                        amount=float(payment_item.get('amount', 0)),
-                        payment_mode=payment_item.get('paymentMode', 'cash'),
-                        payment_date=payment_date_obj,
-                        batch_id=batch_id,
-                        payment_type='direct',
-                        remarks=f"{remarks} - Invoice payment (Updated)"
-                    )
-                    
-                    # Update sale payment status
-                    sale = Sale.query.get(payment_item.get('invoiceId'))
-                    if sale:
-                        current_paid = float(sale.paid_amount or 0)
-                        new_paid = current_paid + float(payment_item.get('amount', 0))
-                        
-                        if new_paid >= float(sale.total_amount):
-                            sale.payment_status = "paid"
-                            sale.paid_amount = sale.total_amount
-                            sale.status = "finalized"
-                            # Preserve original customer_type for daily book categorization
-                            sale.customer_type = original_sale_types.get(payment_item.get('invoiceId'), payment_item.get('paymentMode', 'cash'))
-                        else:
-                            sale.payment_status = "partial"
-                            sale.paid_amount = new_paid
-                            # Preserve original customer_type
-                            sale.customer_type = original_sale_types.get(payment_item.get('invoiceId'), sale.customer_type)
-                        
-                        db.session.add(sale)
-                
-                db.session.add(payment)
-                payments_created.append(payment)
-            
-            else:
                 # Fallback: Use the same sequential logic as the bulk payment endpoint
                 # Get available payment methods
                 payment_modes = [
                     ('cash', split_payment.get('cash', 0)),
-                    ('bank', split_payment.get('card', 0)),
+                    ('bank', split_payment.get('bank', 0)),  # Frontend sends 'bank', not 'card'
                     ('bank_transfer', split_payment.get('bankTransfer', 0)),
                     ('cheque', split_payment.get('cheque', 0))
                 ]
+                print(f"[EDIT DEBUG] All payment modes: {payment_modes}")
                 payment_modes = [(mode, amount) for mode, amount in payment_modes if amount > 0]
+                print(f"[EDIT DEBUG] Filtered payment modes (>0): {payment_modes}")
                 
                 # Get invoices to pay (from invoice_ids)
                 invoices_to_pay = []
@@ -3967,7 +3968,10 @@ def manage_payment_batch(batch_id):
                 # Sort invoices by date (oldest first for sequential payment)
                 invoices_to_pay.sort(key=lambda x: x.date)
                 
-                # Apply sequential payment logic
+                # For edit mode, preserve exact split payment amounts instead of using sequential logic
+                print(f"[EDIT DEBUG] Creating separate payment records for each payment method")
+                
+                # Apply sequential payment logic (same as creation) but preserve exact split amounts
                 remaining_payments = payment_modes.copy()
                 
                 for invoice in invoices_to_pay:
@@ -3980,51 +3984,50 @@ def manage_payment_batch(batch_id):
                         print(f"[EDIT DEBUG] Skipping invoice {invoice.id} - already fully paid")
                         continue
                     
-                    # Pay this invoice with available payment methods
-                    total_payment_for_invoice = 0
-                    primary_mode = 'cash'
-                    
+                    # Apply available payment methods to this invoice sequentially
                     for i, (mode, mode_amount) in enumerate(remaining_payments):
                         if mode_amount <= 0 or invoice_balance <= 0:
                             continue
                         
                         payment_amount = min(mode_amount, invoice_balance)
                         if payment_amount > 0:
-                            total_payment_for_invoice += payment_amount
+                            # Create individual payment record for this amount and method
+                            payment = Payment(
+                                customer_id=customer_id,
+                                sale_id=invoice.id,
+                                amount=payment_amount,
+                                payment_mode=mode,
+                                payment_date=payment_date_obj,
+                                batch_id=batch_id,
+                                payment_type='direct',
+                                remarks=f"{remarks} - Invoice payment (Updated)"
+                            )
+                            db.session.add(payment)
+                            payments_created.append(payment)
+                            print(f"[EDIT DEBUG] Created payment: {mode} £{payment_amount} for invoice {invoice.id}")
+                            
+                            # Update remaining amounts
                             remaining_payments[i] = (mode, mode_amount - payment_amount)
                             invoice_balance -= payment_amount
-                            primary_mode = mode
                     
-                    # Create payment record for this invoice
-                    if total_payment_for_invoice > 0:
-                        payment = Payment(
-                            customer_id=customer_id,
-                            sale_id=invoice.id,
-                            amount=total_payment_for_invoice,
-                            payment_mode=primary_mode,
-                            payment_date=payment_date_obj,
-                            batch_id=batch_id,
-                            payment_type='direct',
-                            remarks=f"{remarks} - Invoice payment (Updated)"
-                        )
-                        db.session.add(payment)
-                        payments_created.append(payment)
-                        
-                        # Update sale payment status
-                        new_paid = float(invoice.paid_amount or 0) + total_payment_for_invoice
-                        if new_paid >= float(invoice.total_amount):
-                            invoice.payment_status = "paid"
-                            invoice.paid_amount = invoice.total_amount
-                            invoice.status = "finalized"
-                        else:
-                            invoice.payment_status = "partial"
-                            invoice.paid_amount = new_paid
-                        
-                        # Preserve original customer_type
-                        invoice.customer_type = original_sale_types.get(invoice.id, invoice.customer_type)
-                        db.session.add(invoice)
+                    # Update sale payment status for this invoice
+                    total_paid_for_invoice = float(invoice.total_amount) - invoice_balance
+                    new_paid = float(invoice.paid_amount or 0) + total_paid_for_invoice
+                    
+                    if new_paid >= float(invoice.total_amount):
+                        invoice.payment_status = "paid"
+                        invoice.paid_amount = invoice.total_amount
+                        invoice.status = "finalized"
+                    else:
+                        invoice.payment_status = "partial"
+                        invoice.paid_amount = new_paid
+                    
+                    # Preserve original customer_type
+                    invoice.customer_type = original_sale_types.get(invoice.id, invoice.customer_type)
+                    db.session.add(invoice)
+                    print(f"[EDIT DEBUG] Updated invoice {invoice.id}: paid_amount={invoice.paid_amount}, status={invoice.payment_status}")
                 
-                # Handle remaining amounts as on-account
+                # Handle any remaining payment amounts as on-account
                 for mode, remaining_amount in remaining_payments:
                     if remaining_amount > 0:
                         payment = Payment(
@@ -4039,6 +4042,8 @@ def manage_payment_batch(batch_id):
                         )
                         db.session.add(payment)
                         payments_created.append(payment)
+                        print(f"[EDIT DEBUG] Created on-account payment: {mode} £{remaining_amount}")
+
 
             
             # Commit the transaction
