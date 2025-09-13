@@ -376,7 +376,7 @@ export default function DotMatrixPaymentPrintPage() {
             fontSize: '12pt',
             fontWeight: 'bold'
           }}>
-            C-{customer?.id || payments[0]?.customerId || ''}
+            C-{customer?.id || ''}
           </div>
 
           {/* Customer Name */}

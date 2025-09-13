@@ -42,31 +42,39 @@ const PaymentReceiptPrint = () => {
   const [invoiceFooter, setInvoiceFooter] = useState<string>("");
 
   useEffect(() => {
-    if (!paymentId) return;
-    
-    // Fetch payment data and company details
-    Promise.all([
-      apiRequest("GET", `/api/payments/batch/${paymentId}`),
-      publicApiRequest("GET", "/api/company-details")
-    ])
-      .then(async ([paymentRes, companyRes]) => {
-        // Get customer details from the first payment
-        if (paymentRes.payments && paymentRes.payments.length > 0) {
-          const customerId = paymentRes.payments[0].customerId;
-          const customerResponse = await apiRequest("GET", `/api/customers/${customerId}`);
-          paymentRes.customer = customerResponse;
-        }
+    if (!paymentId) {
+      setError('No payment ID provided');
+      setLoading(false);
+      return;
+    }
+
+    const fetchPayment = async () => {
+      try {
+        setLoading(true);
+        setError(null);
         
+        // Fetch payment data and company details
+        const [paymentRes, companyRes] = await Promise.all([
+          apiRequest("GET", `/api/payments/batch/${paymentId}`),
+          publicApiRequest("GET", "/api/company-details")
+        ]);
+        
+        console.log('Payment data:', paymentRes);
+        
+        // Customer data is already included in the response
         // Add company details to the response
         paymentRes.company = companyRes;
         
         setData(paymentRes);
+      } catch (err) {
+        console.error('Error fetching payment:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load payment receipt');
+      } finally {
         setLoading(false);
-      })
-      .catch((err) => {
-        setError("Failed to load payment receipt");
-        setLoading(false);
-      });
+      }
+    };
+
+    fetchPayment();
   }, [paymentId]);
 
   useEffect(() => {
@@ -76,17 +84,9 @@ const PaymentReceiptPrint = () => {
     });
   }, []);
 
-  if (loading) {
-    return <div>Loading...</div>;
-  }
-  
-  if (error) {
-    return <div>Error: {error}</div>;
-  }
-  
-  if (!data) {
-    return <div>No data found</div>;
-  }
+  if (loading) return <div className="p-4 print:hidden">Loading payment receipt...</div>;
+  if (error) return <div className="p-4 print:hidden text-red-500">Error: {error}</div>;
+  if (!data) return <div className="p-4 print:hidden">No payment found.</div>;
 
   const paymentTypeDisplay = paymentType === 'card' ? 'Card' : 'Cash';
   const todayStr = new Date().toLocaleDateString();
@@ -122,7 +122,7 @@ const PaymentReceiptPrint = () => {
             {customer?.address && <div style={{ fontSize: 14, marginTop: 2 }}>{customer.address}</div>}
           </div>
           {customer?.vat_number && <div style={{ fontSize: 14, marginTop: 2 }}>VAT No: {customer.vat_number}</div>}
-          <div style={{ fontSize: 14, marginTop: 2 }}><b>Account No:</b> C-{customer?.id || payments?.[0]?.customerId || ''}</div>
+          <div style={{ fontSize: 14, marginTop: 2 }}><b>Account No:</b> C-{customer?.id || ''}</div>
         </div>
 
         {/* Receipt Details - Right Side */}
