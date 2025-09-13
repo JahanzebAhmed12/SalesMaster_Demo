@@ -4433,7 +4433,7 @@ def get_payment_history():
         
         # Filter by payment mode if provided
         if payment_mode and payment_mode != 'All':
-            query = query.filter(Payment.payment_mode == payment_mode)
+            query = query.filter(Payment.payment_mode.ilike(payment_mode))
         
         # Filter by payment type if provided (for on-account filtering)
         if payment_type == 'on-account':
@@ -9640,19 +9640,19 @@ def daily_accounts_report():
     total_cash = sales_cash + account_cash + on_account_cash
     receivables_cash = [
         {"item": "Sales Cash", "amount": sales_cash},
-        {"item": "Account Cash (C/F)", "amount": account_cash},
+        {"item": "Account Cash", "amount": account_cash},
         {"item": "On Account Cash", "amount": on_account_cash},
         {"item": "TOTAL CASH", "amount": total_cash}
     ]
 
     # --- Receivables Others ---
     cheque = sum_payment('cheque')
-    card = sum_payment('card')
-    bank_transfer = sum_payment('bank transfer')
+    card = sum_payment('bank')  # Card payments are stored as 'bank' in the database
+    bank_transfer = sum_payment('bank_transfer')
     others = sum_payment('others')
     on_account_cheque = sum_payment('cheque', sale_id_null=True)
-    on_account_card = sum_payment('card', sale_id_null=True)
-    on_account_bank = sum_payment('bank transfer', sale_id_null=True)
+    on_account_card = sum_payment('bank', sale_id_null=True)  # Card payments are stored as 'bank' in the database
+    on_account_bank = sum_payment('bank_transfer', sale_id_null=True)
     on_account_others = sum_payment('others', sale_id_null=True)
     total_others = cheque + card + bank_transfer + others + on_account_cheque + on_account_card + on_account_bank + on_account_others
     receivables_others = [

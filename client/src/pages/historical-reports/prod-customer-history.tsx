@@ -290,11 +290,12 @@ export default function ProdCustomerHistory() {
     doc.setFontSize(8);
     doc.text('stand100', pageWidth - 30, pageHeight - 10);
     
-    doc.autoTable({
+    autoTable(doc, {
       head: [['', 'TOTAL', totalQuantity.toFixed(2), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]],
       bodyStyles: { fontStyle: 'bold' },
-      startY: doc.lastAutoTable.finalY + 10
+      startY: (doc as any).lastAutoTable.finalY + 10
     });
+    
     
     doc.save(`prod_customer_history_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };

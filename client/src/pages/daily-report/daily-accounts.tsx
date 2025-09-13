@@ -166,7 +166,7 @@ export default function DailyAccounts() {
       <div className="mb-6">
         <div className="flex items-center gap-4 mb-6">
           <div className="flex items-center gap-2">
-            <Label htmlFor="fromDate">Date:</Label>
+            <Label htmlFor="fromDate">From:</Label>
             <Input
               id="fromDate"
               type="date"
@@ -176,7 +176,7 @@ export default function DailyAccounts() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <Label htmlFor="toDate">C/F Date:</Label>
+            <Label htmlFor="toDate">To:</Label>
             <Input
               id="toDate"
               type="date"
@@ -210,7 +210,7 @@ export default function DailyAccounts() {
                     // Set up navigation based on the item
                     if (item.item === 'Sales Cash') {
                       onClick = () => navigate('/daily-report/daily-book-sales');
-                    } else if (item.item === 'Account Cash (C/F)') {
+                    } else if (item.item === 'Account Cash') {
                       onClick = () => navigate('/payments/customer-payment-history');
                     } else if (item.item === 'On Account Cash') {
                       onClick = () => navigate('/data-entry/on-acc-customer');
@@ -235,12 +235,87 @@ export default function DailyAccounts() {
               <CardContent className="p-4">
                 <h3 className="font-semibold mb-3 text-blue-600">Receivables Others</h3>
                 <div className="space-y-2">
-                  {receivablesOthers.map((item: any, index: number) => (
-                    <div key={index} className="flex justify-between">
-                      <span>{item.item}</span>
-                      <span className="font-mono">{Number(item.amount).toFixed(2)}</span>
-                    </div>
-                  ))}
+                  {receivablesOthers.map((item: any, index: number) => {
+                    let onClick = undefined;
+                    let paymentMode = '';
+                    
+                    // Set up navigation and payment mode based on the item
+                    if (item.item === 'Cheque') {
+                      paymentMode = 'cheque';
+                      onClick = () => {
+                        const params = new URLSearchParams({
+                          fromDate: fromDate,
+                          toDate: toDate,
+                          paymentMode: paymentMode
+                        });
+                        navigate(`/payments/customer-payment-history?${params.toString()}`);
+                      };
+                    } else if (item.item === 'Card') {
+                      paymentMode = 'bank'; // Card payments are stored as 'bank' in the database
+                      onClick = () => {
+                        const params = new URLSearchParams({
+                          fromDate: fromDate,
+                          toDate: toDate,
+                          paymentMode: paymentMode
+                        });
+                        navigate(`/payments/customer-payment-history?${params.toString()}`);
+                      };
+                    } else if (item.item === 'Bank Transfer') {
+                      paymentMode = 'bank_transfer';
+                      onClick = () => {
+                        const params = new URLSearchParams({
+                          fromDate: fromDate,
+                          toDate: toDate,
+                          paymentMode: paymentMode
+                        });
+                        navigate(`/payments/customer-payment-history?${params.toString()}`);
+                      };
+                    } else if (item.item === 'On Account Cheque') {
+                      paymentMode = 'cheque';
+                      onClick = () => {
+                        const params = new URLSearchParams({
+                          fromDate: fromDate,
+                          toDate: toDate,
+                          paymentMode: paymentMode,
+                          paymentType: 'on-account'
+                        });
+                        navigate(`/payments/customer-payment-history?${params.toString()}`);
+                      };
+                    } else if (item.item === 'On Account Card') {
+                      paymentMode = 'bank'; // Card payments are stored as 'bank' in the database
+                      onClick = () => {
+                        const params = new URLSearchParams({
+                          fromDate: fromDate,
+                          toDate: toDate,
+                          paymentMode: paymentMode,
+                          paymentType: 'on-account'
+                        });
+                        navigate(`/payments/customer-payment-history?${params.toString()}`);
+                      };
+                    } else if (item.item === 'On Account Bank Transfer') {
+                      paymentMode = 'bank_transfer';
+                      onClick = () => {
+                        const params = new URLSearchParams({
+                          fromDate: fromDate,
+                          toDate: toDate,
+                          paymentMode: paymentMode,
+                          paymentType: 'on-account'
+                        });
+                        navigate(`/payments/customer-payment-history?${params.toString()}`);
+                      };
+                    }
+                    
+                    return (
+                      <div 
+                        key={index} 
+                        className={`flex justify-between ${onClick ? 'cursor-pointer hover:text-blue-600 hover:underline' : ''}`}
+                        onClick={onClick}
+                      >
+                        <span>{item.item}</span>
+                        <span className="font-mono">{Number(item.amount).toFixed(2)}</span>
+                      </div>
+                    );
+                  })}
                   <div className="border-t pt-2 font-semibold flex justify-between">
                     <span>TOTAL</span>
                     <span className="font-mono">{Number(totalReceivablesOthers).toFixed(2)}</span>

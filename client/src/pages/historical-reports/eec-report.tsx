@@ -504,16 +504,16 @@ export default function EecReport() {
                       </TableRow>
                     ))
                   )}
-                  <TableRow className="bg-blue-100 font-semibold">
-                    <TableCell className="text-center" colSpan={3}>Total:</TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                  </TableRow>
+                <TableRow className="bg-blue-100 font-semibold">
+                  <TableCell className="text-center" colSpan={4}>Total:</TableCell>
+                  <TableCell className="text-center">{totals.weight.toLocaleString()}</TableCell>
+                  <TableCell className="text-center">{totals.quantity.toLocaleString()}</TableCell>
+                  <TableCell></TableCell>
+                  <TableCell className="text-center">£{totals.amount.toFixed(2)}</TableCell>
+                  <TableCell></TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+
                 </TableBody>
               </Table>
             </div>

@@ -16,6 +16,7 @@ import type { Customer } from "@shared/schema";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { useLocation } from "wouter";
 
 interface PaymentHistoryData {
   id: number;
@@ -32,13 +33,37 @@ interface PaymentHistoryData {
 }
 
 export default function CustomerPaymentHistory() {
+  const [, navigate] = useLocation();
   const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
   const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
   const [toDate, setToDate] = useState<Date | undefined>(new Date());
   const [selectedFilter, setSelectedFilter] = useState<string>("All");
+  const [selectedPaymentType, setSelectedPaymentType] = useState<string>("All");
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   const { toast } = useToast();
+
+  // Parse URL parameters on component mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlFromDate = urlParams.get('fromDate');
+    const urlToDate = urlParams.get('toDate');
+    const urlPaymentMode = urlParams.get('paymentMode');
+    const urlPaymentType = urlParams.get('paymentType');
+
+    if (urlFromDate) {
+      setFromDate(new Date(urlFromDate));
+    }
+    if (urlToDate) {
+      setToDate(new Date(urlToDate));
+    }
+    if (urlPaymentMode && urlPaymentMode !== 'All') {
+      setSelectedFilter(urlPaymentMode);
+    }
+    if (urlPaymentType && urlPaymentType !== 'All') {
+      setSelectedPaymentType(urlPaymentType);
+    }
+  }, []);
 
   // Fetch customers for the dropdown
   const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
@@ -59,6 +84,9 @@ export default function CustomerPaymentHistory() {
   }
   if (selectedFilter && selectedFilter !== "All") {
     queryParams.append("paymentMode", selectedFilter);
+  }
+  if (selectedPaymentType && selectedPaymentType !== "All") {
+    queryParams.append("paymentType", selectedPaymentType);
   }
 
   // Fetch payment history
@@ -288,7 +316,7 @@ export default function CustomerPaymentHistory() {
         {/* Filter Section */}
         <Card>
           <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
               <div>
                 <label className="block text-sm font-medium mb-2">All Customer</label>
                 <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
@@ -362,21 +390,39 @@ export default function CustomerPaymentHistory() {
                 </Popover>
               </div>
 
-              <div className="flex gap-2">
+              <div>
+                <label className="block text-sm font-medium mb-2">Payment Mode</label>
                 <Select value={selectedFilter} onValueChange={setSelectedFilter}>
-                  <SelectTrigger className="flex-1">
+                  <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All</SelectItem>
-                    <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="CARD">Card</SelectItem>
-                    <SelectItem value="BANK">Bank</SelectItem>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="bank">Card</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSubmit}>
-                  Submit
-                </Button>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Payment Type</label>
+                <div className="flex gap-2">
+                  <Select value={selectedPaymentType} onValueChange={setSelectedPaymentType}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All</SelectItem>
+                      <SelectItem value="direct">Direct</SelectItem>
+                      <SelectItem value="on-account">On Account</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSubmit}>
+                    Submit
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
