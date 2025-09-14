@@ -223,55 +223,7 @@ export default function PurchaseEntry() {
         </Card>
 
         {/* Purchase List */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Purchases</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8">Loading...</div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    <TableHead>Supplier Name</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {Array.isArray(purchases) && purchases.length > 0 ? (
-                    purchases.map((purchase: any) => (
-                      <TableRow key={purchase.id}>
-                        <TableCell className="font-medium">#{purchase.id}</TableCell>
-                        <TableCell>{purchase.supplierName}</TableCell>
-                        <TableCell className="font-medium text-orange-600">
-                          ${parseFloat(purchase.amount).toLocaleString()}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(purchase.date).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-                            {purchase.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center text-gray-500 py-8">
-                        No purchases found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+        
       </div>
     </PageLayout>
   );

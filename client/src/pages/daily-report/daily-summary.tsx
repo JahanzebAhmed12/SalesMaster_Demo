@@ -1197,13 +1197,13 @@ export default function DailySummary() {
                 </CardTitle>
                 <div className="flex items-center gap-4 print:hidden">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">Date:</span>
+                    <span className="text-sm font-sm">Date:</span>
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
                           className={cn(
-                            "w-40 justify-start text-left font-normal",
+                            "w-50 justify-start text-left font-normal",
                             !selectedDate && "text-muted-foreground"
                           )}
                         >

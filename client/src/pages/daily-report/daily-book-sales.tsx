@@ -20,6 +20,8 @@ import autoTable from 'jspdf-autotable';
 import { useLocation } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import Pagination from "@/components/ui/pagination";
+import { useTablePagination } from "@/hooks/useTablePagination";
 
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
@@ -54,14 +56,14 @@ export default function DailyBookSales() {
   // Initialize state with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
-  
+
   // Get business date with formatting utilities
-  const { 
-    businessDate, 
-    isLoading: isLoadingBusinessDate, 
-    formatForApi 
+  const {
+    businessDate,
+    isLoading: isLoadingBusinessDate,
+    formatForApi
   } = useBusinessDate();
-  
+
   // Update dates when business date changes
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
@@ -77,13 +79,13 @@ export default function DailyBookSales() {
         console.error('Error processing business date:', error);
       }
     }
-  }, [businessDate, isLoadingBusinessDate, fromDate, toDate]);
+  }, []);
 
   // Format date for display with different formats
   const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'MM/dd/yy') => {
     try {
       if (!date) return '';
-      
+
       // Handle string dates
       if (typeof date === 'string') {
         // Try parsing the date string
@@ -91,13 +93,13 @@ export default function DailyBookSales() {
         if (isNaN(parsedDate.getTime())) return '';
         return format(parsedDate, formatStr);
       }
-      
+
       // Handle Date objects
       if (date instanceof Date) {
         if (isNaN(date.getTime())) return '';
         return format(date, formatStr);
       }
-      
+
       return '';
     } catch (error) {
       console.error('Error formatting date:', error);
@@ -211,7 +213,7 @@ export default function DailyBookSales() {
         isFullyPaid: item.isFullyPaid
       });
     }
-    
+
     return {
       ...item,
       amount: item.amount !== undefined ? item.amount : item.account !== undefined ? item.account : 0,
@@ -230,6 +232,7 @@ export default function DailyBookSales() {
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
+
 
   // Backdate permissions
   const { canEditBackdate } = useBackdatePermissions();
@@ -355,7 +358,7 @@ export default function DailyBookSales() {
   const handlePDF = () => {
     const doc = new jsPDF();
     let yPosition = 20;
-    
+
     // Format dates for PDF title
     const fromDateStr = fromDate ? formatDateForDisplay(fromDate, 'dd/MM/yyyy') : 'All';
     const toDateStr = toDate ? formatDateForDisplay(toDate, 'dd/MM/yyyy') : 'All';
@@ -493,7 +496,7 @@ export default function DailyBookSales() {
     // Check if any selected sales were paid via customer payment page
     const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
-    
+
     if (customerPaymentSales.length > 0) {
       alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
       return;
@@ -598,7 +601,7 @@ export default function DailyBookSales() {
     // Check if any selected sales were paid via customer payment page
     const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
-    
+
     if (customerPaymentSales.length > 0) {
       alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
       return;
@@ -703,7 +706,7 @@ export default function DailyBookSales() {
     // Check if any selected sales were paid via customer payment page
     const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
-    
+
     if (customerPaymentSales.length > 0) {
       alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
       return;
@@ -774,7 +777,7 @@ export default function DailyBookSales() {
     // Check if any selected sales were paid via customer payment page
     const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
-    
+
     if (customerPaymentSales.length > 0) {
       alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
       return;
@@ -853,7 +856,7 @@ export default function DailyBookSales() {
     // Check if any selected sales were paid via customer payment page
     const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
-    
+
     if (customerPaymentSales.length > 0) {
       alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
       return;
@@ -1156,7 +1159,7 @@ export default function DailyBookSales() {
   };
 
   const SortableHeader = ({ label, sortKey }: { label: string; sortKey: string }) => (
-    <div 
+    <div
       className="flex items-center cursor-pointer hover:text-primary"
       onClick={() => requestSort(sortKey)}
     >
@@ -1401,7 +1404,7 @@ export default function DailyBookSales() {
                     <span>Paid (Daily Book)</span>
                   </div>
                 </div>
-                
+
                 {/* Search */}
                 <div className="relative w-full sm:w-48">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
@@ -1460,7 +1463,7 @@ export default function DailyBookSales() {
                     </TableRow>
                   ) : (
                     salesData.map((sale) => (
-                      <TableRow 
+                      <TableRow
                         key={sale.id}
                         className={cn(
                           // Base row styling
@@ -1511,8 +1514,8 @@ export default function DailyBookSales() {
                                   {canEditInvoice ? 'Edit Invoice' : 'View Invoice (Read-Only)'}
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem 
-                                className="text-sm py-2" 
+                              <DropdownMenuItem
+                                className="text-sm py-2"
                                 onClick={() => {
                                   const printUrl = invoicePrintFormat === 'DOTMATRIX'
                                     ? `/print/dot-matrix-invoice/${sale.invoiceNo}`

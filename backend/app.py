@@ -4539,14 +4539,13 @@ def daily_book_sales():
         customer_payment_payments = [p for p in sale.payments if p.batch_id]
         daily_book_payments = [p for p in sale.payments if not p.batch_id]
         
-        # For current date invoices paid via customer payment, always show in accounts
-        is_current_date = sale.date.date() == datetime.now().date()
+        # For invoices paid via customer payment, always show in accounts regardless of date
         is_paid_via_customer_payment = len(customer_payment_payments) > 0
         
         total_amount = float(sale.total_amount)
         
-        if is_current_date and is_paid_via_customer_payment:
-            # Current date invoices paid via customer payment always go to accounts
+        if is_paid_via_customer_payment:
+            # Invoices paid via customer payment always go to accounts
             if total_amount >= 0:
                 account_amount = total_amount
                 credit_amount = 0

@@ -246,7 +246,7 @@ export default function CustomerPayment() {
     paginationProps: invoicesPaginationProps
   } = useTablePagination({
     totalItems: displayedInvoices.length,
-    initialItemsPerPage: 25
+    initialItemsPerPage: 10
   });
 
   const paginatedInvoices = useMemo(() =>

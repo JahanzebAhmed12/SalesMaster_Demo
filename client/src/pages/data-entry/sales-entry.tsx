@@ -333,14 +333,7 @@ console.log(heldInvoices, "see held invoices")
           </CardContent>
         </Card>
         {/* Sales List is removed from here as per the new workflow */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Sales</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">Sales data will be displayed on the Sales Invoice page after creation.</div>
-          </CardContent>
-        </Card>
+
       </div>
     </PageLayout>
   );
