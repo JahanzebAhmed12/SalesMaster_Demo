@@ -332,6 +332,7 @@ class Payment(db.Model):
     payment_date = db.Column(db.Date, nullable=False)
     batch_id = db.Column(db.Integer) # For grouping related payments in the same transaction
     payment_type = db.Column(db.String(20), default=None) # 'direct', 'on-account', or NULL for legacy payments
+    payment_source = db.Column(db.String(50), default='customer_payment') # 'customer_payment', 'daily_book_sales'
     remarks = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -349,6 +350,7 @@ class Payment(db.Model):
             'paymentDate': self.payment_date.isoformat(),
             'batchId': self.batch_id,
             'paymentType': self.payment_type,
+            'paymentSource': self.payment_source,
             'remarks': self.remarks,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None

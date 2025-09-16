@@ -143,6 +143,24 @@ with app.app_context():
         print(f"Migration warning: {str(e)}")
         db.session.rollback()
     
+    # Run migration for payment table to add payment_source column
+    try:
+        # Check if payment_source column exists
+        result = db.session.execute(db.text("PRAGMA table_info(payment)"))
+        columns = [row[1] for row in result.fetchall()]
+        
+        if 'payment_source' not in columns:
+            print("Adding payment_source column to payment table...")
+            db.session.execute(db.text("""
+                ALTER TABLE payment 
+                ADD COLUMN payment_source VARCHAR(50) DEFAULT 'customer_payment'
+            """))
+            db.session.commit()
+            print("Successfully added payment_source column")
+    except Exception as e:
+        print(f"Migration warning: {str(e)}")
+        db.session.rollback()
+    
     create_admin_user()  # Create admin user if it doesn't exist
 
 # Configure Flask-JWT-Extended
@@ -154,6 +172,255 @@ jwt = JWTManager(app)
 @jwt.user_identity_loader
 def user_identity_lookup(user_id):
     return str(user_id)
+
+# Daily Book Sales Payment Update Endpoint
+@app.route('/api/sales/update-payment-method', methods=['POST'])
+@jwt_required()
+def update_sale_payment_method():
+    """Update payment method for sales and create appropriate payment records"""
+    data = request.get_json()
+    
+    try:
+        sale_ids = data.get('saleIds', [])
+        new_payment_method = data.get('paymentMethod')  # 'cash', 'bank', 'bank_transfer', 'cheque', 'account'
+        user_id = get_jwt_identity()
+        
+        if not sale_ids or not new_payment_method:
+            return jsonify({"error": "Sale IDs and payment method are required"}), 400
+        
+        valid_methods = ['cash', 'bank', 'bank_transfer', 'cheque', 'account']
+        if new_payment_method not in valid_methods:
+            return jsonify({"error": f"Invalid payment method. Must be one of: {valid_methods}"}), 400
+        
+        updated_sales = []
+        
+        for sale_id in sale_ids:
+            sale = Sale.query.get(sale_id)
+            if not sale:
+                continue
+                
+            # Check permissions
+            backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+            today = datetime.now().date()
+            sale_date = sale.date.date() if hasattr(sale.date, 'date') else sale.date
+            
+            if backdate_opt and not backdate_opt.editing and sale_date < today:
+                return jsonify({"error": f"You do not have permission to edit sales for previous dates (Sale {sale.invoice_number})"}), 403
+            
+            if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale_date == today:
+                return jsonify({"error": f"You do not have permission to edit sales for today (Sale {sale.invoice_number})"}), 403
+            
+            # Calculate current paid amount
+            current_paid = db.session.query(func.sum(Payment.amount)).filter(
+                Payment.sale_id == sale.id,
+                Payment.amount > 0
+            ).scalar() or 0
+            
+            # Calculate outstanding balance
+            outstanding_balance = sale.total_amount - current_paid
+            
+            old_customer_type = sale.customer_type
+            
+            # Handle payment logic based on new payment method
+            if new_payment_method == 'account':
+                # For account payment, remove any existing payments (revert to unpaid)
+                if current_paid > 0:
+                    # Create a negative payment to reverse previous payments
+                    reversal_payment = Payment(
+                        customer_id=sale.customer_id,
+                        sale_id=sale.id,
+                        amount=-current_paid,
+                        payment_mode='reversal',
+                        payment_date=sale_date,
+                        remarks=f'Reverted to account payment via Daily Book Sales (was {old_customer_type})',
+                        payment_source='daily_book_sales'
+                    )
+                    db.session.add(reversal_payment)
+                
+                sale.payment_status = 'pending'
+            else:
+                # For cash/bank/transfer/cheque, ensure invoice is fully paid
+                if outstanding_balance > 0:
+                    # Create payment for outstanding balance
+                    payment = Payment(
+                        customer_id=sale.customer_id,
+                        sale_id=sale.id,
+                        amount=outstanding_balance,
+                        payment_mode=new_payment_method,
+                        payment_date=sale_date,
+                        remarks=f'Payment via Daily Book Sales (changed from {old_customer_type} to {new_payment_method})',
+                        payment_source='daily_book_sales'
+                    )
+                    db.session.add(payment)
+                elif current_paid > 0 and old_customer_type != new_payment_method:
+                    # If already paid but changing payment method, reverse and re-create
+                    # Reverse existing payment
+                    reversal_payment = Payment(
+                        customer_id=sale.customer_id,
+                        sale_id=sale.id,
+                        amount=-current_paid,
+                        payment_mode='reversal',
+                        payment_date=sale_date,
+                        remarks=f'Reversed {old_customer_type} payment via Daily Book Sales',
+                        payment_source='daily_book_sales'
+                    )
+                    db.session.add(reversal_payment)
+                    
+                    # Create new payment with new method
+                    new_payment = Payment(
+                        customer_id=sale.customer_id,
+                        sale_id=sale.id,
+                        amount=sale.total_amount,
+                        payment_mode=new_payment_method,
+                        payment_date=sale_date,
+                        remarks=f'Payment method changed from {old_customer_type} to {new_payment_method} via Daily Book Sales',
+                        payment_source='daily_book_sales'
+                    )
+                    db.session.add(new_payment)
+                
+                sale.payment_status = 'paid'
+            
+            # Update the sale's customer type
+            sale.customer_type = new_payment_method
+            
+            # Add a note about the change for audit trail
+            change_note = f"Payment method changed from {old_customer_type} to {new_payment_method} via Daily Book Sales by user {user_id}"
+            if sale.notes:
+                sale.notes += f"\n{change_note}"
+            else:
+                sale.notes = change_note
+            
+            updated_sales.append({
+                'id': sale.id,
+                'invoice_number': sale.invoice_number,
+                'old_method': old_customer_type,
+                'new_method': new_payment_method,
+                'outstanding_balance': float(outstanding_balance)
+            })
+        
+        db.session.commit()
+        
+        return jsonify({
+            "message": f"Successfully updated payment method for {len(updated_sales)} sales",
+            "updated_sales": updated_sales
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to update payment methods: {str(e)}"}), 500
+
+@app.route('/api/sales/split-payment', methods=['POST'])
+@jwt_required()
+def update_sale_split_payment():
+    """Update sale to split payment between cash and card with proper payment records"""
+    data = request.get_json()
+    
+    try:
+        sale_id = data.get('saleId')
+        cash_amount = float(data.get('cashAmount', 0))
+        card_amount = float(data.get('cardAmount', 0))
+        user_id = get_jwt_identity()
+        
+        if not sale_id:
+            return jsonify({"error": "Sale ID is required"}), 400
+        
+        sale = Sale.query.get(sale_id)
+        if not sale:
+            return jsonify({"error": "Sale not found"}), 404
+        
+        # Check permissions
+        backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        today = datetime.now().date()
+        sale_date = sale.date.date() if hasattr(sale.date, 'date') else sale.date
+        
+        if backdate_opt and not backdate_opt.editing and sale_date < today:
+            return jsonify({"error": "You do not have permission to edit sales for previous dates"}), 403
+        
+        if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale_date == today:
+            return jsonify({"error": "You do not have permission to edit sales for today"}), 403
+        
+        # Validate amounts
+        total_amount = cash_amount + card_amount
+        if abs(total_amount - float(sale.total_amount)) > 0.01:
+            return jsonify({"error": f"Split amounts ({total_amount}) must equal invoice total ({sale.total_amount})"}), 400
+        
+        # Calculate current paid amount and reverse if necessary
+        current_paid = db.session.query(func.sum(Payment.amount)).filter(
+            Payment.sale_id == sale.id,
+            Payment.amount > 0
+        ).scalar() or 0
+        
+        if current_paid > 0:
+            # Reverse existing payments
+            reversal_payment = Payment(
+                customer_id=sale.customer_id,
+                sale_id=sale.id,
+                amount=-current_paid,
+                payment_mode='reversal',
+                payment_date=sale_date,
+                remarks=f'Reversed existing payment for split payment via Daily Book Sales',
+                payment_source='daily_book_sales'
+            )
+            db.session.add(reversal_payment)
+        
+        # Create split payments
+        if cash_amount > 0:
+            cash_payment = Payment(
+                customer_id=sale.customer_id,
+                sale_id=sale.id,
+                amount=cash_amount,
+                payment_mode='cash',
+                payment_date=sale_date,
+                remarks=f'Split payment - Cash portion (£{cash_amount:.2f}) via Daily Book Sales',
+                payment_source='daily_book_sales'
+            )
+            db.session.add(cash_payment)
+        
+        if card_amount > 0:
+            card_payment = Payment(
+                customer_id=sale.customer_id,
+                sale_id=sale.id,
+                amount=card_amount,
+                payment_mode='bank',
+                payment_date=sale_date,
+                remarks=f'Split payment - Card portion (£{card_amount:.2f}) via Daily Book Sales',
+                payment_source='daily_book_sales'
+            )
+            db.session.add(card_payment)
+        
+        # Set customer type based on dominant payment method
+        if cash_amount > card_amount:
+            sale.customer_type = 'cash'
+        elif card_amount > cash_amount:
+            sale.customer_type = 'bank'
+        else:
+            # Equal amounts, default to cash
+            sale.customer_type = 'cash'
+        
+        # Set payment status to paid
+        sale.payment_status = 'paid'
+        
+        # Add note about split payment
+        split_note = f"Split payment: Cash £{cash_amount:.2f}, Card £{card_amount:.2f} via Daily Book Sales by user {user_id}"
+        if sale.notes:
+            sale.notes += f"\n{split_note}"
+        else:
+            sale.notes = split_note
+        
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Split payment applied successfully",
+            "sale_id": sale.id,
+            "invoice_number": sale.invoice_number,
+            "cash_amount": cash_amount,
+            "card_amount": card_amount,
+            "dominant_method": sale.customer_type
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"Failed to apply split payment: {str(e)}"}), 500
 
 # Stock management helper functions
 def update_product_stock(product_id, product_type, quantity_change, movement_type, reference_id=None, reference_type=None, remarks=None, user_id=None):
@@ -4424,6 +4691,14 @@ def get_payment_history():
         # Filter by customer if provided
         if customer_id:
             query = query.filter(Payment.customer_id == customer_id)
+            # Exclude payments made via daily book sales from payment history display
+            # These payments affect outstanding balances but don't show in customer payment history
+            query = query.filter(
+                or_(
+                    Payment.payment_source != 'daily_book_sales',
+                    Payment.payment_source.is_(None)  # Include legacy payments without payment_source
+                )
+            )
         
         # Filter by date range if provided
         if from_date:

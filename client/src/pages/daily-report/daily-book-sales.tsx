@@ -508,79 +508,17 @@ export default function DailyBookSales() {
 
     setIsUpdatingPayments(true);
     try {
-      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
+      const validSaleIds = selectedSalesData
+        .filter(sale => !sale.isPaidViaCustomerPayment)
+        .map(sale => sale.id);
 
-      // Process each valid sale
-      for (const sale of validSalesData) {
-        // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
-        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
+      // Use the new dedicated endpoint for updating payment methods
+      const response = await apiRequest('POST', '/api/sales/update-payment-method', {
+        saleIds: validSaleIds,
+        paymentMethod: 'cash'
+      });
 
-        if (totalInvoiceAmount > 0) {
-          // First, reverse any existing payments by creating negative payment entries
-          if (sale.cash > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.cash,
-              paymentMode: 'cash',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed cash payment via daily book sales`
-            });
-          }
-
-          if (sale.bank && sale.bank > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.bank,
-              paymentMode: 'bank',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed bank payment via daily book sales`
-            });
-          }
-
-          if (sale.bankTransfer && sale.bankTransfer > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.bankTransfer,
-              paymentMode: 'bank_transfer',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed bank transfer payment via daily book sales`
-            });
-          }
-
-          if (sale.cheque && sale.cheque > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.cheque,
-              paymentMode: 'cheque',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed cheque payment via daily book sales`
-            });
-          }
-
-          // Now create the new cash payment for the full amount
-          const paymentData = {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: totalInvoiceAmount,
-            paymentMode: 'cash',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Updated to cash payment via daily book sales`
-          };
-
-          await apiRequest('POST', '/api/payments', paymentData);
-
-          // Update the sale record to set customer_type to 'cash' using PATCH
-          await apiRequest('PATCH', `/api/sales/${sale.id}`, {
-            customer_type: 'cash'
-          });
-        }
-      }
-
-      alert(`Successfully updated ${validSalesData.length} sales to cash payment.`);
+      alert(response.message);
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
@@ -613,79 +551,17 @@ export default function DailyBookSales() {
 
     setIsUpdatingPayments(true);
     try {
-      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
+      const validSaleIds = selectedSalesData
+        .filter(sale => !sale.isPaidViaCustomerPayment)
+        .map(sale => sale.id);
 
-      // Process each valid sale
-      for (const sale of validSalesData) {
-        // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
-        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
+      // Use the new dedicated endpoint for updating payment methods
+      const response = await apiRequest('POST', '/api/sales/update-payment-method', {
+        saleIds: validSaleIds,
+        paymentMethod: 'bank'
+      });
 
-        if (totalInvoiceAmount > 0) {
-          // First, reverse any existing payments by creating negative payment entries
-          if (sale.cash > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.cash,
-              paymentMode: 'cash',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed cash payment via daily book sales`
-            });
-          }
-
-          if (sale.bank && sale.bank > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.bank,
-              paymentMode: 'bank',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed bank payment via daily book sales`
-            });
-          }
-
-          if (sale.bankTransfer && sale.bankTransfer > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.bankTransfer,
-              paymentMode: 'bank_transfer',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed bank transfer payment via daily book sales`
-            });
-          }
-
-          if (sale.cheque && sale.cheque > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.cheque,
-              paymentMode: 'cheque',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed cheque payment via daily book sales`
-            });
-          }
-
-          // Now create the new card payment for the full amount
-          const paymentData = {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: totalInvoiceAmount,
-            paymentMode: 'bank',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Updated to card payment via daily book sales`
-          };
-
-          await apiRequest('POST', '/api/payments', paymentData);
-
-          // Update the sale record to set customer_type to 'bank' using PATCH
-          await apiRequest('PATCH', `/api/sales/${sale.id}`, {
-            customer_type: 'bank'
-          });
-        }
-      }
-
-      alert(`Successfully updated ${validSalesData.length} sales to card payment.`);
+      alert(response.message);
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
@@ -718,45 +594,17 @@ export default function DailyBookSales() {
 
     setIsUpdatingPayments(true);
     try {
-      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
+      const validSaleIds = selectedSalesData
+        .filter(sale => !sale.isPaidViaCustomerPayment)
+        .map(sale => sale.id);
 
-      // Process each valid sale - reverse any existing payments back to account
-      for (const sale of validSalesData) {
-        // Calculate the total invoice amount (account + cash + bank)
-        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
+      // Use the new dedicated endpoint for updating payment methods
+      const response = await apiRequest('POST', '/api/sales/update-payment-method', {
+        saleIds: validSaleIds,
+        paymentMethod: 'account'
+      });
 
-        if (totalInvoiceAmount > 0) {
-          // First, reverse any existing payments by creating negative payment entries
-          if (sale.cash > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.cash,
-              paymentMode: 'cash',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed cash payment to account via daily book sales`
-            });
-          }
-
-          if (sale.bank && sale.bank > 0) {
-            await apiRequest('POST', '/api/payments', {
-              customerId: sale.customerId,
-              saleId: sale.id,
-              amount: -sale.bank,
-              paymentMode: 'bank',
-              paymentDate: formatForApi(businessDate) || format(new Date(), 'yyyy-MM-dd'),
-              remarks: `Reversed bank payment to account via daily book sales`
-            });
-          }
-
-          // Update the sale record to set customer_type back to 'account' using PATCH
-          await apiRequest('PATCH', `/api/sales/${sale.id}`, {
-            customer_type: 'account'
-          });
-        }
-      }
-
-      alert(`Successfully updated ${validSalesData.length} sales to account payment.`);
+      alert(response.message);
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
@@ -789,53 +637,17 @@ export default function DailyBookSales() {
 
     setIsUpdatingPayments(true);
     try {
-      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
+      const validSaleIds = selectedSalesData
+        .filter(sale => !sale.isPaidViaCustomerPayment)
+        .map(sale => sale.id);
 
-      for (const sale of validSalesData) {
-        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
+      // Use the new dedicated endpoint for updating payment methods
+      const response = await apiRequest('POST', '/api/sales/update-payment-method', {
+        saleIds: validSaleIds,
+        paymentMethod: 'bank_transfer'
+      });
 
-        // Reverse existing payments
-        if (sale.cash > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.cash,
-            paymentMode: 'cash',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed cash payment via daily book sales`
-          });
-        }
-
-        if (sale.bank && sale.bank > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.bank,
-            paymentMode: 'bank',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed bank payment via daily book sales`
-          });
-        }
-
-        // Create new bank transfer payment
-        const paymentData = {
-          customerId: sale.customerId,
-          saleId: sale.id,
-          amount: totalInvoiceAmount,
-          paymentMode: 'bank_transfer',
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          remarks: `Updated to bank transfer payment via daily book sales`
-        };
-
-        await apiRequest('POST', '/api/payments', paymentData);
-
-        // Update the sale record to set customer_type to 'bank_transfer'
-        await apiRequest('PATCH', `/api/sales/${sale.id}`, {
-          customer_type: 'bank_transfer'
-        });
-      }
-
-      alert(`Successfully updated ${validSalesData.length} sales to bank transfer payment.`);
+      alert(response.message);
       setSelectedSales(new Set());
       refetchSales();
     } catch (error) {
@@ -868,53 +680,17 @@ export default function DailyBookSales() {
 
     setIsUpdatingPayments(true);
     try {
-      const validSalesData = selectedSalesData.filter(sale => !sale.isPaidViaCustomerPayment);
+      const validSaleIds = selectedSalesData
+        .filter(sale => !sale.isPaidViaCustomerPayment)
+        .map(sale => sale.id);
 
-      for (const sale of validSalesData) {
-        const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
+      // Use the new dedicated endpoint for updating payment methods
+      const response = await apiRequest('POST', '/api/sales/update-payment-method', {
+        saleIds: validSaleIds,
+        paymentMethod: 'cheque'
+      });
 
-        // Reverse existing payments
-        if (sale.cash > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.cash,
-            paymentMode: 'cash',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed cash payment via daily book sales`
-          });
-        }
-
-        if (sale.bank && sale.bank > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.bank,
-            paymentMode: 'bank',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed bank payment via daily book sales`
-          });
-        }
-
-        // Create new cheque payment
-        const paymentData = {
-          customerId: sale.customerId,
-          saleId: sale.id,
-          amount: totalInvoiceAmount,
-          paymentMode: 'cheque',
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          remarks: `Updated to cheque payment via daily book sales`
-        };
-
-        await apiRequest('POST', '/api/payments', paymentData);
-
-        // Update the sale record to set customer_type to 'cheque'
-        await apiRequest('PATCH', `/api/sales/${sale.id}`, {
-          customer_type: 'cheque'
-        });
-      }
-
-      alert(`Successfully updated ${validSalesData.length} sales to cheque payment.`);
+      alert(response.message);
       setSelectedSales(new Set());
       refetchSales();
     } catch (error) {
@@ -966,77 +742,11 @@ export default function DailyBookSales() {
           mode === 'bank_transfer' ? 'Bank Transfer' :
             mode === 'cheque' ? 'Cheque' : mode;
 
-      // Calculate the total invoice amount (account + cash + bank + bankTransfer + cheque)
-      const totalInvoiceAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0);
-
-      if (totalInvoiceAmount > 0) {
-        // First, reverse any existing payments by creating negative payment entries
-        if (sale.cash > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.cash,
-            paymentMode: 'cash',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed cash payment via daily book sales dropdown`
-          });
-        }
-
-        if (sale.bank && sale.bank > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.bank,
-            paymentMode: 'bank',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed bank payment via daily book sales dropdown`
-          });
-        }
-
-        if (sale.bankTransfer && sale.bankTransfer > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.bankTransfer,
-            paymentMode: 'bank_transfer',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed bank transfer payment via daily book sales dropdown`
-          });
-        }
-
-        if (sale.cheque && sale.cheque > 0) {
-          await apiRequest('POST', '/api/payments', {
-            customerId: sale.customerId,
-            saleId: sale.id,
-            amount: -sale.cheque,
-            paymentMode: 'cheque',
-            paymentDate: format(new Date(), 'yyyy-MM-dd'),
-            remarks: `Reversed cheque payment via daily book sales dropdown`
-          });
-        }
-
-        // Now create the new payment for the full amount
-        const paymentData = {
-          customerId: sale.customerId,
-          saleId: sale.id,
-          amount: totalInvoiceAmount,
-          paymentMode: mode,
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          remarks: `Updated to ${modeDisplayName.toLowerCase()} payment via daily book sales dropdown`
-        };
-
-        await apiRequest('POST', '/api/payments', paymentData);
-
-        // Update the sale record to set customer_type based on payment mode
-        const customerType = mode === 'cash' ? 'cash' :
-          mode === 'bank' ? 'bank' :
-            mode === 'bank_transfer' ? 'bank_transfer' :
-              mode === 'cheque' ? 'cheque' : 'cash';
-
-        await apiRequest('PATCH', `/api/sales/${sale.id}`, {
-          customer_type: customerType
-        });
-      }
+      // Use the new dedicated endpoint for updating payment methods
+      const response = await apiRequest('POST', '/api/sales/update-payment-method', {
+        saleIds: [sale.id],
+        paymentMethod: mode
+      });
 
       alert(`Payment updated to ${modeDisplayName} successfully!`);
       refetchSales();
@@ -1078,55 +788,11 @@ export default function DailyBookSales() {
     try {
       setIsUpdatingPayments(true);
 
-      // First, reverse any existing payments
-      if (sale.cash > 0) {
-        await apiRequest('POST', '/api/payments', {
-          customerId: sale.customerId,
-          saleId: sale.id,
-          amount: -sale.cash,
-          paymentMode: 'cash',
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          remarks: `Reversed cash payment for split payment`
-        });
-      }
-
-      if (sale.bank && sale.bank > 0) {
-        await apiRequest('POST', '/api/payments', {
-          customerId: sale.customerId,
-          saleId: sale.id,
-          amount: -sale.bank,
-          paymentMode: 'bank',
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          remarks: `Reversed bank payment for split payment`
-        });
-      }
-
-      // Create new split payments
-      if (cashAmount > 0) {
-        await apiRequest('POST', '/api/payments', {
-          customerId: sale.customerId,
-          saleId: sale.id,
-          amount: cashAmount,
-          paymentMode: 'cash',
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          remarks: `Split payment - Cash portion`
-        });
-      }
-
-      if (cardAmount > 0) {
-        await apiRequest('POST', '/api/payments', {
-          customerId: sale.customerId,
-          saleId: sale.id,
-          amount: cardAmount,
-          paymentMode: 'bank',
-          paymentDate: format(new Date(), 'yyyy-MM-dd'),
-          remarks: `Split payment - Card portion`
-        });
-      }
-
-      // Update sale customer type to mixed (or keep as is since it's split)
-      await apiRequest('PATCH', `/api/sales/${sale.id}`, {
-        customer_type: cashAmount > cardAmount ? 'cash' : 'bank' // Set to dominant payment type
+      // Use the new dedicated endpoint for split payments
+      const response = await apiRequest('POST', '/api/sales/split-payment', {
+        saleId: sale.id,
+        cashAmount: cashAmount,
+        cardAmount: cardAmount
       });
 
       alert('Split payment applied successfully!');
