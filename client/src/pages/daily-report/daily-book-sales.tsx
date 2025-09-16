@@ -210,14 +210,28 @@ export default function DailyBookSales() {
         hasPayments: item.hasPayments,
         paymentSource: item.paymentSource,
         isPaidViaCustomerPayment: item.isPaidViaCustomerPayment,
-        isFullyPaid: item.isFullyPaid
+        isFullyPaid: item.isFullyPaid,
+
+        cash: item.cash,
+        bank: item.bank,
+        bankTransfer: item.bankTransfer,
+        cheque: item.cheque,
+        credit: item.credit
       });
     }
 
     return {
       ...item,
-      amount: item.amount !== undefined ? item.amount : item.account !== undefined ? item.account : 0,
-      credit: item.credit !== undefined ? item.credit : 0,
+      amount: item.amount || 0,
+      cash: item.cash || 0,
+      bank: item.bank || 0,
+      bankTransfer: item.bankTransfer || 0,
+      cheque: item.cheque || 0,
+      credit: item.credit || 0,
+      // Ensure these fields are properly set
+      hasPayments: item.hasPayments || false,
+      isPaidViaCustomerPayment: item.isPaidViaCustomerPayment || false,
+      isFullyPaid: item.isFullyPaid || false
     };
   });
 

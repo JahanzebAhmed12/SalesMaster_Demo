@@ -177,7 +177,7 @@ def user_identity_lookup(user_id):
 @app.route('/api/sales/update-payment-method', methods=['POST'])
 @jwt_required()
 def update_sale_payment_method():
-    """Update payment method for sales and create appropriate payment records"""
+    """Update payment method for sales by modifying existing payment records"""
     data = request.get_json()
     
     try:
@@ -210,73 +210,63 @@ def update_sale_payment_method():
             if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale_date == today:
                 return jsonify({"error": f"You do not have permission to edit sales for today (Sale {sale.invoice_number})"}), 403
             
-            # Calculate current paid amount
-            current_paid = db.session.query(func.sum(Payment.amount)).filter(
-                Payment.sale_id == sale.id,
-                Payment.amount > 0
-            ).scalar() or 0
-            
-            # Calculate outstanding balance
-            outstanding_balance = sale.total_amount - current_paid
-            
             old_customer_type = sale.customer_type
+            
+            # Get existing payments for this sale (exclude reversals)
+            existing_payments = Payment.query.filter(
+                Payment.sale_id == sale.id,
+                Payment.payment_mode != 'reversal'
+            ).all()
+            
+            # Calculate current paid amount
+            current_paid = sum(p.amount for p in existing_payments if p.amount > 0)
+            outstanding_balance = sale.total_amount - current_paid
             
             # Handle payment logic based on new payment method
             if new_payment_method == 'account':
-                # For account payment, remove any existing payments (revert to unpaid)
-                if current_paid > 0:
-                    # Create a negative payment to reverse previous payments
-                    reversal_payment = Payment(
-                        customer_id=sale.customer_id,
-                        sale_id=sale.id,
-                        amount=-current_paid,
-                        payment_mode='reversal',
-                        payment_date=sale_date,
-                        remarks=f'Reverted to account payment via Daily Book Sales (was {old_customer_type})',
-                        payment_source='daily_book_sales'
-                    )
-                    db.session.add(reversal_payment)
-                
+                # For account payment, remove existing payment records
+                if existing_payments:
+                    for payment in existing_payments:
+                        db.session.delete(payment)
                 sale.payment_status = 'pending'
+                
             else:
-                # For cash/bank/transfer/cheque, ensure invoice is fully paid
-                if outstanding_balance > 0:
-                    # Create payment for outstanding balance
-                    payment = Payment(
-                        customer_id=sale.customer_id,
-                        sale_id=sale.id,
-                        amount=outstanding_balance,
-                        payment_mode=new_payment_method,
-                        payment_date=sale_date,
-                        remarks=f'Payment via Daily Book Sales (changed from {old_customer_type} to {new_payment_method})',
-                        payment_source='daily_book_sales'
-                    )
-                    db.session.add(payment)
-                elif current_paid > 0 and old_customer_type != new_payment_method:
-                    # If already paid but changing payment method, reverse and re-create
-                    # Reverse existing payment
-                    reversal_payment = Payment(
-                        customer_id=sale.customer_id,
-                        sale_id=sale.id,
-                        amount=-current_paid,
-                        payment_mode='reversal',
-                        payment_date=sale_date,
-                        remarks=f'Reversed {old_customer_type} payment via Daily Book Sales',
-                        payment_source='daily_book_sales'
-                    )
-                    db.session.add(reversal_payment)
+                # For cash/bank/transfer/cheque payments
+                if existing_payments:
+                    # Update existing payment records instead of creating new ones
+                    total_existing_amount = sum(p.amount for p in existing_payments)
                     
-                    # Create new payment with new method
-                    new_payment = Payment(
+                    if len(existing_payments) == 1:
+                        # Single payment record - just update it
+                        payment = existing_payments[0]
+                        payment.payment_mode = new_payment_method
+                        payment.amount = sale.total_amount
+                        payment.remarks = f'Payment method updated from {old_customer_type} to {new_payment_method} via Daily Book Sales'
+                        
+                    else:
+                        # Multiple payment records - consolidate into one
+                        # Keep the first payment record, delete others
+                        main_payment = existing_payments[0]
+                        main_payment.payment_mode = new_payment_method
+                        main_payment.amount = sale.total_amount
+                        main_payment.remarks = f'Payment consolidated and updated from {old_customer_type} to {new_payment_method} via Daily Book Sales'
+                        
+                        # Delete other payment records
+                        for payment in existing_payments[1:]:
+                            db.session.delete(payment)
+                            
+                else:
+                    # No existing payments - create new payment record
+                    payment = Payment(
                         customer_id=sale.customer_id,
                         sale_id=sale.id,
                         amount=sale.total_amount,
                         payment_mode=new_payment_method,
                         payment_date=sale_date,
-                        remarks=f'Payment method changed from {old_customer_type} to {new_payment_method} via Daily Book Sales',
+                        remarks=f'Payment created for {new_payment_method} via Daily Book Sales (changed from {old_customer_type})',
                         payment_source='daily_book_sales'
                     )
-                    db.session.add(new_payment)
+                    db.session.add(payment)
                 
                 sale.payment_status = 'paid'
             
@@ -308,7 +298,6 @@ def update_sale_payment_method():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to update payment methods: {str(e)}"}), 500
-
 @app.route('/api/sales/split-payment', methods=['POST'])
 @jwt_required()
 def update_sale_split_payment():
@@ -344,26 +333,18 @@ def update_sale_split_payment():
         if abs(total_amount - float(sale.total_amount)) > 0.01:
             return jsonify({"error": f"Split amounts ({total_amount}) must equal invoice total ({sale.total_amount})"}), 400
         
-        # Calculate current paid amount and reverse if necessary
-        current_paid = db.session.query(func.sum(Payment.amount)).filter(
+        # Get existing payments for this sale (exclude reversals)
+        existing_payments = Payment.query.filter(
             Payment.sale_id == sale.id,
-            Payment.amount > 0
-        ).scalar() or 0
+            Payment.payment_mode != 'reversal'
+        ).all()
         
-        if current_paid > 0:
-            # Reverse existing payments
-            reversal_payment = Payment(
-                customer_id=sale.customer_id,
-                sale_id=sale.id,
-                amount=-current_paid,
-                payment_mode='reversal',
-                payment_date=sale_date,
-                remarks=f'Reversed existing payment for split payment via Daily Book Sales',
-                payment_source='daily_book_sales'
-            )
-            db.session.add(reversal_payment)
+        # Delete all existing payment records
+        if existing_payments:
+            for payment in existing_payments:
+                db.session.delete(payment)
         
-        # Create split payments
+        # Create split payments only if amounts are greater than 0
         if cash_amount > 0:
             cash_payment = Payment(
                 customer_id=sale.customer_id,
@@ -397,8 +378,11 @@ def update_sale_split_payment():
             # Equal amounts, default to cash
             sale.customer_type = 'cash'
         
-        # Set payment status to paid
-        sale.payment_status = 'paid'
+        # Set payment status
+        if cash_amount > 0 or card_amount > 0:
+            sale.payment_status = 'paid'
+        else:
+            sale.payment_status = 'pending'  # Edge case where both amounts are 0
         
         # Add note about split payment
         split_note = f"Split payment: Cash £{cash_amount:.2f}, Card £{card_amount:.2f} via Daily Book Sales by user {user_id}"
@@ -415,13 +399,13 @@ def update_sale_split_payment():
             "invoice_number": sale.invoice_number,
             "cash_amount": cash_amount,
             "card_amount": card_amount,
-            "dominant_method": sale.customer_type
+            "dominant_method": sale.customer_type,
+            "total_split_amount": total_amount
         }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to apply split payment: {str(e)}"}), 500
-
 # Stock management helper functions
 def update_product_stock(product_id, product_type, quantity_change, movement_type, reference_id=None, reference_type=None, remarks=None, user_id=None):
     """Update product stock and create movement record within existing transaction"""
@@ -4847,11 +4831,12 @@ def daily_book_sales():
             else:
                 account_amount = 0
                 credit_amount = 0
-                # Calculate payment amounts based on customer_type
-                cash_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'cash' else 0
-                bank_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'bank' else 0
-                bank_transfer_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'bank_transfer' else 0
-                cheque_amount = total_amount if sale.customer_type and sale.customer_type.lower() == 'cheque' else 0
+                
+                # Calculate payment amounts from actual payment records (for split payments)
+                cash_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'cash')
+                bank_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'bank')
+                bank_transfer_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'bank_transfer')
+                cheque_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'cheque')
         
         # Show all customers - removed gate number restriction
         customer_display_name = ''
@@ -10157,15 +10142,13 @@ def daily_summary_report():
             if sale.customer_type == 'account':
                 account_amount = float(sale.total_amount or 0)
             else:
-                # For non-account sales, show based on customer_type
-                if sale.customer_type == 'cash':
-                    cash_amount = float(sale.total_amount or 0)
-                elif sale.customer_type == 'bank':
-                    card_amount = float(sale.total_amount or 0)
-                elif sale.customer_type == 'bank_transfer':
-                    bank_transfer_amount = float(sale.total_amount or 0)
-                elif sale.customer_type == 'cheque':
-                    cheque_amount = float(sale.total_amount or 0)
+                # For non-account sales, calculate from actual payment records (handles split payments)
+                daily_book_payments = [p for p in sale_payments if not p.batch_id]
+                
+                cash_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'cash')
+                card_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'bank')
+                bank_transfer_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'bank_transfer')
+                cheque_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'cheque')
         
         # Check for negative quantities in sale items or negative total amount
         negative_items = db.session.query(SaleItem).filter(

@@ -99,7 +99,7 @@ export default function DailyBookPurchase() {
         console.error('Error processing business date:', error);
       }
     }
-  }, [businessDate, isLoadingBusinessDate]);
+  }, []);
 
   const [user, setUser] = useState<any>(null);
   const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);
