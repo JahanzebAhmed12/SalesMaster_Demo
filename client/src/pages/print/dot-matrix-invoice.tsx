@@ -450,10 +450,7 @@ export default function DotMatrixInvoicePrintPage() {
               backgroundColor: '#fff',
               pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
               pageBreakInside: 'avoid',
-              pageBreakBefore: pageIndex === 0 ? 'avoid' : 'auto',
-              overflow: 'hidden',
-              top: '0',
-              left: '0'
+              overflow: 'hidden'
             }}
           >
             {/* Account Number (Customer ID) */}
