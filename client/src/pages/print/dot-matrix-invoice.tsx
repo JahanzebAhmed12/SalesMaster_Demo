@@ -28,6 +28,30 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
+  accountNo: { top: '25mm', left: '3mm' },
+  customerName: { top: '35mm', left: '3mm' },
+  customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
+  ticketNo: { top: '75mm', left: '23mm' },
+  date: { top: '75mm', left: '50mm' },
+  pageNumber: { top: '75mm', left: '118mm' },
+  itemsStartTop: '95mm',
+  itemsRowHeight: '6mm',
+  maxItemsPerPage: 11,
+  columns: {
+    quantity: { left: '3mm', width: '15mm' } as ColumnConfig,
+    description: { left: '13mm', width: '75mm' } as ColumnConfig,
+    price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
+  },
+  totals: {
+    goods: { top: '167mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '177mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '186mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig
+  }
+};
+
+// Mobile PDF positions - same as PC for now, but separate for future customization
+const MOBILE_PDF_POSITIONS = {
   accountNo: { top: '25mm', left: '1mm' },
   customerName: { top: '35mm', left: '1mm' },
   customerAddress: { top: '40mm', left: '1mm', width: '50mm' },
@@ -46,7 +70,7 @@ const FIELD_POSITIONS = {
   totals: {
     goods: { top: '167mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
     vat: { top: '177mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '187mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig
+    total: { top: '186mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
@@ -93,6 +117,7 @@ export default function DotMatrixInvoicePrintPage() {
       await handleServerPDF();
     } else {
       console.log('Desktop detected - using browser print...');
+      setIsServerPDF(false); // Ensure PC print uses normal sizing
       window.print();
     }
   };
@@ -100,6 +125,9 @@ export default function DotMatrixInvoicePrintPage() {
   const handleServerPDF = async () => {
     try {
       console.log('Generating server PDF for invoice:', invoiceNumber);
+
+      // Set server PDF mode for styling
+      setIsServerPDF(true);
 
       const response = await fetch('/api/generate-invoice-pdf', {
         method: 'POST',
@@ -198,8 +226,15 @@ export default function DotMatrixInvoicePrintPage() {
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
   const vatAmount = sale?.vat_amount || 0;
 
+  // Get appropriate field positions based on mode
+  const getFieldPositions = () => {
+    return (isMobile && isServerPDF) ? MOBILE_PDF_POSITIONS : FIELD_POSITIONS;
+  };
+
+  const fieldPositions = getFieldPositions();
+
   // Calculate pagination
-  const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
+  const itemsPerPage = fieldPositions.maxItemsPerPage;
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const pages = [];
 
@@ -216,10 +251,14 @@ export default function DotMatrixInvoicePrintPage() {
   // Mobile detection
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
+  // Add state to track if we're generating for server PDF
+  const [isServerPDF, setIsServerPDF] = useState(false);
+
   return (
     <div className="min-h-screen">
       <style>{`
-        @media print {
+        /* PC Print Styles - Original sizing for desktop browsers */
+        @media print and (min-device-width: 769px) {
           @page { 
             size: 186mm 200mm; 
             margin: 0;
@@ -236,16 +275,9 @@ export default function DotMatrixInvoicePrintPage() {
             print-color-adjust: exact;
             overflow: visible !important;
           }
-          .min-h-screen {
-            min-height: unset !important;
-            height: auto !important;
-          }
-          * {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-          .print\\:hidden {
-            display: none !important;
+          .print-content {
+            margin: 0 !important;
+            padding: 0 !important;
           }
           .dot-matrix-print { 
             background: none !important; 
@@ -256,29 +288,103 @@ export default function DotMatrixInvoicePrintPage() {
             height: 200mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
+            page-break-before: auto !important;
             overflow: hidden !important;
             position: relative !important;
             display: block !important;
           }
+          .dot-matrix-print:first-child {
+            page-break-before: avoid !important;
+          }
+        }
+        
+        /* Mobile PDF Styles - Same sizing as PC but separate for future customization */
+        @media print and (max-device-width: 768px), 
+               screen and (max-device-width: 768px) {
+          @page { 
+            size: 186mm 200mm; 
+            margin: 0;
+            padding: 0;
+          }
+          html, body { 
+            margin: 0 !important; 
+            padding: 0 !important;
+            width: 186mm !important;
+            height: auto !important;
+            min-height: unset !important;
+            max-height: unset !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            overflow: visible !important;
+          }
+          .print-content {
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          .dot-matrix-print { 
+            background: none !important; 
+            box-shadow: none !important;
+            margin: 0 !important;
+            padding: 0mm !important;
+            width: 186mm !important;
+            height: 200mm !important;
+            box-sizing: border-box !important;
+            page-break-inside: avoid !important;
+            page-break-before: auto !important;
+            overflow: hidden !important;
+            position: relative !important;
+            display: block !important;
+          }
+          .dot-matrix-print:first-child {
+            page-break-before: avoid !important;
+          }
+        }
+        
+        /* Server PDF specific styles - same as normal for now */
+        .server-pdf-mode .dot-matrix-print {
+          width: 186mm !important;
+          height: 200mm !important;
+          padding: 0mm !important;
+          font-size: 12pt !important;
+        }
+        
+        .server-pdf-mode .field-text {
+          font-size: 12pt !important;
+          line-height: 1 !important;
+        }
+        
+        /* Common print styles */
+        @media print {
+          .min-h-screen {
+            min-height: unset !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          * {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
           
-          /* Last page specific rules */
+          /* Page break rules */
+          .dot-matrix-print {
+            page-break-after: always !important;
+          }
           .dot-matrix-print:last-child {
             page-break-after: avoid !important;
           }
+          .dot-matrix-print:first-child {
+            page-break-before: avoid !important;
+          }
           
-          /* Mobile specific fixes */
-          @media print and (max-device-width: 768px) {
-            html, body {
-              height: auto !important;
-              min-height: unset !important;
-            }
-            .dot-matrix-print {
-              page-break-after: auto !important;
-            }
-            .dot-matrix-print:last-child {
-              page-break-after: avoid !important;
-              margin-bottom: 0 !important;
-            }
+          /* Ensure consistent positioning across pages */
+          .print-content {
+            position: relative !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
         }
         
@@ -327,7 +433,7 @@ export default function DotMatrixInvoicePrintPage() {
       </div>
 
       {/* Dot Matrix Content - only this shows during print */}
-      <div className="print-content">
+      <div className={`print-content ${isServerPDF ? 'server-pdf-mode' : ''}`}>
         {pages.map((page, pageIndex) => (
           <div
             key={pageIndex}
@@ -344,13 +450,16 @@ export default function DotMatrixInvoicePrintPage() {
               backgroundColor: '#fff',
               pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
               pageBreakInside: 'avoid',
-              overflow: 'hidden'
+              pageBreakBefore: pageIndex === 0 ? 'avoid' : 'auto',
+              overflow: 'hidden',
+              top: '0',
+              left: '0'
             }}
           >
             {/* Account Number (Customer ID) */}
-            <div style={{
+            <div className="field-text" style={{
               position: 'absolute',
-              ...FIELD_POSITIONS.accountNo,
+              ...fieldPositions.accountNo,
               fontFamily: 'monospace',
               fontSize: '12pt',
               fontWeight: 'bold'
@@ -359,9 +468,9 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Customer Name */}
-            <div style={{
+            <div className="field-text" style={{
               position: 'absolute',
-              ...FIELD_POSITIONS.customerName,
+              ...fieldPositions.customerName,
               fontFamily: 'monospace',
               fontSize: '12pt'
             }}>
@@ -369,9 +478,9 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Customer Address */}
-            <div style={{
+            <div className="field-text" style={{
               position: 'absolute',
-              ...FIELD_POSITIONS.customerAddress,
+              ...fieldPositions.customerAddress,
               fontFamily: 'monospace',
               fontSize: '10pt',
               whiteSpace: 'pre-wrap',
@@ -382,9 +491,9 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Ticket No (Invoice Number) */}
-            <div style={{
+            <div className="field-text" style={{
               position: 'absolute',
-              ...FIELD_POSITIONS.ticketNo,
+              ...fieldPositions.ticketNo,
               fontFamily: 'monospace',
               fontSize: '12pt'
             }}>
@@ -392,9 +501,9 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Date */}
-            <div style={{
+            <div className="field-text" style={{
               position: 'absolute',
-              ...FIELD_POSITIONS.date,
+              ...fieldPositions.date,
               fontFamily: 'monospace',
               fontSize: '12pt'
             }}>
@@ -402,9 +511,9 @@ export default function DotMatrixInvoicePrintPage() {
             </div>
 
             {/* Page Number */}
-            <div style={{
+            <div className="field-text" style={{
               position: 'absolute',
-              ...FIELD_POSITIONS.pageNumber,
+              ...fieldPositions.pageNumber,
               fontFamily: 'monospace',
               fontSize: '12pt'
             }}>
@@ -415,11 +524,11 @@ export default function DotMatrixInvoicePrintPage() {
             {page.items.map((item, idx) => (
               <React.Fragment key={idx}>
                 {/* Quantity */}
-                <div style={{
+                <div className="field-text" style={{
                   position: 'absolute',
-                  top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
-                  left: FIELD_POSITIONS.columns.quantity.left,
-                  width: FIELD_POSITIONS.columns.quantity.width,
+                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                  left: fieldPositions.columns.quantity.left,
+                  width: fieldPositions.columns.quantity.width,
                   fontFamily: '"Courier New", "Courier", monospace',
                   fontSize: '12pt',
                   lineHeight: '1',
@@ -431,11 +540,11 @@ export default function DotMatrixInvoicePrintPage() {
                 </div>
 
                 {/* Product Description */}
-                <div style={{
+                <div className="field-text" style={{
                   position: 'absolute',
-                  top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
-                  left: FIELD_POSITIONS.columns.description.left,
-                  width: FIELD_POSITIONS.columns.description.width,
+                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                  left: fieldPositions.columns.description.left,
+                  width: fieldPositions.columns.description.width,
                   fontFamily: '"Courier New", "Courier", monospace',
                   fontSize: '12pt',
                   lineHeight: '1',
@@ -449,12 +558,12 @@ export default function DotMatrixInvoicePrintPage() {
                 </div>
 
                 {/* Unit Price */}
-                <div style={{
+                <div className="field-text" style={{
                   position: 'absolute',
-                  top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
-                  left: FIELD_POSITIONS.columns.price.left,
-                  width: FIELD_POSITIONS.columns.price.width,
-                  textAlign: FIELD_POSITIONS.columns.price.align,
+                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                  left: fieldPositions.columns.price.left,
+                  width: fieldPositions.columns.price.width,
+                  textAlign: fieldPositions.columns.price.align,
                   fontFamily: '"Courier New", "Courier", monospace',
                   fontSize: '12pt',
                   lineHeight: '1',
@@ -466,12 +575,12 @@ export default function DotMatrixInvoicePrintPage() {
                 </div>
 
                 {/* Total Value */}
-                <div style={{
+                <div className="field-text" style={{
                   position: 'absolute',
-                  top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
-                  left: FIELD_POSITIONS.columns.value.left,
-                  width: FIELD_POSITIONS.columns.value.width,
-                  textAlign: FIELD_POSITIONS.columns.value.align,
+                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                  left: fieldPositions.columns.value.left,
+                  width: fieldPositions.columns.value.width,
+                  textAlign: fieldPositions.columns.value.align,
                   fontFamily: '"Courier New", "Courier", monospace',
                   fontSize: '12pt',
                   lineHeight: '1',
@@ -487,12 +596,12 @@ export default function DotMatrixInvoicePrintPage() {
             {/* Totals - only show on last page */}
             {page.isLastPage && (
               <>
-                <div style={{
+                <div className="field-text" style={{
                   position: 'absolute',
-                  top: FIELD_POSITIONS.totals.goods.top,
-                  left: FIELD_POSITIONS.totals.goods.left,
-                  width: FIELD_POSITIONS.totals.goods.width,
-                  textAlign: FIELD_POSITIONS.totals.goods.align as TextAlign,
+                  top: fieldPositions.totals.goods.top,
+                  left: fieldPositions.totals.goods.left,
+                  width: fieldPositions.totals.goods.width,
+                  textAlign: fieldPositions.totals.goods.align as TextAlign,
                   fontFamily: '"Courier New", "Courier", monospace',
                   fontSize: '12pt',
                   lineHeight: '1',
@@ -503,12 +612,12 @@ export default function DotMatrixInvoicePrintPage() {
                   £{totalAmount.toFixed(2)}
                 </div>
 
-                <div style={{
+                <div className="field-text" style={{
                   position: 'absolute',
-                  top: FIELD_POSITIONS.totals.vat.top,
-                  left: FIELD_POSITIONS.totals.vat.left,
-                  width: FIELD_POSITIONS.totals.vat.width,
-                  textAlign: FIELD_POSITIONS.totals.vat.align as TextAlign,
+                  top: fieldPositions.totals.vat.top,
+                  left: fieldPositions.totals.vat.left,
+                  width: fieldPositions.totals.vat.width,
+                  textAlign: fieldPositions.totals.vat.align as TextAlign,
                   fontFamily: '"Courier New", "Courier", monospace',
                   fontSize: '12pt',
                   lineHeight: '1',
@@ -519,12 +628,12 @@ export default function DotMatrixInvoicePrintPage() {
                   £{vatAmount.toFixed(2)}
                 </div>
 
-                <div style={{
+                <div className="field-text" style={{
                   position: 'absolute',
-                  top: FIELD_POSITIONS.totals.total.top,
-                  left: FIELD_POSITIONS.totals.total.left,
-                  width: FIELD_POSITIONS.totals.total.width,
-                  textAlign: FIELD_POSITIONS.totals.total.align as TextAlign,
+                  top: fieldPositions.totals.total.top,
+                  left: fieldPositions.totals.total.left,
+                  width: fieldPositions.totals.total.width,
+                  textAlign: fieldPositions.totals.total.align as TextAlign,
                   fontFamily: '"Courier New", "Courier", monospace',
                   fontSize: '12pt',
                   lineHeight: '1',

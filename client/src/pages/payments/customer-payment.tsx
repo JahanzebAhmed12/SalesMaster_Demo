@@ -657,7 +657,7 @@ export default function CustomerPayment() {
       paymentMode: string;
     }> = [];
 
-    // Available payment methods in order of preference
+    // Available payment methods with amounts
     let remainingPayments = [
       { mode: 'cash', amount: cashAmount },
       { mode: 'bank', amount: cardAmount },
@@ -665,25 +665,42 @@ export default function CustomerPayment() {
       { mode: 'cheque', amount: chequeAmount }
     ].filter(p => p.amount > 0);
 
-    // Handle mixed positive/negative invoices by creating explicit payment distribution
-    // This ensures each invoice gets the correct treatment
+    // Calculate total positive invoice amounts that need payment
+    const totalPositiveAmount = positiveInvoices.reduce((sum, inv) => sum + inv.balance, 0);
     
-    // For positive invoices: pay the full amount
+    // Handle positive invoices: pay sequentially using available payment modes
     for (const posInv of positiveInvoices) {
-      const primaryPaymentMode = remainingPayments.length > 0 ? remainingPayments[0].mode : 'cash';
+      const invoiceAmount = posInv.balance;
+      let remainingInvoiceAmount = invoiceAmount;
       
-      paymentDistribution.push({
-        invoiceId: posInv.id,
-        invoiceNumber: posInv.invoiceNumber,
-        amount: Number(posInv.balance.toFixed(2)), // Full invoice amount
-        isOnAccount: false,
-        paymentMode: primaryPaymentMode
-      });
+      // Pay this invoice using available payment modes sequentially
+      for (let i = 0; i < remainingPayments.length && remainingInvoiceAmount > 0; i++) {
+        const payment = remainingPayments[i];
+        if (payment.amount <= 0) continue;
+        
+        // Use as much of this payment mode as needed/available for this invoice
+        const paymentForThisInvoice = Math.min(remainingInvoiceAmount, payment.amount);
+        
+        if (paymentForThisInvoice > 0) {
+          paymentDistribution.push({
+            invoiceId: posInv.id,
+            invoiceNumber: posInv.invoiceNumber,
+            amount: Number(paymentForThisInvoice.toFixed(2)),
+            isOnAccount: false,
+            paymentMode: payment.mode
+          });
+          
+          // Reduce remaining amounts
+          remainingInvoiceAmount = Number((remainingInvoiceAmount - paymentForThisInvoice).toFixed(2));
+          payment.amount = Number((payment.amount - paymentForThisInvoice).toFixed(2));
+        }
+      }
     }
 
     // For credit invoices: apply the credit (send negative amount)
+    // Credits don't consume payment amounts, they just get marked as applied
     for (const creditInv of creditInvoices) {
-      const primaryPaymentMode = remainingPayments.length > 0 ? remainingPayments[0].mode : 'cash';
+      const primaryPaymentMode = remainingPayments.find(p => p.amount > 0)?.mode || 'cash';
       
       paymentDistribution.push({
         invoiceId: creditInv.id,
