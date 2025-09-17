@@ -399,15 +399,28 @@ export default function CustomerPayment() {
     setInvoicePaymentModes(newPaymentModes);
     setInvoicePaymentConfigs(newConfigs);
 
-    // Auto-calculate total amount for selected invoices + on-account
+    // Calculate net amount for selected invoices (positive invoices minus credits)
     const selectedInvoices = displayedInvoices.filter(inv => newSelection.has(inv.id));
-    const invoicesTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
-    const totalAmount = invoicesTotal + onAccountAmount;
+    const positiveInvoicesTotal = selectedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0);
+    const creditInvoicesTotal = selectedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + Math.abs(inv.balance), 0);
+    const netInvoicesAmount = positiveInvoicesTotal - creditInvoicesTotal;
+    const totalAmount = Math.max(0, netInvoicesAmount) + onAccountAmount;
 
-
-    // Update received amount but don't auto-fill split payment
-    // User should manually enter the amount they want to pay
+    // Update received amount to reflect net payment needed
     setReceivedAmount(totalAmount);
+    
+    // Auto-fill split payment with the net amount (user can adjust if needed)
+    if (totalAmount > 0) {
+      setSplitPayment(prev => ({
+        ...prev,
+        cash: totalAmount.toFixed(2),
+        card: "",
+        bankTransfer: "",
+        cheque: ""
+      }));
+    } else {
+      resetSplitPayment();
+    }
   };
 
   // Handle select all checkbox
@@ -436,12 +449,27 @@ export default function CustomerPayment() {
       setSelectedInvoiceIds(allIds);
       setInvoicePaymentModes(newPaymentModes);
       setInvoicePaymentConfigs(newConfigs);
-      const invoicesTotal = displayedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
-      const totalAmount = invoicesTotal + onAccountAmount;
+      
+      // Calculate net amount (positive invoices minus credits)
+      const positiveInvoicesTotal = displayedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0);
+      const creditInvoicesTotal = displayedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + Math.abs(inv.balance), 0);
+      const netInvoicesAmount = positiveInvoicesTotal - creditInvoicesTotal;
+      const totalAmount = Math.max(0, netInvoicesAmount) + onAccountAmount;
 
-
-      // Update received amount but don't auto-fill split payment
       setReceivedAmount(totalAmount);
+      
+      // Auto-fill split payment with the net amount
+      if (totalAmount > 0) {
+        setSplitPayment(prev => ({
+          ...prev,
+          cash: totalAmount.toFixed(2),
+          card: "",
+          bankTransfer: "",
+          cheque: ""
+        }));
+      } else {
+        resetSplitPayment();
+      }
     } else {
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
@@ -462,14 +490,26 @@ export default function CustomerPayment() {
   const handleOnAccountAmountChange = (amount: number) => {
     setOnAccountAmount(amount);
 
-    // Recalculate total payment amount
+    // Recalculate net payment amount
     const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
-    const invoicesTotal = selectedInvoices.reduce((sum, inv) => sum + inv.balance, 0);
-    const totalAmount = invoicesTotal + amount;
+    const positiveInvoicesTotal = selectedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0);
+    const creditInvoicesTotal = selectedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + Math.abs(inv.balance), 0);
+    const netInvoicesAmount = positiveInvoicesTotal - creditInvoicesTotal;
+    const totalAmount = Math.max(0, netInvoicesAmount) + amount;
 
-    // Update received amount but don't auto-update split payment
-    // User needs to manually enter split payment amounts
     setReceivedAmount(totalAmount);
+    
+    // Update split payment to reflect new total
+    const currentSplitTotal = (parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + 
+                             (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0);
+    
+    if (currentSplitTotal === 0 && totalAmount > 0) {
+      // Auto-fill cash if no split payment is set
+      setSplitPayment(prev => ({
+        ...prev,
+        cash: totalAmount.toFixed(2)
+      }));
+    }
   };
 
   // Handle split payment amount changes
@@ -523,7 +563,24 @@ export default function CustomerPayment() {
       return false;
     }
 
-    if (receivedAmount === 0) {
+    // For mixed positive/negative invoices, allow zero received amount if net is zero
+    const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+    const positiveTotal = selectedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0);
+    const creditTotal = selectedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + Math.abs(inv.balance), 0);
+    const netInvoiceAmount = positiveTotal - creditTotal;
+    const expectedPayment = Math.max(0, netInvoiceAmount) + onAccountAmount;
+
+    if (receivedAmount < 0) {
+      toast({
+        title: "Validation Error",
+        description: "Payment amount cannot be negative.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    // Allow zero payment only if net invoice amount is zero and no on-account
+    if (receivedAmount === 0 && expectedPayment > 0) {
       toast({
         title: "Validation Error",
         description: "Please enter a valid payment amount.",
@@ -550,7 +607,7 @@ export default function CustomerPayment() {
       return sum + (parseFloat(val as string) || 0);
     }, 0);
 
-    // The received amount should equal the split payment total (on-account is separate)
+    // The received amount should equal the split payment total
     if (Math.abs(receivedAmount - totalSplitAmount) > 0.01) {
       toast({
         title: "Validation Error",
@@ -569,16 +626,19 @@ export default function CustomerPayment() {
       return;
     }
 
-    // Get selected invoices and sort them by date (oldest first for sequential payment)
+    // Get selected invoices and separate positive and negative invoices
     const selectedInvoices = displayedInvoices
       .filter(inv => selectedInvoiceIds.has(inv.id))
       .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
 
+    const positiveInvoices = selectedInvoices.filter(inv => inv.balance > 0);
+    const creditInvoices = selectedInvoices.filter(inv => inv.balance < 0);
+
     // Debug logging for edit mode
     if (isEditMode) {
       console.log('DEBUG - selectedInvoiceIds:', Array.from(selectedInvoiceIds));
-      console.log('DEBUG - displayedInvoices IDs:', displayedInvoices.map(inv => inv.id));
-      console.log('DEBUG - selectedInvoices after filter:', selectedInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber })));
+      console.log('DEBUG - positiveInvoices:', positiveInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber, balance: inv.balance })));
+      console.log('DEBUG - creditInvoices:', creditInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber, balance: inv.balance })));
     }
 
     // Get payment amounts by mode
@@ -588,6 +648,7 @@ export default function CustomerPayment() {
     const chequeAmount = parseFloat(splitPayment.cheque) || 0;
     const totalPayment = receivedAmount;
 
+    // Build detailed payment distribution for mixed positive/negative invoices
     const paymentDistribution: Array<{
       invoiceId?: number;
       invoiceNumber?: string;
@@ -604,80 +665,32 @@ export default function CustomerPayment() {
       { mode: 'cheque', amount: chequeAmount }
     ].filter(p => p.amount > 0);
 
-    // Sequential payment logic: Handle credit invoices and positive invoices together
-    // Step 1: Separate credit and positive invoices
-    let totalCredits = 0;
-    let creditInvoices = [];
-    let positiveInvoices = [];
-
-    for (const invoice of selectedInvoices) {
-      if (invoice.balance < 0) {
-        creditInvoices.push(invoice);
-        totalCredits += Math.abs(invoice.balance);
-      } else if (invoice.balance > 0) {
-        positiveInvoices.push(invoice);
-      }
-    }
-
-    // Step 2: Apply credits to positive invoices first, then use payment methods
-    let remainingCredit = totalCredits;
-
-    for (const invoice of positiveInvoices) {
-      let invoiceBalance = invoice.balance;
-      let totalPaymentForThisInvoice = 0;
-
-      // First, apply available credit to this invoice
-      if (remainingCredit > 0) {
-        const creditToApply = Math.min(remainingCredit, invoiceBalance);
-        if (creditToApply > 0) {
-          totalPaymentForThisInvoice += creditToApply;
-          invoiceBalance -= creditToApply;
-          remainingCredit -= creditToApply;
-        }
-      }
-
-      // Track payments per payment method for this invoice
-      const paymentsForThisInvoice = [];
-
-      // Pay remaining balance with available payment methods
-      for (const payment of remainingPayments) {
-        if (payment.amount <= 0 || invoiceBalance <= 0) continue;
-
-        const paymentAmount = Math.min(payment.amount, invoiceBalance);
-        if (paymentAmount > 0) {
-          // Track this payment
-          paymentsForThisInvoice.push({
-            mode: payment.mode,
-            amount: paymentAmount
-          });
-
-          // Update running totals
-          totalPaymentForThisInvoice += paymentAmount;
-          payment.amount = Number((payment.amount - paymentAmount).toFixed(2));
-          invoiceBalance = Number((invoiceBalance - paymentAmount).toFixed(2));
-
-          // Add to payment distribution
-          paymentDistribution.push({
-            invoiceId: invoice.id,
-            invoiceNumber: invoice.invoiceNumber,
-            amount: paymentAmount,
-            isOnAccount: false,
-            paymentMode: payment.mode
-          });
-        }
-      }
-
-      // Note: Payment distribution is now added during the payment processing loop
-    }
-
-    // Step 3: Create payment records for credit invoices (for audit trail)
-    for (const invoice of creditInvoices) {
+    // Handle mixed positive/negative invoices by creating explicit payment distribution
+    // This ensures each invoice gets the correct treatment
+    
+    // For positive invoices: pay the full amount
+    for (const posInv of positiveInvoices) {
+      const primaryPaymentMode = remainingPayments.length > 0 ? remainingPayments[0].mode : 'cash';
+      
       paymentDistribution.push({
-        invoiceId: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        amount: Number(invoice.balance.toFixed(2)), // Negative amount
+        invoiceId: posInv.id,
+        invoiceNumber: posInv.invoiceNumber,
+        amount: Number(posInv.balance.toFixed(2)), // Full invoice amount
         isOnAccount: false,
-        paymentMode: 'cash' // Default mode for credit application
+        paymentMode: primaryPaymentMode
+      });
+    }
+
+    // For credit invoices: apply the credit (send negative amount)
+    for (const creditInv of creditInvoices) {
+      const primaryPaymentMode = remainingPayments.length > 0 ? remainingPayments[0].mode : 'cash';
+      
+      paymentDistribution.push({
+        invoiceId: creditInv.id,
+        invoiceNumber: creditInv.invoiceNumber,
+        amount: Number(creditInv.balance.toFixed(2)), // Negative amount for credit (creditInv.balance is already negative)
+        isOnAccount: false,
+        paymentMode: primaryPaymentMode
       });
     }
 
@@ -702,59 +715,29 @@ export default function CustomerPayment() {
       }
     }
 
-    // Build payment payload
+    // Calculate net total for payment distribution (positive amounts minus negative amounts)
+    const totalDistributionAmount = paymentDistribution.reduce((sum, payment) => sum + payment.amount, 0);
+    
+    // Build payment payload with explicit distribution
     const paymentPayload = {
       customerId: parseInt(selectedCustomerId),
-      amount: totalPayment,
+      amount: totalDistributionAmount + onAccountAmount, // Net amount (should equal user's payment)
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: isEditMode ? remarks : (remarks || "Payment"),
-      splitPayment: getSplitPaymentNumbers(),
+      splitPayment: getSplitPaymentNumbers(), // Use user's actual split payment amounts
       invoiceIds: Array.from(selectedInvoiceIds),
       onAccountAmount: onAccountAmount,
       paymentSource: 'customer_payment',
-      // Ensure paymentDistribution includes all necessary fields
-      paymentDistribution: paymentDistribution.map(p => ({
-        invoiceId: p.invoiceId,
-        invoiceNumber: p.invoiceNumber,
-        amount: Number(p.amount.toFixed(2)),
-        isOnAccount: Boolean(p.isOnAccount),
-        paymentMode: p.paymentMode || 'cash'
-      })),
-      // For backward compatibility
-      invoices: paymentDistribution
-        .filter(p => !p.isOnAccount && p.invoiceId)
-        .map(p => ({
-          invoiceId: p.invoiceId!,
-          invoiceNumber: p.invoiceNumber || '',
-          amount: Number(p.amount.toFixed(2)),
-          paymentMode: p.paymentMode || 'cash'
-        }))
+      paymentDistribution: paymentDistribution, // Send explicit distribution with negative amounts for credits
+      invoices: [] // Keep for backward compatibility
     };
 
+    console.log('Payment payload:', JSON.stringify(paymentPayload, null, 2));
+
     if (isEditMode && editingPayment) {
-      console.log('Edit mode: Building payment distribution from current state');
-      console.log('Selected invoices:', selectedInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber })));
-      console.log('Split payment:', splitPayment);
-
-      // For edit mode, use backend's sequential logic for proper multi-invoice distribution
-      console.log('Edit mode: Using backend sequential logic for multiple invoices');
-      console.log('Selected invoice IDs:', Array.from(selectedInvoiceIds));
-
-      // Don't build editPaymentDistribution - let the backend handle the distribution
-      // This will trigger the backend's fallback logic which properly handles multiple invoices
-      const editPaymentDistribution: PaymentDistribution[] = [];
-
-      console.log('Final edit payment distribution:', editPaymentDistribution);
-
-      // Create the edit payload - don't send paymentDistribution for multiple invoices
-      // Let the backend handle the sequential distribution
       const editPayload = {
         ...paymentPayload,
         batchId: (editingPayment as any).batchId,
-        // Don't send paymentDistribution - let backend use sequential logic
-        paymentDistribution: [], // Empty array will trigger backend fallback
-        // Keep the invoices array for backward compatibility
-        invoices: []
       };
 
       console.log('Edit payload:', JSON.stringify(editPayload, null, 2));
@@ -1308,11 +1291,27 @@ export default function CustomerPayment() {
                 <div>
                   <Label className="text-sm">Payment Summary:</Label>
                   <div className="p-2 border rounded bg-gray-50 h-9 flex items-center justify-between">
-                    <span className="text-sm">Total:</span>
+                    <span className="text-sm">Net Payment:</span>
                     <span className="font-semibold text-lg">£{receivedAmount.toFixed(2)}</span>
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {selectedInvoiceIds.size} invoice{selectedInvoiceIds.size !== 1 ? 's' : ''} + £{onAccountAmount.toFixed(2)} on-account
+                    {(() => {
+                      const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+                      const positiveTotal = selectedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0);
+                      const creditTotal = selectedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + Math.abs(inv.balance), 0);
+                      const positiveCount = selectedInvoices.filter(inv => inv.balance > 0).length;
+                      const creditCount = selectedInvoices.filter(inv => inv.balance < 0).length;
+                      
+                      if (positiveCount > 0 && creditCount > 0) {
+                        return `${positiveCount} invoice${positiveCount !== 1 ? 's' : ''} (£${positiveTotal.toFixed(2)}) - ${creditCount} credit${creditCount !== 1 ? 's' : ''} (£${creditTotal.toFixed(2)}) + £${onAccountAmount.toFixed(2)} on-account`;
+                      } else if (positiveCount > 0) {
+                        return `${positiveCount} invoice${positiveCount !== 1 ? 's' : ''} + £${onAccountAmount.toFixed(2)} on-account`;
+                      } else if (creditCount > 0) {
+                        return `${creditCount} credit${creditCount !== 1 ? 's' : ''} + £${onAccountAmount.toFixed(2)} on-account`;
+                      } else {
+                        return `£${onAccountAmount.toFixed(2)} on-account`;
+                      }
+                    })()}
                   </div>
                 </div>
               </div>
@@ -1520,7 +1519,11 @@ export default function CustomerPayment() {
                     </TableCell>
                     <TableCell>
                       {selectedInvoiceIds.has(invoice.id) ? (
-                        <span className="text-green-600 text-sm">Selected for Payment</span>
+                        invoice.balance < 0 ? (
+                          <span className="text-red-600 text-sm font-medium">Credit Applied</span>
+                        ) : (
+                          <span className="text-green-600 text-sm font-medium">Payment Applied</span>
+                        )
                       ) : (
                         <span className="text-gray-400">-</span>
                       )}
@@ -1548,27 +1551,46 @@ export default function CustomerPayment() {
             {/* Summary Row */}
             {displayedInvoices.length > 0 && (
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-5 gap-4 text-sm">
                   <div>
-                    <span className="font-medium">Total Outstanding:</span>
-                    <div className="text-lg font-bold">£{totalOutstandingBalance.toFixed(2)}</div>
+                    <span className="font-medium">Unpaid Invoices:</span>
+                    <div className="text-lg font-bold text-blue-600">
+                      £{displayedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {displayedInvoices.filter(inv => inv.balance > 0).length} invoice{displayedInvoices.filter(inv => inv.balance > 0).length !== 1 ? 's' : ''}
+                    </div>
                   </div>
                   <div>
                     <span className="font-medium">Credit Invoices:</span>
                     <div className="text-lg font-bold text-red-600">
                       £{displayedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}
                     </div>
-                  </div>
-                  <div>
-                    <span className="font-medium">Unpaid Invoices:</span>
-                    <div className="text-lg font-bold text-blue-600">
-                      £{displayedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0).toFixed(2)}
+                    <div className="text-xs text-gray-500">
+                      {displayedInvoices.filter(inv => inv.balance < 0).length} credit{displayedInvoices.filter(inv => inv.balance < 0).length !== 1 ? 's' : ''}
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium">Net Balance:</span>
-                    <div className={`text-lg font-bold ${totalOutstandingBalance < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    <span className="font-medium">Net Outstanding:</span>
+                    <div className={`text-lg font-bold ${totalOutstandingBalance < 0 ? 'text-red-600' : totalOutstandingBalance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
                       £{totalOutstandingBalance.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {totalOutstandingBalance < 0 ? 'Customer Credit' : totalOutstandingBalance > 0 ? 'Amount Due' : 'Balanced'}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Selected Payment:</span>
+                    <div className="text-lg font-bold text-green-600">
+                      £{(() => {
+                        const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
+                        const positiveTotal = selectedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0);
+                        const creditTotal = selectedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + Math.abs(inv.balance), 0);
+                        return Math.max(0, positiveTotal - creditTotal).toFixed(2);
+                      })()}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {selectedInvoiceIds.size} selected
                     </div>
                   </div>
                 </div>

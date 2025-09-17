@@ -10203,40 +10203,65 @@ def daily_summary_report():
             })
             processed_returns.add(return_item.customer_id)
     
-    # Add negative payments as separate entries
+    # Add negative payments as separate entries (only if they're not for invoices already shown)
     for neg_payment in negative_payments:
         if neg_payment.customer_id not in processed_neg_payments:
-            # Group all negative payments for this customer
-            customer_neg_total = sum(
-                abs(float(p.amount)) 
-                for p in negative_payments 
-                if p.customer_id == neg_payment.customer_id
-            )
+            # Check if this negative payment is for an invoice that's already in the sales summary
+            # If the payment has a sale_id, check if that sale is already processed
+            payment_details = db.session.query(Payment).filter(
+                Payment.customer_id == neg_payment.customer_id,
+                Payment.payment_date == report_date,
+                Payment.amount < 0
+            ).all()
             
-            # Get all invoice numbers for this customer's negative payments
-            invoice_numbers = [
-                p.invoice_number for p in negative_payments 
-                if p.customer_id == neg_payment.customer_id and p.invoice_number
-            ]
+            # Filter out payments that are for invoices already shown in sales summary
+            relevant_payments = []
+            for payment in payment_details:
+                if payment.sale_id:
+                    # Check if this sale is already in our sales summary
+                    sale_already_shown = any(
+                        sale.id == payment.sale_id for sale in sales_query
+                    )
+                    if not sale_already_shown:
+                        relevant_payments.append(payment)
+                else:
+                    # On-account negative payment, always include
+                    relevant_payments.append(payment)
             
-            # Create a better display for invoice numbers
-            if invoice_numbers:
-                invoice_display = ', '.join(set(invoice_numbers))  # Remove duplicates
-            else:
-                invoice_display = 'Credit Payment'
+            if relevant_payments:
+                # Group all relevant negative payments for this customer
+                customer_neg_total = sum(
+                    abs(float(p.amount)) 
+                    for p in relevant_payments
+                )
+                
+                # Get all invoice numbers for this customer's relevant negative payments
+                invoice_numbers = []
+                for p in relevant_payments:
+                    if p.sale_id:
+                        sale = db.session.query(Sale).get(p.sale_id)
+                        if sale and sale.invoice_number:
+                            invoice_numbers.append(sale.invoice_number)
+                
+                # Create a better display for invoice numbers
+                if invoice_numbers:
+                    invoice_display = ', '.join(set(invoice_numbers))  # Remove duplicates
+                else:
+                    invoice_display = 'Credit Payment'
+                
+                sales_summary.append({
+                    'customer_name': neg_payment.customer_name,
+                    'invoice_no': invoice_display,
+                    'cash_sales': 0,
+                    'card_paid': 0,
+                    'bank_transfer': 0,
+                    'cheque': 0,
+                    'account_sales': 0,
+                    'account_paid_cash': 0,
+                    'account_paid_cheque': 0,
+                    'account_credits': customer_neg_total
+                })
             
-            sales_summary.append({
-                'customer_name': neg_payment.customer_name,
-                'invoice_no': invoice_display,
-                'cash_sales': 0,
-                'card_paid': 0,
-                'bank_transfer': 0,
-                'cheque': 0,
-                'account_sales': 0,
-                'account_paid_cash': 0,
-                'account_paid_cheque': 0,
-                'account_credits': customer_neg_total
-            })
             processed_neg_payments.add(neg_payment.customer_id)
     
     # Calculate account_paid_cash and account_paid_cheque for existing sales
@@ -10282,7 +10307,8 @@ def daily_summary_report():
         Payment.amount,
         Payment.payment_date,
         Sale.date.label('sale_date'),
-        Sale.invoice_number
+        Sale.invoice_number,
+        Payment.sale_id
     ).join(
         Customer, Payment.customer_id == Customer.id
     ).outerjoin(
@@ -10292,16 +10318,20 @@ def daily_summary_report():
         or_(
             Payment.sale_id.is_(None),  # On-account payments (always show)
             func.date(Sale.date) < report_date,  # Payments for invoices from previous dates (backdate)
-            and_(  # Same-day payments that are not already included in sales summary
-                func.date(Sale.date) == report_date,
-                Payment.amount < 0  # Only negative payments (credit invoices) for same day
-            )
+            # Remove same-day negative payments as they're already shown in sales summary
         )
     ).order_by(Customer.customer_name, Payment.batch_id).all()
     
     # Group payments by customer and batch_id (payment_id)
+    # Filter out payments for invoices that are already shown in sales summary
+    sales_invoice_ids = {sale.id for sale in sales_query}
+    
     payment_groups = {}
     for payment in customer_payments:
+        # Skip payments for invoices that are already shown in sales summary
+        if payment.sale_id and payment.sale_id in sales_invoice_ids:
+            continue
+            
         # Use batch_id as payment_id, or payment.id if no batch_id
         payment_id = str(payment.batch_id) if payment.batch_id else str(payment.id)
         key = (payment.customer_name, payment_id)
@@ -12869,36 +12899,43 @@ def create_customer_bulk_payment():
             
             # Create payments based on the frontend's payment distribution
             for payment_item in payment_distribution:
+                payment_amount = float(payment_item.get('amount', 0))
+                
                 if payment_item.get('isOnAccount', False):
-                    # On-account payment
+                    # On-account payment - always create payment record
                     payment = Payment(
                         customer_id=customer_id,
                         sale_id=None,  # No specific invoice
-                        amount=float(payment_item.get('amount', 0)),
+                        amount=payment_amount,
                         payment_mode=payment_item.get('paymentMode', 'cash'),
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='on-account',
                         remarks=f"{remarks} - On-account payment via customer payment page"
                     )
-                else:
-                    # Invoice payment
+                    db.session.add(payment)
+                    payments_created.append(payment)
+                    
+                elif payment_amount > 0:
+                    # Positive invoice payment - create payment record
                     payment = Payment(
                         customer_id=customer_id,
                         sale_id=payment_item.get('invoiceId'),
-                        amount=float(payment_item.get('amount', 0)),
+                        amount=payment_amount,
                         payment_mode=payment_item.get('paymentMode', 'cash'),
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='direct',
                         remarks=f"{remarks} - Invoice payment via customer payment page"
                     )
+                    db.session.add(payment)
+                    payments_created.append(payment)
                     
                     # Update sale payment status
                     sale = Sale.query.get(payment_item.get('invoiceId'))
                     if sale:
                         current_paid = float(sale.paid_amount or 0)
-                        new_paid = current_paid + float(payment_item.get('amount', 0))
+                        new_paid = current_paid + payment_amount
                         
                         if new_paid >= float(sale.total_amount):
                             sale.payment_status = "paid"
@@ -12910,9 +12947,19 @@ def create_customer_bulk_payment():
                             sale.paid_amount = new_paid
                         
                         db.session.add(sale)
-                
-                db.session.add(payment)
-                payments_created.append(payment)
+                        
+                elif payment_amount < 0:
+                    # Credit invoice - just mark as paid without creating payment record
+                    # The credit is already shown in the daily sales summary
+                    sale = Sale.query.get(payment_item.get('invoiceId'))
+                    if sale:
+                        # Mark credit invoice as fully applied/paid
+                        sale.payment_status = "paid"
+                        sale.status = "finalized"
+                        sale.paid_amount = sale.total_amount  # For credit invoices, this will be negative
+                        sale.customer_type = payment_item.get('paymentMode', 'cash')
+                        db.session.add(sale)
+                        print(f"Credit invoice {sale.invoice_number} marked as paid without creating payment record")
         
         else:
             # Fallback to proportional distribution (original logic)
@@ -12943,45 +12990,37 @@ def create_customer_bulk_payment():
                 if mode_amount <= 0:
                     continue
                     
-                # Calculate how much of this payment mode goes to invoices vs on-account
+                # Simple allocation: split payment between invoices and on-account
                 if total_payment_amount > 0:
-                    invoice_portion = (total_invoice_amount / total_payment_amount) * mode_amount
                     on_account_portion = (on_account_amount / total_payment_amount) * mode_amount
+                    invoice_portion = mode_amount - on_account_portion
                 else:
                     invoice_portion = 0
                     on_account_portion = mode_amount
                 
                 # Create payment for invoices if there are any
                 if invoice_portion > 0 and invoice_ids:
-                    # Distribute among selected invoices proportionally
-                    remaining_amount = invoice_portion
+                    print(f"[DEBUG] invoice_portion: {invoice_portion}, mode_amount: {mode_amount}")
+                    # Simple approach: Create one payment per invoice based on what's needed
+                    invoices = Sale.query.filter(Sale.id.in_(invoice_ids)).all()
+                    # Cap remaining amount to what user actually paid for this mode
+                    remaining_amount = min(invoice_portion, mode_amount)
                     
-                    for invoice_id in invoice_ids:
+                    for invoice in invoices:
                         if remaining_amount <= 0:
                             break
                             
-                        invoice = Sale.query.get(invoice_id)
-                        if not invoice:
-                            continue
-                        
-                        # Calculate outstanding balance for this invoice
+                        # Calculate what this invoice needs
                         paid_amount = sum(float(p.amount) for p in invoice.payments)
                         outstanding = float(invoice.total_amount) - paid_amount
                         
-                        if outstanding <= 0:
-                            continue
-                        
-                        # Calculate payment amount for this invoice
-                        if total_invoice_amount > 0:
-                            invoice_payment = min(remaining_amount, outstanding, 
-                                                (outstanding / total_invoice_amount) * invoice_portion)
-                        else:
+                        if outstanding > 0:
+                            # Positive invoice - pay what we can
                             invoice_payment = min(remaining_amount, outstanding)
-                        
-                        if invoice_payment > 0:
+                            
                             payment = Payment(
                                 customer_id=customer_id,
-                                sale_id=invoice_id,
+                                sale_id=invoice.id,
                                 amount=invoice_payment,
                                 payment_mode=mode,
                                 payment_date=payment_date_obj,
@@ -12992,43 +13031,44 @@ def create_customer_bulk_payment():
                             db.session.add(payment)
                             payments_created.append(payment)
                             
-                            # Update the invoice's customer_type based on the payment mode
-                            invoice = Sale.query.get(invoice_id)
-                            if invoice:
-                                current_paid = sum(float(p.amount) for p in invoice.payments) + invoice_payment
-                                total_amount = float(invoice.total_amount)
-                                
-                                if current_paid >= total_amount:
-                                    # If this payment fully pays the invoice, update the customer_type
-                                    invoice.customer_type = mode
-                                    invoice.payment_status = "paid"
-                                    invoice.paid_amount = total_amount
-                                    invoice.status = "finalized"
-                                else:
-                                    # If this is a partial payment and there's no existing payment, update the customer_type
-                                    if float(invoice.paid_amount or 0) == 0:
-                                        invoice.customer_type = mode
-                                    invoice.payment_status = "partial"
-                                    invoice.paid_amount = current_paid
-                                
-                                db.session.add(invoice)
+                            # Update invoice
+                            current_paid = paid_amount + invoice_payment
+                            if current_paid >= float(invoice.total_amount):
+                                invoice.payment_status = "paid"
+                                invoice.status = "finalized"
+                            else:
+                                invoice.payment_status = "partial"
+                            
+                            invoice.paid_amount = current_paid
+                            invoice.customer_type = mode
+                            db.session.add(invoice)
                             
                             remaining_amount -= invoice_payment
+                            
+                        elif outstanding < 0:
+                            # Credit invoice - just mark as paid without creating payment record
+                            # The credit is already shown in the daily sales summary
+                            invoice.payment_status = "paid"
+                            invoice.status = "finalized"
+                            invoice.paid_amount = invoice.total_amount  # For credit invoices, this will be negative
+                            invoice.customer_type = mode
+                            db.session.add(invoice)
+                            print(f"Credit invoice {invoice.invoice_number} marked as paid without creating payment record")
             
-            # Create on-account payment if there's an on-account portion
-            if on_account_portion > 0:
-                payment = Payment(
-                    customer_id=customer_id,
-                    sale_id=None,  # No specific invoice
-                    amount=on_account_portion,
-                    payment_mode=mode,
-                    payment_date=payment_date_obj,
-                    batch_id=batch_id,
-                    payment_type='on-account',
-                    remarks=f"{remarks} - On-account payment via customer payment page"
-                )
-                db.session.add(payment)
-                payments_created.append(payment)
+                # Create on-account payment if there's an on-account portion
+                if on_account_portion > 0:
+                    payment = Payment(
+                        customer_id=customer_id,
+                        sale_id=None,  # No specific invoice
+                        amount=on_account_portion,
+                        payment_mode=mode,
+                        payment_date=payment_date_obj,
+                        batch_id=batch_id,
+                        payment_type='on-account',
+                        remarks=f"{remarks} - On-account payment via customer payment page"
+                    )
+                    db.session.add(payment)
+                    payments_created.append(payment)
         
         # Commit all payments
         db.session.commit()
