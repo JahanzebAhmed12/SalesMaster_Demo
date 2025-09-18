@@ -53,10 +53,6 @@ interface SalesEntry {
 }
 
 export default function DailyBookSales() {
-  // Initialize state with current date, will be updated when businessDate loads
-  const [fromDate, setFromDate] = useState<Date>(new Date());
-  const [toDate, setToDate] = useState<Date>(new Date());
-
   // Get business date with formatting utilities
   const {
     businessDate,
@@ -64,22 +60,52 @@ export default function DailyBookSales() {
     formatForApi
   } = useBusinessDate();
 
-  // Update dates when business date changes
+  // Use refs to track if dates have been manually changed
+  const fromDateManuallyChanged = useRef(false);
+  const toDateManuallyChanged = useRef(false);
+
+  // Initialize state with business date
+  const [fromDate, setFromDate] = useState<Date>(() => 
+    businessDate ? new Date(businessDate) : new Date()
+  );
+  const [toDate, setToDate] = useState<Date>(() => 
+    businessDate ? new Date(businessDate) : new Date()
+  );
+
+  // Handle date changes
+  const handleFromDateChange = (date: Date | undefined) => {
+    if (date) {
+      fromDateManuallyChanged.current = true;
+      setFromDate(date);
+    }
+  };
+
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date) {
+      toDateManuallyChanged.current = true;
+      setToDate(date);
+    }
+  };
+
+  // Update from date when business date changes, but only if not manually changed
   useEffect(() => {
-    if (!isLoadingBusinessDate && businessDate) {
-      try {
-        // Only update if the dates are different to avoid unnecessary re-renders
-        if (!fromDate || fromDate.getTime() !== businessDate.getTime()) {
-          setFromDate(new Date(businessDate));
-        }
-        if (!toDate || toDate.getTime() !== businessDate.getTime()) {
-          setToDate(new Date(businessDate));
-        }
-      } catch (error) {
-        console.error('Error processing business date:', error);
+    if (!isLoadingBusinessDate && businessDate && !fromDateManuallyChanged.current) {
+      const newBusinessDate = new Date(businessDate);
+      if (fromDate.getTime() !== newBusinessDate.getTime()) {
+        setFromDate(newBusinessDate);
       }
     }
-  }, []);
+  }, [businessDate, isLoadingBusinessDate]);
+
+  // Update to date when business date changes, but only if not manually changed
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate && !toDateManuallyChanged.current) {
+      const newBusinessDate = new Date(businessDate);
+      if (toDate.getTime() !== newBusinessDate.getTime()) {
+        setToDate(newBusinessDate);
+      }
+    }
+  }, [businessDate, isLoadingBusinessDate]);
 
   // Format date for display with different formats
   const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'MM/dd/yy') => {
@@ -107,18 +133,6 @@ export default function DailyBookSales() {
     }
   };
 
-  // Handle date changes
-  const handleFromDateChange = (date: Date | undefined) => {
-    if (date) {
-      setFromDate(date);
-    }
-  };
-
-  const handleToDateChange = (date: Date | undefined) => {
-    if (date) {
-      setToDate(date);
-    }
-  };
 
   // Use formatForApi from useBusinessDate hook
 
@@ -894,7 +908,7 @@ export default function DailyBookSales() {
                     <Calendar
                       mode="single"
                       selected={fromDate}
-                      onSelect={(date) => date && setFromDate(date)}
+                      onSelect={handleFromDateChange}
                       initialFocus
                     />
                   </PopoverContent>
@@ -920,7 +934,7 @@ export default function DailyBookSales() {
                     <Calendar
                       mode="single"
                       selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
+                      onSelect={handleToDateChange}
                       initialFocus
                     />
                   </PopoverContent>
