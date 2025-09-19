@@ -41,12 +41,10 @@ export default function StockCheck() {
   // Initialize with current date, will be updated when businessDate loads
   const [osDate, setOsDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
-    const [filters, setFilters] = useState({
-      osDate: format(new Date(), "yyyy-MM-dd"),
-      toDate: format(new Date(), "yyyy-MM-dd"),
-      showAll: "All",
-      search: "",
-    });
+  
+  // Track if dates were manually changed
+  const osDateManuallyChanged = useRef(false);
+  const toDateManuallyChanged = useRef(false);
     
   // Get business date with formatting utilities
   const { 
@@ -64,29 +62,23 @@ export default function StockCheck() {
   const tableRef = useRef<HTMLDivElement>(null);
   const [, setLocation] = useLocation();
   
-  // Update dates when business date changes
+  // Update dates when business date changes, but only if not manually changed
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
       try {
-        const businessDateObj = new Date(businessDate);
-        if (isNaN(businessDateObj.getTime())) {
-          console.error('Invalid business date:', businessDate);
-          return;
+        // Only update osDate if it hasn't been manually changed
+        if (!osDateManuallyChanged.current && (!osDate || osDate.getTime() !== businessDate.getTime())) {
+          setOsDate(new Date(businessDate));
         }
-        
-        const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
-        setOsDate(businessDateObj);
-        setToDate(businessDateObj);
-        setFilters(prev => ({
-          ...prev,
-          fromDate: formattedDate,
-          toDate: formattedDate
-        }));
+        // Only update toDate if it hasn't been manually changed
+        if (!toDateManuallyChanged.current && (!toDate || toDate.getTime() !== businessDate.getTime())) {
+          setToDate(new Date(businessDate));
+        }
       } catch (error) {
         console.error('Error processing business date:', error);
       }
     }
-  }, []);
+  }, [businessDate, isLoadingBusinessDate]);
 
   // Navigation handlers for clickable columns
   const handleNewStockClick = (item: StockItem) => {
@@ -138,14 +130,17 @@ export default function StockCheck() {
     });
   };
 
+  // Handle date changes
   const handleOsDateChange = (date: Date | undefined) => {
     if (date) {
+      osDateManuallyChanged.current = true;
       setOsDate(date);
     }
   };
 
   const handleToDateChange = (date: Date | undefined) => {
     if (date) {
+      toDateManuallyChanged.current = true;
       setToDate(date);
     }
   };
@@ -659,7 +654,7 @@ export default function StockCheck() {
                     <Calendar
                       mode="single"
                       selected={osDate}
-                      onSelect={(date) => date && setOsDate(date)}
+                      onSelect={handleOsDateChange}
                       initialFocus
                     />
                   </PopoverContent>
@@ -685,7 +680,7 @@ export default function StockCheck() {
                     <Calendar
                       mode="single"
                       selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
+                      onSelect={handleToDateChange}
                       initialFocus
                     />
                   </PopoverContent>

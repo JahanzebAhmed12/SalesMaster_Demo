@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,10 +11,32 @@ import { format } from "date-fns";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import PageLayout from "@/components/common/page-layout";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 export default function StockTemplate() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const printRef = useRef<HTMLDivElement>(null);
+  
+  // Track if date was manually changed
+  const dateManuallyChanged = useRef(false);
+  
+  // Get business date
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate 
+  } = useBusinessDate();
+  
+  // Update date when business date changes, but only if not manually changed
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate && !dateManuallyChanged.current) {
+      try {
+        const formattedDate = format(new Date(businessDate), "yyyy-MM-dd");
+        setSelectedDate(formattedDate);
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, [businessDate, isLoadingBusinessDate]);
 
   // Fetch stock data
   const { data: stockData = [], isLoading, isError, refetch } = useQuery({
@@ -149,7 +171,10 @@ export default function StockTemplate() {
                   id="date"
                   type="date"
                   value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
+                  onChange={(e) => {
+                    dateManuallyChanged.current = true;
+                    setSelectedDate(e.target.value);
+                  }}
                   className="w-40"
                 />
               </div>

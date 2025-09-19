@@ -80,6 +80,10 @@ export default function DotMatrixInvoicePrintPage() {
   const [data, setData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isServerPDF, setIsServerPDF] = useState(false);
+
+  // Mobile detection
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
   useEffect(() => {
     if (!invoiceNumber) {
@@ -110,7 +114,6 @@ export default function DotMatrixInvoicePrintPage() {
 
   const handlePrint = async () => {
     console.log('Print button clicked');
-    const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
     if (isMobile) {
       console.log('Mobile detected - using server PDF...');
@@ -129,22 +132,28 @@ export default function DotMatrixInvoicePrintPage() {
       // Set server PDF mode for styling
       setIsServerPDF(true);
 
-      const response = await fetch('/api/generate-invoice-pdf', {
+      // Since we need the raw response for PDF blob, we'll use fetch with proper URL
+      const { API_BASE_URL, useRelativeUrls } = await import('@/lib/config');
+      const token = localStorage.getItem('jwt_token');
+      const apiUrl = useRelativeUrls() ? '/api/generate-invoice-pdf' : `${API_BASE_URL}/api/generate-invoice-pdf`;
+
+      const fetchResponse = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token && { 'Authorization': `Bearer ${token}` })
         },
         body: JSON.stringify({
           invoiceNumber: invoiceNumber
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!fetchResponse.ok) {
+        throw new Error(`HTTP error! status: ${fetchResponse.status}`);
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const blob = await fetchResponse.blob();
+      const pdfUrl = window.URL.createObjectURL(blob);
 
       console.log('PDF generated, opening print window...');
 
@@ -153,13 +162,13 @@ export default function DotMatrixInvoicePrintPage() {
 
       if (isMobileSafari) {
         console.log('iOS detected - opening PDF for manual printing...');
-        window.open(url, '_blank');
+        window.open(pdfUrl, '_blank');
         alert('PDF opened in new tab. Tap the Share button and select Print to print the invoice.');
-        setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 10000);
 
       } else if (isAndroid) {
         console.log('Android detected - trying multiple print approaches...');
-        const printWindow = window.open(url, '_blank', 'width=800,height=600');
+        const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600');
 
         if (printWindow) {
           setTimeout(() => {
@@ -171,23 +180,23 @@ export default function DotMatrixInvoicePrintPage() {
             }
           }, 2000);
 
-          setTimeout(() => window.URL.revokeObjectURL(url), 15000);
+          setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 15000);
         } else {
           console.log('Popup blocked - downloading PDF...');
           const a = document.createElement('a');
-          a.href = url;
+          a.href = pdfUrl;
           a.download = `invoice-${invoiceNumber}.pdf`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          window.URL.revokeObjectURL(url);
+          window.URL.revokeObjectURL(pdfUrl);
 
           alert('PDF downloaded. Open the downloaded file and use your device\'s print option.');
         }
 
       } else {
         console.log('Desktop/other browser - using standard approach...');
-        const printWindow = window.open(url, '_blank', 'width=800,height=600');
+        const printWindow = window.open(pdfUrl, '_blank', 'width=800,height=600');
 
         if (printWindow) {
           printWindow.onload = () => {
@@ -197,15 +206,15 @@ export default function DotMatrixInvoicePrintPage() {
             }, 1000);
           };
 
-          setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+          setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 10000);
         } else {
           const a = document.createElement('a');
-          a.href = url;
+          a.href = pdfUrl;
           a.download = `invoice-${invoiceNumber}.pdf`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          window.URL.revokeObjectURL(url);
+          window.URL.revokeObjectURL(pdfUrl);
         }
       }
 
@@ -213,6 +222,9 @@ export default function DotMatrixInvoicePrintPage() {
       console.error('Server PDF generation failed:', error);
       console.log('Falling back to browser print...');
       window.print();
+    } finally {
+      // Reset server PDF mode after processing
+      setIsServerPDF(false);
     }
   };
 
@@ -248,16 +260,22 @@ export default function DotMatrixInvoicePrintPage() {
     });
   }
 
-  // Mobile detection
-  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-
-  // Add state to track if we're generating for server PDF
-  const [isServerPDF, setIsServerPDF] = useState(false);
+  // Debug pagination
+  console.log('Pagination debug:', {
+    totalItems: items?.length || 0,
+    itemsPerPage,
+    totalPages,
+    pages: pages.map(p => ({
+      page: p.pageNumber,
+      itemCount: p.items.length,
+      itemNames: p.items.map(item => item.product_name || item.productName)
+    }))
+  });
 
   return (
     <div className="min-h-screen">
       <style>{`
-        /* PC Print Styles - Original sizing for desktop browsers */
+        /* PC Print Styles - Changed font size to 10pt */
         @media print and (min-device-width: 769px) {
           @page { 
             size: 186mm 200mm; 
@@ -298,7 +316,7 @@ export default function DotMatrixInvoicePrintPage() {
           }
         }
         
-        /* Mobile PDF Styles - Same sizing as PC but separate for future customization */
+        /* Mobile PDF Styles - Changed font size to 10pt */
         @media print and (max-device-width: 768px), 
                screen and (max-device-width: 768px) {
           @page { 
@@ -340,16 +358,16 @@ export default function DotMatrixInvoicePrintPage() {
           }
         }
         
-        /* Server PDF specific styles - same as normal for now */
+        /* Server PDF specific styles - Changed font size to 10pt */
         .server-pdf-mode .dot-matrix-print {
           width: 186mm !important;
           height: 200mm !important;
           padding: 0mm !important;
-          font-size: 12pt !important;
+          font-size: 10pt !important;
         }
         
         .server-pdf-mode .field-text {
-          font-size: 12pt !important;
+          font-size: 10pt !important;
           line-height: 1 !important;
         }
         
@@ -434,216 +452,245 @@ export default function DotMatrixInvoicePrintPage() {
 
       {/* Dot Matrix Content - only this shows during print */}
       <div className={`print-content ${isServerPDF ? 'server-pdf-mode' : ''}`}>
-        {pages.map((page, pageIndex) => (
-          <div
-            key={pageIndex}
-            className="dot-matrix-print"
-            style={{
-              position: 'relative',
-              width: '186mm',
-              height: '200mm',
-              margin: '0 auto',
-              padding: '0mm',
-              boxSizing: 'border-box',
-              fontFamily: 'monospace',
-              color: '#000',
-              backgroundColor: '#fff',
-              pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
-              pageBreakInside: 'avoid',
-              overflow: 'hidden'
-            }}
-          >
-            {/* Account Number (Customer ID) */}
-            <div className="field-text" style={{
-              position: 'absolute',
-              ...fieldPositions.accountNo,
-              fontFamily: 'monospace',
-              fontSize: '12pt',
-              fontWeight: 'bold'
-            }}>
-              C-{customer?.id || sale?.customer_id || ''}
+        {pages.map((page, pageIndex) => {
+          console.log(`Rendering page ${page.pageNumber} with ${page.items.length} items`);
+
+          return (
+            <div
+              key={pageIndex}
+              className="dot-matrix-print"
+              style={{
+                position: 'relative',
+                width: '186mm',
+                height: '200mm',
+                margin: '0 auto',
+                padding: '0mm',
+                boxSizing: 'border-box',
+                fontFamily: 'monospace',
+                color: '#000',
+                backgroundColor: '#fff',
+                pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
+                pageBreakInside: 'avoid',
+                overflow: 'hidden'
+              }}
+            >
+              {/* Account Number (Customer ID) */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.accountNo,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                fontWeight: 'bold',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                C-{customer?.id || sale?.customer_id || ''}
+              </div>
+
+              {/* Customer Name */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.customerName,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                {customer?.customer_name || customer?.customerName || ''}
+              </div>
+
+              {/* Customer Address */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.customerAddress,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '8pt',
+                whiteSpace: 'pre-wrap',
+                wordWrap: 'break-word',
+                lineHeight: '1.2',
+                margin: '0',
+                padding: '0'
+              }}>
+                {customer?.address || ''}
+              </div>
+
+              {/* Ticket No (Invoice Number) */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.ticketNo,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                {sale?.invoice_number || sale?.invoiceNumber || ''}
+              </div>
+
+              {/* Date */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.date,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                {sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}
+              </div>
+
+              {/* Page Number */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.pageNumber,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                {page.pageNumber} of {totalPages}
+              </div>
+
+              {/* Product Rows for this page - CORRECTED POSITIONING */}
+              {page.items.map((item, itemIndex) => {
+                // Each page should start items at the itemsStartTop position
+                // itemIndex goes from 0 to maxItemsPerPage-1 on each page
+                const topPosition = parseInt(fieldPositions.itemsStartTop) + itemIndex * parseInt(fieldPositions.itemsRowHeight);
+
+                console.log(`Page ${page.pageNumber}, Item ${itemIndex}: ${item.product_name || item.productName} at ${topPosition}mm`);
+
+                return (
+                  <React.Fragment key={itemIndex}>
+                    {/* Quantity */}
+                    <div className="field-text" style={{
+                      position: 'absolute',
+                      top: `${topPosition}mm`,
+                      left: fieldPositions.columns.quantity.left,
+                      width: fieldPositions.columns.quantity.width,
+                      fontFamily: '"Courier New", "Courier", monospace',
+                      fontSize: '10pt',
+                      lineHeight: '1',
+                      margin: '0',
+                      padding: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {item.quantity}
+                    </div>
+
+                    {/* Product Description */}
+                    <div className="field-text" style={{
+                      position: 'absolute',
+                      top: `${topPosition}mm`,
+                      left: fieldPositions.columns.description.left,
+                      width: fieldPositions.columns.description.width,
+                      fontFamily: '"Courier New", "Courier", monospace',
+                      fontSize: '10pt',
+                      lineHeight: '1',
+                      margin: '0',
+                      padding: '0',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}>
+                      {item.product_name || item.productName || item.description}
+                    </div>
+
+                    {/* Unit Price */}
+                    <div className="field-text" style={{
+                      position: 'absolute',
+                      top: `${topPosition}mm`,
+                      left: fieldPositions.columns.price.left,
+                      width: fieldPositions.columns.price.width,
+                      textAlign: fieldPositions.columns.price.align,
+                      fontFamily: '"Courier New", "Courier", monospace',
+                      fontSize: '10pt',
+                      lineHeight: '1',
+                      margin: '0',
+                      padding: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {(item.unit_price || item.unitPrice || 0).toFixed(2)}
+                    </div>
+
+                    {/* Total Value */}
+                    <div className="field-text" style={{
+                      position: 'absolute',
+                      top: `${topPosition}mm`,
+                      left: fieldPositions.columns.value.left,
+                      width: fieldPositions.columns.value.width,
+                      textAlign: fieldPositions.columns.value.align,
+                      fontFamily: '"Courier New", "Courier", monospace',
+                      fontSize: '10pt',
+                      lineHeight: '1',
+                      margin: '0',
+                      padding: '0',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      £{(item.total_price || item.totalPrice || 0).toFixed(2)}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+
+              {/* Totals - only show on last page */}
+              {page.isLastPage && (
+                <>
+                  <div className="field-text" style={{
+                    position: 'absolute',
+                    top: fieldPositions.totals.goods.top,
+                    left: fieldPositions.totals.goods.left,
+                    width: fieldPositions.totals.goods.width,
+                    textAlign: fieldPositions.totals.goods.align as TextAlign,
+                    fontFamily: '"Courier New", "Courier", monospace',
+                    fontSize: '10pt',
+                    lineHeight: '1',
+                    margin: '0',
+                    padding: '0',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    £{totalAmount.toFixed(2)}
+                  </div>
+
+                  <div className="field-text" style={{
+                    position: 'absolute',
+                    top: fieldPositions.totals.vat.top,
+                    left: fieldPositions.totals.vat.left,
+                    width: fieldPositions.totals.vat.width,
+                    textAlign: fieldPositions.totals.vat.align as TextAlign,
+                    fontFamily: '"Courier New", "Courier", monospace',
+                    fontSize: '10pt',
+                    lineHeight: '1',
+                    margin: '0',
+                    padding: '0',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    £{vatAmount.toFixed(2)}
+                  </div>
+
+                  <div className="field-text" style={{
+                    position: 'absolute',
+                    top: fieldPositions.totals.total.top,
+                    left: fieldPositions.totals.total.left,
+                    width: fieldPositions.totals.total.width,
+                    textAlign: fieldPositions.totals.total.align as TextAlign,
+                    fontFamily: '"Courier New", "Courier", monospace',
+                    fontSize: '10pt',
+                    lineHeight: '1',
+                    margin: '0',
+                    padding: '0',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    £{(totalAmount + vatAmount).toFixed(2)}
+                  </div>
+                </>
+              )}
             </div>
-
-            {/* Customer Name */}
-            <div className="field-text" style={{
-              position: 'absolute',
-              ...fieldPositions.customerName,
-              fontFamily: 'monospace',
-              fontSize: '12pt'
-            }}>
-              {customer?.customer_name || customer?.customerName || ''}
-            </div>
-
-            {/* Customer Address */}
-            <div className="field-text" style={{
-              position: 'absolute',
-              ...fieldPositions.customerAddress,
-              fontFamily: 'monospace',
-              fontSize: '10pt',
-              whiteSpace: 'pre-wrap',
-              wordWrap: 'break-word',
-              lineHeight: '1.2'
-            }}>
-              {customer?.address || ''}
-            </div>
-
-            {/* Ticket No (Invoice Number) */}
-            <div className="field-text" style={{
-              position: 'absolute',
-              ...fieldPositions.ticketNo,
-              fontFamily: 'monospace',
-              fontSize: '12pt'
-            }}>
-              {sale?.invoice_number || sale?.invoiceNumber || ''}
-            </div>
-
-            {/* Date */}
-            <div className="field-text" style={{
-              position: 'absolute',
-              ...fieldPositions.date,
-              fontFamily: 'monospace',
-              fontSize: '12pt'
-            }}>
-              {sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}
-            </div>
-
-            {/* Page Number */}
-            <div className="field-text" style={{
-              position: 'absolute',
-              ...fieldPositions.pageNumber,
-              fontFamily: 'monospace',
-              fontSize: '12pt'
-            }}>
-              {page.pageNumber} of {totalPages}
-            </div>
-
-            {/* Product Rows for this page */}
-            {page.items.map((item, idx) => (
-              <React.Fragment key={idx}>
-                {/* Quantity */}
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
-                  left: fieldPositions.columns.quantity.left,
-                  width: fieldPositions.columns.quantity.width,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '12pt',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'nowrap'
-                }}>
-                  {item.quantity}
-                </div>
-
-                {/* Product Description */}
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
-                  left: fieldPositions.columns.description.left,
-                  width: fieldPositions.columns.description.width,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '12pt',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}>
-                  {item.product_name || item.productName || item.description}
-                </div>
-
-                {/* Unit Price */}
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
-                  left: fieldPositions.columns.price.left,
-                  width: fieldPositions.columns.price.width,
-                  textAlign: fieldPositions.columns.price.align,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '12pt',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'nowrap'
-                }}>
-                  {(item.unit_price || item.unitPrice || 0).toFixed(2)}
-                </div>
-
-                {/* Total Value */}
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: `${parseInt(fieldPositions.itemsStartTop) + idx * parseInt(fieldPositions.itemsRowHeight)}mm`,
-                  left: fieldPositions.columns.value.left,
-                  width: fieldPositions.columns.value.width,
-                  textAlign: fieldPositions.columns.value.align,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '12pt',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'nowrap'
-                }}>
-                  £{(item.total_price || item.totalPrice || 0).toFixed(2)}
-                </div>
-              </React.Fragment>
-            ))}
-
-            {/* Totals - only show on last page */}
-            {page.isLastPage && (
-              <>
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: fieldPositions.totals.goods.top,
-                  left: fieldPositions.totals.goods.left,
-                  width: fieldPositions.totals.goods.width,
-                  textAlign: fieldPositions.totals.goods.align as TextAlign,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '12pt',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'nowrap'
-                }}>
-                  £{totalAmount.toFixed(2)}
-                </div>
-
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: fieldPositions.totals.vat.top,
-                  left: fieldPositions.totals.vat.left,
-                  width: fieldPositions.totals.vat.width,
-                  textAlign: fieldPositions.totals.vat.align as TextAlign,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '12pt',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'nowrap'
-                }}>
-                  £{vatAmount.toFixed(2)}
-                </div>
-
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: fieldPositions.totals.total.top,
-                  left: fieldPositions.totals.total.left,
-                  width: fieldPositions.totals.total.width,
-                  textAlign: fieldPositions.totals.total.align as TextAlign,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '12pt',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'nowrap'
-                }}>
-                  £{(totalAmount + vatAmount).toFixed(2)}
-                </div>
-              </>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

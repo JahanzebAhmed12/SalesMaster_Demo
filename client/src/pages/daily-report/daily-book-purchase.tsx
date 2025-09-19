@@ -34,43 +34,54 @@ interface PurchaseEntry {
 export default function DailyBookPurchase() {
   const { toast } = useToast();
   
-  // Initialize with current date, will be updated when businessDate loads
+  // Initialize state with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  
-  // Get business date with formatting utilities
-  const { 
-    businessDate, 
-    isLoading: isLoadingBusinessDate, 
-    formatForApi 
-  } = useBusinessDate();
 
-  const [filters, setFilters] = useState({
-    fromDate: format(new Date(), "yyyy-MM-dd"),
-    toDate: format(new Date(), "yyyy-MM-dd"),
-    search: "",
-  });
+  // Get business date with formatting utilities
+  const {
+    businessDate,
+    isLoading: isLoadingBusinessDate,
+    formatForApi
+  } = useBusinessDate();
   
+  // Format date for display with different formats
+  const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'MM/dd/yy') => {
+    try {
+      if (!date) return '';
+
+      // Handle string dates
+      if (typeof date === 'string') {
+        // Try parsing the date string
+        const parsedDate = new Date(date);
+        if (isNaN(parsedDate.getTime())) return '';
+        return format(parsedDate, formatStr);
+      }
+
+      // Handle Date objects
+      if (date instanceof Date) {
+        if (isNaN(date.getTime())) return '';
+        return format(date, formatStr);
+      }
+
+      return '';
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
+  };
+
+  // Handle date changes
   const handleFromDateChange = (date: Date | undefined) => {
     if (date) {
-      const formattedDate = format(date, 'yyyy-MM-dd');
       setFromDate(date);
-      setFilters(prev => ({ 
-        ...prev, 
-        fromDate: formattedDate 
-      }));
     }
   };
 
   const handleToDateChange = (date: Date | undefined) => {
     if (date) {
-      const formattedDate = format(date, 'yyyy-MM-dd');
       setToDate(date);
-      setFilters(prev => ({ 
-        ...prev, 
-        toDate: formattedDate 
-      }));
     }
   };
 
@@ -78,23 +89,13 @@ export default function DailyBookPurchase() {
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
       try {
-        const businessDateObj = new Date(businessDate);
-        if (isNaN(businessDateObj.getTime())) {
-          console.error('Invalid business date:', businessDate);
-          return;
+        // Only update if the dates are different to avoid unnecessary re-renders
+        if (!fromDate || fromDate.getTime() !== businessDate.getTime()) {
+          setFromDate(new Date(businessDate));
         }
-        
-        // Format the date for the API
-        const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
-        
-        // Update both the date states and filters
-        setFromDate(businessDateObj);
-        setToDate(businessDateObj);
-        setFilters(prev => ({
-          ...prev,
-          fromDate: formattedDate,
-          toDate: formattedDate
-        }));
+        if (!toDate || toDate.getTime() !== businessDate.getTime()) {
+          setToDate(new Date(businessDate));
+        }
       } catch (error) {
         console.error('Error processing business date:', error);
       }
@@ -119,14 +120,21 @@ export default function DailyBookPurchase() {
     error,
     refetch
   } = useQuery<PurchaseEntry[]>({
-    queryKey: ["/api/reports/daily-book-purchase", filters],
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (filters.fromDate) params.append("fromDate", filters.fromDate);
-      if (filters.toDate) params.append("toDate", filters.toDate);
-      if (filters.search) params.append("search", filters.search);
-      return apiRequest("GET", `/api/reports/daily-book-purchase?${params.toString()}`);
-    },
+    queryKey: [
+      "daily-book-purchase",
+      fromDate,
+      toDate,
+      searchTerm,
+    ],
+    queryFn: () =>
+      apiRequest(
+        "GET",
+        `/api/reports/daily-book-purchase?fromDate=${fromDate ? format(fromDate, "yyyy-MM-dd") : ""}` +
+        `&toDate=${toDate ? format(toDate, "yyyy-MM-dd") : ""}` +
+        `&search=${encodeURIComponent(searchTerm)}`
+      ),
+    refetchInterval: 20000, // Auto-refresh every 20 seconds
+    refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
   });
 
   useEffect(() => {
@@ -199,11 +207,8 @@ export default function DailyBookPurchase() {
   );
 
   const handleSearch = () => {
-    setFilters({
-      fromDate: format(fromDate, "yyyy-MM-dd"),
-      toDate: format(toDate, "yyyy-MM-dd"),
-      search: searchTerm,
-    });
+    // Trigger refetch by updating the query dependencies
+    refetch();
   };
 
   const totalInvoiceAmount = purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0);
@@ -251,7 +256,7 @@ export default function DailyBookPurchase() {
       // Add report title
       printWindow.document.write('<div class="header">');
       printWindow.document.write('<h3>DAILY BOOK PURCHASE</h3>');
-      printWindow.document.write(`<p>Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'}</p>`);
+      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`);
       printWindow.document.write('</div>');
       
       // Add table
@@ -336,7 +341,7 @@ export default function DailyBookPurchase() {
     yPosition += 8;
     
     doc.setFontSize(10);
-    doc.text(`Period: ${filters.fromDate || 'All'} to ${filters.toDate || 'All'}`, 105, yPosition, { align: 'center' });
+    doc.text(`Period: ${fromDate ? formatDateForDisplay(fromDate, 'dd/MM/yyyy') : 'All'} to ${toDate ? formatDateForDisplay(toDate, 'dd/MM/yyyy') : 'All'}`, 105, yPosition, { align: 'center' });
     yPosition += 10;
     
     // Add table
@@ -363,7 +368,7 @@ export default function DailyBookPurchase() {
       }
     });
     
-    doc.save(`daily-book-purchase-${filters.fromDate || 'all'}-${filters.toDate || 'all'}.pdf`);
+    doc.save(`daily-book-purchase-${fromDate ? format(fromDate, "yyyyMMdd") : 'all'}-${toDate ? format(toDate, "yyyyMMdd") : 'all'}.pdf`);
   };
 
   const handleCopy = () => {
@@ -425,14 +430,14 @@ export default function DailyBookPurchase() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
+                      {fromDate ? formatDateForDisplay(fromDate, 'yyyyMMdd') : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
                       mode="single"
                       selected={fromDate}
-                      onSelect={(date) => date && setFromDate(date)}
+                      onSelect={handleFromDateChange}
                       initialFocus
                     />
                   </PopoverContent>
@@ -451,14 +456,14 @@ export default function DailyBookPurchase() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
+                      {toDate ? formatDateForDisplay(toDate, 'yyyyMMdd') : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
                       mode="single"
                       selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
+                      onSelect={handleToDateChange}
                       initialFocus
                     />
                   </PopoverContent>
@@ -591,7 +596,7 @@ export default function DailyBookPurchase() {
             {/* Summary below table, styled for print and screen */}
             <div className="flex flex-wrap items-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2">
               <div className="flex items-center font-semibold mr-2">Date Range:</div>
-              <div className="mr-6">{filters.fromDate || '-'} to {filters.toDate || '-'}</div>
+              <div className="mr-6">{formatDateForDisplay(fromDate, 'MM-dd')} to {formatDateForDisplay(toDate, 'MM-dd')}</div>
               <div className="flex items-center font-semibold mr-2">Total Invoice Amount:</div>
               <div>£{totalInvoiceAmount.toFixed(2)}</div>
             </div>

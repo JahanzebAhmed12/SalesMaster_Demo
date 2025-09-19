@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,10 @@ export default function ProfitLoss() {
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
   
+  // Track if dates were manually changed
+  const fromDateManuallyChanged = useRef(false);
+  const toDateManuallyChanged = useRef(false);
+  
   // Get business date with formatting utilities
   const { 
     businessDate, 
@@ -52,7 +56,7 @@ export default function ProfitLoss() {
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   
-  // Update dates when business date changes
+  // Update dates when business date changes, but only if not manually changed
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
       try {
@@ -62,25 +66,32 @@ export default function ProfitLoss() {
           return;
         }
         
-        // Only update if dates are different to prevent unnecessary re-renders
-        if (businessDateObj.getTime() !== fromDate.getTime() || businessDateObj.getTime() !== toDate.getTime()) {
+        // Only update fromDate if it hasn't been manually changed
+        if (!fromDateManuallyChanged.current) {
           setFromDate(businessDateObj);
+        }
+        // Only update toDate if it hasn't been manually changed
+        if (!toDateManuallyChanged.current) {
           setToDate(businessDateObj);
-          setTrigger(prev => prev + 1); // Trigger a refresh of the data
         }
       } catch (error) {
         console.error('Error processing business date:', error);
       }
     }
-  }, []);
+  }, [businessDate, isLoadingBusinessDate]);
+
+  // Memoize formatted dates to prevent unnecessary re-renders
+  const formattedFromDate = useMemo(() => fromDate ? format(fromDate, "yyyy-MM-dd") : "", [fromDate]);
+  const formattedToDate = useMemo(() => toDate ? format(toDate, "yyyy-MM-dd") : "", [toDate]);
 
   // Fetch profit/loss data from backend
   const { data: profitData = [], isLoading, isError } = useQuery({
-    queryKey: ["profit-loss", fromDate, toDate, searchTerm, trigger],
+    queryKey: ["profit-loss", formattedFromDate, formattedToDate, searchTerm, trigger],
     queryFn: async () => {
+      console.log('Profit-loss query running with:', { formattedFromDate, formattedToDate, searchTerm, trigger });
       const params = new URLSearchParams({
-        fromDate: fromDate ? format(fromDate, "yyyy-MM-dd") : "",
-        toDate: toDate ? format(toDate, "yyyy-MM-dd") : "",
+        fromDate: formattedFromDate,
+        toDate: formattedToDate,
         search: searchTerm,
       });
       return apiRequest("GET", `/api/reports/profit-loss?${params.toString()}`);
@@ -463,7 +474,12 @@ export default function ProfitLoss() {
                     <Calendar
                       mode="single"
                       selected={fromDate}
-                      onSelect={(date) => date && setFromDate(date)}
+                      onSelect={(date) => {
+                        if (date) {
+                          fromDateManuallyChanged.current = true;
+                          setFromDate(date);
+                        }
+                      }}
                       initialFocus
                     />
                   </PopoverContent>
@@ -488,7 +504,12 @@ export default function ProfitLoss() {
                     <Calendar
                       mode="single"
                       selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
+                      onSelect={(date) => {
+                        if (date) {
+                          toDateManuallyChanged.current = true;
+                          setToDate(date);
+                        }
+                      }}
                       initialFocus
                     />
                   </PopoverContent>

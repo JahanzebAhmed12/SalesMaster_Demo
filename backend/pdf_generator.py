@@ -43,7 +43,7 @@ class DotMatrixInvoicePDF:
         }
     
     def generate_pdf(self, invoice_data):
-        """Generate PDF from invoice data"""
+        """Generate PDF from invoice data with proper pagination"""
         buffer = io.BytesIO()
         
         # Create canvas with explicit page size metadata
@@ -69,10 +69,30 @@ class DotMatrixInvoicePDF:
         except:
             p.setFont("Helvetica", 12)
         
-        # Add content
-        self._add_header_info(p, invoice_data)
-        self._add_items(p, invoice_data.get('items', []))
-        self._add_totals(p, invoice_data)
+        # Calculate pagination
+        items = invoice_data.get('items', [])
+        items_per_page = 11  # Max 11 items per page
+        total_pages = max(1, (len(items) + items_per_page - 1) // items_per_page)
+        
+        # Generate pages
+        for page_num in range(total_pages):
+            if page_num > 0:
+                p.showPage()  # Start new page
+                p.setPageSize((self.page_width, self.page_height))
+            
+            # Calculate items for this page
+            start_idx = page_num * items_per_page
+            end_idx = min(start_idx + items_per_page, len(items))
+            page_items = items[start_idx:end_idx]
+            is_last_page = (page_num == total_pages - 1)
+            
+            # Add content for this page
+            self._add_header_info(p, invoice_data, page_num + 1, total_pages)
+            self._add_items(p, page_items)
+            
+            # Only add totals on the last page
+            if is_last_page:
+                self._add_totals(p, invoice_data)
         
         # Add page metadata to prevent scaling
         p.setPageCompression(0)  # Disable compression for better compatibility
@@ -82,7 +102,7 @@ class DotMatrixInvoicePDF:
         buffer.seek(0)
         return buffer
     
-    def _add_header_info(self, canvas, data):
+    def _add_header_info(self, canvas, data, page_num=1, total_pages=1):
         """Add header information (customer, invoice number, etc.)"""
         # Account Number (Customer ID)
         canvas.setFont("Courier-Bold", 12)
@@ -158,7 +178,7 @@ class DotMatrixInvoicePDF:
         canvas.drawString(
             self.positions['pageNumber']['left'] + self.margin,
             y_pos,
-            "1 of 1"
+            f"{page_num} of {total_pages}"
         )
     
     def _add_items(self, canvas, items):
@@ -167,7 +187,7 @@ class DotMatrixInvoicePDF:
         
         start_y = self.page_height - self.positions['itemsStartTop'] - self.margin
         
-        for i, item in enumerate(items[:11]):  # Max 11 items per page
+        for i, item in enumerate(items):  # Process all items passed to this method
             y_pos = start_y - (i * self.positions['itemsRowHeight'])
             
             # Quantity

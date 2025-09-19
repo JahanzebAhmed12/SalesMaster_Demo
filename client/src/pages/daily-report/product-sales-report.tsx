@@ -36,6 +36,10 @@ export default function ProductSalesReport() {
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   
+  // Track if dates were manually changed
+  const fromDateManuallyChanged = useRef(false);
+  const toDateManuallyChanged = useRef(false);
+  
   // Get business date with formatting utilities
   const { 
     businessDate, 
@@ -43,7 +47,7 @@ export default function ProductSalesReport() {
     formatForApi 
   } = useBusinessDate();
 
-  // Update dates when business date changes
+  // Update dates when business date changes, but only if not manually changed
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
       try {
@@ -53,19 +57,19 @@ export default function ProductSalesReport() {
           return;
         }
         
-        const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
-        setFromDate(businessDateObj);
-        setToDate(businessDateObj);
-        setFilters(prev => ({
-          ...prev,
-          fromDate: formattedDate,
-          toDate: formattedDate
-        }));
+        // Only update fromDate if it hasn't been manually changed
+        if (!fromDateManuallyChanged.current) {
+          setFromDate(businessDateObj);
+        }
+        // Only update toDate if it hasn't been manually changed
+        if (!toDateManuallyChanged.current) {
+          setToDate(businessDateObj);
+        }
       } catch (error) {
         console.error('Error processing business date:', error);
       }
     }
-  }, []);
+  }, [businessDate, isLoadingBusinessDate]);
 
 
   const formattedFromDate = queryFromDate ? format(queryFromDate, "yyyy-MM-dd") : '';
@@ -515,7 +519,12 @@ export default function ProductSalesReport() {
                       <Calendar
                         mode="single"
                         selected={fromDate}
-                        onSelect={setFromDate}
+                        onSelect={(date) => {
+                          if (date) {
+                            fromDateManuallyChanged.current = true;
+                            setFromDate(date);
+                          }
+                        }}
                         initialFocus
                         className="pointer-events-auto"
                       />
@@ -543,7 +552,12 @@ export default function ProductSalesReport() {
                       <Calendar
                         mode="single"
                         selected={toDate}
-                        onSelect={setToDate}
+                        onSelect={(date) => {
+                          if (date) {
+                            toDateManuallyChanged.current = true;
+                            setToDate(date);
+                          }
+                        }}
                         initialFocus
                         className="pointer-events-auto"
                       />

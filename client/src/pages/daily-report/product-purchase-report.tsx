@@ -43,6 +43,10 @@ export default function ProductPurchaseReport() {
   const [isEmailSending, setIsEmailSending] = useState(false);
   const [trigger, setTrigger] = useState(0);
   
+  // Track if dates were manually changed
+  const fromDateManuallyChanged = useRef(false);
+  const toDateManuallyChanged = useRef(false);
+  
   // Get business date with formatting utilities
   const { 
     businessDate, 
@@ -57,7 +61,7 @@ export default function ProductPurchaseReport() {
     search: "",
   });
   
-  // Set initial dates to business date on first load
+  // Update dates when business date changes, but only if not manually changed
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
       try {
@@ -68,18 +72,26 @@ export default function ProductPurchaseReport() {
         }
         
         const formattedDate = format(businessDateObj, 'yyyy-MM-dd');
-        setFromDate(businessDateObj);
-        setToDate(businessDateObj);
+        
+        // Only update fromDate if it hasn't been manually changed
+        if (!fromDateManuallyChanged.current) {
+          setFromDate(businessDateObj);
+        }
+        // Only update toDate if it hasn't been manually changed
+        if (!toDateManuallyChanged.current) {
+          setToDate(businessDateObj);
+        }
+        
         setFilters(prev => ({
           ...prev,
-          fromDate: formattedDate,
-          toDate: formattedDate
+          fromDate: fromDateManuallyChanged.current ? prev.fromDate : formattedDate,
+          toDate: toDateManuallyChanged.current ? prev.toDate : formattedDate
         }));
       } catch (error) {
         console.error('Error processing business date:', error);
       }
     }
-  }, []);
+  }, [businessDate, isLoadingBusinessDate]);
 
   // Fetch purchase data
   const { data: purchaseData = [], isLoading, isError, error, refetch } = useQuery<PurchaseItem[]>({
@@ -101,6 +113,7 @@ export default function ProductPurchaseReport() {
 
   const handleFromDateChange = (date: Date | undefined) => {
     if (date) {
+      fromDateManuallyChanged.current = true;
       setFromDate(date);
       setFilters(prev => ({
         ...prev,
@@ -111,6 +124,7 @@ export default function ProductPurchaseReport() {
 
   const handleToDateChange = (date: Date | undefined) => {
     if (date) {
+      toDateManuallyChanged.current = true;
       setToDate(date);
       setFilters(prev => ({
         ...prev,

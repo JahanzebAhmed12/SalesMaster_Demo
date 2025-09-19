@@ -782,6 +782,13 @@ const SalesInvoice = () => {
     setItemUnitPrice("");
     setItemNotes("");
     setProductSearch("");
+    
+    // Focus back to product input field for next item
+    setTimeout(() => {
+      if (productInputRef.current) {
+        productInputRef.current.focus();
+      }
+    }, 100);
   };
 
   // Save handler: create sale only when Save is clicked

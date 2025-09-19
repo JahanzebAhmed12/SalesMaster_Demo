@@ -45,22 +45,15 @@ def add_pdf_routes(app, get_invoice_data_func):
             if not invoice_data:
                 return jsonify({'error': 'Invoice not found'}), 404
             
-            # Generate PDF by fetching and converting the existing invoice page
+            # Generate PDF using the dedicated dot-matrix PDF generator
             try:
-                frontend_url = f"http://localhost:5173/print/invoice/{invoice_number}"
+                from pdf_generator import DotMatrixInvoicePDF
                 
-                # Fetch the HTML content from the frontend
-                response = requests.get(frontend_url, timeout=10)
-                response.raise_for_status()
+                pdf_generator = DotMatrixInvoicePDF()
+                pdf_buffer = pdf_generator.generate_pdf(invoice_data)
                 
-                # Convert HTML to PDF using existing mail_utils function
-                html_content = response.text
-                pdf_bytes = mail_generate_pdf(html_content)
-                
-                if not pdf_bytes:
+                if not pdf_buffer:
                     raise Exception("PDF generation returned empty result")
-                
-                pdf_buffer = io.BytesIO(pdf_bytes)
                 
             except requests.RequestException as e:
                 logger.error(f"Failed to fetch invoice page: {str(e)}")
