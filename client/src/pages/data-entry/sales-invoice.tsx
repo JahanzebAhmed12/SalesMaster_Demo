@@ -13,6 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
+import { useSalesInvalidation } from "@/hooks/useSalesInvalidation";
+import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
 import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -85,6 +87,8 @@ const SalesInvoice = () => {
   const { user: currentUser } = useAuth();
   const { currentDate: businessDate } = useBusinessDate();
   const { canEditInvoice, isInvoiceLocked, canEditPaymentMode } = useInvoicePermissions();
+  const { invalidateAllSalesQueries, invalidateCustomerQueries } = useSalesInvalidation();
+  const { broadcastInvoiceCreated, broadcastInvoiceUpdated } = useCrossTabSync();
   // const navigate = useNavigate(); // Removed useNavigate
 
   // Use the latest location from useLocation
@@ -537,19 +541,26 @@ const SalesInvoice = () => {
       console.log("createdBy:", response.createdBy);
       console.log("createdByUsername:", response.createdByUsername);
 
-      // Invalidate relevant queries
+      // Comprehensive query invalidation for all related data
       const customerId = response.customer_id || response.customerId;
-      queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
       
-      // Invalidate customer's outstanding invoices
+      // Invalidate specific invoice query
+      queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
+      
+      // Use the centralized invalidation hook
+      invalidateAllSalesQueries();
+      
+      // Invalidate customer-specific queries
       if (customerId) {
-        queryClient.invalidateQueries({ 
-          queryKey: ["/api/customers", customerId.toString(), "outstanding_invoices"] 
-        });
+        invalidateCustomerQueries(customerId);
       }
+      
+      // Broadcast to other tabs
+      broadcastInvoiceCreated({
+        invoiceNumber: response.invoiceNumber,
+        customerId: customerId
+      });
+      
       setCurrentSale(response);
       setIsCreatingSale(false);
       toast({
@@ -593,9 +604,25 @@ const SalesInvoice = () => {
         const updated = held.filter((inv: any) => inv.invoiceNumber !== data.invoiceNumber);
         localStorage.setItem('heldInvoices', JSON.stringify(updated));
       }
+      
+      // Comprehensive query invalidation for updates
       queryClient.invalidateQueries({ queryKey: ["/api/sales", data.invoiceNumber] });
-      queryClient.invalidateQueries({ queryKey: ["/api/sales"] });
-      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
+      
+      // Use the centralized invalidation hook
+      invalidateAllSalesQueries();
+      
+      // Invalidate customer-specific queries if available
+      const customerId = data.customerId || currentSale?.customerId;
+      if (customerId) {
+        invalidateCustomerQueries(customerId);
+      }
+      
+      // Broadcast to other tabs
+      broadcastInvoiceUpdated({
+        invoiceNumber: data.invoiceNumber,
+        customerId: customerId
+      });
+      
       toast({
         title: "Success",
         description: "Invoice updated successfully",

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt } from "lucide-react";
+import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { cn, isPastDate } from "@/lib/utils";
 import * as XLSX from 'xlsx';
@@ -26,6 +26,7 @@ import { useTablePagination } from "@/hooks/useTablePagination";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 
 interface SalesEntry {
   id: number;
@@ -189,25 +190,60 @@ export default function DailyBookSales() {
         `&salesman=${userFilter}` +
         `&search=${encodeURIComponent(searchTerm)}`
       ),
+    staleTime: 0, // Consider data stale immediately to ensure fresh data
+    cacheTime: 1000 * 60 * 5, // Keep in cache for 5 minutes
     refetchInterval: 20000, // Auto-refresh every 20 seconds
     refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
+    refetchOnWindowFocus: true, // Refetch when window gains focus
+    refetchOnMount: true, // Always refetch on mount
   });
 
-  // Sort data
+  // Sort data with special handling for invoice numbers
   const sortedData = useMemo(() => {
     return [...rawSalesData].sort((a, b) => {
       if (!sortConfig) return 0;
-      const aValue = a[sortConfig.key as keyof typeof a];
-      const bValue = b[sortConfig.key as keyof typeof b];
+      
+      const key = sortConfig.key as keyof typeof a;
+      let aValue = a[key];
+      let bValue = b[key];
+
+      // Special handling for invoice number sorting
+      if (key === 'invoiceNo') {
+        // Extract numeric part from invoice numbers for proper sorting
+        const extractNumber = (invoiceNo: string) => {
+          const match = invoiceNo.match(/(\d+)$/);
+          return match ? parseInt(match[1], 10) : 0;
+        };
+        
+        const aNum = extractNumber(String(aValue));
+        const bNum = extractNumber(String(bValue));
+        
+        if (aNum !== bNum) {
+          return sortConfig.direction === 'asc' ? aNum - bNum : bNum - aNum;
+        }
+        
+        // If numbers are the same, fall back to string comparison
+        aValue = String(aValue);
+        bValue = String(bValue);
+      }
 
       if (aValue === bValue) return 0;
       if (aValue === null || aValue === undefined) return sortConfig.direction === 'asc' ? -1 : 1;
       if (bValue === null || bValue === undefined) return sortConfig.direction === 'asc' ? 1 : -1;
 
-      if (aValue < bValue) {
+      // For numeric fields, convert to numbers for proper sorting
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+
+      // For string comparison
+      const aStr = String(aValue).toLowerCase();
+      const bStr = String(bValue).toLowerCase();
+      
+      if (aStr < bStr) {
         return sortConfig.direction === 'asc' ? -1 : 1;
       }
-      if (aValue > bValue) {
+      if (aStr > bStr) {
         return sortConfig.direction === 'asc' ? 1 : -1;
       }
       return 0;
@@ -268,6 +304,9 @@ export default function DailyBookSales() {
   // Invoice permissions
   const { canEditInvoice, isInvoiceLocked } = useInvoicePermissions();
 
+  // Cross-tab synchronization
+  useCrossTabSync();
+
   useEffect(() => {
     async function fetchUserAndType() {
       setLoadingUserType(true);
@@ -291,6 +330,29 @@ export default function DailyBookSales() {
     fetchUserAndType();
     // eslint-disable-next-line
   }, []);
+
+  // Add window focus and visibility change listeners to refetch data when user returns to tab
+  useEffect(() => {
+    const handleFocus = () => {
+      // Refetch sales data when window gains focus
+      refetchSales();
+    };
+
+    const handleVisibilityChange = () => {
+      // Refetch when tab becomes visible
+      if (!document.hidden) {
+        refetchSales();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refetchSales]);
 
   // Fetch company details
   const { data: companyDetails } = useQuery<any>({
@@ -1023,6 +1085,16 @@ export default function DailyBookSales() {
                   <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                     <Printer size={14} />
                     <span className="hidden sm:inline">Print</span>
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex items-center gap-1" 
+                    onClick={() => refetchSales()}
+                    disabled={isLoadingSales}
+                  >
+                    <RefreshCw size={14} className={isLoadingSales ? "animate-spin" : ""} />
+                    <span className="hidden sm:inline">Refresh</span>
                   </Button>
                 </div>
 

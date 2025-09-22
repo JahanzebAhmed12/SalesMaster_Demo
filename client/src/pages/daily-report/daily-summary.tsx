@@ -457,7 +457,7 @@ export default function DailySummary() {
       yPosition += 5;
 
       autoTable(doc, {
-        head: [['Customer Name', 'Batch ID', 'Cash Amount', 'Card Amount', 'Total Amount']],
+        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Total Amount']],
         body: [
           ...summaryData.customer_payments.map(payment => [
             payment.customer_name,
@@ -866,7 +866,7 @@ export default function DailySummary() {
       yPosition += 5;
 
       autoTable(doc, {
-        head: [['Customer Name', 'Batch ID', 'Cash Amount', 'Card Amount', 'Total Amount']],
+        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Total Amount']],
         body: [
           ...summaryData.customer_payments.map(payment => [
             payment.customer_name,
@@ -1356,7 +1356,7 @@ export default function DailySummary() {
                       <TableHeader>
                         <TableRow className="bg-gray-50">
                           <TableHead className="font-semibold border">Customer Name</TableHead>
-                          <TableHead className="font-semibold border">Batch ID</TableHead>
+                          <TableHead className="font-semibold border">Payment ID</TableHead>
                           <TableHead className="font-semibold border text-right">Cash Amount</TableHead>
                           <TableHead className="font-semibold border text-right">Card Amount</TableHead>
                           <TableHead className="font-semibold border text-right">Total Amount</TableHead>

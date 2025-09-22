@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { usePayrollMutations } from "@/hooks/usePayrollMutations";
 import { useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DayPicker } from "react-day-picker";
@@ -20,6 +21,7 @@ import "react-day-picker/dist/style.css";
 const HolidayRequests = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { holidayRequest } = usePayrollMutations();
   const [uploadingId, setUploadingId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [entitlementEndDate, setEntitlementEndDate] = useState<Date | undefined>(new Date());
@@ -71,46 +73,9 @@ const HolidayRequests = () => {
     return responseData;
   };
 
-  // Upload signed form mutation
-  const uploadFormMutation = useMutation({
-    mutationFn: ({ id, file }: { id: number; file: File }) => uploadFile(id, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] });
-      setUploadingId(null);
-      setSelectedFile(null);
-      toast({
-        title: "Success",
-        description: "Signed form uploaded successfully",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to upload signed form",
-        variant: "destructive",
-      });
-    }
-  });
-
-  // Reset entitlement mutation
-  const resetEntitlementMutation = useMutation({
-    mutationFn: (endDate: string) => apiRequest("POST", "/api/holiday-requests/reset-entitlement", { endDate }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] });
-      setShowEntitlementReset(false);
-      toast({
-        title: "Success",
-        description: "Holiday entitlements have been reset successfully",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to reset entitlements",
-        variant: "destructive",
-      });
-    }
-  });
+  // Use the standardized mutations
+  const uploadFormMutation = holidayRequest.uploadSignedForm;
+  const resetEntitlementMutation = holidayRequest.resetEntitlement;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -161,7 +126,12 @@ const HolidayRequests = () => {
       return;
     }
 
-    uploadFormMutation.mutate({ id, file: selectedFile });
+    uploadFormMutation.mutate({ id, file: selectedFile }, {
+      onSuccess: () => {
+        setUploadingId(null);
+        setSelectedFile(null);
+      }
+    });
   };
 
   const handleResetEntitlement = () => {
@@ -179,7 +149,11 @@ const HolidayRequests = () => {
     );
 
     if (confirmReset) {
-      resetEntitlementMutation.mutate(format(entitlementEndDate, "yyyy-MM-dd"));
+      resetEntitlementMutation.mutate(format(entitlementEndDate, "yyyy-MM-dd"), {
+        onSuccess: () => {
+          setShowEntitlementReset(false);
+        }
+      });
     }
   };
 

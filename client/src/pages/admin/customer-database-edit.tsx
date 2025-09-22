@@ -11,6 +11,7 @@ import { insertCustomerSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
 import type { InsertCustomer } from "@shared/schema";
 import { useParams } from "wouter";
 import React from "react";
@@ -43,6 +44,7 @@ export default function CustomerAdd() {
   const isEditMode = !!customerId;
   const queryClient = useQueryClient();
   const customers = queryClient.getQueryData<any[]>(["/api/customers"]) || [];
+  const { broadcastCustomerOperation } = useAdminCrossTabSync();
 
   // Fetch customer data if in edit mode
   const { data: customerData, isLoading } = useQuery({
@@ -119,8 +121,12 @@ export default function CustomerAdd() {
         throw new Error(`Failed to ${isEditMode ? 'update' : 'add'} customer`);
       }
     },
-    onSuccess: () => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      broadcastCustomerOperation(isEditMode ? "UPDATED" : "CREATED", { 
+        id: isEditMode ? customerId : result?.id, 
+        ...variables 
+      });
       toast({
         title: "Success",
         description: `Customer ${isEditMode ? 'updated' : 'added'} successfully`,

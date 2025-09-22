@@ -10,6 +10,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Eye, Edit, Trash2, Download, FileText, Printer } from "lucide-react";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { RegularProduct, InsertRegularProduct, UpdateRegularProduct } from "@shared/schema";
 import { Link } from "wouter";
@@ -195,8 +198,195 @@ export default function Products() {
     setEditingProduct(product);
   };
 
-  const handleExport = (format: string) => {
-    console.log(`Exporting to ${format}`);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async (format: string) => {
+    if (format === "all") {
+      toast({
+        title: "Info",
+        description: "All products are already displayed in the table."
+      });
+      return;
+    }
+
+    if (filteredProducts.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Data",
+        description: "No products found to export."
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const exportData = filteredProducts.map((product, index) => ({
+        'Sl.No': index + 1,
+        'Product Code': product.productCode,
+        'Sage Code': product.sageCode || '',
+        'Product Description': product.description,
+        'Unit Price': `£${(product.sellingPrice ?? 0).toFixed(2)}`,
+        'Tax Rate': `${(product.taxRate ?? 0)}%`,
+        'Status': product.status || 'Active'
+      }));
+
+      switch (format) {
+        case "excel":
+          await handleExcelExport(exportData);
+          break;
+        case "pdf":
+          await handlePDFExport(exportData);
+          break;
+        case "print":
+          handlePrint();
+          break;
+        default:
+          console.log(`Unknown format: ${format}`);
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "An unexpected error occurred during export."
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExcelExport = async (data: any[]) => {
+    try {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(data);
+
+      const colWidths = Object.keys(data[0] || {}).map(key => ({
+        wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length))
+      }));
+      ws['!cols'] = colWidths;
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Products');
+      
+      const fileName = `Products_Database_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      toast({
+        title: "Success",
+        description: "Products data exported to Excel successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to Excel. Please try again."
+      });
+    }
+  };
+
+  const handlePDFExport = async (data: any[]) => {
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4');
+      
+      doc.setFontSize(16);
+      doc.text('Products Database', 14, 15);
+      
+      doc.setFontSize(10);
+      doc.text('TROPIFRUIT UK LTD', 14, 25);
+      doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 14, 30);
+      doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 14, 35);
+
+      const tableData = data.map(row => [
+        row['Sl.No'],
+        row['Product Code'],
+        row['Sage Code'],
+        row['Product Description'],
+        row['Unit Price'],
+        row['Tax Rate'],
+        row['Status']
+      ]);
+
+      autoTable(doc, {
+        head: [['#', 'Product Code', 'Sage Code', 'Description', 'Unit Price', 'Tax Rate', 'Status']],
+        body: tableData,
+        startY: 45,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [240, 240, 240] },
+        columnStyles: {
+          0: { cellWidth: 15 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 25 },
+          3: { cellWidth: 80 },
+          4: { cellWidth: 25 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 25 }
+        }
+      });
+
+      const fileName = `Products_Database_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+      
+      toast({
+        title: "Success",
+        description: "Products data exported to PDF successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to PDF. Please try again."
+      });
+    }
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Products Database</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.company-info{margin-bottom:15px;}');
+      printWindow.document.write('@media print { body { margin: 0; } }');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>Products Database</h2>');
+      printWindow.document.write('</div>');
+
+      printWindow.document.write('<div class="company-info">');
+      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
+      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
+      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
+      printWindow.document.write('</div>');
+
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>#</th><th>Product Code</th><th>Sage Code</th><th>Description</th><th>Unit Price</th><th>Tax Rate</th><th>Status</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+
+      filteredProducts.forEach((product, index) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${index + 1}</td>`);
+        printWindow.document.write(`<td>${product.productCode}</td>`);
+        printWindow.document.write(`<td>${product.sageCode || ''}</td>`);
+        printWindow.document.write(`<td>${product.description}</td>`);
+        printWindow.document.write(`<td>£${(product.sellingPrice ?? 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${(product.taxRate ?? 0)}%</td>`);
+        printWindow.document.write(`<td>${product.status || 'Active'}</td>`);
+        printWindow.document.write('</tr>');
+      });
+
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Products: ${filteredProducts.length}</div>`);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
   };
 
   // When switching to add mode, set the next product code
@@ -288,21 +478,43 @@ export default function Products() {
         {activeView === "view" && (
           <>
             <div className="flex gap-2 mb-4">
-              <Button variant="outline" size="sm" onClick={() => handleExport("all")}>
-                Show all rows
+              <Button variant="outline" size="sm" onClick={() => handleExport("all")} disabled={isExporting}>
+                <Eye className="h-4 w-4 mr-1" />
+                Show All
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport("excel")}>
-                Excel
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleExport("excel")} 
+                className="text-green-600 hover:text-green-700"
+                disabled={isExporting}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                {isExporting ? 'Exporting...' : 'Excel'}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport("pdf")}>
-                PDF
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleExport("pdf")} 
+                className="text-red-600 hover:text-red-700"
+                disabled={isExporting}
+              >
+                <FileText className="h-4 w-4 mr-1" />
+                {isExporting ? 'Generating...' : 'PDF'}
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport("print")}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleExport("print")} 
+                className="text-blue-600 hover:text-blue-700"
+                disabled={isExporting}
+              >
+                <Printer className="h-4 w-4 mr-1" />
                 Print
               </Button>
               <div className="ml-auto">
                 <Input
-                  placeholder="Search..."
+                  placeholder="Search products..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-64"

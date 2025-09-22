@@ -4,12 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Edit, Trash2, Download, FileText, Upload, UserPlus } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Download, FileText, Upload, UserPlus, Printer } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Employee } from "@shared/schema";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // DocumentsCell component for managing employee documents
 const DocumentsCell = ({ employeeId }: { employeeId: number }) => {
@@ -194,6 +198,8 @@ const DocumentsCell = ({ employeeId }: { employeeId: number }) => {
 export default function EmployeeDatabase() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
+  const { broadcastEmployeeOperation } = useAdminCrossTabSync();
 
   const { data: employees = [], isLoading, error } = useQuery<Employee[]>({
     queryKey: ["employees"],
@@ -210,8 +216,9 @@ export default function EmployeeDatabase() {
 
   const deleteEmployeeMutation = useMutation<void, Error, number>({
     mutationFn: (id) => apiRequest("DELETE", `/api/employees/${id}`),
-    onSuccess: () => {
+    onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
+      broadcastEmployeeOperation("DELETED", { id: deletedId });
       toast({ title: "Success", description: "Employee deleted successfully." });
     },
     onError: (error) => {
@@ -231,8 +238,214 @@ export default function EmployeeDatabase() {
     }
   };
 
-  const handleExport = (format: string) => {
-    console.log(`Exporting to ${format}`);
+  const handleExport = async (format: string) => {
+    if (format === "all") {
+      // Show all rows - just remove any pagination if implemented
+      toast({
+        title: "Info",
+        description: "All employees are already displayed in the table."
+      });
+      return;
+    }
+
+    if (filteredEmployees.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Data",
+        description: "No employees found to export."
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const exportData = filteredEmployees.map((employee, index) => ({
+        'Sl.No': index + 1,
+        'Full Name': employee.fullName,
+        'Title': employee.title || '',
+        'Department': employee.department || '',
+        'Position': employee.position || '',
+        'Mobile Number': employee.mobileNumber || '',
+        'Start Date': employee.startDate ? new Date(employee.startDate).toLocaleDateString() : '',
+        'Term': employee.term || '',
+        'Status': employee.status || '',
+        'Next of Kin': employee.nextOfKinName || '',
+        'Next of Kin Relationship': employee.nextOfKinRelationship || '',
+        'Next of Kin Phone': employee.nextOfKinPhoneNumber || '',
+        'Active': employee.isActive === 'yes' ? 'Active' : 'Inactive'
+      }));
+
+      switch (format) {
+        case "excel":
+          await handleExcelExport(exportData);
+          break;
+        case "pdf":
+          await handlePDFExport(exportData);
+          break;
+        case "print":
+          handlePrint();
+          break;
+        default:
+          console.log(`Unknown format: ${format}`);
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "An unexpected error occurred during export."
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExcelExport = (data: any[]) => {
+    try {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(data);
+
+      // Auto-size columns
+      const colWidths = Object.keys(data[0] || {}).map(key => ({
+        wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length))
+      }));
+      ws['!cols'] = colWidths;
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+      
+      const fileName = `Employee_Database_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      toast({
+        title: "Success",
+        description: "Employee data exported to Excel successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to Excel. Please try again."
+      });
+    }
+  };
+
+  const handlePDFExport = (data: any[]) => {
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4'); // Landscape orientation for better table fit
+      
+      // Add title
+      doc.setFontSize(16);
+      doc.text('Employee Database', 14, 15);
+      
+      // Add company info
+      doc.setFontSize(10);
+      doc.text('TROPIFRUIT UK LTD', 14, 25);
+      doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 14, 30);
+      doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 14, 35);
+
+      // Prepare table data
+      const tableData = data.map(row => [
+        row['Sl.No'],
+        row['Full Name'],
+        row['Title'],
+        row['Department'],
+        row['Position'],
+        row['Mobile Number'],
+        row['Start Date'],
+        row['Status'],
+        row['Active']
+      ]);
+
+      // Add table
+      autoTable(doc, {
+        head: [['#', 'Name', 'Title', 'Department', 'Position', 'Mobile', 'Start Date', 'Status', 'Active']],
+        body: tableData,
+        startY: 45,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [240, 240, 240] },
+        columnStyles: {
+          0: { cellWidth: 15 },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 25 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 30 },
+          5: { cellWidth: 30 },
+          6: { cellWidth: 25 },
+          7: { cellWidth: 25 },
+          8: { cellWidth: 20 }
+        }
+      });
+
+      const fileName = `Employee_Database_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+      
+      toast({
+        title: "Success",
+        description: "Employee data exported to PDF successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to PDF. Please try again."
+      });
+    }
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Employee Database</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.company-info{margin-bottom:15px;}');
+      printWindow.document.write('@media print { body { margin: 0; } }');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+
+      // Add header
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>Employee Database</h2>');
+      printWindow.document.write('</div>');
+
+      // Add company info
+      printWindow.document.write('<div class="company-info">');
+      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
+      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
+      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
+      printWindow.document.write('</div>');
+
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>#</th><th>Full Name</th><th>Title</th><th>Department</th><th>Position</th><th>Mobile</th><th>Start Date</th><th>Status</th><th>Active</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+
+      filteredEmployees.forEach((employee, index) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${index + 1}</td>`);
+        printWindow.document.write(`<td>${employee.fullName}</td>`);
+        printWindow.document.write(`<td>${employee.title || ''}</td>`);
+        printWindow.document.write(`<td>${employee.department || ''}</td>`);
+        printWindow.document.write(`<td>${employee.position || ''}</td>`);
+        printWindow.document.write(`<td>${employee.mobileNumber || ''}</td>`);
+        printWindow.document.write(`<td>${employee.startDate ? new Date(employee.startDate).toLocaleDateString() : ''}</td>`);
+        printWindow.document.write(`<td>${employee.status || ''}</td>`);
+        printWindow.document.write(`<td>${employee.isActive === 'yes' ? 'Active' : 'Inactive'}</td>`);
+        printWindow.document.write('</tr>');
+      });
+
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Employees: ${filteredEmployees.length}</div>`);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
   };
 
   if (isLoading) {
@@ -293,21 +506,43 @@ export default function EmployeeDatabase() {
         </div>
 
         <div className="flex gap-2 mb-4">
-          <Button variant="outline" size="sm" onClick={() => handleExport("all")}>
-            Show all rows
+          <Button variant="outline" size="sm" onClick={() => handleExport("all")} disabled={isExporting}>
+            <Eye className="h-4 w-4 mr-1" />
+            Show All
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("excel")}>
-            Excel
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handleExport("excel")} 
+            className="text-green-600 hover:text-green-700"
+            disabled={isExporting}
+          >
+            <Download className="h-4 w-4 mr-1" />
+            {isExporting ? 'Exporting...' : 'Excel'}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("pdf")}>
-            PDF
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handleExport("pdf")} 
+            className="text-red-600 hover:text-red-700"
+            disabled={isExporting}
+          >
+            <FileText className="h-4 w-4 mr-1" />
+            {isExporting ? 'Generating...' : 'PDF'}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("print")}>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => handleExport("print")} 
+            className="text-blue-600 hover:text-blue-700"
+            disabled={isExporting}
+          >
+            <Printer className="h-4 w-4 mr-1" />
             Print
           </Button>
           <div className="ml-auto">
             <Input
-              placeholder="Search..."
+              placeholder="Search employees..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-64"
@@ -421,8 +656,15 @@ export default function EmployeeDatabase() {
                 </tbody>
               </table>
             </div>
-            <div className="p-3 border-t text-sm text-gray-500">
-              Showing 1 to {filteredEmployees.length} of {filteredEmployees.length} entries
+            <div className="p-3 border-t text-sm text-gray-500 flex justify-between items-center">
+              <span>
+                Showing {filteredEmployees.length} of {employees.length} employees
+                {searchTerm && ` (filtered by "${searchTerm}")`}
+              </span>
+              <span>
+                Active: {filteredEmployees.filter(emp => emp.isActive === 'yes').length} | 
+                Inactive: {filteredEmployees.filter(emp => emp.isActive !== 'yes').length}
+              </span>
             </div>
           </CardContent>
         </Card>

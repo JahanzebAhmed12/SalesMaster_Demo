@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Edit, Trash2, Download, FileText, Printer } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
 
@@ -52,6 +53,7 @@ export default function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { broadcastCustomerOperation } = useAdminCrossTabSync();
 
   const { data: customers = [], isLoading, error } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -78,8 +80,9 @@ export default function Customers() {
     mutationFn: async (id: number) => {
       await apiRequest("DELETE", `/api/customers/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
+      broadcastCustomerOperation("DELETED", { id: deletedId });
       toast({
         title: "Success",
         description: "Customer deleted successfully",

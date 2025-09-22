@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Plus, Edit, Trash2, Search, FileDown, Printer } from "lucide-react";
+import { Plus, Edit, Trash2, Search, FileDown, Printer, Download, FileText, Eye } from "lucide-react";
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,6 +16,7 @@ import type { Expense } from "@shared/schema";
 
 export default function Expenses() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
   const { data: expenses = [], isLoading, error } = useQuery<Expense[]>({
@@ -58,12 +62,181 @@ export default function Expenses() {
     }
   };
 
-  const handleExport = (format: string) => {
-    // Implement export functionality
-    toast({
-      title: "Export",
-      description: `Exporting to ${format} format...`,
-    });
+  const handleExport = async (format: string) => {
+    if (format === "all") {
+      toast({
+        title: "Info",
+        description: "All expenses are already displayed in the table."
+      });
+      return;
+    }
+
+    if (filteredExpenses.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Data",
+        description: "No expenses found to export."
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const exportData = filteredExpenses.map((expense, index) => ({
+        'Sl.No': index + 1,
+        'Expenses Code': expense.expenseCode,
+        'Expenses Name': expense.expenseName,
+        'Status': expense.isActive === "Yes" ? "Active" : "Inactive"
+      }));
+
+      switch (format) {
+        case "excel":
+          await handleExcelExport(exportData);
+          break;
+        case "pdf":
+          await handlePDFExport(exportData);
+          break;
+        case "print":
+          handlePrint();
+          break;
+        default:
+          console.log(`Unknown format: ${format}`);
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "An unexpected error occurred during export."
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExcelExport = async (data: any[]) => {
+    try {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(data);
+
+      const colWidths = Object.keys(data[0] || {}).map(key => ({
+        wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length))
+      }));
+      ws['!cols'] = colWidths;
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Expenses');
+      
+      const fileName = `Expenses_Database_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      toast({
+        title: "Success",
+        description: "Expenses data exported to Excel successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to Excel. Please try again."
+      });
+    }
+  };
+
+  const handlePDFExport = async (data: any[]) => {
+    try {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      
+      doc.setFontSize(16);
+      doc.text('Expenses Database', 14, 15);
+      
+      doc.setFontSize(10);
+      doc.text('TROPIFRUIT UK LTD', 14, 25);
+      doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 14, 30);
+      doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 14, 35);
+
+      const tableData = data.map(row => [
+        row['Sl.No'],
+        row['Expenses Code'],
+        row['Expenses Name'],
+        row['Status']
+      ]);
+
+      autoTable(doc, {
+        head: [['#', 'Expenses Code', 'Expenses Name', 'Status']],
+        body: tableData,
+        startY: 45,
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [240, 240, 240] },
+        columnStyles: {
+          0: { cellWidth: 20 },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 80 },
+          3: { cellWidth: 30 }
+        }
+      });
+
+      const fileName = `Expenses_Database_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+      
+      toast({
+        title: "Success",
+        description: "Expenses data exported to PDF successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to PDF. Please try again."
+      });
+    }
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Expenses Database</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.company-info{margin-bottom:15px;}');
+      printWindow.document.write('@media print { body { margin: 0; } }');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>Expenses Database</h2>');
+      printWindow.document.write('</div>');
+
+      printWindow.document.write('<div class="company-info">');
+      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
+      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
+      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
+      printWindow.document.write('</div>');
+
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>#</th><th>Expenses Code</th><th>Expenses Name</th><th>Status</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+
+      filteredExpenses.forEach((expense, index) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${index + 1}</td>`);
+        printWindow.document.write(`<td>${expense.expenseCode}</td>`);
+        printWindow.document.write(`<td>${expense.expenseName}</td>`);
+        printWindow.document.write(`<td>${expense.isActive === "Yes" ? "Active" : "Inactive"}</td>`);
+        printWindow.document.write('</tr>');
+      });
+
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Expenses: ${filteredExpenses.length}</div>`);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
+    }
   };
 
   if (isLoading) {
@@ -130,27 +303,37 @@ export default function Expenses() {
                 variant="outline" 
                 size="sm"
                 onClick={() => handleExport('all')}
+                disabled={isExporting}
               >
-                Show all rows
+                <Eye className="h-4 w-4 mr-1" />
+                Show All
               </Button>
               <Button 
                 variant="outline" 
                 size="sm"
                 onClick={() => handleExport('excel')}
+                className="text-green-600 hover:text-green-700"
+                disabled={isExporting}
               >
-                Excel
+                <Download className="h-4 w-4 mr-1" />
+                {isExporting ? 'Exporting...' : 'Excel'}
               </Button>
               <Button 
                 variant="outline" 
                 size="sm"
                 onClick={() => handleExport('pdf')}
+                className="text-red-600 hover:text-red-700"
+                disabled={isExporting}
               >
-                PDF
+                <FileText className="h-4 w-4 mr-1" />
+                {isExporting ? 'Generating...' : 'PDF'}
               </Button>
               <Button 
                 variant="outline" 
                 size="sm"
                 onClick={() => handleExport('print')}
+                className="text-blue-600 hover:text-blue-700"
+                disabled={isExporting}
               >
                 <Printer className="h-4 w-4 mr-1" />
                 Print

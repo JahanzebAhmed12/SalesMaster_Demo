@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePaymentsMutations } from "@/hooks/usePaymentsMutations";
 import type { Supplier, SupplierPayment, InsertSupplierPayment } from "@shared/schema";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -29,6 +30,7 @@ interface OutstandingInvoice {
 export default function SupplierPayment() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { supplierPayment } = usePaymentsMutations();
   
   const [selectedSupplier, setSelectedSupplier] = useState<string>("");
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
@@ -53,31 +55,8 @@ export default function SupplierPayment() {
     enabled: !!selectedSupplier,
   });
 
-  // Create supplier payment mutation
-  const createPaymentMutation = useMutation({
-    mutationFn: (data: InsertSupplierPayment) => apiRequest("POST", "/api/supplier-payments", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/supplier-payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/suppliers/outstanding_invoices", selectedSupplier] });
-      toast({
-        title: "Success",
-        description: "Supplier payment created successfully",
-      });
-      // Reset form
-      setAmountPaid("0");
-      setRemarks("");
-      setSupplierInvoiceNumber("");
-      setSupplierInvoiceDate(undefined);
-      setSelectedInvoices([]);
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create supplier payment",
-        variant: "destructive",
-      });
-    },
-  });
+  // Use standardized mutation
+  const createPaymentMutation = supplierPayment.create;
 
   // Handle supplier selection
   const handleSupplierChange = (supplierId: string) => {
@@ -125,7 +104,16 @@ export default function SupplierPayment() {
       supplierInvoiceDate: supplierInvoiceDate ? format(supplierInvoiceDate, "yyyy-MM-dd") : null,
     };
 
-    createPaymentMutation.mutate(paymentData);
+    createPaymentMutation.mutate(paymentData, {
+      onSuccess: () => {
+        // Reset form
+        setAmountPaid("0");
+        setRemarks("");
+        setSupplierInvoiceNumber("");
+        setSupplierInvoiceDate(undefined);
+        setSelectedInvoices([]);
+      }
+    });
   };
 
   // Handle bulk payment update
@@ -166,29 +154,33 @@ export default function SupplierPayment() {
       return apiRequest("POST", "/api/supplier-payments", paymentData);
     });
 
-    // Execute all payments
-    Promise.all(paymentPromises)
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/supplier-payments"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/suppliers/outstanding_invoices", selectedSupplier] });
-        toast({
-          title: "Success",
-          description: `Successfully updated ${selectedInvoices.length} invoice(s)`,
-        });
+    // Use bulk create mutation
+    const paymentData = selectedInvoices.map(invoiceId => {
+      const invoice = outstandingInvoices.find((inv: OutstandingInvoice) => inv.id === invoiceId);
+      if (!invoice) throw new Error(`Invoice data not found for ID: ${invoiceId}`);
+
+      return {
+        supplierId: parseInt(selectedSupplier),
+        purchaseInvoiceId: invoiceId,
+        amount: invoice.outstandingAmount,
+        paymentMode: paymentMode,
+        paymentDate: format(paymentDate, "yyyy-MM-dd"),
+        remarks: remarks || `Payment for invoice #${invoiceId}`,
+        supplierInvoiceNumber: supplierInvoiceNumber || null,
+        supplierInvoiceDate: supplierInvoiceDate ? format(supplierInvoiceDate, "yyyy-MM-dd") : null,
+      };
+    });
+
+    supplierPayment.bulkCreate.mutate(paymentData, {
+      onSuccess: () => {
         // Reset form
         setAmountPaid("0");
         setRemarks("");
         setSupplierInvoiceNumber("");
         setSupplierInvoiceDate(undefined);
         setSelectedInvoices([]);
-      })
-      .catch((error) => {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to update payments",
-          variant: "destructive",
-        });
-      });
+      }
+    });
   };
 
   // Calculate totals
