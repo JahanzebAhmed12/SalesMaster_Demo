@@ -63,14 +63,14 @@ class DotMatrixInvoicePDF:
         p._doc.info.title = f"Invoice {invoice_data.get('sale', {}).get('invoice_number', 'Unknown')}"
         
         # Add custom PDF properties to prevent mobile browser scaling
-        # Set the MediaBox to exact dimensions (no margins)
-        p._doc.catalog.Pages.MediaBox = [0, 0, self.page_width, self.page_height]
-        p._doc.catalog.Pages.CropBox = [0, 0, self.page_width, self.page_height]
-        p._doc.catalog.Pages.TrimBox = [0, 0, self.page_width, self.page_height]
-        p._doc.catalog.Pages.BleedBox = [0, 0, self.page_width, self.page_height]
-        
-        # Disable any automatic scaling or fitting
-        p._doc.info.keywords = "NoAutoScale,ExactSize,NoFit"
+        # Use ReportLab's proper way to set page properties
+        try:
+            # Set PDF info to indicate exact sizing
+            p._doc.info.keywords = "NoAutoScale,ExactSize,NoFit"
+            p._doc.info.subject = f"Exact Size: {self.page_width/mm:.1f}mm x {self.page_height/mm:.1f}mm"
+        except Exception as e:
+            print(f"Warning: Could not set PDF metadata: {e}")
+            # Continue without metadata if it fails
         
         # Set up fonts (monospace to match HTML)
         try:
@@ -90,9 +90,6 @@ class DotMatrixInvoicePDF:
                 p.showPage()  # Start new page
                 # Re-enforce exact page size for each page
                 p.setPageSize((self.page_width, self.page_height))
-                # Re-set page boxes for each page to prevent scaling
-                p._doc.catalog.Pages.MediaBox = [0, 0, self.page_width, self.page_height]
-                p._doc.catalog.Pages.CropBox = [0, 0, self.page_width, self.page_height]
             
             # Calculate items for this page
             start_idx = page_num * items_per_page
@@ -110,9 +107,6 @@ class DotMatrixInvoicePDF:
         
         # Final PDF settings to prevent any scaling
         p.setPageCompression(0)  # Disable compression for better compatibility
-        
-        # Add final metadata to enforce exact sizing
-        p._doc.info.subject = f"Exact Size: {self.page_width/mm:.1f}mm x {self.page_height/mm:.1f}mm"
         
         # Save PDF with explicit size preservation
         p.save()
