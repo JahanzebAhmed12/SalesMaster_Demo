@@ -28,19 +28,19 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '25mm', left: '3mm' },
-  customerName: { top: '35mm', left: '3mm' },
+  accountNo: { top: '27mm', left: '1mm' },
+  customerName: { top: '35mm', left: '1mm' },
   customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
-  ticketNo: { top: '75mm', left: '23mm' },
-  date: { top: '75mm', left: '50mm' },
-  pageNumber: { top: '75mm', left: '118mm' },
+  ticketNo: { top: '77mm', left: '23mm' },
+  date: { top: '77mm', left: '48mm' },
+  pageNumber: { top: '77mm', left: '118mm' },
   itemsStartTop: '95mm',
   itemsRowHeight: '6mm',
-  maxItemsPerPage: 11,
+  maxItemsPerPage: 10,
   columns: {
-    quantity: { left: '3mm', width: '15mm' } as ColumnConfig,
-    description: { left: '13mm', width: '75mm' } as ColumnConfig,
-    price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
+    quantity: { left: '1mm', width: '15mm' } as ColumnConfig,
+    description: { left: '10mm', width: '75mm' } as ColumnConfig,
+    price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
@@ -60,7 +60,7 @@ const MOBILE_PDF_POSITIONS = {
   pageNumber: { top: '75mm', left: '118mm' },
   itemsStartTop: '95mm',
   itemsRowHeight: '6mm',
-  maxItemsPerPage: 11,
+  maxItemsPerPage: 10,
   columns: {
     quantity: { left: '1mm', width: '15mm' } as ColumnConfig,
     description: { left: '13mm', width: '75mm' } as ColumnConfig,
@@ -115,14 +115,10 @@ export default function DotMatrixInvoicePrintPage() {
   const handlePrint = async () => {
     console.log('Print button clicked');
 
-    if (isMobile) {
-      console.log('Mobile detected - using server PDF...');
-      await handleServerPDF();
-    } else {
-      console.log('Desktop detected - using browser print...');
-      setIsServerPDF(false); // Ensure PC print uses normal sizing
-      window.print();
-    }
+    // Always use browser print for "Print Invoice" button
+    console.log('Using browser print...');
+    setIsServerPDF(false); // Ensure normal browser print
+    window.print();
   };
 
   const handleServerPDF = async () => {
@@ -431,22 +427,22 @@ export default function DotMatrixInvoicePrintPage() {
             onClick={handleServerPDF}
             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500"
           >
-            Server PDF
+            {isMobile ? 'Server PDF (Print)' : 'Server PDF'}
           </button>
-          {isMobile && (
-            <button
-              onClick={() => {
-                handleServerPDF().then(() => {
-                  setTimeout(() => {
+          <button
+            onClick={() => {
+              handleServerPDF().then(() => {
+                setTimeout(() => {
+                  if (isMobile) {
                     alert('If print dialog didn\'t open automatically, check your Downloads folder for the PDF file and print it from there.');
-                  }, 3000);
-                });
-              }}
-              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
-            >
-              Download PDF
-            </button>
-          )}
+                  }
+                }, 3000);
+              });
+            }}
+            className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          >
+            Download PDF
+          </button>
         </div>
       </div>
 

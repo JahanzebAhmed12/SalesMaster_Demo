@@ -46,21 +46,31 @@ class DotMatrixInvoicePDF:
         """Generate PDF from invoice data with proper pagination"""
         buffer = io.BytesIO()
         
-        # Create canvas with explicit page size metadata
+        # Create canvas with exact custom page size and zero margins
         p = canvas.Canvas(buffer, pagesize=(self.page_width, self.page_height))
         
-        # Add PDF metadata to prevent scaling
+        # CRITICAL: Set exact page dimensions to prevent mobile scaling
+        p.setPageSize((self.page_width, self.page_height))
+        
+        # Add PDF metadata to prevent auto-scaling and enforce exact dimensions
         p.setTitle(f"Invoice {invoice_data.get('sale', {}).get('invoice_number', 'Unknown')}")
         p.setAuthor("Dot Matrix Invoice System")
         p.setSubject("Invoice Document")
         p.setCreator("Custom PDF Generator")
         
-        # Set page size explicitly in PDF metadata
-        p.setPageSize((self.page_width, self.page_height))
-        
-        # Add custom PDF properties to prevent auto-scaling
-        p._doc.info.producer = "Dot Matrix Invoice Generator"
+        # Force exact page dimensions in PDF metadata
+        p._doc.info.producer = "Dot Matrix Invoice Generator - Exact Size"
         p._doc.info.title = f"Invoice {invoice_data.get('sale', {}).get('invoice_number', 'Unknown')}"
+        
+        # Add custom PDF properties to prevent mobile browser scaling
+        # Set the MediaBox to exact dimensions (no margins)
+        p._doc.catalog.Pages.MediaBox = [0, 0, self.page_width, self.page_height]
+        p._doc.catalog.Pages.CropBox = [0, 0, self.page_width, self.page_height]
+        p._doc.catalog.Pages.TrimBox = [0, 0, self.page_width, self.page_height]
+        p._doc.catalog.Pages.BleedBox = [0, 0, self.page_width, self.page_height]
+        
+        # Disable any automatic scaling or fitting
+        p._doc.info.keywords = "NoAutoScale,ExactSize,NoFit"
         
         # Set up fonts (monospace to match HTML)
         try:
@@ -78,7 +88,11 @@ class DotMatrixInvoicePDF:
         for page_num in range(total_pages):
             if page_num > 0:
                 p.showPage()  # Start new page
+                # Re-enforce exact page size for each page
                 p.setPageSize((self.page_width, self.page_height))
+                # Re-set page boxes for each page to prevent scaling
+                p._doc.catalog.Pages.MediaBox = [0, 0, self.page_width, self.page_height]
+                p._doc.catalog.Pages.CropBox = [0, 0, self.page_width, self.page_height]
             
             # Calculate items for this page
             start_idx = page_num * items_per_page
@@ -94,8 +108,11 @@ class DotMatrixInvoicePDF:
             if is_last_page:
                 self._add_totals(p, invoice_data)
         
-        # Add page metadata to prevent scaling
+        # Final PDF settings to prevent any scaling
         p.setPageCompression(0)  # Disable compression for better compatibility
+        
+        # Add final metadata to enforce exact sizing
+        p._doc.info.subject = f"Exact Size: {self.page_width/mm:.1f}mm x {self.page_height/mm:.1f}mm"
         
         # Save PDF with explicit size preservation
         p.save()
