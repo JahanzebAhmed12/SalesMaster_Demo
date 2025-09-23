@@ -93,13 +93,41 @@ export const usePayrollMutations = () => {
       mutationFn: ({ id, file }: { id: number; file: File }) => {
         const formData = new FormData();
         formData.append('signedForm', file);
-        return fetch(`/api/holiday-requests/${id}/upload-signed-form`, {
+        
+        // Use the same URL logic as apiRequest
+        const useRelativeUrls = () => {
+          return window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+        };
+
+        const API_BASE_URL = 'http://localhost:5000';
+        const url = useRelativeUrls() ? `/api/holiday-requests/${id}/upload-signed-form` : `${API_BASE_URL}/api/holiday-requests/${id}/upload-signed-form`;
+
+        const token = localStorage.getItem('jwt_token');
+        const headers: Record<string, string> = {};
+
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        return fetch(url, {
           method: 'POST',
+          headers,
+          credentials: 'include',
           body: formData,
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
-          },
-        }).then(res => res.json());
+        }).then(async res => {
+          const responseData = await res.json();
+          
+          if (!res.ok) {
+            if (res.status === 401) {
+              localStorage.removeItem('jwt_token');
+              window.location.href = '/';
+              throw new Error('Session expired. Please login again.');
+            }
+            throw new Error(responseData.message || responseData.error || `HTTP error! status: ${res.status}`);
+          }
+          
+          return responseData;
+        });
       },
       onSuccess: (result, variables) => {
         payrollState.broadcast.holidayRequest.updated({ id: variables.id, signedFormUploaded: true });
@@ -124,6 +152,21 @@ export const usePayrollMutations = () => {
         toast({ 
           title: 'Error', 
           description: error.message || 'Failed to reset entitlements',
+          variant: 'destructive' 
+        });
+      }
+    }),
+
+    deleteSignedForm: useMutation({
+      mutationFn: (id: number) => apiRequest('DELETE', `/api/holiday-requests/${id}/signed-form`),
+      onSuccess: (result, variables) => {
+        payrollState.broadcast.holidayRequest.updated({ id: variables, signedFormDeleted: true });
+        toast({ title: 'Success', description: 'Signed form deleted successfully' });
+      },
+      onError: (error: any) => {
+        toast({ 
+          title: 'Error', 
+          description: error.message || 'Failed to delete signed form',
           variant: 'destructive' 
         });
       }

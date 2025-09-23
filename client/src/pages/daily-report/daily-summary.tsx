@@ -111,6 +111,8 @@ interface DailySummaryData {
     payment_id: string; // Changed to payment_id for customer payments
     cash_amount: number;
     card_amount: number;
+    bank_transfer_amount: number;
+    cheque_amount: number;
     total_amount: number;
     date: string;
   }>;
@@ -457,18 +459,22 @@ export default function DailySummary() {
       yPosition += 5;
 
       autoTable(doc, {
-        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Total Amount']],
+        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Bank Transfer', 'Cheque', 'Total Amount']],
         body: [
           ...summaryData.customer_payments.map(payment => [
             payment.customer_name,
             payment.payment_id,
             payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-',
             payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-',
+            payment.bank_transfer_amount > 0 ? payment.bank_transfer_amount.toFixed(2) : '-',
+            payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-',
             payment.total_amount.toFixed(2)
           ]),
           ['TOTAL', '',
             summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2),
             summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2),
+            summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2),
+            summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2),
             summaryData.totals.customer_payments_total.toFixed(2)
           ]
         ],
@@ -866,18 +872,22 @@ export default function DailySummary() {
       yPosition += 5;
 
       autoTable(doc, {
-        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Total Amount']],
+        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Bank Transfer', 'Cheque', 'Total Amount']],
         body: [
           ...summaryData.customer_payments.map(payment => [
             payment.customer_name,
             payment.payment_id,
             payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-',
             payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-',
+            payment.bank_transfer_amount > 0 ? payment.bank_transfer_amount.toFixed(2) : '-',
+            payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-',
             payment.total_amount.toFixed(2)
           ]),
           ['TOTAL', '',
             summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2),
             summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2),
+            summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2),
+            summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2),
             summaryData.totals.customer_payments_total.toFixed(2)
           ]
         ],
@@ -1359,6 +1369,8 @@ export default function DailySummary() {
                           <TableHead className="font-semibold border">Payment ID</TableHead>
                           <TableHead className="font-semibold border text-right">Cash Amount</TableHead>
                           <TableHead className="font-semibold border text-right">Card Amount</TableHead>
+                          <TableHead className="font-semibold border text-right">Bank Transfer</TableHead>
+                          <TableHead className="font-semibold border text-right">Cheque</TableHead>
                           <TableHead className="font-semibold border text-right">Total Amount</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1373,12 +1385,18 @@ export default function DailySummary() {
                             <TableCell className="border text-right">
                               {payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-'}
                             </TableCell>
+                            <TableCell className="border text-right">
+                              {payment.bank_transfer_amount > 0 ? payment.bank_transfer_amount.toFixed(2) : '-'}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-'}
+                            </TableCell>
                             <TableCell className="border text-right">{payment.total_amount.toFixed(2)}</TableCell>
                           </TableRow>
                         ))}
                         {summaryData.customer_payments.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
+                            <TableCell colSpan={7} className="border text-center text-gray-500 py-4">
                               No customer payments found
                             </TableCell>
                           </TableRow>
@@ -1391,6 +1409,12 @@ export default function DailySummary() {
                             </TableCell>
                             <TableCell className="border text-right">
                               {summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2)}
+                            </TableCell>
+                            <TableCell className="border text-right">
+                              {summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2)}
                             </TableCell>
                             <TableCell className="border text-right">{summaryData.totals.customer_payments_total.toFixed(2)}</TableCell>
                           </TableRow>

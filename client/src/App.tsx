@@ -113,6 +113,8 @@ import ProtectedRoute from "@/components/protected-route";
 import RestrictedLanding from "./pages/restricted-landing";
 import TestPermissions from "./pages/test-permissions";
 import { useRouteProtection } from "@/hooks/useRouteProtection";
+import { PayrollStateProvider } from "@/components/payroll/PayrollStateProvider";
+import { PaymentsStateProvider } from "@/components/payments/PaymentsStateProvider";
 
 function Router() {
   // Initialize route protection - temporarily disabled to fix infinite refresh
@@ -379,22 +381,30 @@ function Router() {
       {/* Payment Routes */}
       <Route path="/payments/customer-payment">
         <ProtectedRoute requiredSection="payments" title="Customer Payment" breadcrumb="Payments > Customer Payment">
-          <CustomerPayment />
+          <PaymentsStateProvider>
+            <CustomerPayment />
+          </PaymentsStateProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/payments/supplier-payment">
         <ProtectedRoute requiredSection="payments" title="Supplier Payment" breadcrumb="Payments > Supplier Payment">
-          <SupplierPayment />
+          <PaymentsStateProvider>
+            <SupplierPayment />
+          </PaymentsStateProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/payments/customer-payment-history">
         <ProtectedRoute requiredSection="payments" title="Customer Payment History" breadcrumb="Payments > Customer Payment History">
-          <CustomerPaymentHistory />
+          <PaymentsStateProvider>
+            <CustomerPaymentHistory />
+          </PaymentsStateProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/payments/sup-payment-history">
         <ProtectedRoute requiredSection="payments" title="Supplier Payment History" breadcrumb="Payments > Supplier Payment History">
-          <SupPaymentHistory />
+          <PaymentsStateProvider>
+            <SupPaymentHistory />
+          </PaymentsStateProvider>
         </ProtectedRoute>
       </Route>
       {/* Attenedence and Payroll */}
@@ -402,19 +412,25 @@ function Router() {
       {/* Payroll Section */}
       <Route path="/payroll/monthly-report">
         <ProtectedRoute requiredSection="payroll" title="Monthly Reports" breadcrumb="Payroll > Monthly Reports">
-          <MonthlyReports />
+          <PayrollStateProvider>
+            <MonthlyReports />
+          </PayrollStateProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/payroll/holiday-requests">
         <ProtectedRoute requiredSection="payroll" title="Holiday Requests" breadcrumb="Payroll > Holiday Requests">
-          <HolidayRequests />
+          <PayrollStateProvider>
+            <HolidayRequests />
+          </PayrollStateProvider>
         </ProtectedRoute>
       </Route>
 
       {/* Daily Attendance Section */}
       <Route path="/daily-attendance">
         <ProtectedRoute requiredSection="daily_attendance" title="Daily Attendance" breadcrumb="Daily Attendance">
-          <Payroll />
+          <PayrollStateProvider>
+            <Payroll />
+          </PayrollStateProvider>
         </ProtectedRoute>
       </Route>
 
@@ -436,17 +452,23 @@ function Router() {
       </Route>
       <Route path="/payroll/holiday-requests/new">
         <ProtectedRoute requiredSection="payroll" title="New Holiday Request" breadcrumb="Payroll > Holiday Requests > New">
-          <HolidayRequestForm />
+          <PayrollStateProvider>
+            <HolidayRequestForm />
+          </PayrollStateProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/payroll/holiday-requests/edit/:id">
         <ProtectedRoute requiredSection="payroll" title="Edit Holiday Request" breadcrumb="Payroll > Holiday Requests > Edit">
-          <HolidayRequestForm />
+          <PayrollStateProvider>
+            <HolidayRequestForm />
+          </PayrollStateProvider>
         </ProtectedRoute>
       </Route>
       <Route path="/payroll/holiday-requests/view/:id">
         <ProtectedRoute requiredSection="payroll" title="View Holiday Request" breadcrumb="Payroll > Holiday Requests > View">
-          <HolidayRequestView />
+          <PayrollStateProvider>
+            <HolidayRequestView />
+          </PayrollStateProvider>
         </ProtectedRoute>
       </Route>
       {/* Admin Pages */}

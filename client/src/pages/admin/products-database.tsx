@@ -81,9 +81,12 @@ const nonProducts = [
 
 // Helper to get next product code
 function getNextProductCode(products: RegularProduct[]) {
-  const codes = products
+  // Ensure products is an array
+  const productsArray = Array.isArray(products) ? products : [];
+  
+  const codes = productsArray
     .map(p => p.productCode)
-    .filter(code => /^P\d+$/i.test(code));
+    .filter(code => code && /^P\d+$/i.test(code));
   const nums = codes.map(code => parseInt(code.replace(/^P/i, ""), 10)).filter(n => !isNaN(n));
   const nextNum = nums.length > 0 ? Math.max(...nums) + 1 : 1;
   return `P${nextNum}`;
@@ -135,9 +138,26 @@ export default function Products() {
     }
   }, [editingProduct, form]);
 
-  const { data: products = [], isLoading } = useQuery<RegularProduct[]>({
+  const { data: products = [], isLoading, error } = useQuery<RegularProduct[]>({
     queryKey: ["products"],
-    queryFn: () => apiRequest("GET", "/api/regular_products")
+    queryFn: () => apiRequest("GET", "/api/regular_products"),
+    select: (data) => {
+      // Ensure we always return an array
+      if (Array.isArray(data)) {
+        return data;
+      }
+      // If data has a products property that's an array
+      if (data && typeof data === 'object' && Array.isArray((data as any).products)) {
+        return (data as any).products;
+      }
+      // If data has a data property that's an array
+      if (data && typeof data === 'object' && Array.isArray((data as any).data)) {
+        return (data as any).data;
+      }
+      // Fallback to empty array
+      console.warn('API returned unexpected data format:', data);
+      return [];
+    }
   });
 
   const createProductMutation = useMutation<RegularProduct, Error, ProductFormData>({
@@ -181,10 +201,21 @@ export default function Products() {
     },
   });
 
-  const filteredProducts = (products || []).filter((product) =>
-    product.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.productCode.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = React.useMemo(() => {
+    // Ensure products is always an array
+    const productsArray = Array.isArray(products) ? products : [];
+    
+    if (!searchTerm) {
+      return productsArray;
+    }
+    
+    return productsArray.filter((product) => {
+      const description = product.description || '';
+      const productCode = product.productCode || '';
+      return description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             productCode.toLowerCase().includes(searchTerm.toLowerCase());
+    });
+  }, [products, searchTerm]);
 
   const onSubmit = (data: ProductFormData) => {
     if (editingProduct) {
@@ -391,7 +422,8 @@ export default function Products() {
 
   // When switching to add mode, set the next product code
   const handleAddProduct = () => {
-    const nextCode = getNextProductCode(products);
+    const productsArray = Array.isArray(products) ? products : [];
+    const nextCode = getNextProductCode(productsArray);
     setActiveView("add");
     setEditingProduct(null);
     form.reset({
@@ -414,6 +446,23 @@ export default function Products() {
 
   if (isLoading) {
     return <div className="flex items-center justify-center h-96">Loading products...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <p className="text-red-500 mb-2">Error loading products</p>
+          <p className="text-sm text-gray-500">{error.message}</p>
+          <Button 
+            onClick={() => window.location.reload()} 
+            className="mt-4"
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (

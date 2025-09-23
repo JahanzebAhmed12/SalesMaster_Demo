@@ -142,14 +142,14 @@ export const usePaymentsStateManager = () => {
     return {
       totalQueries: paymentsQueries.length,
       staleQueries: paymentsQueries.filter(q => q.isStale()).length,
-      fetchingQueries: paymentsQueries.filter(q => q.isFetching()).length,
+      fetchingQueries: paymentsQueries.filter(q => q.isFetching).length,
       errorQueries: paymentsQueries.filter(q => q.state.status === 'error').length,
       queries: paymentsQueries.map(q => ({
         key: q.queryKey,
         status: q.state.status,
         dataUpdatedAt: q.state.dataUpdatedAt,
         isStale: q.isStale(),
-        isFetching: q.isFetching()
+        isFetching: q.isFetching
       }))
     };
   };

@@ -122,14 +122,14 @@ export const usePayrollStateManager = () => {
     return {
       totalQueries: payrollQueries.length,
       staleQueries: payrollQueries.filter(q => q.isStale()).length,
-      fetchingQueries: payrollQueries.filter(q => q.isFetching()).length,
+      fetchingQueries: payrollQueries.filter(q => q.isFetching).length,
       errorQueries: payrollQueries.filter(q => q.state.status === 'error').length,
       queries: payrollQueries.map(q => ({
         key: q.queryKey,
         status: q.state.status,
         dataUpdatedAt: q.state.dataUpdatedAt,
         isStale: q.isStale(),
-        isFetching: q.isFetching()
+        isFetching: q.isFetching
       }))
     };
   };

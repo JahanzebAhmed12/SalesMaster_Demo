@@ -13951,6 +13951,31 @@ def view_signed_form(id):
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/holiday-requests/<int:id>/signed-form', methods=['DELETE'])
+@jwt_required()
+def delete_signed_form(id):
+    try:
+        holiday_request = HolidayRequest.query.get_or_404(id)
+        
+        if not holiday_request.signed_form_path:
+            return jsonify({'error': 'No signed form found for this request'}), 404
+        
+        file_path = os.path.join(app.root_path, holiday_request.signed_form_path)
+        
+        # Delete the file if it exists
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        # Clear the signed form path from the database
+        holiday_request.signed_form_path = None
+        db.session.commit()
+        
+        return jsonify({'message': 'Signed form deleted successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 # Holiday Request reset entitlement endpoint
 @app.route('/api/holiday-requests/reset-entitlement', methods=['POST'])
 @jwt_required()

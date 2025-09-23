@@ -32,50 +32,12 @@ const HolidayRequests = () => {
     queryFn: () => apiRequest("GET", "/api/holiday-requests"),
   });
 
-  // File upload function using the same pattern as apiRequest
-  const uploadFile = async (id: number, file: File) => {
-    const formData = new FormData();
-    formData.append('signedForm', file);
 
-    // Use the same URL logic as apiRequest
-    const useRelativeUrls = () => {
-      return window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-    };
-
-    const API_BASE_URL = 'http://localhost:5000';
-    const url = useRelativeUrls() ? `/api/holiday-requests/${id}/upload-signed-form` : `${API_BASE_URL}/api/holiday-requests/${id}/upload-signed-form`;
-
-    const token = localStorage.getItem('jwt_token');
-    const headers: Record<string, string> = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: formData,
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        localStorage.removeItem('jwt_token');
-        window.location.href = '/';
-        throw new Error('Session expired. Please login again.');
-      }
-      throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
-    }
-
-    return responseData;
-  };
 
   // Use the standardized mutations
   const uploadFormMutation = holidayRequest.uploadSignedForm;
   const resetEntitlementMutation = holidayRequest.resetEntitlement;
+  const deleteFormMutation = holidayRequest.deleteSignedForm;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -130,6 +92,8 @@ const HolidayRequests = () => {
       onSuccess: () => {
         setUploadingId(null);
         setSelectedFile(null);
+        // Refresh the holiday requests data to show the updated signed form status
+        queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] });
       }
     });
   };
@@ -212,6 +176,15 @@ const HolidayRequests = () => {
         description: "No signed form has been uploaded for this request",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleDeleteSignedForm = (id: number) => {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete the signed form? This action cannot be undone."
+    );
+    if (confirmDelete) {
+      deleteFormMutation.mutate(id);
     }
   };
 
@@ -314,14 +287,29 @@ const HolidayRequests = () => {
                         <td className="border border-gray-300 px-4 py-2">
                           <div className="flex space-x-2">
                             {request.signedFormPath ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                title="View signed form"
-                                onClick={() => handleViewSignedForm(request)}
-                              >
-                                <FileText className="h-4 w-4 text-green-600" />
-                              </Button>
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  title="View signed form"
+                                  onClick={() => handleViewSignedForm(request)}
+                                >
+                                  <FileText className="h-4 w-4 text-green-600" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  title="Delete signed form"
+                                  onClick={() => handleDeleteSignedForm(request.id)}
+                                  disabled={deleteFormMutation.isPending}
+                                >
+                                  {deleteFormMutation.isPending ? (
+                                    <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4 text-red-600" />
+                                  )}
+                                </Button>
+                              </>
                             ) : (
                               <Dialog>
                                 <DialogTrigger asChild>
