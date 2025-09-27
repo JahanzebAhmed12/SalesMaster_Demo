@@ -128,9 +128,31 @@ export default function DotMatrixInvoicePrintPage() {
       // Set server PDF mode for styling
       setIsServerPDF(true);
 
-      // Since we need the raw response for PDF blob, we'll use fetch with proper URL
+      // Check if backend is available first
       const { API_BASE_URL, useRelativeUrls } = await import('@/lib/config');
       const token = localStorage.getItem('jwt_token');
+
+      // Test backend connectivity first
+      const healthUrl = useRelativeUrls() ? '/api/health' : `${API_BASE_URL}/api/health`;
+
+      try {
+        const healthResponse = await fetch(healthUrl, {
+          method: 'GET',
+          headers: {
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          }
+        });
+
+        if (!healthResponse.ok) {
+          throw new Error(`Backend health check failed: ${healthResponse.status}`);
+        }
+
+        console.log('Backend health check passed');
+      } catch (healthError) {
+        console.log('Backend health check failed:', healthError);
+        throw new Error(`Backend not available: ${healthError.message}`);
+      }
+
       const apiUrl = useRelativeUrls() ? '/api/generate-invoice-pdf' : `${API_BASE_URL}/api/generate-invoice-pdf`;
 
       const fetchResponse = await fetch(apiUrl, {
@@ -141,17 +163,24 @@ export default function DotMatrixInvoicePrintPage() {
         },
         body: JSON.stringify({
           invoiceNumber: invoiceNumber
-        })
+        }),
+        timeout: 30000 // 30 second timeout
       });
 
       if (!fetchResponse.ok) {
-        throw new Error(`HTTP error! status: ${fetchResponse.status}`);
+        const errorText = await fetchResponse.text();
+        throw new Error(`HTTP error! status: ${fetchResponse.status}, message: ${errorText}`);
       }
 
       const blob = await fetchResponse.blob();
+
+      if (blob.size === 0) {
+        throw new Error('Empty PDF received from server');
+      }
+
       const pdfUrl = window.URL.createObjectURL(blob);
 
-      console.log('PDF generated, opening print window...');
+      console.log('PDF generated successfully, opening print window...');
 
       const isMobileSafari = /iPhone|iPad/.test(navigator.userAgent);
       const isAndroid = /Android/.test(navigator.userAgent);
@@ -217,10 +246,20 @@ export default function DotMatrixInvoicePrintPage() {
     } catch (error) {
       console.error('Server PDF generation failed:', error);
       console.log('Falling back to browser print...');
-      window.print();
+
+      // Show user-friendly error message
+      alert(`Server PDF generation is currently unavailable. Using browser print instead.\n\nError: ${error.message}`);
+
+      // Fallback to browser print
+      setIsServerPDF(false);
+      setTimeout(() => {
+        window.print();
+      }, 500);
     } finally {
       // Reset server PDF mode after processing
-      setIsServerPDF(false);
+      setTimeout(() => {
+        setIsServerPDF(false);
+      }, 1000);
     }
   };
 
@@ -271,7 +310,7 @@ export default function DotMatrixInvoicePrintPage() {
   return (
     <div className="min-h-screen">
       <style>{`
-        /* PC Print Styles - Changed font size to 10pt */
+        /* PC Print Styles - Optimized for dot matrix printing */
         @media print and (min-device-width: 769px) {
           @page { 
             size: 186mm 200mm; 
@@ -288,14 +327,16 @@ export default function DotMatrixInvoicePrintPage() {
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
             overflow: visible !important;
+            font-family: "Courier New", "Courier", monospace !important;
           }
           .print-content {
             margin: 0 !important;
             padding: 0 !important;
           }
           .dot-matrix-print { 
-            background: none !important; 
+            background: white !important; 
             box-shadow: none !important;
+            border: none !important;
             margin: 0 !important;
             padding: 0mm !important;
             width: 186mm !important;
@@ -306,9 +347,15 @@ export default function DotMatrixInvoicePrintPage() {
             overflow: hidden !important;
             position: relative !important;
             display: block !important;
+            font-family: "Courier New", "Courier", monospace !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
+          }
+          .field-text {
+            font-family: "Courier New", "Courier", monospace !important;
+            color: black !important;
+            background: transparent !important;
           }
         }
         
@@ -421,22 +468,35 @@ export default function DotMatrixInvoicePrintPage() {
             onClick={handlePrint}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            Print Invoice
+            Browser Print
           </button>
           <button
             onClick={handleServerPDF}
             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500"
           >
-            {isMobile ? 'Server PDF (Print)' : 'Server PDF'}
+            {isMobile ? 'Generate PDF & Print' : 'Server PDF Print'}
           </button>
           <button
             onClick={() => {
-              handleServerPDF().then(() => {
-                setTimeout(() => {
-                  if (isMobile) {
-                    alert('If print dialog didn\'t open automatically, check your Downloads folder for the PDF file and print it from there.');
-                  }
-                }, 3000);
+              // Force download mode
+              const originalHandler = handleServerPDF;
+              handleServerPDF().catch(() => {
+                // If server PDF fails, create a simple download of the current page
+                console.log('Server PDF failed, creating browser-based download...');
+                const printWindow = window.open('', '_blank');
+                if (printWindow) {
+                  printWindow.document.write(`
+                    <html>
+                      <head><title>Invoice ${invoiceNumber}</title></head>
+                      <body>
+                        <p>Server PDF generation is currently unavailable.</p>
+                        <p>Please use the "Browser Print" option and save as PDF from your browser's print dialog.</p>
+                        <button onclick="window.close()">Close</button>
+                      </body>
+                    </html>
+                  `);
+                  printWindow.document.close();
+                }
               });
             }}
             className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
@@ -444,6 +504,7 @@ export default function DotMatrixInvoicePrintPage() {
             Download PDF
           </button>
         </div>
+
       </div>
 
       {/* Dot Matrix Content - only this shows during print */}

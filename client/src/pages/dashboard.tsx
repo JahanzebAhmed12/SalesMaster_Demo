@@ -12,12 +12,14 @@ import ProfitTrendChart from "@/components/charts/profit-trend-chart";
 import { DollarSign, ShoppingCart, Percent, Package, TrendingUp, TrendingDown, AlertTriangle, Calendar, User, Settings } from "lucide-react";
 import React from "react";
 import { useAuth } from "@/lib/auth";
+import { useBusinessDate } from "@/hooks/useBusinessDate";
 
 export default function Dashboard() {
   const [range, setRange] = React.useState("7days");
   const [profitRange, setProfitRange] = React.useState("month");
   const [showProfit, setShowProfit] = React.useState(true);
   const { user } = useAuth();
+  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
@@ -97,60 +99,196 @@ export default function Dashboard() {
     refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
   });
 
-  // Process documents to add status
+  // Fetch current holiday requests
+  const { data: holidayRequestsResponse, isLoading: holidayLoading } = useQuery({
+    queryKey: ["/api/holiday-requests", 1, 100], // Get first 100 requests
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: "1",
+        per_page: "100"
+      });
+      const response = await apiRequest("GET", `/api/holiday-requests?${params}`);
+      console.log('Holiday requests API response:', response);
+      return response;
+    },
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
+  });
+
+  // Process documents to add status - only show documents with end dates
   const processedDocs = React.useMemo(() => {
     if (!allDocs) return [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    return allDocs.map((doc: any) => {
-      if (!doc.endDate) return { ...doc, status: 'valid' };
-      
-      const endDate = new Date(doc.endDate);
-      endDate.setHours(0, 0, 0, 0);
-      
-      const diffTime = endDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      let status = 'valid'; // Default status (green)
-      if (diffDays <= 7) status = 'warning'; // Red if 1 week or less
-      else if (diffDays <= 30) status = 'expiring'; // Yellow if 1 month or less
-      
-      return {
-        ...doc,
-        daysUntilExpiry: Math.max(0, diffDays),
-        status
-      };
-    });
+    return allDocs
+      .filter((doc: any) => doc.endDate) // Only show documents with end dates
+      .map((doc: any) => {
+        const endDate = new Date(doc.endDate);
+        endDate.setHours(0, 0, 0, 0);
+        
+        const diffTime = endDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        let status = 'valid'; // Default status (green)
+        let priority = 3; // Lower number = higher priority
+        
+        if (diffDays <= 0) {
+          status = 'expired';
+          priority = 0; // Highest priority
+        } else if (diffDays <= 7) {
+          status = 'warning'; // Red if 1 week or less
+          priority = 1;
+        } else if (diffDays <= 30) {
+          status = 'expiring'; // Yellow if 1 month or less
+          priority = 2;
+        }
+        
+        return {
+          ...doc,
+          daysUntilExpiry: Math.max(0, diffDays),
+          status,
+          priority
+        };
+      })
+      .sort((a, b) => {
+        // Sort by priority first (0 = highest priority), then by days until expiry
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
+        return a.daysUntilExpiry - b.daysUntilExpiry;
+      });
   }, [allDocs]);
 
-  // Process equipment to add status
+  // Process equipment to add status - only show equipment with end dates
   const processedEquipment = React.useMemo(() => {
     if (!allEquipment) return [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    return allEquipment.map((eq: any) => {
-      if (!eq.endDate) return { ...eq, expiryDate: null, status: 'valid' };
-      
-      const expiryDate = new Date(eq.endDate);
-      expiryDate.setHours(0, 0, 0, 0);
-      
-      const diffTime = expiryDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      let status = 'valid'; // Default status (green)
-      if (diffDays <= 7) status = 'warning'; // Red if 1 week or less
-      else if (diffDays <= 30) status = 'expiring'; // Yellow if 1 month or less
-      
-      return {
-        ...eq,
-        expiryDate: eq.endDate,
-        daysUntilExpiry: Math.max(0, diffDays),
-        status
-      };
-    });
+    return allEquipment
+      .filter((eq: any) => eq.endDate) // Only show equipment with end dates
+      .map((eq: any) => {
+        const expiryDate = new Date(eq.endDate);
+        expiryDate.setHours(0, 0, 0, 0);
+        
+        const diffTime = expiryDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        let status = 'valid'; // Default status (green)
+        let priority = 3; // Lower number = higher priority
+        
+        if (diffDays <= 0) {
+          status = 'expired';
+          priority = 0; // Highest priority
+        } else if (diffDays <= 7) {
+          status = 'warning'; // Red if 1 week or less
+          priority = 1;
+        } else if (diffDays <= 30) {
+          status = 'expiring'; // Yellow if 1 month or less
+          priority = 2;
+        }
+        
+        return {
+          ...eq,
+          expiryDate: eq.endDate,
+          daysUntilExpiry: Math.max(0, diffDays),
+          status,
+          priority
+        };
+      })
+      .sort((a, b) => {
+        // Sort by priority first (0 = highest priority), then by days until expiry
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
+        return a.daysUntilExpiry - b.daysUntilExpiry;
+      });
   }, [allEquipment]);
+
+  // Process holiday requests to find employees currently on holiday
+  const { employeesOnHoliday, allGrantedRequests } = React.useMemo(() => {
+    if (!holidayRequestsResponse?.data || !businessDate) {
+      console.log('No holiday requests data or business date available');
+      return { employeesOnHoliday: [], allGrantedRequests: [] };
+    }
+    
+    const today = new Date(businessDate);
+    today.setHours(0, 0, 0, 0);
+    console.log('Business Date (Today):', today.toDateString());
+    console.log('All holiday requests:', holidayRequestsResponse.data);
+
+    // Get all granted requests for the first section
+    const allGranted = holidayRequestsResponse.data.filter((request: any) => request.status === 'granted');
+    
+    // Filter for employees currently on holiday
+    const currentlyOnHoliday = holidayRequestsResponse.data
+      .filter((request: any) => {
+        console.log(`Processing request for ${request.employeeName}:`, {
+          status: request.status,
+          lastDateAtWork: request.lastDateAtWork,
+          returnDateToWork: request.returnDateToWork
+        });
+        
+        // Only show granted requests
+        if (request.status !== 'granted') {
+          console.log(`Request for ${request.employeeName} not granted (status: ${request.status})`);
+          return false;
+        }
+        
+        // Check if the holiday period includes today
+        if (!request.lastDateAtWork || !request.returnDateToWork) {
+          console.log(`Request for ${request.employeeName} missing dates`);
+          return false;
+        }
+        
+        const lastWorkDate = new Date(request.lastDateAtWork);
+        const returnDate = new Date(request.returnDateToWork);
+        lastWorkDate.setHours(0, 0, 0, 0);
+        returnDate.setHours(0, 0, 0, 0);
+        
+        // Employee is on holiday if today is after last work date and before or equal to return date
+        // The holiday period is from the day after lastDateAtWork until returnDateToWork (inclusive)
+        const holidayStartDate = new Date(lastWorkDate);
+        holidayStartDate.setDate(holidayStartDate.getDate() + 1); // Holiday starts the day after last work date
+        
+        const isOnHoliday = today >= holidayStartDate && today <= returnDate;
+        
+        console.log(`Date comparison for ${request.employeeName}:`, {
+          lastWorkDate: lastWorkDate.toDateString(),
+          holidayStartDate: holidayStartDate.toDateString(),
+          returnDate: returnDate.toDateString(),
+          today: today.toDateString(),
+          isAfterHolidayStart: today >= holidayStartDate,
+          isBeforeOrOnReturn: today <= returnDate,
+          isOnHoliday: isOnHoliday
+        });
+        
+        if (isOnHoliday) {
+          console.log(`${request.employeeName} is currently on holiday`);
+        }
+        
+        return isOnHoliday;
+      })
+      .map((request: any) => {
+        const returnDate = new Date(request.returnDateToWork);
+        returnDate.setHours(0, 0, 0, 0);
+        
+        const diffTime = returnDate.getTime() - today.getTime();
+        const daysUntilReturn = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        return {
+          ...request,
+          daysUntilReturn: Math.max(0, daysUntilReturn)
+        };
+      })
+      .sort((a, b) => a.daysUntilReturn - b.daysUntilReturn); // Sort by return date (soonest first)
+    
+    console.log('Filtered employees on holiday:', currentlyOnHoliday);
+    return { 
+      employeesOnHoliday: currentlyOnHoliday, 
+      allGrantedRequests: allGranted 
+    };
+  }, [holidayRequestsResponse, businessDate]);
 
   React.useEffect(() => {
     const getApiUrl = (endpoint: string) => {
@@ -203,11 +341,17 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {processedDocs.map((doc: any) => (
+              {allDocsLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">Loading documents...</span>
+                </div>
+              ) : (
+                processedDocs.map((doc: any) => (
                 <div 
                   key={doc.id}
                   className={`flex items-center justify-between p-3 rounded-lg border ${
-                    doc.status === 'warning' 
+                    doc.status === 'expired' || doc.status === 'warning' 
                       ? 'bg-red-50 border-red-200' 
                       : doc.status === 'expiring'
                         ? 'bg-yellow-50 border-yellow-200'
@@ -216,19 +360,23 @@ export default function Dashboard() {
                 >
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-full ${
-                      doc.status === 'warning' 
+                      doc.status === 'expired' || doc.status === 'warning' 
                         ? 'bg-red-100' 
                         : doc.status === 'expiring'
                           ? 'bg-yellow-100'
                           : 'bg-green-100'
                     }`}>
-                      <User className={`h-4 w-4 ${
-                        doc.status === 'warning' 
-                          ? 'text-red-600' 
-                          : doc.status === 'expiring'
-                            ? 'text-yellow-600'
-                            : 'text-green-600'
-                      }`} />
+                      {doc.status === 'expired' ? (
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                      ) : (
+                        <User className={`h-4 w-4 ${
+                          doc.status === 'warning' 
+                            ? 'text-red-600' 
+                            : doc.status === 'expiring'
+                              ? 'text-yellow-600'
+                              : 'text-green-600'
+                        }`} />
+                      )}
                     </div>
                     <div>
                       <p className="font-medium text-gray-900">{doc.employeeName || 'Unknown Employee'}</p>
@@ -242,7 +390,7 @@ export default function Dashboard() {
                     </div>
                     {doc.endDate && (
                       <p className={`text-sm font-medium ${
-                        doc.status === 'warning' 
+                        doc.status === 'expired' || doc.status === 'warning' 
                           ? 'text-red-600' 
                           : doc.status === 'expiring'
                             ? 'text-yellow-600'
@@ -260,9 +408,10 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-              ))}
-              {processedDocs.length === 0 && (
-                <p className="text-center text-gray-500 py-4">No documents found</p>
+                ))
+              )}
+              {!allDocsLoading && processedDocs.length === 0 && (
+                <p className="text-center text-gray-500 py-4">No documents with expiry dates found</p>
               )}
             </div>
           </CardContent>
@@ -281,11 +430,17 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {processedEquipment.map((eq: any) => (
+              {equipmentLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                  <span className="ml-2 text-gray-500">Loading equipment...</span>
+                </div>
+              ) : (
+                processedEquipment.map((eq: any) => (
                 <div 
                   key={eq.id}
                   className={`flex items-center justify-between p-3 rounded-lg border ${
-                    eq.status === 'warning' 
+                    eq.status === 'expired' || eq.status === 'warning' 
                       ? 'bg-red-50 border-red-200' 
                       : eq.status === 'expiring'
                         ? 'bg-yellow-50 border-yellow-200'
@@ -294,19 +449,23 @@ export default function Dashboard() {
                 >
                   <div className="flex items-center gap-3">
                     <div className={`p-2 rounded-full ${
-                      eq.status === 'warning' 
+                      eq.status === 'expired' || eq.status === 'warning' 
                         ? 'bg-red-100' 
                         : eq.status === 'expiring'
                           ? 'bg-yellow-100'
                           : 'bg-green-100'
                     }`}>
-                      <Settings className={`h-4 w-4 ${
-                        eq.status === 'warning' 
-                          ? 'text-red-600' 
-                          : eq.status === 'expiring'
-                            ? 'text-yellow-600'
-                            : 'text-green-600'
-                      }`} />
+                      {eq.status === 'expired' ? (
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                      ) : (
+                        <Settings className={`h-4 w-4 ${
+                          eq.status === 'warning' 
+                            ? 'text-red-600' 
+                            : eq.status === 'expiring'
+                              ? 'text-yellow-600'
+                              : 'text-green-600'
+                        }`} />
+                      )}
                     </div>
                     <div>
                       <p className="font-medium text-gray-900">{eq.description || 'No Description'}</p>
@@ -321,7 +480,7 @@ export default function Dashboard() {
                           <span>{new Date(eq.expiryDate).toLocaleDateString()}</span>
                         </div>
                         <p className={`text-sm font-medium ${
-                          eq.status === 'warning' 
+                          eq.status === 'expired' || eq.status === 'warning' 
                             ? 'text-red-600' 
                             : eq.status === 'expiring'
                               ? 'text-yellow-600'
@@ -348,9 +507,164 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
-              ))}
-              {processedEquipment.length === 0 && (
-                <p className="text-center text-gray-500 py-4">No equipment found</p>
+                ))
+              )}
+              {!equipmentLoading && processedEquipment.length === 0 && (
+                <p className="text-center text-gray-500 py-4">No equipment with expiry dates found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Holiday Requests Overview */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-blue-600 h-5 w-5" />
+              <CardTitle>Holiday Requests</CardTitle>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {allGrantedRequests.length} Granted
+              </Badge>
+              {!isLoadingBusinessDate && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                  <span>Using Business Date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-60 overflow-y-auto">
+              {holidayLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">Loading holiday requests...</span>
+                </div>
+              ) : allGrantedRequests.length > 0 ? (
+                allGrantedRequests.map((request: any) => {
+                  const lastWorkDate = new Date(request.lastDateAtWork);
+                  const returnDate = new Date(request.returnDateToWork);
+                  const today = businessDate ? new Date(businessDate) : new Date();
+                  today.setHours(0, 0, 0, 0);
+                  
+                  // Determine status relative to business date
+                  let statusColor = 'bg-gray-50 border-gray-200';
+                  let statusText = 'Scheduled';
+                  
+                  if (today > lastWorkDate && today < returnDate) {
+                    statusColor = 'bg-green-50 border-green-200';
+                    statusText = 'Currently on Holiday';
+                  } else if (today >= returnDate) {
+                    statusColor = 'bg-blue-50 border-blue-200';
+                    statusText = 'Completed';
+                  } else if (today <= lastWorkDate) {
+                    statusColor = 'bg-yellow-50 border-yellow-200';
+                    statusText = 'Upcoming';
+                  }
+                  
+                  return (
+                    <div key={request.id} className={`p-3 rounded-lg border ${statusColor}`}>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900">{request.employeeName}</p>
+                          <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                        </div>
+                        <div className="text-right">
+                          <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                            <Calendar className="h-4 w-4" />
+                            <span>
+                              {lastWorkDate.toLocaleDateString()} - {returnDate.toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-xs font-medium text-gray-700">
+                            {statusText} • {request.totalDaysRequested} days
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-center text-gray-500 py-4">No granted holiday requests found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Employees Currently on Holiday */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <User className="text-green-600 h-5 w-5" />
+              <CardTitle>Employees Currently on Holiday</CardTitle>
+              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                {employeesOnHoliday.length} {employeesOnHoliday.length === 1 ? 'Employee' : 'Employees'}
+              </Badge>
+              {!isLoadingBusinessDate && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span>As of: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {holidayLoading || isLoadingBusinessDate ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-gray-500">Loading holiday information...</span>
+                </div>
+              ) : employeesOnHoliday.length > 0 ? (
+                employeesOnHoliday.map((request: any) => (
+                <div 
+                  key={request.id}
+                  className="flex items-center justify-between p-3 rounded-lg border bg-green-50 border-green-200"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-full bg-green-100">
+                      <User className="h-4 w-4 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{request.employeeName}</p>
+                      <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                        <span>On Holiday</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                      <Calendar className="h-4 w-4" />
+                      <span>
+                        {new Date(request.lastDateAtWork).toLocaleDateString()} - {new Date(request.returnDateToWork).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-green-600">
+                      {request.daysUntilReturn === 0 
+                        ? 'Returns today' 
+                        : request.daysUntilReturn === 1 
+                          ? 'Returns tomorrow'
+                          : `Returns in ${request.daysUntilReturn} days`
+                      }
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {request.totalDaysRequested} days total
+                    </p>
+                  </div>
+                </div>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <User className="h-6 w-6 text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 font-medium">No employees currently on holiday</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Based on business date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}
+                  </p>
+                </div>
               )}
             </div>
           </CardContent>

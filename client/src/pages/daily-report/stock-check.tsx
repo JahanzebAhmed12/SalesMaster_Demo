@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, ClipboardCheck, FileText, Download, Copy, Printer, Search, Check, Loader2, Mail } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -700,15 +701,15 @@ export default function StockCheck() {
                 </Select>
               </div>
               
-              <div>
-                <Button
-                  variant={showZeroEntries ? "outline" : "default"}
-                  onClick={() => setShowZeroEntries(!showZeroEntries)}
-                  className="w-full"
-                  size="sm"
-                >
-                  {showZeroEntries ? "Hide Zero Entries" : "Show Zero Entries"}
-                </Button>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="showZeroEntries"
+                  checked={showZeroEntries}
+                  onCheckedChange={(checked) => setShowZeroEntries(checked as boolean)}
+                />
+                <Label htmlFor="showZeroEntries" className="text-sm font-medium cursor-pointer">
+                  Show Zero Entries
+                </Label>
               </div>
               
               <div>

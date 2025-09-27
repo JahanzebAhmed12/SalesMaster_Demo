@@ -12,11 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { usePayrollMutations } from "@/hooks/usePayrollMutations";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DayPicker } from "react-day-picker";
 import { cn } from "@/lib/utils";
 import "react-day-picker/dist/style.css";
+import { Pagination } from "@/components/ui/pagination";
 
 const HolidayRequests = () => {
   const { toast } = useToast();
@@ -24,13 +25,39 @@ const HolidayRequests = () => {
   const { holidayRequest } = usePayrollMutations();
   const [uploadingId, setUploadingId] = useState<number | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [entitlementEndDate, setEntitlementEndDate] = useState<Date | undefined>(new Date());
+  const [entitlementStartDate, setEntitlementStartDate] = useState<Date | undefined>(new Date());
+  const [entitlementEndDate, setEntitlementEndDate] = useState<Date | undefined>(new Date(new Date().getFullYear() + 1, 3, 5)); // Default to next year April 5th
   const [showEntitlementReset, setShowEntitlementReset] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
 
-  const { data: holidayRequests = [], isLoading, error } = useQuery({
-    queryKey: ["/api/holiday-requests"],
-    queryFn: () => apiRequest("GET", "/api/holiday-requests"),
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const { data: holidayRequestsResponse, isLoading, error } = useQuery({
+    queryKey: ["/api/holiday-requests", currentPage, itemsPerPage, debouncedSearchTerm],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        page: currentPage.toString(),
+        per_page: itemsPerPage.toString(),
+        ...(debouncedSearchTerm && { search: debouncedSearchTerm })
+      });
+      return apiRequest("GET", `/api/holiday-requests?${params}`);
+    },
   });
+
+  const holidayRequests = holidayRequestsResponse?.data || [];
+  const pagination = holidayRequestsResponse?.pagination;
 
 
 
@@ -38,6 +65,7 @@ const HolidayRequests = () => {
   const uploadFormMutation = holidayRequest.uploadSignedForm;
   const resetEntitlementMutation = holidayRequest.resetEntitlement;
   const deleteFormMutation = holidayRequest.deleteSignedForm;
+  const deleteRequestMutation = holidayRequest.delete;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -99,23 +127,44 @@ const HolidayRequests = () => {
   };
 
   const handleResetEntitlement = () => {
-    if (!entitlementEndDate) {
+    if (!entitlementStartDate || !entitlementEndDate) {
       toast({
-        title: "No date selected",
-        description: "Please select an entitlement end date",
+        title: "Missing dates",
+        description: "Please select both start and end dates for the new holiday year",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (entitlementStartDate >= entitlementEndDate) {
+      toast({
+        title: "Invalid date range",
+        description: "Start date must be before end date",
         variant: "destructive",
       });
       return;
     }
 
     const confirmReset = window.confirm(
-      `Are you sure you want to reset all holiday entitlements? This will set the entitlement end date to ${format(entitlementEndDate, "dd/MM/yyyy")} and reset all employee holiday balances. This action cannot be undone.`
+      `Are you sure you want to start a new holiday year?\n\nThis will:\n- Set the holiday year from ${format(entitlementStartDate, "dd/MM/yyyy")} to ${format(entitlementEndDate, "dd/MM/yyyy")}\n- Give all employees their full entitlement for the new year\n- Archive previous holiday requests\n\nThis action cannot be undone.`
     );
 
     if (confirmReset) {
-      resetEntitlementMutation.mutate(format(entitlementEndDate, "yyyy-MM-dd"), {
-        onSuccess: () => {
+      resetEntitlementMutation.mutate({
+        startDate: format(entitlementStartDate, "yyyy-MM-dd"),
+        endDate: format(entitlementEndDate, "yyyy-MM-dd")
+      }, {
+        onSuccess: (response) => {
           setShowEntitlementReset(false);
+          // Show detailed success message
+          toast({
+            title: "Holiday Year Reset Successfully",
+            description: `${response.employeesProcessed} employees reset. ${response.previousRequestsArchived} previous requests archived.`,
+          });
+          // Refresh the holiday requests to show updated data
+          queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] });
+          // Also invalidate employee entitlement queries to refresh the holiday request form
+          queryClient.invalidateQueries({ queryKey: ["employee-entitlement"] });
         }
       });
     }
@@ -188,19 +237,26 @@ const HolidayRequests = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <p className="ml-2">Loading holiday requests...</p>
-      </div>
+  const handleDeleteRequest = (request: HolidayRequest) => {
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete the holiday request for ${request.employeeName}? This action cannot be undone.`
     );
-  }
+    if (confirmDelete) {
+      deleteRequestMutation.mutate(request.id);
+    }
+  };
+
+
 
   if (error) {
     return (
       <div className="flex justify-center items-center h-screen">
-        <p className="text-red-500">Error loading holiday requests: {error.message}</p>
+        <div className="text-center">
+          <p className="text-red-500 mb-4">Error loading holiday requests: {error.message}</p>
+          <Button onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }
@@ -208,26 +264,71 @@ const HolidayRequests = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Holiday Requests</h1>
-            <p className="text-sm text-gray-500">Manage employee holiday requests</p>
-          </div>
-          <div className="flex space-x-2">
-            <Button
-              variant="outline"
-              onClick={() => setShowEntitlementReset(true)}
-              className="border-orange-500 text-orange-600 hover:bg-orange-50"
-            >
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Reset Entitlements
-            </Button>
-            <Link href="/payroll/holiday-requests/new">
-              <Button className="bg-blue-600 text-white hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-2" />
-                New Request
+        <div className="mb-6 flex flex-col space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Holiday Requests</h1>
+              <p className="text-sm text-gray-500">Manage employee holiday requests</p>
+            </div>
+            <div className="flex space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowEntitlementReset(true)}
+                className="border-orange-500 text-orange-600 hover:bg-orange-50"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                New Holiday Year
               </Button>
-            </Link>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  try {
+                    const response = await apiRequest("GET", "/api/employees/entitlements");
+                    console.log("Current Employee Entitlements:", response);
+                    toast({
+                      title: "Entitlements Check",
+                      description: `${response.totalEmployees} employees found. Check console for details.`,
+                    });
+                  } catch (error) {
+                    toast({
+                      title: "Error",
+                      description: "Failed to fetch entitlements",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                className="border-blue-500 text-blue-600 hover:bg-blue-50"
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                Check Entitlements
+              </Button>
+              <Link href="/payroll/holiday-requests/new">
+                <Button className="bg-blue-600 text-white hover:bg-blue-700">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Request
+                </Button>
+              </Link>
+            </div>
+          </div>
+          
+          {/* Search Bar */}
+          <div className="flex items-center space-x-4">
+            <div className="flex-1 max-w-md">
+              <Input
+                placeholder="Search by employee name, job title, or status..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1); // Reset to first page when searching
+                }}
+                className="w-full"
+              />
+            </div>
+            {pagination && (
+              <div className="text-sm text-gray-500">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} requests
+              </div>
+            )}
           </div>
         </div>
 
@@ -236,15 +337,24 @@ const HolidayRequests = () => {
             <CardTitle className="text-center text-blue-600">Holiday Requests</CardTitle>
           </CardHeader>
           <CardContent>
-            {holidayRequests.length === 0 ? (
+            {isLoading ? (
+              <div className="flex justify-center items-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                <span>Loading holiday requests...</span>
+              </div>
+            ) : holidayRequests.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-gray-500">No holiday requests found.</p>
-                <Link href="/payroll/holiday-requests/new">
-                  <Button className="mt-4 bg-blue-600 text-white hover:bg-blue-700">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create First Request
-                  </Button>
-                </Link>
+                <p className="text-gray-500">
+                  {debouncedSearchTerm ? `No holiday requests found matching "${debouncedSearchTerm}".` : "No holiday requests found."}
+                </p>
+                {!debouncedSearchTerm && (
+                  <Link href="/payroll/holiday-requests/new">
+                    <Button className="mt-4 bg-blue-600 text-white hover:bg-blue-700">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create First Request
+                    </Button>
+                  </Link>
+                )}
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -403,12 +513,43 @@ const HolidayRequests = () => {
                             >
                               <Printer className="h-4 w-4" />
                             </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Delete request"
+                              onClick={() => handleDeleteRequest(request)}
+                              disabled={deleteRequestMutation.isPending}
+                            >
+                              {deleteRequestMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4 text-red-600" />
+                              )}
+                            </Button>
                           </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            
+            {/* Pagination */}
+            {pagination && pagination.pages > 1 && (
+              <div className="mt-6">
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={pagination.pages}
+                  totalItems={pagination.total}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={setCurrentPage}
+                  onItemsPerPageChange={(newItemsPerPage) => {
+                    setItemsPerPage(newItemsPerPage);
+                    setCurrentPage(1);
+                  }}
+                  itemsPerPageOptions={[10, 25, 50, 100]}
+                />
               </div>
             )}
           </CardContent>
@@ -418,65 +559,102 @@ const HolidayRequests = () => {
         <Dialog open={showEntitlementReset} onOpenChange={setShowEntitlementReset}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-orange-600">Reset Holiday Entitlements</DialogTitle>
+              <DialogTitle className="text-orange-600">Start New Holiday Year</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex items-start">
                   <div className="flex-shrink-0">
-                    <RefreshCw className="h-5 w-5 text-orange-400" />
+                    <CalendarIcon className="h-5 w-5 text-blue-400" />
                   </div>
                   <div className="ml-3">
-                    <h3 className="text-sm font-medium text-orange-800">
-                      Warning: This action will reset all employee holiday entitlements
+                    <h3 className="text-sm font-medium text-blue-800">
+                      New Holiday Year Reset
                     </h3>
-                    <div className="mt-2 text-sm text-orange-700">
-                      <ul className="list-disc list-inside space-y-1">
-                        <li>All employees will have their holiday balances reset</li>
-                        <li>The entitlement period will be updated</li>
-                        <li>This action cannot be undone</li>
-                      </ul>
+                    <div className="mt-2 text-sm text-blue-700">
+                      <p>This will give all employees their full holiday entitlement for the new year and archive previous requests.</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div>
-                <Label htmlFor="entitlementEndDate" className="block text-sm font-medium mb-2">
-                  New Entitlement End Date
-                </Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !entitlementEndDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {entitlementEndDate ? (
-                        format(entitlementEndDate, "PPP")
-                      ) : (
-                        <span>Pick a date</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <DayPicker
-                      mode="single"
-                      selected={entitlementEndDate}
-                      onSelect={setEntitlementEndDate}
-                      captionLayout="dropdown-buttons"
-                      fromYear={new Date().getFullYear()}
-                      toYear={new Date().getFullYear() + 5}
-                      className="p-3"
-                    />
-                  </PopoverContent>
-                </Popover>
-                <p className="text-sm text-gray-500 mt-1">
-                  Select the end date for the new holiday entitlement period
-                </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="entitlementStartDate" className="block text-sm font-medium mb-2">
+                    Holiday Year Start Date
+                  </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !entitlementStartDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {entitlementStartDate ? (
+                          format(entitlementStartDate, "PPP")
+                        ) : (
+                          <span>Pick start date</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <DayPicker
+                        mode="single"
+                        selected={entitlementStartDate}
+                        onSelect={setEntitlementStartDate}
+                        captionLayout="dropdown-buttons"
+                        fromYear={new Date().getFullYear()}
+                        toYear={new Date().getFullYear() + 5}
+                        className="p-3"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div>
+                  <Label htmlFor="entitlementEndDate" className="block text-sm font-medium mb-2">
+                    Holiday Year End Date
+                  </Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !entitlementEndDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {entitlementEndDate ? (
+                          format(entitlementEndDate, "PPP")
+                        ) : (
+                          <span>Pick end date</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <DayPicker
+                        mode="single"
+                        selected={entitlementEndDate}
+                        onSelect={setEntitlementEndDate}
+                        captionLayout="dropdown-buttons"
+                        fromYear={new Date().getFullYear()}
+                        toYear={new Date().getFullYear() + 5}
+                        className="p-3"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-600 bg-green-50 p-3 rounded-lg border border-green-200">
+                <p className="font-medium mb-1 text-green-800">Holiday Year Summary:</p>
+                <p>From: {entitlementStartDate ? format(entitlementStartDate, "dd/MM/yyyy") : "Not selected"}</p>
+                <p>To: {entitlementEndDate ? format(entitlementEndDate, "dd/MM/yyyy") : "Not selected"}</p>
+                <p className="text-green-700 text-xs mt-2">✓ Each employee will get their full individual entitlement for the new year</p>
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">
@@ -489,18 +667,18 @@ const HolidayRequests = () => {
                 </Button>
                 <Button
                   onClick={handleResetEntitlement}
-                  disabled={!entitlementEndDate || resetEntitlementMutation.isPending}
+                  disabled={!entitlementStartDate || !entitlementEndDate || resetEntitlementMutation.isPending}
                   className="bg-orange-600 hover:bg-orange-700 text-white"
                 >
                   {resetEntitlementMutation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Resetting...
+                      Starting New Year...
                     </>
                   ) : (
                     <>
                       <RefreshCw className="h-4 w-4 mr-2" />
-                      Reset Entitlements
+                      Start New Holiday Year
                     </>
                   )}
                 </Button>

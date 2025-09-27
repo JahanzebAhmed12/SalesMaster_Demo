@@ -16,6 +16,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { usePayrollMutations } from "@/hooks/usePayrollMutations";
 
 const HolidayRequestForm = () => {
   const { id } = useParams<{ id: string }>();
@@ -23,6 +24,7 @@ const HolidayRequestForm = () => {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { holidayRequest } = usePayrollMutations();
 
   const form = useForm<InsertHolidayRequest>({
     resolver: zodResolver(insertHolidayRequestSchema),
@@ -55,8 +57,10 @@ const HolidayRequestForm = () => {
   // Fetch employee entitlement information when employee is selected
   const { data: entitlementInfo, isLoading: isLoadingEntitlement } = useQuery({
     queryKey: ["employee-entitlement", form.watch("employeeId")],
-    queryFn: () => apiRequest("GET", `/api/employees/${form.watch("employeeId")}/entitlement`),
+    queryFn: () => apiRequest("GET", `/api/employees/${form.watch("employeeId")}/entitlement?t=${Date.now()}`),
     enabled: !!form.watch("employeeId") && form.watch("employeeId") > 0,
+    staleTime: 0, // Always refetch to get latest data
+    cacheTime: 0, // Don't cache the result
   });
 
   // Fetch existing request if editing
@@ -66,17 +70,22 @@ const HolidayRequestForm = () => {
     enabled: !!requestId,
   });
 
+  // Use standardized mutations with proper navigation handling
   const createRequestMutation = useMutation({
     mutationFn: async (newRequest: InsertHolidayRequest) => {
       return apiRequest("POST", "/api/holiday-requests", newRequest);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["holiday-requests"] });
+    onSuccess: async () => {
+      // Wait for query invalidation to complete before navigating
+      await queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] });
       toast({
         title: "Success!",
         description: "Holiday request created successfully.",
       });
-      setLocation("/payroll/holiday-requests");
+      // Small delay to ensure the query cache is updated
+      setTimeout(() => {
+        setLocation("/payroll/holiday-requests");
+      }, 100);
     },
     onError: (error) => {
       toast({
@@ -91,14 +100,20 @@ const HolidayRequestForm = () => {
     mutationFn: (updatedRequest: HolidayRequest) => {
       return apiRequest("PUT", `/api/holiday-requests/${requestId}`, updatedRequest);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["holiday-request", requestId] });
-      queryClient.invalidateQueries({ queryKey: ["holiday-requests"] });
+    onSuccess: async () => {
+      // Wait for query invalidation to complete before navigating
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["holiday-request", requestId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/holiday-requests"] })
+      ]);
       toast({
         title: "Success!",
         description: "Holiday request updated successfully.",
       });
-      setLocation("/payroll/holiday-requests");
+      // Small delay to ensure the query cache is updated
+      setTimeout(() => {
+        setLocation("/payroll/holiday-requests");
+      }, 100);
     },
     onError: (error) => {
       toast({
@@ -259,7 +274,25 @@ const HolidayRequestForm = () => {
                 {/* Employee Entitlement Information */}
                 {entitlementInfo && (
                   <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <h4 className="text-sm font-semibold text-blue-900 mb-2">Holiday Entitlement Information</h4>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-sm font-semibold text-blue-900">Holiday Entitlement Information</h4>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          queryClient.invalidateQueries({ queryKey: ["employee-entitlement", form.watch("employeeId")] });
+                          toast({
+                            title: "Refreshed",
+                            description: "Entitlement information updated",
+                          });
+                        }}
+                        className="text-blue-600 hover:text-blue-800 h-6 px-2"
+                      >
+                        <Loader2 className="h-3 w-3 mr-1" />
+                        Refresh
+                      </Button>
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
                         <span className="text-blue-700 font-medium">Annual Entitlement:</span>

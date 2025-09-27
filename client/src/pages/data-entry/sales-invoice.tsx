@@ -123,6 +123,9 @@ const SalesInvoice = () => {
   const [highlightedProduct, setHighlightedProduct] = useState(-1);
   const productInputRef = useRef<HTMLInputElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const notesInputRef = useRef<HTMLInputElement>(null);
 
   // Add this state at the top of your component (with other useState hooks)
   const [printDeliveryNote, setPrintDeliveryNote] = useState(false);
@@ -432,9 +435,18 @@ const SalesInvoice = () => {
     }
   };
 
-  // Keyboard navigation for product dropdown (match sales entry logic)
+  // Keyboard navigation for product dropdown with auto-focus to quantity
   const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showProductDropdown || productOptions.length === 0) return;
+    if (!showProductDropdown || productOptions.length === 0) {
+      // If no dropdown is showing and user presses Enter, move to quantity
+      if (e.key === "Enter" && selectedProductId) {
+        e.preventDefault();
+        quantityInputRef.current?.focus();
+        return;
+      }
+      return;
+    }
+    
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightedProduct((prev) => (prev < productOptions.length - 1 ? prev + 1 : 0));
@@ -447,11 +459,41 @@ const SalesInvoice = () => {
         const p = productOptions[highlightedProduct];
         setSelectedProductId(p.id.toString());
         setProductSearch(`${p.productCode} - ${p.description}`);
-        // Remove auto-fill price - let user enter manually
         setShowProductDropdown(false);
+        // Auto-focus to quantity input after product selection
+        setTimeout(() => {
+          quantityInputRef.current?.focus();
+        }, 100);
       }
     } else if (e.key === "Escape") {
       setShowProductDropdown(false);
+    }
+  };
+
+  // Keyboard handler for quantity input
+  const handleQuantityKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Move to price input
+      priceInputRef.current?.focus();
+    }
+  };
+
+  // Keyboard handler for price input
+  const handlePriceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Move to notes input
+      notesInputRef.current?.focus();
+    }
+  };
+
+  // Keyboard handler for notes input
+  const handleNotesKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Add the item and return focus to product search
+      handleAddItem();
     }
   };
 
@@ -814,6 +856,7 @@ const SalesInvoice = () => {
     setTimeout(() => {
       if (productInputRef.current) {
         productInputRef.current.focus();
+        productInputRef.current.select(); // Select all text for easy replacement
       }
     }, 100);
   };
@@ -1950,6 +1993,41 @@ const SalesInvoice = () => {
     };
   }, []); // Empty dependency array - event listeners set once, use refs for current state
 
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + P to focus on product search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        productInputRef.current?.focus();
+        productInputRef.current?.select();
+      }
+      // Escape to clear current inputs and focus on product search
+      if (e.key === 'Escape' && !showProductDropdown) {
+        e.preventDefault();
+        setSelectedProductId("");
+        setItemQuantity("");
+        setItemUnitPrice("");
+        setItemNotes("");
+        setProductSearch("");
+        productInputRef.current?.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [showProductDropdown]);
+
+  // Auto-focus product input on component mount
+  useEffect(() => {
+    if (productInputRef.current && !currentSale) {
+      // Only auto-focus for new invoices, not when editing existing ones
+      setTimeout(() => {
+        productInputRef.current?.focus();
+      }, 500); // Small delay to ensure component is fully rendered
+    }
+  }, [currentSale]);
+
 
   if (isCreatingSale) {
     return (
@@ -2195,28 +2273,37 @@ const SalesInvoice = () => {
           </div>
 
           {/* Product Type Selection */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex items-center gap-2">
-              <input
-                type="radio"
-                id="regular"
-                name="productType"
-                checked={selectedProductType === "regular"}
-                onChange={() => setSelectedProductType("regular")}
-                disabled={isReadOnly}
-              />
-              <label htmlFor="regular" className="text-sm">Regular Products</label>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  id="regular"
+                  name="productType"
+                  checked={selectedProductType === "regular"}
+                  onChange={() => setSelectedProductType("regular")}
+                  disabled={isReadOnly}
+                />
+                <label htmlFor="regular" className="text-sm">Regular Products</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  id="non_product"
+                  name="productType"
+                  checked={selectedProductType === "non_product"}
+                  onChange={() => setSelectedProductType("non_product")}
+                  disabled={isReadOnly}
+                />
+                <label htmlFor="non_product" className="text-sm">Non-Products</label>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="radio"
-                id="non_product"
-                name="productType"
-                checked={selectedProductType === "non_product"}
-                onChange={() => setSelectedProductType("non_product")}
-                disabled={isReadOnly}
-              />
-              <label htmlFor="non_product" className="text-sm">Non-Products</label>
+            
+            {/* Keyboard shortcuts help */}
+            <div className="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
+              <div className="font-medium mb-1">Keyboard Navigation:</div>
+              <div>• Product → Enter → Quantity → Enter → Price → Enter → Notes → Enter (Add Item)</div>
+              <div>• Ctrl+P: Focus Product Search • Esc: Clear & Reset</div>
             </div>
           </div>
 
@@ -2398,8 +2485,11 @@ const SalesInvoice = () => {
                                 onMouseDown={() => {
                                   setSelectedProductId(p.id.toString());
                                   setProductSearch(`${p.productCode} - ${p.description}`);
-                                  // Remove auto-fill price - let user enter manually
                                   setShowProductDropdown(false);
+                                  // Auto-focus to quantity input after product selection
+                                  setTimeout(() => {
+                                    quantityInputRef.current?.focus();
+                                  }, 100);
                                 }}
                                 onMouseEnter={() => setHighlightedProduct(idx)}
                               >
@@ -2418,22 +2508,14 @@ const SalesInvoice = () => {
                     </TableCell>
                     <TableCell>
                       <Input
-                        className="text-center"
-                        placeholder="Add notes (optional)"
-                        value={itemNotes}
-                        disabled={isReadOnly}
-                        onChange={(e) => setItemNotes(e.target.value)}
-                        style={{ minWidth: 120 }}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
+                        ref={quantityInputRef}
                         className="text-center"
                         type="text"
                         placeholder="Qty"
                         value={itemQuantity}
                         disabled={isReadOnly}
                         onChange={(e) => setItemQuantity(e.target.value)}
+                        onKeyDown={handleQuantityKeyDown}
                         onKeyPress={(e) => {
                           // Allow numbers, decimal point, minus sign, backspace, delete, and arrow keys
                           if (!/[0-9.\-]/.test(e.key) && 
@@ -2454,12 +2536,27 @@ const SalesInvoice = () => {
                     </TableCell>
                     <TableCell>
                       <Input
+                        ref={priceInputRef}
                         className="text-center"
                         type="number"
                         step="0.01"
+                        placeholder="Price"
                         value={itemUnitPrice}
                         disabled={isReadOnly}
                         onChange={(e) => setItemUnitPrice(e.target.value)}
+                        onKeyDown={handlePriceKeyDown}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        ref={notesInputRef}
+                        className="text-center"
+                        placeholder="Notes (optional)"
+                        value={itemNotes}
+                        disabled={isReadOnly}
+                        onChange={(e) => setItemNotes(e.target.value)}
+                        onKeyDown={handleNotesKeyDown}
+                        style={{ minWidth: 120 }}
                       />
                     </TableCell>
                     <TableCell className="text-center">

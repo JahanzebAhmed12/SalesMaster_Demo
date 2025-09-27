@@ -143,7 +143,8 @@ export const usePayrollMutations = () => {
     }),
 
     resetEntitlement: useMutation({
-      mutationFn: (endDate: string) => apiRequest('POST', '/api/holiday-requests/reset-entitlement', { endDate }),
+      mutationFn: (data: { startDate: string; endDate: string; entitlementDays: number }) => 
+        apiRequest('POST', '/api/holiday-requests/reset-entitlement', data),
       onSuccess: () => {
         payrollState.broadcast.holidayRequest.updated({ entitlementReset: true });
         toast({ title: 'Success', description: 'Holiday entitlements reset successfully' });

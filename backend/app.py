@@ -407,7 +407,7 @@ def update_sale_split_payment():
         db.session.rollback()
         return jsonify({"error": f"Failed to apply split payment: {str(e)}"}), 500
 # Stock management helper functions
-def update_product_stock(product_id, product_type, quantity_change, movement_type, reference_id=None, reference_type=None, remarks=None, user_id=None):
+def update_product_stock(product_id, product_type, quantity_change, movement_type, reference_id=None, reference_type=None, remarks=None, user_id=None, movement_date=None):
     """Update product stock and create movement record within existing transaction"""
     max_retries = 3
     retry_delay = 0.05  # 50ms
@@ -430,14 +430,18 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             previous_stock = product.current_stock
             new_stock = previous_stock + quantity_change
             
-            # Ensure stock doesn't go negative (except for adjustments)
-            if new_stock < 0 and movement_type != 'adjustment':
+            # Allow negative stock for sales (overselling) but warn for regular products
+            # Only prevent negative stock for non-sale movements (except adjustments)
+            if new_stock < 0 and movement_type not in ['adjustment', 'sale']:
                 raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
             
-            # Update product stock
+            # Update product stock (allow negative for sales)
             product.current_stock = new_stock
             
             # Create stock movement record
+            # Use provided movement_date or default to current time
+            movement_timestamp = movement_date if movement_date else datetime.now()
+            
             movement = StockMovement(
                 product_id=product_id,
                 product_type=product_type,
@@ -448,7 +452,8 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
                 previous_stock=previous_stock,
                 new_stock=new_stock,
                 remarks=remarks,
-                created_by=user_id
+                created_by=user_id,
+                created_at=movement_timestamp
             )
             db.session.add(movement)
             
@@ -785,7 +790,8 @@ def create_sale():
                     reference_id=new_sale.id,
                     reference_type='sale',
                     remarks=stock_update['remarks'],
-                    user_id=user_id
+                    user_id=user_id,
+                    movement_date=new_sale.date  # Pass the sale date to stock movement
                 )
                 if not success and 'Insufficient stock' in str(result):
                     # db.session.rollback()
@@ -1050,7 +1056,8 @@ def update_sale(id):
                             reference_id=sale.id,
                             reference_type='sale',
                             remarks=f"Sale invoice finalized: {sale.invoice_number}",
-                            user_id=user_id
+                            user_id=user_id,
+                            movement_date=sale.date
                         )
                     else:
                         # Negative quantity - customer return, increase stock
@@ -1062,6 +1069,7 @@ def update_sale(id):
                             reference_id=sale.id,
                             reference_type='sale',
                             remarks=f"Customer return via sale invoice: {sale.invoice_number}",
+                            movement_date=sale.date,
                             user_id=user_id
                         )
                         
@@ -1115,7 +1123,8 @@ def update_sale(id):
                             reference_id=sale.id,
                             reference_type='sale',
                             remarks=f"Sale invoice finalized: {sale.invoice_number}",
-                            user_id=user_id
+                            user_id=user_id,
+                            movement_date=sale.date
                         )
                     else:
                         # Negative quantity - customer return, increase stock
@@ -1127,7 +1136,8 @@ def update_sale(id):
                             reference_id=sale.id,
                             reference_type='sale',
                             remarks=f"Customer return via sale invoice: {sale.invoice_number}",
-                            user_id=user_id
+                            user_id=user_id,
+                            movement_date=sale.date
                         )
                         
                         # Create customer return entry for negative quantity
@@ -1181,7 +1191,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Sale invoice status changed from finalized: {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1198,6 +1209,7 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Sale invoice status changed from finalized: {sale.invoice_number}",
+                        movement_date=sale.date,
                         user_id=user_id
                     )
                     if not success:
@@ -1219,7 +1231,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item added to sale: {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1236,7 +1249,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item added to sale: {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1256,7 +1270,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item removed from sale: {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1273,7 +1288,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item removed from sale: {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1298,7 +1314,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item added to sale (fallback): {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1315,7 +1332,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item added to sale (fallback): {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1335,7 +1353,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item removed from sale (fallback): {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -1352,7 +1371,8 @@ def update_sale(id):
                         reference_id=sale.id,
                         reference_type='sale',
                         remarks=f"Item removed from sale (fallback): {sale.invoice_number}",
-                        user_id=user_id
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
                     if not success:
                         if 'Insufficient stock' in result:
@@ -3106,30 +3126,43 @@ def delete_employee(id):
 @app.route('/api/employees/<int:employee_id>/entitlement', methods=['GET'])
 @jwt_required()
 def get_employee_entitlement(employee_id):
-    """Get employee holiday entitlement information"""
+    """Get employee holiday entitlement information for current holiday year"""
     try:
         employee = Employee.query.get_or_404(employee_id)
         
-        # Get current year
+        # For simplicity, we'll use current calendar year as the entitlement period
+        # In a more advanced system, you'd store the actual entitlement period dates
         current_year = datetime.now().year
+        entitlement_start = datetime(current_year, 1, 1).date()
+        entitlement_end = datetime(current_year, 12, 31).date()
         
-        # Calculate total days used this year
+        # Calculate total days used in current period (excluding archived requests)
+        # Only count requests that don't have the "archived" marker in comments
         total_used = db.session.query(func.sum(HolidayRequest.days_granted)).filter(
             HolidayRequest.employee_id == employee_id,
             HolidayRequest.status == 'granted',
-            extract('year', HolidayRequest.last_date_at_work) == current_year
+            HolidayRequest.last_date_at_work >= entitlement_start,
+            HolidayRequest.last_date_at_work <= entitlement_end,
+            # Exclude archived requests from previous periods
+            ~HolidayRequest.manager_comments.like('%[Archived from previous period%')
         ).scalar() or 0
         
-        # Calculate remaining days
-        remaining_days = (employee.entitlement_days or 25) - total_used
+        # Get entitlement days (default to 25 if not set)
+        entitlement_days = employee.entitlement_days or 25
+        remaining_days = entitlement_days - total_used
         
         return jsonify({
             'employeeId': employee_id,
             'employeeName': employee.full_name,
-            'entitlementDays': employee.entitlement_days or 25,
-            'usedDays': total_used,
+            'entitlementDays': entitlement_days,
+            'usedDays': int(total_used),
             'remainingDays': max(0, remaining_days),
-            'currentYear': current_year
+            'currentYear': current_year,
+            'entitlementPeriod': {
+                'start': entitlement_start.isoformat(),
+                'end': entitlement_end.isoformat()
+            },
+            'lastUpdated': datetime.now().isoformat()
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -6750,7 +6783,19 @@ def get_opening_stock(product_id, product_type, from_date):
             print(f"[DEBUG] Found previous day's manual closing stock: {closing_entry.quantity}")
             return closing_entry.quantity
 
-        # 2. Fallback to last stock movement before from_date
+        # 2. Check for any closing stock entry from previous day (manual or automatic)
+        prev_date = (from_date - timedelta(days=1)).date()
+        any_closing_entry = ClosingStock.query.filter_by(
+            product_id=product_id,
+            product_type=product_type,
+            date=prev_date
+        ).order_by(ClosingStock.manual_entry.desc()).first()  # Prioritize manual entries
+        
+        if any_closing_entry:
+            print(f"[DEBUG] Found previous day's closing stock entry: {any_closing_entry.quantity}")
+            return any_closing_entry.quantity
+
+        # 3. Fallback to last stock movement before from_date
         last_movement = StockMovement.query.filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
@@ -6768,7 +6813,7 @@ def get_opening_stock(product_id, product_type, from_date):
             else:
                 product = NonProduct.query.get(product_id)
 
-            if product and product.initial_stock:
+            if product and hasattr(product, 'initial_stock') and product.initial_stock:
                 print(f"[DEBUG] Found initial stock: {product.initial_stock}")
                 return product.initial_stock
             print(f"[DEBUG] No initial stock found, returning 0")
@@ -13776,8 +13821,51 @@ def supplier_purchase_history():
 @jwt_required()
 def get_holiday_requests():
     try:
-        requests = HolidayRequest.query.order_by(HolidayRequest.created_at.desc()).all()
-        return jsonify([request.to_dict() for request in requests])
+        # Get pagination parameters
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 25, type=int)
+        search = request.args.get('search', '', type=str)
+        
+        # Limit per_page to prevent abuse
+        per_page = min(per_page, 100)
+        
+        # Build query
+        query = HolidayRequest.query
+        
+        # Add search filter if provided
+        if search:
+            search_filter = f"%{search}%"
+            query = query.filter(
+                or_(
+                    HolidayRequest.employee_name.ilike(search_filter),
+                    HolidayRequest.job_title.ilike(search_filter),
+                    HolidayRequest.status.ilike(search_filter)
+                )
+            )
+        
+        # Order by creation date (newest first)
+        query = query.order_by(HolidayRequest.created_at.desc())
+        
+        # Paginate
+        pagination = query.paginate(
+            page=page,
+            per_page=per_page,
+            error_out=False
+        )
+        
+        return jsonify({
+            'data': [request.to_dict() for request in pagination.items],
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': pagination.total,
+                'pages': pagination.pages,
+                'has_next': pagination.has_next,
+                'has_prev': pagination.has_prev,
+                'next_num': pagination.next_num,
+                'prev_num': pagination.prev_num
+            }
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -13980,38 +14068,103 @@ def delete_signed_form(id):
 @app.route('/api/holiday-requests/reset-entitlement', methods=['POST'])
 @jwt_required()
 def reset_employee_holiday_entitlement():
-    """Reset all employee holiday entitlements"""
+    """Reset holiday year - start fresh entitlement period for all employees"""
     try:
         data = request.get_json()
+        start_date = data.get('startDate')
         end_date = data.get('endDate')
         
-        if not end_date:
-            return jsonify({'error': 'End date is required'}), 400
+        if not start_date or not end_date:
+            return jsonify({'error': 'Both start date and end date are required'}), 400
         
-        # Parse the end date
+        # Parse the dates
         try:
+            entitlement_start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
             entitlement_end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
         except ValueError:
             return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD'}), 400
         
-        # Get all employees
+        # Validate date range
+        if entitlement_start_date >= entitlement_end_date:
+            return jsonify({'error': 'Start date must be before end date'}), 400
+        
+        # Get all active employees
         employees = Employee.query.filter_by(is_active='yes').all()
         
-        # Reset entitlement for each employee
+        # Mark all existing holiday requests as "previous period" by updating them
+        # This effectively resets everyone's used days to 0 for the new period
+        previous_requests = HolidayRequest.query.filter(
+            HolidayRequest.status == 'granted',
+            HolidayRequest.last_date_at_work < entitlement_start_date
+        ).all()
+        
+        # For requests that fall within the old period, we'll mark them as archived
+        # This is a simple approach - in a more complex system you'd have proper period tracking
+        archived_count = 0
+        for holiday_req in previous_requests:
+            # Add a note to indicate this was from a previous entitlement period
+            if holiday_req.manager_comments:
+                holiday_req.manager_comments += f" [Archived from previous period before {start_date}]"
+            else:
+                holiday_req.manager_comments = f"[Archived from previous period before {start_date}]"
+            archived_count += 1
+        
+        # Reset entitlement for each employee (keep their individual entitlement days)
+        updated_employees = []
         for employee in employees:
-            # Reset their entitlement days to the default (usually 25 days)
-            employee.entitlement_days = employee.entitlement_days or 25
+            # Ensure employee has entitlement days set (default to 25 if not set)
+            if not employee.entitlement_days:
+                employee.entitlement_days = 25
             
+            updated_employees.append({
+                'id': employee.id,
+                'name': employee.full_name,
+                'entitlementDays': employee.entitlement_days,
+                'position': employee.position,
+                'status': employee.status
+            })
+        
         db.session.commit()
         
         return jsonify({
-            'message': f'Holiday entitlements reset successfully for {len(employees)} employees',
+            'message': f'Holiday year reset successfully for {len(employees)} employees',
+            'entitlementStartDate': start_date,
             'entitlementEndDate': end_date,
-            'employeesUpdated': len(employees)
+            'employeesProcessed': len(employees),
+            'previousRequestsArchived': archived_count,
+            'employees': updated_employees,
+            'note': 'All employees now have their full entitlement available for the new holiday year'
         })
         
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/employees/entitlements', methods=['GET'])
+@jwt_required()
+def get_employee_entitlements():
+    """Get all employee entitlements for testing/verification"""
+    try:
+        employees = Employee.query.filter_by(is_active='yes').all()
+        
+        entitlements = []
+        for employee in employees:
+            entitlements.append({
+                'id': employee.id,
+                'name': employee.full_name,
+                'position': employee.position,
+                'status': employee.status,  # P/T or F/T
+                'entitlementDays': employee.entitlement_days or 0,
+                'startDate': employee.start_date.isoformat() if employee.start_date else None
+            })
+        
+        return jsonify({
+            'employees': entitlements,
+            'totalEmployees': len(entitlements),
+            'averageEntitlement': sum(emp['entitlementDays'] for emp in entitlements) / len(entitlements) if entitlements else 0
+        })
+        
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
