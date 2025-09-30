@@ -264,7 +264,7 @@ const SalesInvoice = () => {
     // const queryParams = new URLSearchParams(locationStr.split('?')[1] || '');
     const params = new URLSearchParams(window.location.search);
     console.log(params)
-    
+
     // Check for readonly parameter or if invoices are locked
     const readonlyParam = params.get('readonly') === 'true';
     setIsReadOnly(readonlyParam || isInvoiceLocked);
@@ -438,15 +438,15 @@ const SalesInvoice = () => {
   // Keyboard navigation for product dropdown with auto-focus to quantity
   const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!showProductDropdown || productOptions.length === 0) {
-      // If no dropdown is showing and user presses Enter, move to quantity
+      // If no dropdown is showing and user presses Enter, move to notes
       if (e.key === "Enter" && selectedProductId) {
         e.preventDefault();
-        quantityInputRef.current?.focus();
+        notesInputRef.current?.focus();
         return;
       }
       return;
     }
-    
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightedProduct((prev) => (prev < productOptions.length - 1 ? prev + 1 : 0));
@@ -460,13 +460,22 @@ const SalesInvoice = () => {
         setSelectedProductId(p.id.toString());
         setProductSearch(`${p.productCode} - ${p.description}`);
         setShowProductDropdown(false);
-        // Auto-focus to quantity input after product selection
+        // Auto-focus to notes input after product selection
         setTimeout(() => {
-          quantityInputRef.current?.focus();
+          notesInputRef.current?.focus();
         }, 100);
       }
     } else if (e.key === "Escape") {
       setShowProductDropdown(false);
+    }
+  };
+
+  // Keyboard handler for notes input
+  const handleNotesKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Move to quantity input
+      quantityInputRef.current?.focus();
     }
   };
 
@@ -481,15 +490,6 @@ const SalesInvoice = () => {
 
   // Keyboard handler for price input
   const handlePriceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      // Move to notes input
-      notesInputRef.current?.focus();
-    }
-  };
-
-  // Keyboard handler for notes input
-  const handleNotesKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       // Add the item and return focus to product search
@@ -537,15 +537,15 @@ const SalesInvoice = () => {
   // Function to update payment status
   const updatePaymentStatus = async (newStatus: string) => {
     if (!currentSale?.id) return;
-    
+
     try {
       await apiRequest('PUT', `/api/sales/${currentSale.id}`, {
         payment_status: newStatus
       });
-      
+
       // Update local state
       setCurrentSale(prev => prev ? { ...prev, paymentStatus: newStatus } : null);
-      
+
       toast({
         title: "Success",
         description: "Payment status updated successfully",
@@ -585,24 +585,24 @@ const SalesInvoice = () => {
 
       // Comprehensive query invalidation for all related data
       const customerId = response.customer_id || response.customerId;
-      
+
       // Invalidate specific invoice query
       queryClient.invalidateQueries({ queryKey: ["/api/sales", response.invoiceNumber] });
-      
+
       // Use the centralized invalidation hook
       invalidateAllSalesQueries();
-      
+
       // Invalidate customer-specific queries
       if (customerId) {
         invalidateCustomerQueries(customerId);
       }
-      
+
       // Broadcast to other tabs
       broadcastInvoiceCreated({
         invoiceNumber: response.invoiceNumber,
         customerId: customerId
       });
-      
+
       setCurrentSale(response);
       setIsCreatingSale(false);
       toast({
@@ -646,25 +646,25 @@ const SalesInvoice = () => {
         const updated = held.filter((inv: any) => inv.invoiceNumber !== data.invoiceNumber);
         localStorage.setItem('heldInvoices', JSON.stringify(updated));
       }
-      
+
       // Comprehensive query invalidation for updates
       queryClient.invalidateQueries({ queryKey: ["/api/sales", data.invoiceNumber] });
-      
+
       // Use the centralized invalidation hook
       invalidateAllSalesQueries();
-      
+
       // Invalidate customer-specific queries if available
       const customerId = data.customerId || currentSale?.customerId;
       if (customerId) {
         invalidateCustomerQueries(customerId);
       }
-      
+
       // Broadcast to other tabs
       broadcastInvoiceUpdated({
         invoiceNumber: data.invoiceNumber,
         customerId: customerId
       });
-      
+
       toast({
         title: "Success",
         description: "Invoice updated successfully",
@@ -740,7 +740,7 @@ const SalesInvoice = () => {
       });
       return;
     }
-    
+
     if (!itemQuantity || isNaN(Number(itemQuantity)) || itemQuantity.trim() === '') {
       toast({
         title: "Validation Error",
@@ -851,7 +851,7 @@ const SalesInvoice = () => {
     setItemUnitPrice("");
     setItemNotes("");
     setProductSearch("");
-    
+
     // Focus back to product input field for next item
     setTimeout(() => {
       if (productInputRef.current) {
@@ -1005,15 +1005,15 @@ const SalesInvoice = () => {
     const subtotal = saleItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const vatRate = taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0;
     const vatAmount = (subtotal * vatRate) / 100;
-    
+
     // Calculate total quantity of all items
     const totalQuantity = saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-    
+
     // Calculate porterage as (base porterage) * (total quantity)
-    const porterage = (porterageDetails.withPorterage && applyPorterage) 
-      ? parseFloat(porterageDetails.porterageCharge) * totalQuantity 
+    const porterage = (porterageDetails.withPorterage && applyPorterage)
+      ? parseFloat(porterageDetails.porterageCharge) * totalQuantity
       : 0;
-      
+
     const totalAmount = subtotal + vatAmount + porterage;
     return { subtotal, vatAmount, porterage, totalAmount };
   };
@@ -1211,21 +1211,21 @@ const SalesInvoice = () => {
 
         // Fetch invoice data
         const invoiceData = await apiRequest("GET", `/api/sales/${currentSale.invoiceNumber}/invoice`);
-        
+
         // Generate PDF using jsPDF to match the print page layout exactly
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.width;
         const pageHeight = doc.internal.pageSize.height;
-        
+
         // Header Section - Company Details (Left) and Logo/Invoice Title (Right)
         doc.setFontSize(18);
         doc.setFont("helvetica", "bold");
         doc.text(invoiceData.company?.companyName || "TROPIFRUIT UK LTD", 20, 25);
-        
+
         doc.setFontSize(14);
         doc.setFont("helvetica", "normal");
         doc.text(invoiceData.company?.address1 || "3 Dolphin Way, Purfleet, RM19 1NZ", 20, 35);
-        
+
         if (invoiceData.company?.compRegNo) {
           doc.setFontSize(12);
           doc.text(`Company Reg No: ${invoiceData.company.compRegNo}`, 20, 45);
@@ -1234,17 +1234,17 @@ const SalesInvoice = () => {
           doc.setFontSize(12);
           doc.text(`VAT No: ${invoiceData.company.vatNo}`, 20, 55);
         }
-        
+
         // Logo and INVOICE title on the right (matching print page)
         try {
           const logoX = pageWidth - 60;
           const logoY = 15;
-          const logoWidth =50;
+          const logoWidth = 50;
           const logoHeight = 30;
-          
+
           // Add the actual logo image
           doc.addImage(logo, 'PNG', logoX, logoY, logoWidth, logoHeight);
-          
+
           // INVOICE title below logo
           doc.setFontSize(28);
           doc.setFont("helvetica", "bold");
@@ -1256,40 +1256,40 @@ const SalesInvoice = () => {
           const logoY = 15;
           const logoWidth = 60;
           const logoHeight = 20;
-          
+
           doc.setFillColor(240, 240, 240);
           doc.rect(logoX, logoY, logoWidth, logoHeight, 'F');
           doc.setFontSize(8);
           doc.setTextColor(100, 100, 100);
-          doc.text("LOGO", logoX + logoWidth/2, logoY + logoHeight/2 + 2, { align: 'center' });
+          doc.text("LOGO", logoX + logoWidth / 2, logoY + logoHeight / 2 + 2, { align: 'center' });
           doc.setTextColor(0, 0, 0);
-          
+
           // INVOICE title below logo
           doc.setFontSize(28);
           doc.setFont("helvetica", "bold");
           doc.text("INVOICE", pageWidth - 40, logoY + logoHeight + 10, { align: 'center' });
         }
-        
+
         // Horizontal line
         doc.setLineWidth(0.5);
         doc.line(20, 65, pageWidth - 20, 65);
-        
+
         // Bill To and Invoice Details Section (Side by Side)
         let yPos = 80;
-        
+
         // Bill To Section (Left)
         doc.setFontSize(14);
         doc.setFont("helvetica", "bold");
         doc.text("Bill to :", 20, yPos);
-        
+
         // Customer box with border
         doc.setLineWidth(0.5);
         doc.rect(20, yPos + 5, 60, 20);
-        
+
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.text(invoiceData.customer?.customer_name || "CUSTOMER", 25, yPos + 15);
-        
+
         if (invoiceData.customer?.address) {
           doc.setFont("helvetica", "normal");
           doc.setFontSize(10);
@@ -1297,50 +1297,50 @@ const SalesInvoice = () => {
           const addressLines = doc.splitTextToSize(invoiceData.customer.address, 70);
           doc.text(addressLines, 25, yPos + 22);
         }
-        
+
         // VAT Number below the box
 
-        
+
         // Gate Number (bold and prominent)
         if (invoiceData.sale?.gateNumber) {
           doc.setFontSize(14);
           doc.setFont("helvetica", "bold");
           doc.text(`Others/Gate: ${invoiceData.sale.gateNumber}`, 20, yPos + 45);
         }
-        
+
         // Invoice Details (Right Side)
         const rightX = pageWidth - 50;
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
         doc.text(`Date: ${new Date().toLocaleDateString()}`, rightX, yPos);
-        
+
         doc.setFontSize(14);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(26, 35, 126); // Blue color for invoice number
         doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, yPos + 12);
-        
+
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0); // Reset to black
         doc.text(`Cust.type: ${invoiceData.sale?.customer_type || "account"}`, rightX, yPos + 24);
-        
+
         // Items Table
         yPos = 140;
-        
+
         // Table setup
         const tableStartX = 20;
         const tableWidth = pageWidth - 40;
         const colWidths = [100, 25, 25, 25]; // Product, Qty, U.Price, Total
         const rowHeight = 8;
-        
+
         // Table header with background
         doc.setFillColor(245, 245, 245);
         doc.rect(tableStartX, yPos, tableWidth, rowHeight, 'F');
-        
+
         // Header borders
         doc.setLineWidth(0.5);
         doc.rect(tableStartX, yPos, tableWidth, rowHeight);
-        
+
         // Header text
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
@@ -1348,7 +1348,7 @@ const SalesInvoice = () => {
         doc.text("Qty", tableStartX + colWidths[0] + 8, yPos + 6, { align: 'center' });
         doc.text("U.Price", tableStartX + colWidths[0] + colWidths[1] + 8, yPos + 6, { align: 'center' });
         doc.text("Total", tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + 8, yPos + 6, { align: 'center' });
-        
+
         // Vertical lines for header
         let headerX = tableStartX;
         colWidths.forEach((width, index) => {
@@ -1357,24 +1357,24 @@ const SalesInvoice = () => {
           }
           headerX += width;
         });
-        
+
         yPos += rowHeight;
         doc.setFont("helvetica", "normal");
-        
+
         // Table rows
         invoiceData.items.forEach((item: any, index: number) => {
           if (yPos > pageHeight - 60) {
             doc.addPage();
             yPos = 20;
           }
-          
+
           // Row border
           doc.rect(tableStartX, yPos, tableWidth, rowHeight);
-          
+
           // Product name
           doc.setFontSize(11);
           doc.text(item.productName || item.description || "-", tableStartX + 2, yPos + 6);
-          
+
           // Notes (if any) - smaller text below product name
           if (item.notes) {
             doc.setFontSize(9);
@@ -1382,17 +1382,17 @@ const SalesInvoice = () => {
             doc.text(item.notes, tableStartX + 2, yPos + 6 + 3);
             doc.setTextColor(0, 0, 0);
           }
-          
+
           // Quantity (centered)
           doc.setFontSize(11);
           doc.text(String(item.quantity || 0), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
-          
+
           // Unit Price (centered)
           doc.text(`${(item.unitPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + 12, yPos + 6, { align: 'center' });
-          
+
           // Total (centered)
           doc.text(`£${(item.totalPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + 12, yPos + 6, { align: 'center' });
-          
+
           // Vertical lines
           let rowX = tableStartX;
           colWidths.forEach((width, colIndex) => {
@@ -1401,21 +1401,21 @@ const SalesInvoice = () => {
             }
             rowX += width;
           });
-          
+
           yPos += rowHeight;
         });
-        
+
         // Subtotal row
         doc.setFillColor(245, 245, 245);
         doc.rect(tableStartX, yPos, tableWidth, rowHeight, 'F');
         doc.rect(tableStartX, yPos, tableWidth, rowHeight);
-        
+
         doc.setFont("helvetica", "bold");
         doc.text("SUB TOTAL", tableStartX + 2, yPos + 6);
         doc.text(String(invoiceData.items.reduce((a: number, b: any) => a + (b.quantity || 0), 0)), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
         doc.text("X", tableStartX + colWidths[0] + colWidths[1] + 12, yPos + 6, { align: 'center' });
         doc.text(`£${(invoiceData.sale?.subtotal || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + 12, yPos + 6, { align: 'center' });
-        
+
         // Vertical lines for subtotal
         let subtotalX = tableStartX;
         colWidths.forEach((width, colIndex) => {
@@ -1424,55 +1424,55 @@ const SalesInvoice = () => {
           }
           subtotalX += width;
         });
-        
+
         yPos += rowHeight;
-        
+
         // Notes and Totals Section (Side by Side)
         const notesWidth = tableWidth * 0.6;
         const totalsWidth = tableWidth * 0.4;
         const totalsX = tableStartX + notesWidth;
-        
+
         // Notes section (left side)
         doc.setFillColor(255, 255, 255);
         doc.rect(tableStartX, yPos, notesWidth, 40);
         doc.setFontSize(10);
         doc.setFont("helvetica", "italic");
         doc.setTextColor(136, 136, 136);
-        
+
         if (invoiceData.notes) {
           const noteLines = doc.splitTextToSize(invoiceData.notes, notesWidth - 4);
           doc.text(noteLines, tableStartX + 2, yPos + 8);
         }
-        
+
         // Totals section (right side)
         doc.setTextColor(0, 0, 0);
         doc.setFont("helvetica", "normal");
         doc.setFontSize(12);
-        
+
         // VAT
         doc.rect(totalsX, yPos, totalsWidth, 10);
         doc.text("Vat", totalsX + 2, yPos + 7);
         doc.text(`£${(invoiceData.sale?.vat_amount || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 7, { align: 'right' });
-        
+
         // Porterage
         doc.rect(totalsX, yPos + 10, totalsWidth, 10);
         doc.text("Porterage", totalsX + 2, yPos + 17);
         doc.text(`£${(invoiceData.sale?.porterage || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 17, { align: 'right' });
-        
+
         // Total
         doc.setFont("helvetica", "bold");
         doc.rect(totalsX, yPos + 20, totalsWidth, 10);
         doc.text("TOTAL", totalsX + 2, yPos + 27);
         doc.text(`£${((invoiceData.sale?.total_amount || invoiceData.sale?.totalAmount) || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 27, { align: 'right' });
-        
+
         // Payment information
         doc.setFont("helvetica", "normal");
         if (invoiceData.sale?.customer_type === "cash") {
           const paymentMode = invoiceData.sale?.payment_mode || invoiceData.sale?.paymentMode || "cash";
-          const displayMode = paymentMode === 'cash' ? 'Cash' : 
-                             paymentMode === 'bank' ? 'Card' :
-                             paymentMode === 'bank_transfer' ? 'Bank Transfer' :
-                             paymentMode === 'cheque' ? 'Cheque' : paymentMode;
+          const displayMode = paymentMode === 'cash' ? 'Cash' :
+            paymentMode === 'bank' ? 'Card' :
+              paymentMode === 'bank_transfer' ? 'Bank Transfer' :
+                paymentMode === 'cheque' ? 'Cheque' : paymentMode;
           doc.rect(totalsX, yPos + 30, totalsWidth, 10);
           doc.text("PAID", totalsX + 2, yPos + 37);
           doc.text(`${displayMode} £${(invoiceData.sale?.paid_amount || invoiceData.sale?.paidAmount || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 37, { align: 'right' });
@@ -1482,7 +1482,7 @@ const SalesInvoice = () => {
           doc.text("ACCOUNT", totalsX + 2, yPos + 37);
           doc.text(`£${accountAmount.toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 37, { align: 'right' });
         }
-        
+
         // Footer
         yPos += 60;
         doc.setFontSize(10);
@@ -1490,15 +1490,15 @@ const SalesInvoice = () => {
         doc.setTextColor(68, 68, 68);
         doc.text(`Invoice Time: ${invoiceData.sale?.date ? new Date(invoiceData.sale.date).toLocaleString() : "-"}`, 20, yPos);
         doc.text(`Current Time: ${new Date().toLocaleString()}`, 20, yPos + 10);
-        
+
         // Save the PDF
         doc.save(`invoice-${currentSale.invoiceNumber}.pdf`);
-        
+
         toast({
           title: "PDF Downloaded",
           description: `Invoice ${currentSale.invoiceNumber} has been downloaded as PDF.`,
         });
-        
+
       } catch (error) {
         console.error('Error generating PDF:', error);
         toast({
@@ -1546,7 +1546,7 @@ const SalesInvoice = () => {
       }
 
       const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
-      
+
       // Create preview data structure
       const previewData = {
         customer: selectedCustomer,
@@ -1701,7 +1701,7 @@ const SalesInvoice = () => {
       }
 
       const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
-      
+
       // Create preview data structure
       const previewData = {
         customer: selectedCustomer,
@@ -2053,7 +2053,7 @@ const SalesInvoice = () => {
             </div>
             <div className="ml-3">
               <p className="text-sm text-yellow-700">
-                <strong>Read-Only Mode:</strong> This invoice is locked and cannot be edited. 
+                <strong>Read-Only Mode:</strong> This invoice is locked and cannot be edited.
                 {!canEditInvoice && " Only admin users can edit locked invoices."}
               </p>
             </div>
@@ -2085,19 +2085,19 @@ const SalesInvoice = () => {
                           size="sm"
                           onClick={async () => {
                             if (!editableDate || !currentSale) return;
-                            
+
                             try {
                               const updatedSale = {
                                 ...currentSale,
                                 date: format(editableDate, 'yyyy-MM-dd'),
                               };
-                              
+
                               await apiRequest(
                                 'PATCH',
                                 `/api/sales/${currentSale.invoiceNumber}`,
                                 { date: format(editableDate, 'yyyy-MM-dd') }
                               );
-                              
+
                               setCurrentSale(updatedSale);
                               setIsEditingDate(false);
                               toast({
@@ -2298,29 +2298,25 @@ const SalesInvoice = () => {
                 <label htmlFor="non_product" className="text-sm">Non-Products</label>
               </div>
             </div>
-            
+
             {/* Keyboard shortcuts help */}
-            <div className="text-xs text-gray-500 bg-gray-50 px-3 py-2 rounded-lg">
-              <div className="font-medium mb-1">Keyboard Navigation:</div>
-              <div>• Product → Enter → Quantity → Enter → Price → Enter → Notes → Enter (Add Item)</div>
-              <div>• Ctrl+P: Focus Product Search • Esc: Clear & Reset</div>
-            </div>
+
           </div>
 
           {/* Action Buttons */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handlePdfDownload}
                 disabled={!currentSale && saleItems.length === 0}
               >
                 Pdf
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleExcelDownload}
                 disabled={!currentSale && saleItems.length === 0}
               >
@@ -2488,7 +2484,7 @@ const SalesInvoice = () => {
                                   setShowProductDropdown(false);
                                   // Auto-focus to quantity input after product selection
                                   setTimeout(() => {
-                                    quantityInputRef.current?.focus();
+                                    notesInputRef.current?.focus();
                                   }, 100);
                                 }}
                                 onMouseEnter={() => setHighlightedProduct(idx)}
@@ -2508,6 +2504,18 @@ const SalesInvoice = () => {
                     </TableCell>
                     <TableCell>
                       <Input
+                        ref={notesInputRef}
+                        className="text-center"
+                        placeholder="Notes (optional)"
+                        value={itemNotes}
+                        disabled={isReadOnly}
+                        onChange={(e) => setItemNotes(e.target.value)}
+                        onKeyDown={handleNotesKeyDown}
+                        style={{ minWidth: 120 }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
                         ref={quantityInputRef}
                         className="text-center"
                         type="text"
@@ -2518,10 +2526,10 @@ const SalesInvoice = () => {
                         onKeyDown={handleQuantityKeyDown}
                         onKeyPress={(e) => {
                           // Allow numbers, decimal point, minus sign, backspace, delete, and arrow keys
-                          if (!/[0-9.\-]/.test(e.key) && 
-                              e.key !== 'Backspace' && 
-                              e.key !== 'Delete' && 
-                              !e.key.startsWith('Arrow')) {
+                          if (!/[0-9.\-]/.test(e.key) &&
+                            e.key !== 'Backspace' &&
+                            e.key !== 'Delete' &&
+                            !e.key.startsWith('Arrow')) {
                             e.preventDefault();
                           }
                         }}
@@ -2545,18 +2553,6 @@ const SalesInvoice = () => {
                         disabled={isReadOnly}
                         onChange={(e) => setItemUnitPrice(e.target.value)}
                         onKeyDown={handlePriceKeyDown}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        ref={notesInputRef}
-                        className="text-center"
-                        placeholder="Notes (optional)"
-                        value={itemNotes}
-                        disabled={isReadOnly}
-                        onChange={(e) => setItemNotes(e.target.value)}
-                        onKeyDown={handleNotesKeyDown}
-                        style={{ minWidth: 120 }}
                       />
                     </TableCell>
                     <TableCell className="text-center">
@@ -2707,7 +2703,7 @@ const SalesInvoice = () => {
                         toast({ title: 'Add product first', description: 'Please add at least one product before printing.' });
                         return;
                       }
-                      
+
                       if (currentSale) {
                         // In edit/readonly mode, just print the existing invoice
                         const printUrl = invoicePrintFormat === 'DOTMATRIX'
