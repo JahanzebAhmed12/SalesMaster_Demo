@@ -8,9 +8,29 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm, inch
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from decimal import Decimal
 from reportlab.platypus import PageTemplate, BaseDocTemplate
 import io
 import os
+
+def format_quantity(value):
+    """Format quantity to remove unnecessary trailing zeros"""
+    if value is None or value == '':
+        return '0'
+    
+    try:
+        # Convert to Decimal for precise handling
+        decimal_val = Decimal(str(value))
+        
+        # If it's a whole number, return without decimals
+        if decimal_val % 1 == 0:
+            return str(int(decimal_val))
+        
+        # Otherwise, format with up to 3 decimal places and remove trailing zeros
+        formatted = f"{decimal_val:.3f}".rstrip('0').rstrip('.')
+        return formatted
+    except (ValueError, TypeError):
+        return '0'
 
 class DotMatrixInvoicePDF:
     def __init__(self):
@@ -243,7 +263,7 @@ class DotMatrixInvoicePDF:
             canvas.drawString(
                 self.positions['columns']['quantity']['left'],
                 y_pos,
-                str(quantity)
+                format_quantity(quantity)
             )
             
             # Description - left aligned, truncated to fit

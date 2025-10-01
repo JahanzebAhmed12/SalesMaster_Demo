@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, ClipboardCheck, FileText, Download, Copy, Printer, Search, Check, Loader2, Mail } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
@@ -238,14 +238,14 @@ export default function StockCheck() {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${item.slNo}</td>`);
         printWindow.document.write(`<td>${item.productDescription}</td>`);
-        printWindow.document.write(`<td>${item.os}</td>`);
-        printWindow.document.write(`<td>${item.ns}</td>`);
-        printWindow.document.write(`<td>${item.sales}</td>`);
-        printWindow.document.write(`<td>${item.crtn}</td>`);
-        printWindow.document.write(`<td>${item.dmps}</td>`);
-        printWindow.document.write(`<td>${item.srtn}</td>`);
-        printWindow.document.write(`<td>${item.stock}</td>`);
-        printWindow.document.write(`<td>${item.clStock}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.os)}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.ns)}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.sales)}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.crtn)}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.dmps)}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.srtn)}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.stock)}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.clStock)}</td>`);
         printWindow.document.write(`<td>${item.result}</td>`);
         printWindow.document.write('</tr>');
       });
@@ -366,8 +366,8 @@ export default function StockCheck() {
     // Add clean summary at the bottom
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
-    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${totals.os} N.S: ${totals.ns} Sales: ${totals.sales}`, 14, finalY + 10);
-    doc.text(`Stock: ${totals.stock} Cl.Stock: ${totals.clStock}`, 14, finalY + 18);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)}`, 14, finalY + 10);
+    doc.text(`Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
     
     doc.save(`stock-check-${format(osDate, "yyyyMMdd")}-${format(toDate, "yyyyMMdd")}.pdf`);
   };
@@ -480,8 +480,8 @@ export default function StockCheck() {
     // Add clean summary at the bottom (same format as regular PDF)
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
-    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${totals.os} N.S: ${totals.ns} Sales: ${totals.sales}`, 14, finalY + 10);
-    doc.text(`Stock: ${totals.stock} Cl.Stock: ${totals.clStock}`, 14, finalY + 18);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)}`, 14, finalY + 10);
+    doc.text(`Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
     
     return doc.output('blob');
   };
@@ -849,14 +849,14 @@ export default function StockCheck() {
                             {item.productDescription}
                           </div>
                         </TableCell>
-                        <TableCell className="text-center">{item.os}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.os)}</TableCell>
                         <TableCell 
                           className={`text-center ${item.ns > 0 ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors' : ''}`}
                           onClick={() => handleNewStockClick(item)}
                           title={item.ns > 0 ? "Click to view purchase history" : ""}
                         >
                           <span className={item.ns > 0 ? 'underline decoration-dotted' : ''}>
-                            {item.ns}
+                            {formatQuantity(item.ns)}
                           </span>
                         </TableCell>
                         <TableCell 
@@ -865,14 +865,14 @@ export default function StockCheck() {
                           title={item.sales > 0 ? "Click to view sales history" : ""}
                         >
                           <span className={item.sales > 0 ? 'underline decoration-dotted' : ''}>
-                            {item.sales}
+                            {formatQuantity(item.sales)}
                           </span>
                         </TableCell>
-                        <TableCell className="text-center">{item.crtn}</TableCell>
-                        <TableCell className="text-center">{item.dmps}</TableCell>
-                        <TableCell className="text-center">{item.srtn}</TableCell>
-                        <TableCell className="text-center">{item.stock}</TableCell>
-                        <TableCell className="text-center">{item.clStock}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.crtn)}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.dmps)}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.srtn)}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.stock)}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.clStock)}</TableCell>
                         <TableCell className="text-center">
                           {item.result === "✓" ? (
                             <Check size={16} className="mx-auto text-green-600" />
@@ -889,14 +889,14 @@ export default function StockCheck() {
                     <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                       <TableCell></TableCell>
                       <TableCell className="font-bold">TOTAL</TableCell>
-                      <TableCell className="text-center font-bold">{totals.os}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.ns}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.sales}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.crtn}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.dmps}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.srtn}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.stock}</TableCell>
-                      <TableCell className="text-center font-bold">{totals.clStock}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.os)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.ns)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.sales)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.crtn)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.dmps)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.srtn)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.stock)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.clStock)}</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   </TableBody>
@@ -908,15 +908,15 @@ export default function StockCheck() {
               <div className="flex items-center font-semibold mr-2">Date Range:</div>
               <div className="mr-6">{format(osDate, 'yyyy-MM-dd')} to {format(toDate, 'yyyy-MM-dd')}</div>
               <div className="flex items-center font-semibold mr-2">Totals - O.S:</div>
-              <div className="mr-4">{totals.os}</div>
+              <div className="mr-4">{formatQuantity(totals.os)}</div>
               <div className="flex items-center font-semibold mr-2">N.S:</div>
-              <div className="mr-4">{totals.ns}</div>
+              <div className="mr-4">{formatQuantity(totals.ns)}</div>
               <div className="flex items-center font-semibold mr-2">Sales:</div>
-              <div className="mr-4">{totals.sales}</div>
+              <div className="mr-4">{formatQuantity(totals.sales)}</div>
               <div className="flex items-center font-semibold mr-2">Stock:</div>
-              <div className="mr-4">{totals.stock}</div>
+              <div className="mr-4">{formatQuantity(totals.stock)}</div>
               <div className="flex items-center font-semibold mr-2">Cl.Stock:</div>
-              <div>{totals.clStock}</div>
+              <div>{formatQuantity(totals.clStock)}</div>
             </div>
           </CardContent>
         </Card>

@@ -11,7 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Trash2, FileText, Download, Copy, Printer, Search, Save, Info, Loader2, Package, BarChart3, PoundSterling, TrendingUp } from "lucide-react";
 import { format, subDays } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity, formatPrice } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
@@ -644,7 +644,7 @@ export default function Dumps() {
                           <Input
                             type="number"
                             value={newDump.quantity}
-                            onChange={(e) => setNewDump({...newDump, quantity: parseInt(e.target.value) || 0})}
+                            onChange={(e) => setNewDump({...newDump, quantity: parseFloat(e.target.value) || 0})}
                             className="w-full min-w-[80px] text-center h-8"
                             min="0"
                           />
@@ -730,7 +730,7 @@ export default function Dumps() {
                           <TableCell className="text-sm max-w-[80px] sm:max-w-[100px] md:max-w-[120px] truncate min-w-[80px] sm:min-w-[100px] md:min-w-[120px]" title={entry.remarks || ""}>
                             {entry.remarks || "N/A"}
                           </TableCell>
-                          <TableCell className="text-center text-sm min-w-[60px] sm:min-w-[80px] md:min-w-[100px]">{entry.quantity}</TableCell>
+                          <TableCell className="text-center text-sm min-w-[60px] sm:min-w-[80px] md:min-w-[100px]">{formatQuantity(entry.quantity)}</TableCell>
                           <TableCell className="text-center text-sm min-w-[70px] sm:min-w-[90px] md:min-w-[100px]">£{entry.unitPrice.toFixed(2)}</TableCell>
                           <TableCell className="text-center text-sm min-w-[70px] sm:min-w-[90px] md:min-w-[100px]">£{entry.totalValue.toFixed(2)}</TableCell>
                           <TableCell className="text-center min-w-[60px] sm:min-w-[80px] md:min-w-[100px]">

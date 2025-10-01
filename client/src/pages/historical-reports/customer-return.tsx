@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, RotateCcw, FileText, Download, Copy, Printer, Search } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
+import { formatQuantity } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from 'xlsx';
@@ -163,7 +164,7 @@ export default function CustomerReturn() {
         printWindow.document.write(`<td>${format(new Date(item.returnDate), "dd/MM/yyyy")}</td>`);
         printWindow.document.write(`<td>${item.customerName}</td>`);
         printWindow.document.write(`<td>${item.productName}</td>`);
-        printWindow.document.write(`<td>${item.quantity}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
         printWindow.document.write(`<td>${item.returnReason}</td>`);
         printWindow.document.write(`<td>£${item.returnAmount.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${item.refundStatus}</td>`);
@@ -550,7 +551,7 @@ export default function CustomerReturn() {
                       <TableCell>{format(new Date(returnItem.returnDate), "dd/MM/yyyy")}</TableCell>
                       <TableCell>{returnItem.customerName}</TableCell>
                       <TableCell>{returnItem.productName}</TableCell>
-                      <TableCell className="text-center">{returnItem.quantity}</TableCell>
+                      <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                       <TableCell>{returnItem.returnReason}</TableCell>
                       <TableCell className="text-center">£{returnItem.returnAmount.toFixed(2)}</TableCell>
                       <TableCell className="text-center">

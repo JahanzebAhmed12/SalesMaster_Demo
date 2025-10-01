@@ -11,7 +11,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, FileText, Download, Mail, Copy, Printer } from "lucide-react";
 import { format, subWeeks } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -691,7 +691,7 @@ export default function ProductHistory() {
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell colSpan={4} className="text-right">Total</TableCell>
                       <TableCell className="text-right">
-                        {purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0).toFixed(2)}
+                        {formatQuantity(purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         {purchases.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * (Number(p.quantity) || 0), 0) / 
@@ -753,7 +753,7 @@ export default function ProductHistory() {
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell colSpan={5} className="text-right">Total</TableCell>
                       <TableCell className="text-right">
-                        {supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0).toFixed(2)}
+                        {formatQuantity(supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         {supplierReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
@@ -815,7 +815,7 @@ export default function ProductHistory() {
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell colSpan={5} className="text-right">Total</TableCell>
                       <TableCell className="text-right">
-                        {sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0).toFixed(2)}
+                        {formatQuantity(sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         {sales.reduce((sum, s) => sum + (Number(s.unitPrice) || 0) * (Number(s.quantity) || 0), 0) / 
@@ -877,7 +877,7 @@ export default function ProductHistory() {
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell colSpan={5} className="text-right">Total</TableCell>
                       <TableCell className="text-right">
-                        {customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0).toFixed(2)}
+                        {formatQuantity(customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
                       </TableCell>
                       <TableCell className="text-right">
                         {customerReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 

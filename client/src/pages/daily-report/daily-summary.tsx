@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Download, FileText, Printer, Mail } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
@@ -575,14 +575,14 @@ export default function DailySummary() {
     yPosition += 5;
 
     const totalsData = [
-      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
-      ['Account Paid Cash(Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
+      ['Total Cash Sales', `�${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Card Sales', `�${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Total Cheque', `�${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
+      ['Account Paid Cash(Backdate)', `�${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
+      ['Account Payment/Customer Card Payment (Backdate)', `�${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
+      ['Till/Float(C/F)', `�${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Total Supplier Payment (Paid Out)', `-�${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
+      ['Total Expense (Paid Out)', `-�${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
     ];
 
     autoTable(doc, {
@@ -599,7 +599,7 @@ export default function DailySummary() {
     yPosition = (doc as any).lastAutoTable.finalY + 10;
 
     autoTable(doc, {
-      body: [['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]],
+      body: [['Total Banking', `�${summaryData.totals.banking_total.toFixed(2)}`]],
       startY: yPosition,
       styles: {
         fontSize: 14,
@@ -673,17 +673,17 @@ export default function DailySummary() {
           ...filteredStockData.map((item: StockItem) => [
             item.slNo,
             item.productDescription,
-            item.os,
-            item.ns,
-            item.sales,
-            item.crtn,
-            item.dmps,
-            item.srtn,
-            item.stock,
-            item.clStock,
+            formatQuantity(item.os),
+            formatQuantity(item.ns),
+            formatQuantity(item.sales),
+            formatQuantity(item.crtn),
+            formatQuantity(item.dmps),
+            formatQuantity(item.srtn),
+            formatQuantity(item.stock),
+            formatQuantity(item.clStock),
             item.result
           ]),
-          ['TOTAL', '', stockTotals.os, stockTotals.ns, stockTotals.sales, stockTotals.crtn, stockTotals.dmps, stockTotals.srtn, stockTotals.stock, stockTotals.clStock, '']
+          ['TOTAL', '', formatQuantity(stockTotals.os), formatQuantity(stockTotals.ns), formatQuantity(stockTotals.sales), formatQuantity(stockTotals.crtn), formatQuantity(stockTotals.dmps), formatQuantity(stockTotals.srtn), formatQuantity(stockTotals.stock), formatQuantity(stockTotals.clStock), '']
         ],
         startY: yPosition,
         styles: { fontSize: 7, cellPadding: 1 },
@@ -746,7 +746,7 @@ export default function DailySummary() {
           ]);
         } else if (row.isTotal) {
           processedData.push([
-            '', '', '', row.product, row.quantity.toString(),
+            '', '', '', row.product, formatQuantity(row.quantity),
             '', Number(row.total).toFixed(2)
           ]);
           if (index < displayData.length - 1) {
@@ -754,7 +754,7 @@ export default function DailySummary() {
           }
         } else {
           processedData.push([
-            '', '', row.invNo, row.product, row.quantity.toString(),
+            '', '', row.invNo, row.product, formatQuantity(row.quantity),
             Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
           ]);
         }
@@ -908,14 +908,14 @@ export default function DailySummary() {
     yPosition += 5;
 
     const totalsData = [
-      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
-      ['Account Paid Cash(Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
+      ['Total Cash Sales', `�${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Card Sales', `�${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Total Cheque', `�${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
+      ['Account Paid Cash(Backdate)', `�${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
+      ['Account Payment/Customer Card Payment (Backdate)', `�${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
+      ['Till/Float(C/F)', `�${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Total Supplier Payment (Paid Out)', `-�${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
+      ['Total Expense (Paid Out)', `-�${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
     ];
 
     autoTable(doc, {
@@ -932,7 +932,7 @@ export default function DailySummary() {
     yPosition = (doc as any).lastAutoTable.finalY + 10;
 
     autoTable(doc, {
-      body: [['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]],
+      body: [['Total Banking', `�${summaryData.totals.banking_total.toFixed(2)}`]],
       startY: yPosition,
       styles: {
         fontSize: 14,
@@ -990,7 +990,7 @@ export default function DailySummary() {
           ]);
         } else if (row.isTotal) {
           processedData.push([
-            '', '', '', row.product, row.quantity.toString(),
+            '', '', '', row.product, formatQuantity(row.quantity),
             '', Number(row.total).toFixed(2)
           ]);
           if (index < displayData.length - 1) {
@@ -998,7 +998,7 @@ export default function DailySummary() {
           }
         } else {
           processedData.push([
-            '', '', row.invNo, row.product, row.quantity.toString(),
+            '', '', row.invNo, row.product, formatQuantity(row.quantity),
             Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
           ]);
         }
@@ -1099,7 +1099,7 @@ export default function DailySummary() {
           const emailData = {
             to: emailList,
             subject: `Daily Summary Report - ${format(selectedDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: �${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: �${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: �${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
             attachment: {
               filename: `daily-summary-${format(selectedDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -1528,11 +1528,11 @@ export default function DailySummary() {
                   <div className="space-y-3 text-lg">
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Card Sales:</span>
-                      <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
+                      <span className="font-bold">�{summaryData.totals.card_sales.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Account Paid Card(Backdate):</span>
-                      <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
+                      <span className="font-bold">�{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1547,15 +1547,15 @@ export default function DailySummary() {
                   <div className="space-y-3 text-lg">
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Bank Transfer Sales:</span>
-                      <span className="font-bold">£{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
+                      <span className="font-bold">�{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
                     </div>
                     {/* <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Customer Bank Transfer Payments:</span>
-                    <span className="font-bold">£{(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}</span>
+                    <span className="font-bold">�{(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Total Bank Transfer Received:</span>
-                    <span className="font-bold">£{((summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0)).toFixed(2)}</span>
+                    <span className="font-bold">�{((summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0)).toFixed(2)}</span>
                   </div> */}
                   </div>
                 </CardContent>
@@ -1570,31 +1570,31 @@ export default function DailySummary() {
                   <div className="space-y-3 text-lg">
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Cash Sales:</span>
-                      <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
+                      <span className="font-bold">�{summaryData.totals.cash_sales.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Cheque:</span>
-                      <span className="font-bold">£{(summaryData.totals.cheque_sales || 0).toFixed(2)}</span>
+                      <span className="font-bold">�{(summaryData.totals.cheque_sales || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Account Paid Cash(Backdate):</span>
-                      <span className="font-bold">£{(summaryData.totals.customer_cash_payments || 0).toFixed(2)}</span>
+                      <span className="font-bold">�{(summaryData.totals.customer_cash_payments || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Till/Float(C/F):</span>
-                      <span className="font-bold">£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
+                      <span className="font-bold">�{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b text-red-600">
                       <span className="font-medium">Total Supplier Payment (Paid Out):</span>
-                      <span className="font-bold">-£{(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}</span>
+                      <span className="font-bold">-�{(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b text-red-600">
                       <span className="font-medium">Total Expense (Paid Out):</span>
-                      <span className="font-bold">-£{(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}</span>
+                      <span className="font-bold">-�{(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-t-2 border-gray-400 bg-blue-50 total-banking-print">
                       <span className="font-bold text-xl">Total Banking:</span>
-                      <span className="font-bold text-xl text-blue-600">£{summaryData.totals.banking_total.toFixed(2)}</span>
+                      <span className="font-bold text-xl text-blue-600">�{summaryData.totals.banking_total.toFixed(2)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1674,35 +1674,35 @@ export default function DailySummary() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="font-semibold border">Sl.No</TableHead>
-                          <TableHead className="font-semibold border">Product Description</TableHead>
-                          <TableHead className="font-semibold border text-center">O.S</TableHead>
-                          <TableHead className="font-semibold border text-center">N.S</TableHead>
-                          <TableHead className="font-semibold border text-center">Sales</TableHead>
-                          <TableHead className="font-semibold border text-center">C.RTN</TableHead>
-                          <TableHead className="font-semibold border text-center">Dmps</TableHead>
-                          <TableHead className="font-semibold border text-center">S.RTN</TableHead>
-                          <TableHead className="font-semibold border text-center">Stock</TableHead>
-                          <TableHead className="font-semibold border text-center">Cl.Stock</TableHead>
-                          <TableHead className="font-semibold border text-center">Result</TableHead>
+                          <TableHead className="font-semibold border w-16">Sl.No</TableHead>
+                          <TableHead className="font-semibold border min-w-48">Product Description</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">O.S</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">N.S</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Sales</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">C.RTN</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Dmps</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">S.RTN</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Stock</TableHead>
+                          <TableHead className="font-semibold border text-center w-20">Cl.Stock</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Result</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {filteredStockData.map((item) => (
                           <TableRow key={item.id}>
-                            <TableCell className="border">{item.slNo}</TableCell>
-                            <TableCell className="border">{item.productDescription}</TableCell>
-                            <TableCell className="border text-center">{item.os}</TableCell>
-                            <TableCell className="border text-center">{item.ns}</TableCell>
-                            <TableCell className="border text-center">{item.sales}</TableCell>
-                            <TableCell className="border text-center">{item.crtn}</TableCell>
-                            <TableCell className="border text-center">{item.dmps}</TableCell>
-                            <TableCell className="border text-center">{item.srtn}</TableCell>
-                            <TableCell className="border text-center">{item.stock}</TableCell>
-                            <TableCell className="border text-center">{item.clStock}</TableCell>
+                            <TableCell className="border w-16">{item.slNo}</TableCell>
+                            <TableCell className="border min-w-48">{item.productDescription}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.os)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.ns)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.sales)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.crtn)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.dmps)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.srtn)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.stock)}</TableCell>
+                            <TableCell className="border text-center w-20">{formatQuantity(item.clStock)}</TableCell>
                             <TableCell className="border text-center">
-                              {item.result === "âœ“" ? (
-                                <span className="text-green-600">âœ“</span>
+                              {item.result === "✓" ? (
+                                <span className="text-green-600">✓</span>
                               ) : (
                                 <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
                                   {item.result}
@@ -1720,17 +1720,17 @@ export default function DailySummary() {
                         )}
                         {filteredStockData.length > 0 && (
                           <TableRow className="bg-gray-100 font-semibold">
-                            <TableCell className="border"></TableCell>
-                            <TableCell className="border">TOTAL</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.os, 0)}</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.ns, 0)}</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.sales, 0)}</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.crtn, 0)}</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.dmps, 0)}</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.srtn, 0)}</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.stock, 0)}</TableCell>
-                            <TableCell className="border text-center">{filteredStockData.reduce((sum, item) => sum + item.clStock, 0)}</TableCell>
-                            <TableCell className="border"></TableCell>
+                            <TableCell className="border w-16"></TableCell>
+                            <TableCell className="border min-w-48">TOTAL</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.os, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.ns, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.sales, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.crtn, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.dmps, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.srtn, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.stock, 0))}</TableCell>
+                            <TableCell className="border text-center w-20">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.clStock, 0))}</TableCell>
+                            <TableCell className="border w-16"></TableCell>
                           </TableRow>
                         )}
                       </TableBody>
@@ -1782,9 +1782,9 @@ export default function DailySummary() {
                                 <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
                                   <TableCell className="border" colSpan={3}></TableCell>
                                   <TableCell className="border text-right">{row.product}</TableCell>
-                                  <TableCell className="border text-right">{row.quantity}</TableCell>
+                                  <TableCell className="border text-right">{formatQuantity(row.quantity)}</TableCell>
                                   <TableCell className="border"></TableCell>
-                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right">�{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
                               );
                             } else {
@@ -1806,9 +1806,9 @@ export default function DailySummary() {
                                       {row.product}
                                     </span>
                                   </TableCell>
-                                  <TableCell className="border text-right">{row.quantity}</TableCell>
-                                  <TableCell className="border text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
-                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right">{formatQuantity(row.quantity)}</TableCell>
+                                  <TableCell className="border text-right">�{Number(row.unitPrice).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right">�{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
                               );
                             }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import logo from "@/public/printlogo.png";
 import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
+import { formatQuantity } from "@/lib/utils";
 
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
   // Helper to get the correct API URL for public requests
@@ -96,14 +97,14 @@ function DeliveryNoteTemplate({ data }: { data: InvoiceData }) {
         <tbody>
           {items.map((item, idx) => (
             <tr key={item.id || idx}>
-              <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontWeight: 600, fontSize: 20 }}>{item.quantity}</td>
+              <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontWeight: 600, fontSize: 20 }}>{formatQuantity(item.quantity)}</td>
               <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}>{item.productName || item.description || "-"}</td>
               {deliveryNoteWithPrice && <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontSize: 18 }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>}
               {deliveryNoteWithPrice && <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontSize: 18 }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>}
             </tr>
           ))}
           <tr style={{ fontWeight: "bold", background: "#f5f5f5" }}>
-            <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontSize: 20 }}>{items.reduce((a, b) => a + (b.quantity || 0), 0)}</td>
+            <td style={{ border: "1px solid #888", padding: 8, textAlign: "center", fontSize: 20 }}>{formatQuantity(items.reduce((a, b) => a + (b.quantity || 0), 0))}</td>
             <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}>{items.length} Items</td>
             {deliveryNoteWithPrice && <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}></td>}
             {deliveryNoteWithPrice && <td style={{ border: "1px solid #888", padding: 8, fontSize: 18 }}></td>}

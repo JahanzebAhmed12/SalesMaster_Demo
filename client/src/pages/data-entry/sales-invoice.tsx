@@ -10,6 +10,7 @@ import PaymentDetailsDrawer from "@/components/layout/payment-details-drawer";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { formatQuantity, formatPrice } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
@@ -1385,7 +1386,7 @@ const SalesInvoice = () => {
 
           // Quantity (centered)
           doc.setFontSize(11);
-          doc.text(String(item.quantity || 0), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
+          doc.text(formatQuantity(item.quantity || 0), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
 
           // Unit Price (centered)
           doc.text(`${(item.unitPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + 12, yPos + 6, { align: 'center' });
@@ -1412,7 +1413,7 @@ const SalesInvoice = () => {
 
         doc.setFont("helvetica", "bold");
         doc.text("SUB TOTAL", tableStartX + 2, yPos + 6);
-        doc.text(String(invoiceData.items.reduce((a: number, b: any) => a + (b.quantity || 0), 0)), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
+        doc.text(formatQuantity(invoiceData.items.reduce((a: number, b: any) => a + (b.quantity || 0), 0)), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
         doc.text("X", tableStartX + colWidths[0] + colWidths[1] + 12, yPos + 6, { align: 'center' });
         doc.text(`£${(invoiceData.sale?.subtotal || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + 12, yPos + 6, { align: 'center' });
 
@@ -2364,7 +2365,7 @@ const SalesInvoice = () => {
                           <Input
                             type="number"
                             value={editItem?.quantity ?? item.quantity}
-                            onChange={e => setEditItem({ ...item, quantity: parseInt(e.target.value) || 0, createdAt: item.createdAt })}
+                            onChange={e => setEditItem({ ...item, quantity: parseFloat(e.target.value) || 0, createdAt: item.createdAt })}
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -2400,7 +2401,7 @@ const SalesInvoice = () => {
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
                         <TableCell className="text-center">{item.notes || "-"}</TableCell>
-                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.quantity)}</TableCell>
                         <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">
@@ -2778,7 +2779,7 @@ const SalesInvoice = () => {
                 {porterageDetails.withPorterage && applyPorterage && (
                   <div className="space-y-1">
                     <div className="flex justify-between items-center">
-                      <span>Porterage ({saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0)} × £{parseFloat(porterageDetails.porterageCharge).toFixed(2)}):</span>
+                      <span>Porterage ({formatQuantity(saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0))} × £{parseFloat(porterageDetails.porterageCharge).toFixed(2)}):</span>
                       <div className="flex items-center gap-2">
                         {isEditingPorterage ? (
                           <>

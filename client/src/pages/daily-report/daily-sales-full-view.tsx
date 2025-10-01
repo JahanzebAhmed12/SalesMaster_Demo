@@ -9,7 +9,7 @@ import { CalendarIcon, FileText, Printer, Search, Mail } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { cn, formatQuantity } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/lib/auth';
 import PageLayout from '@/components/common/page-layout';
@@ -206,7 +206,7 @@ export default function DailySalesFullView() {
       } else {
         processedData.push([
           '', row.invoiceNo, row.customerName, row.productName,
-          row.quantity.toString(), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
+          formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
         ]);
       }
     });
@@ -300,7 +300,7 @@ export default function DailySalesFullView() {
       } else {
         processedData.push([
           '', row.invoiceNo, row.customerName, row.productName,
-          row.quantity.toString(), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
+          formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
         ]);
       }
     });
@@ -606,7 +606,7 @@ export default function DailySalesFullView() {
                                 {row.productName}
                               </button>
                             </TableCell>
-                            <TableCell className="text-right">{row.quantity}</TableCell>
+                            <TableCell className="text-right">{formatQuantity(row.quantity)}</TableCell>
                             <TableCell className="text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
                             <TableCell className="text-right">£{Number(row.total).toFixed(2)}</TableCell>
                           </TableRow>

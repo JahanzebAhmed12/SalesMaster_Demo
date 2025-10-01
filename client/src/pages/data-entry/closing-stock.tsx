@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { isPastDate } from "@/lib/utils";
+import { formatQuantity } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
 
 interface StockItem {
@@ -111,7 +112,7 @@ export default function ClosingStock() {
         {
           productId: parseInt(addProductId),
           productType: currentStock.find((p) => p.id === parseInt(addProductId))?.productType || "regular",
-          quantity: parseInt(addQuantity),
+          quantity: parseFloat(addQuantity),
         },
       ];
       await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
@@ -139,7 +140,7 @@ export default function ClosingStock() {
     try {
       const items = closingStockEntries.map((e: any) =>
         e.productId === entry.productId
-          ? { ...e, quantity: parseInt(editQuantity) }
+          ? { ...e, quantity: parseFloat(editQuantity) }
           : e
       );
       await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
@@ -559,7 +560,7 @@ export default function ClosingStock() {
                     }
                   >
                     <TableCell className="py-2 px-4 font-medium border-r border-gray-200">{product ? `${product.description} (${product.productCode})` : entry.productId}</TableCell>
-                    <TableCell className="py-2 px-4 border-r border-gray-200 font-semibold">{entry.quantity}</TableCell>
+                    <TableCell className="py-2 px-4 border-r border-gray-200 font-semibold">{formatQuantity(entry.quantity)}</TableCell>
                     <TableCell className="py-2 px-4">
                       <div className="flex gap-2">
                         {(!isPastDate(selectedDate) || canEditBackdate) && (

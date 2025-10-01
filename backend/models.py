@@ -91,7 +91,7 @@ class SaleItem(db.Model):
     sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('regular_products.id'))
     non_product_id = db.Column(db.Integer, db.ForeignKey('non_products.id'))
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)
     total_price = db.Column(db.Numeric(10, 2), nullable=False)
     notes = db.Column(db.Text)  # Notes for the product item
@@ -652,7 +652,7 @@ class PurchaseInvoiceItem(db.Model):
     invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id'), nullable=False)
     product_id = db.Column(db.Integer, nullable=False)
     product_name = db.Column(db.String(255))
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), nullable=False)
     total_price = db.Column(db.Numeric(10, 2), nullable=False)
     remarks = db.Column(db.Text)
@@ -706,7 +706,7 @@ class StockMovement(db.Model):
     product_id = db.Column(db.Integer, nullable=False)  # ID of the product (regular or non)
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     movement_type = db.Column(db.String(20), nullable=False)  # 'sale', 'purchase', 'adjustment', 'return'
-    quantity = db.Column(db.Integer, nullable=False)  # Positive for additions, negative for reductions
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)  # Positive for additions, negative for reductions
     reference_id = db.Column(db.Integer)  # ID of the related sale, purchase, or adjustment
     reference_type = db.Column(db.String(20))  # 'sale', 'purchase', 'adjustment'
     previous_stock = db.Column(db.Integer, nullable=False)
@@ -737,7 +737,7 @@ class StockAdjustment(db.Model):
     product_id = db.Column(db.Integer, nullable=False)
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     adjustment_type = db.Column(db.String(20), nullable=False)  # 'increase', 'decrease', 'set'
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     previous_stock = db.Column(db.Integer, nullable=False)
     new_stock = db.Column(db.Integer, nullable=False)
     reason = db.Column(db.String(200), nullable=False)
@@ -815,7 +815,7 @@ class DumpEntry(db.Model):
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     description = db.Column(db.String(200), nullable=False)
     remarks = db.Column(db.Text)
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), default=0)
     total_value = db.Column(db.Numeric(10, 2), default=0)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -857,7 +857,7 @@ class CustomerReturn(db.Model):
     description = db.Column(db.String(200), nullable=False)
     invoice_number = db.Column(db.String(50))  # Original invoice number
     remarks = db.Column(db.Text)
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), default=0)
     total_value = db.Column(db.Numeric(10, 2), default=0)
     return_reason = db.Column(db.String(100))  # e.g., 'damaged', 'wrong item', 'customer request'
@@ -910,7 +910,7 @@ class SupplierReturn(db.Model):
     description = db.Column(db.String(200), nullable=False)
     invoice_number = db.Column(db.String(50))  # Original invoice number
     remarks = db.Column(db.Text)
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), default=0)
     total_value = db.Column(db.Numeric(10, 2), default=0)
     return_reason = db.Column(db.String(100))  # e.g., 'damaged', 'wrong item', 'quality issue'
@@ -1085,7 +1085,7 @@ class ClosingStock(db.Model):
     product_id = db.Column(db.Integer, nullable=False)
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     date = db.Column(db.Date, nullable=False)
-    quantity = db.Column(db.Integer, nullable=False)
+    quantity = db.Column(db.Numeric(10, 3), nullable=False)
     manual_entry = db.Column(db.Boolean, nullable=False, default=True)  # True for manual entries, False for automatic
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

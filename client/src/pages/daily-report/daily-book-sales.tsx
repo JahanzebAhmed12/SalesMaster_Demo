@@ -13,7 +13,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
-import { cn, isPastDate } from "@/lib/utils";
+import { cn, isPastDate, formatQuantity, formatPrice } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -1367,7 +1367,7 @@ export default function DailyBookSales() {
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
                     <TableCell className="font-bold text-xs sm:text-sm">{salesData.length} Items</TableCell>
-                    <TableCell className="text-center font-bold text-xs sm:text-sm">{totalBoxes}</TableCell>
+                    <TableCell className="text-center font-bold text-xs sm:text-sm">{formatQuantity(totalBoxes)}</TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
                       {totalAmount === 0 ? "-" : (
@@ -1423,7 +1423,7 @@ export default function DailyBookSales() {
                   </div>
                   <div className="flex justify-between sm:block">
                     <span className="font-semibold">Total Boxes:</span>
-                    <span className="sm:block">{totalBoxes}</span>
+                    <span className="sm:block">{formatQuantity(totalBoxes)}</span>
                   </div>
                   <div className="flex justify-between sm:block">
                     <span className="font-semibold">Total VAT:</span>

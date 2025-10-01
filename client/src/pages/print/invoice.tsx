@@ -3,6 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import logo from "@/public/printlogo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
+import { formatQuantity } from "@/lib/utils";
 
 // Public API request function (no authentication required)
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
@@ -190,14 +191,14 @@ export default function InvoicePrintPage() {
                   <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>{item.notes}</div>
                 )}
               </td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.quantity}</td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
             <td style={{ border: "1px solid #888", padding: 4 }}>SUB TOTAL</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{data.items.reduce((a, b) => a + (b.quantity || 0), 0)}</td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + (b.quantity || 0), 0))}</td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{data.sale?.subtotal?.toFixed(2) ?? "-"}</td>
           </tr>

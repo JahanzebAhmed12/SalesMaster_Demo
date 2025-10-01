@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
+import { formatQuantity } from '@/lib/utils';
 
 interface InvoiceData {
   company: any;
@@ -635,7 +636,7 @@ export default function DotMatrixInvoicePrintPage() {
                       padding: '0',
                       whiteSpace: 'nowrap'
                     }}>
-                      {item.quantity}
+                      {formatQuantity(item.quantity)}
                     </div>
 
                     {/* Product Description */}

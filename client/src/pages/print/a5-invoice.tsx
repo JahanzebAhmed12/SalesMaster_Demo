@@ -3,6 +3,7 @@ import { useRoute, useLocation } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import logo from '@/public/printlogo.png';
 import { API_BASE_URL, useRelativeUrls } from '@/lib/config';
+import { formatQuantity } from '@/lib/utils';
 
 // Public API request function (no authentication required)
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
@@ -103,7 +104,7 @@ function A5InvoiceTemplate({ data, showOutstandingBalance, invoiceFooter }: Invo
           <tbody>
             {data.items?.map((item, index) => (
               <tr key={index} style={{ borderBottom: "1px solid #eee" }}>
-                <td style={{ padding: "4px" }}>{item.quantity}</td>
+                <td style={{ padding: "4px" }}>{formatQuantity(item.quantity)}</td>
                 <td style={{ padding: "4px" }}>{item.product_name || item.productName || item.description}</td>
                 <td style={{ padding: "4px", textAlign: "right" }}>£{(item.unit_price || item.unitPrice || 0).toFixed(2)}</td>
                 <td style={{ padding: "4px", textAlign: "right" }}>£{(item.total_price || item.totalPrice || 0).toFixed(2)}</td>

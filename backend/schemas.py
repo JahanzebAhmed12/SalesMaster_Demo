@@ -5,7 +5,7 @@ from datetime import datetime, time, date
 class SaleItemSchema(BaseModel):
     product_id: Optional[int] = None
     non_product_id: Optional[int] = None
-    quantity: int
+    quantity: float
     unit_price: float
     total_price: float
     notes: Optional[str] = None
@@ -311,7 +311,7 @@ class StockMovementSchema(BaseModel):
     product_id: int = Field(alias='productId')
     product_type: str = Field(alias='productType')
     movement_type: str = Field(alias='movementType')
-    quantity: int
+    quantity: float
     reference_id: Optional[int] = Field(default=None, alias='referenceId')
     reference_type: Optional[str] = Field(default=None, alias='referenceType')
     remarks: Optional[str] = None
@@ -324,7 +324,7 @@ class StockAdjustmentSchema(BaseModel):
     product_id: int = Field(alias='productId')
     product_type: str = Field(alias='productType')
     adjustment_type: str = Field(alias='adjustmentType')
-    quantity: int
+    quantity: float
     reason: str
     remarks: Optional[str] = None
     adjustment_date: date = Field(alias='adjustmentDate')
@@ -357,7 +357,7 @@ class DumpEntrySchema(BaseModel):
     productType: str = Field(alias='productType')
     description: str
     remarks: Optional[str] = None
-    quantity: int
+    quantity: float
     unitPrice: float = Field(default=0, alias='unitPrice')
     totalValue: float = Field(alias='totalValue')
 
@@ -375,7 +375,7 @@ class CustomerReturnSchema(BaseModel):
     description: str
     invoiceNumber: Optional[str] = Field(default=None, alias='invoiceNumber')
     remarks: Optional[str] = None
-    quantity: int
+    quantity: float
     unitPrice: float = Field(default=0, alias='unitPrice')
     totalValue: float = Field(alias='totalValue')
     returnReason: Optional[str] = Field(default=None, alias='returnReason')
@@ -397,7 +397,7 @@ class SupplierReturnSchema(BaseModel):
     description: str
     invoiceNumber: Optional[str] = Field(default=None, alias='invoiceNumber')
     remarks: Optional[str] = None
-    quantity: int
+    quantity: float
     unitPrice: float = Field(default=0, alias='unitPrice')
     totalValue: float = Field(alias='totalValue')
     returnReason: Optional[str] = Field(default=None, alias='returnReason')
