@@ -30,6 +30,7 @@ interface PaymentHistoryData {
   invoiceAmount: number | null;
   remarks: string | null;
   createdAt: string | null;
+  batchId: string | null; // Add batch ID field
 }
 
 export default function CustomerPaymentHistory() {
@@ -140,14 +141,12 @@ export default function CustomerPaymentHistory() {
     doc.text('Customer Payment History', 14, 24);
     autoTable(doc, {
       head: [[
-        //'Sl.No',
-        'Payment Date', 'Payment mode', /*'Payment Id',*/ 'Recd Amt', 'Inv No.', 'Inv Dt.', 'Customer', 'Invoice Amt', 'Allocated', 'Remarks'
+        'Payment Date', 'Payment mode', 'Batch ID', 'Recd Amt', 'Inv No.', 'Inv Dt.', 'Customer', 'Invoice Amt', 'Allocated', 'Remarks'
       ]],
       body: (Array.isArray(paymentHistory) ? paymentHistory : []).map((payment) => [
-        // skip serial number and payment id
         payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
         payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode,
-        // payment.id, // removed
+        payment.batchId || '-',
         `£${Number(payment.amount).toFixed(2)}`,
         payment.invoiceNumber || '-',
         payment.invoiceDate ? format(new Date(payment.invoiceDate), 'dd/MM/yyyy') : '-',
@@ -163,10 +162,9 @@ export default function CustomerPaymentHistory() {
 
   const handleExcel = () => {
     const ws = XLSX.utils.json_to_sheet((paymentHistory || []).map((payment) => ({
-      //'Sl.No': idx + 1,
       'Payment Date': payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
       'Payment mode': payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode,
-      // 'Payment Id': payment.id,
+      'Batch ID': payment.batchId || '-',
       'Recd Amt': payment.amount,
       'Inv No.': payment.invoiceNumber || '-',
       'Inv Dt.': payment.invoiceDate ? format(new Date(payment.invoiceDate), 'dd/MM/yyyy') : '-',
@@ -196,11 +194,12 @@ export default function CustomerPaymentHistory() {
     
     autoTable(doc, {
       head: [[
-        'Payment Date', 'Payment mode', 'Recd Amt', 'Inv No.', 'Inv Dt.', 'Customer', 'Invoice Amt', 'Allocated', 'Remarks'
+        'Payment Date', 'Payment mode', 'Batch ID', 'Recd Amt', 'Inv No.', 'Inv Dt.', 'Customer', 'Invoice Amt', 'Allocated', 'Remarks'
       ]],
       body: (Array.isArray(paymentHistory) ? paymentHistory : []).map((payment) => [
         payment.paymentDate ? format(new Date(payment.paymentDate), 'dd/MM/yyyy') : '',
         payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode,
+        payment.batchId || '-',
         `£${Number(payment.amount).toFixed(2)}`,
         payment.invoiceNumber || '-',
         payment.invoiceDate ? format(new Date(payment.invoiceDate), 'dd/MM/yyyy') : '-',
@@ -465,6 +464,7 @@ export default function CustomerPaymentHistory() {
                   <TableRow className="bg-blue-50">
                     <TableHead className="text-center min-w-[120px]">Payment Date</TableHead>
                     <TableHead className="text-center min-w-[120px]">Payment mode</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Batch ID</TableHead>
                     <TableHead className="text-center min-w-[100px]">Recd Amt</TableHead>
                     <TableHead className="text-center min-w-[80px]">Inv No.</TableHead>
                     <TableHead className="text-center min-w-[80px]">Inv Dt.</TableHead>
@@ -477,7 +477,7 @@ export default function CustomerPaymentHistory() {
                 <TableBody>
                   {isLoadingPayments ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8">
+                      <TableCell colSpan={10} className="text-center py-8">
                         Loading payment history...
                       </TableCell>
                     </TableRow>
@@ -489,6 +489,9 @@ export default function CustomerPaymentHistory() {
                         </TableCell>
                         <TableCell className="text-center">
                           {payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {payment.batchId || '-'}
                         </TableCell>
                         <TableCell className="text-center">£{payment.amount.toFixed(2)}</TableCell>
                         <TableCell className="text-center">
@@ -509,13 +512,14 @@ export default function CustomerPaymentHistory() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8">
+                      <TableCell colSpan={10} className="text-center py-8">
                         No payment history found.
                       </TableCell>
                     </TableRow>
                   )}
                   <TableRow className="bg-blue-100 font-semibold">
                     <TableCell className="text-center">TOTAL</TableCell>
+                    <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>

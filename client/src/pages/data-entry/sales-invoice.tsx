@@ -354,6 +354,7 @@ const SalesInvoice = () => {
     let list: (RegularProduct | NonProduct & { productType: 'regular' | 'non' })[] = [];
     if (selectedProductType === "regular") {
       // Only show regular products with stock > 0
+      // Products with zero or negative stock should only appear in non-products section
       list = (regularProducts || [])
         .filter((p: any) => {
           const stock = currentStock.find(s => s.id === p.id && s.productType === 'regular');
@@ -362,6 +363,7 @@ const SalesInvoice = () => {
         .map(p => ({ ...p, productType: 'regular' as const }));
     } else {
       // Show all regular and all non-regular products, tag with type
+      // This includes products with negative/zero stock for selection
       list = [
         ...(regularProducts || []).map(p => ({ ...p, productType: 'regular' as const })),
         ...(nonProducts || []).map(p => ({ ...p, productType: 'non' as const }))
@@ -429,9 +431,10 @@ const SalesInvoice = () => {
       // Total reserved quantity = current invoice + all held invoices
       const totalReservedQuantity = currentInvoiceReservedQuantity + heldInvoicesReservedQuantity;
 
-      return Math.max(0, item.currentStock - totalReservedQuantity);
+      // Return actual stock level (can be negative) - don't use Math.max(0, ...)
+      return item.currentStock - totalReservedQuantity;
     } else {
-      // For saved invoices, return actual database stock
+      // For saved invoices, return actual database stock (can be negative)
       return item.currentStock;
     }
   };
@@ -752,6 +755,7 @@ const SalesInvoice = () => {
     }
 
     const actualStockLevel = getActualStock(parseInt(selectedProductId), selectedProductType);
+    const currentStockLevel = getCurrentStock(parseInt(selectedProductId), selectedProductType);
 
     const existingQuantity = saleItems
       .filter(item => {
@@ -765,18 +769,18 @@ const SalesInvoice = () => {
 
     const totalRequestedQuantity = existingQuantity + Number(itemQuantity);
 
-    // Only block for regular products if not enough stock
+    // For regular products, block sales if insufficient stock (only positive stock products should be in regular section)
     if (selectedProductType === 'regular' && totalRequestedQuantity > actualStockLevel) {
       const availableStock = getCurrentStock(parseInt(selectedProductId), selectedProductType);
       toast({
         title: "Insufficient Stock",
-        description: `Only ${availableStock} units available in stock. You already have ${existingQuantity} in this invoice.`,
+        description: `Only ${availableStock} units available in stock. You already have ${existingQuantity} in this invoice. Use Non-Products section for negative stock sales.`,
         variant: "destructive",
       });
-      return;
+      return; // Block the sale for regular products
     }
-    // For non_product, allow adding even if out of stock (stock can go negative)
-    // Backend: Negative stock is allowed for sales, so no backend change is needed unless you want to log/flag negative stock events.
+    // For non_product section, allow adding even if out of stock (stock can go negative)
+    // This is where users can sell products with zero or negative stock
 
     let product: RegularProduct | NonProduct | undefined;
     let isRegular = false;
@@ -2492,15 +2496,28 @@ const SalesInvoice = () => {
                               >
                                 <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
                                 <span className="ml-2">{p.description}</span>
-                                <span className="ml-auto text-xs text-gray-500">Stock: {getCurrentStock(p.id, (p as RegularProduct & { productType: 'regular' | 'non' }).productType)}</span>
+                                {(() => {
+                                  const stock = getCurrentStock(p.id, (p as RegularProduct & { productType: 'regular' | 'non' }).productType);
+                                  return (
+                                    <span className={`ml-auto text-xs ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-500'}`}>
+                                      Stock: {stock}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                             ))}
                           </div>
                         )}
                         {/* Show current stock below input if a product is selected */}
-                        {selectedProductId && (
-                          <div className="text-xs text-gray-600 mt-1">Current Stock: {getCurrentStock(Number(selectedProductId), selectedProductType)}</div>
-                        )}
+                        {selectedProductId && (() => {
+                          const stock = getCurrentStock(Number(selectedProductId), selectedProductType);
+                          return (
+                            <div className={`text-xs mt-1 ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-600'}`}>
+                              Current Stock: {stock}
+                              {stock < 0 && <span className="ml-2 text-red-500">(Negative Stock!)</span>}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </TableCell>
                     <TableCell>
