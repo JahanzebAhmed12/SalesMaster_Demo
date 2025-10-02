@@ -17,6 +17,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { Customer, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
+import { formatQuantity } from "@/lib/utils";
 
 // Simplified schema for return form
 const returnSchema = z.object({
@@ -26,7 +27,7 @@ const returnSchema = z.object({
   productType: z.enum(["regular", "non"]),
   invoiceId: z.number().optional().nullable(),
   invoiceNumber: z.string().optional().nullable(),
-  quantity: z.coerce.number().min(1, "Quantity must be at least 1"),
+  quantity: z.coerce.number().min(0.001, "Quantity must be greater than 0"),
   unitPrice: z.coerce.number().min(0, "Unit price must be positive"),
   remarks: z.string().optional().nullable(),
 });
@@ -139,7 +140,7 @@ export default function ReturnFromCustomer() {
       if (!selectedCustomerId) return [];
       const toDate = format(new Date(), "yyyy-MM-dd");
       
-      // First get the invoice list
+      // Use searchFromDate as the fromDate parameter to filter invoices
       const invoices = await apiRequest('GET', `/api/customers/${selectedCustomerId}/invoices?fromDate=${searchFromDate}&toDate=${toDate}`);
       
       // Then fetch detailed data for each invoice to get items
@@ -568,9 +569,16 @@ export default function ReturnFromCustomer() {
                     <Label>Quantity:</Label>
                     <Input
                       type="number"
+                      step="0.001"
                       {...form.register("quantity")}
-                      min="1"
+                      min="0.001"
+                      placeholder="Enter quantity (e.g., 1.2)"
                     />
+                    {form.formState.errors.quantity && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {form.formState.errors.quantity.message}
+                      </p>
+                    )}
                   </div>
                   
                   <div>
@@ -655,7 +663,7 @@ export default function ReturnFromCustomer() {
                           <TableCell>{format(new Date(returnItem.date), "dd/MM/yyyy")}</TableCell>
                           <TableCell>{returnItem.productDescription}</TableCell>
                           <TableCell>{returnItem.invoiceNumber || "-"}</TableCell>
-                          <TableCell className="text-center">{returnItem.quantity}</TableCell>
+                          <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                           <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
                           <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
                           <TableCell>{returnItem.remarks || "-"}</TableCell>

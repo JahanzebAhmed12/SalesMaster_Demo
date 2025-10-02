@@ -428,11 +428,11 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
                 raise ValueError(f"Product not found: {product_id}")
             
             previous_stock = product.current_stock
-            new_stock = previous_stock + quantity_change
+            new_stock = previous_stock + float(quantity_change)  # Convert to float to avoid Decimal binding issues
             
             # Allow negative stock for sales (overselling) but warn for regular products
-            # Only prevent negative stock for non-sale movements (except adjustments)
-            if new_stock < 0 and movement_type not in ['adjustment', 'sale']:
+            # Only prevent negative stock for non-sale movements (except adjustments and cancellations)
+            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation']:
                 raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
             
             # Update product stock (allow negative for sales)
@@ -446,11 +446,11 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
                 product_id=product_id,
                 product_type=product_type,
                 movement_type=movement_type,
-                quantity=quantity_change,
+                quantity=float(quantity_change),  # Convert Decimal to float
                 reference_id=reference_id,
                 reference_type=reference_type,
-                previous_stock=previous_stock,
-                new_stock=new_stock,
+                previous_stock=int(previous_stock),  # Ensure integer for stock levels
+                new_stock=int(new_stock),  # Ensure integer for stock levels
                 remarks=remarks,
                 created_by=user_id,
                 created_at=movement_timestamp
@@ -5427,7 +5427,7 @@ def product_sales_report():
             'slNo': idx,
             'sageCode': row.sage_code,
             'productDescription': row.product_description,
-            'quantity': int(row.quantity) if row.quantity else 0,
+            'quantity': float(row.quantity) if row.quantity else 0,
             'avgPrice': float(row.avg_price) if row.avg_price else 0,
             'total': float(row.total) if row.total else 0
         })
@@ -6571,8 +6571,6 @@ def stock_check_report():
         to_date = request.args.get('toDate')
         search = request.args.get('search', '')
         
-        print(f"[DEBUG] Stock check request - fromDate: {from_date}, toDate: {to_date}, search: {search}")
-        
         if not from_date or not to_date:
             return jsonify({'error': 'fromDate and toDate are required'}), 400
         
@@ -6581,13 +6579,9 @@ def stock_check_report():
         # Set to_dt to end of day (23:59:59) to include the entire day
         to_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
         
-        print(f"[DEBUG] Parsed dates - from_dt: {from_dt}, to_dt: {to_dt}")
-        
         # Get all products (regular and non)
         regular_products = RegularProduct.query.filter(RegularProduct.status == 'active').all()
         non_products = NonProduct.query.filter(NonProduct.status == 'active').all()
-        
-        print(f"[DEBUG] Found {len(regular_products)} regular products and {len(non_products)} non-products")
         
         stock_check_data = []
         
@@ -6596,36 +6590,27 @@ def stock_check_report():
             try:
                 if search and search.lower() not in product.description.lower():
                     continue
-                    
-                print(f"[DEBUG] Processing regular product: {product.description} (ID: {product.id})")
                 
                 # Get opening stock (stock at the beginning of from_date)
                 opening_stock = get_opening_stock(product.id, 'regular', from_dt)
-                print(f"[DEBUG] Opening stock: {opening_stock}")
                 
                 # Get new stock (purchases) between dates
                 new_stock = get_new_stock(product.id, 'regular', from_dt, to_dt)
-                print(f"[DEBUG] New stock: {new_stock}")
                 
                 # Get sales between dates
                 sales = get_sales_quantity(product.id, 'regular', from_dt, to_dt)
-                print(f"[DEBUG] Sales: {sales}")
                 
                 # Get returns between dates (customer returns)
                 customer_returns = get_customer_returns_quantity(product.id, 'regular', from_dt, to_dt)
-                print(f"[DEBUG] Customer returns: {customer_returns}")
                 
                 # Get dumps/wastage between dates
                 dumps = get_dumps_quantity(product.id, 'regular', from_dt, to_dt)
-                print(f"[DEBUG] Dumps: {dumps}")
                 
                 # Get supplier returns between dates
                 supplier_returns = get_supplier_returns_quantity(product.id, 'regular', from_dt, to_dt)
-                print(f"[DEBUG] Supplier returns: {supplier_returns}")
                 
                 # Calculate expected stock
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
-                print(f"[DEBUG] Expected stock: {expected_stock}")
                 
                 # Get actual closing stock from manual entries (prioritize manual entries)
                 closing_stock_entry = ClosingStock.query.filter(
@@ -6637,11 +6622,9 @@ def stock_check_report():
                 
                 # If manual entry exists, use it; otherwise use 0
                 actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else 0
-                print(f"[DEBUG] Actual closing stock: {actual_closing_stock}")
                 
                 # Calculate difference
                 difference = actual_closing_stock - expected_stock
-                print(f"[DEBUG] Difference: {difference}")
                 
                 # Determine status
                 if difference == 0:
@@ -6757,7 +6740,7 @@ def stock_check_report():
         for i, item in enumerate(stock_check_data, 1):
             item['slNo'] = i
         
-        print(f"[DEBUG] Returning {len(stock_check_data)} stock check items")
+
         return jsonify(stock_check_data), 200
         
     except Exception as e:
@@ -6769,8 +6752,6 @@ def stock_check_report():
 def get_opening_stock(product_id, product_type, from_date):
     """Get stock level at the beginning of from_date, preferring previous day's manual closing stock if available"""
     try:
-        print(f"[DEBUG] Getting opening stock for product {product_id} ({product_type}) before {from_date}")
-
         # 1. Check for previous day's manual closing stock entry (prioritize manual entries)
         prev_date = (from_date - timedelta(days=1)).date()
         closing_entry = ClosingStock.query.filter_by(
@@ -6780,7 +6761,6 @@ def get_opening_stock(product_id, product_type, from_date):
             manual_entry=True  # Only consider manual entries
         ).first()
         if closing_entry:
-            print(f"[DEBUG] Found previous day's manual closing stock: {closing_entry.quantity}")
             return closing_entry.quantity
 
         # 2. Check for any closing stock entry from previous day (manual or automatic)
@@ -6792,7 +6772,6 @@ def get_opening_stock(product_id, product_type, from_date):
         ).order_by(ClosingStock.manual_entry.desc()).first()  # Prioritize manual entries
         
         if any_closing_entry:
-            print(f"[DEBUG] Found previous day's closing stock entry: {any_closing_entry.quantity}")
             return any_closing_entry.quantity
 
         # 3. Fallback to last stock movement before from_date
@@ -6803,10 +6782,8 @@ def get_opening_stock(product_id, product_type, from_date):
         ).order_by(StockMovement.created_at.desc()).first()
 
         if last_movement:
-            print(f"[DEBUG] Found last movement: {last_movement.new_stock}")
             return last_movement.new_stock
         else:
-            print(f"[DEBUG] No movements found, checking initial stock")
             # If no movements, check if there's initial stock
             if product_type == 'regular':
                 product = RegularProduct.query.get(product_id)
@@ -6814,9 +6791,7 @@ def get_opening_stock(product_id, product_type, from_date):
                 product = NonProduct.query.get(product_id)
 
             if product and hasattr(product, 'initial_stock') and product.initial_stock:
-                print(f"[DEBUG] Found initial stock: {product.initial_stock}")
                 return product.initial_stock
-            print(f"[DEBUG] No initial stock found, returning 0")
             return 0
     except Exception as e:
         print(f"[ERROR] Error getting opening stock: {e}")
@@ -6827,8 +6802,6 @@ def get_opening_stock(product_id, product_type, from_date):
 def get_new_stock(product_id, product_type, from_date, to_date):
     """Get new stock (purchases) between dates"""
     try:
-        print(f"[DEBUG] Getting new stock for product {product_id} ({product_type}) between {from_date} and {to_date}")
-        
         movements = StockMovement.query.filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
@@ -6838,7 +6811,6 @@ def get_new_stock(product_id, product_type, from_date, to_date):
         ).all()
         
         total = sum(movement.quantity for movement in movements if movement.quantity > 0)
-        print(f"[DEBUG] Found {len(movements)} purchase movements, total: {total}")
         return total
     except Exception as e:
         print(f"[ERROR] Error getting new stock: {e}")
@@ -6849,8 +6821,6 @@ def get_new_stock(product_id, product_type, from_date, to_date):
 def get_sales_quantity(product_id, product_type, from_date, to_date):
     """Get sales quantity between dates"""
     try:
-        print(f"[DEBUG] Getting sales quantity for product {product_id} ({product_type}) between {from_date} and {to_date}")
-        
         movements = StockMovement.query.filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
@@ -6860,7 +6830,6 @@ def get_sales_quantity(product_id, product_type, from_date, to_date):
         ).all()
         
         total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
-        print(f"[DEBUG] Found {len(movements)} sale movements, total: {total}")
         return total
     except Exception as e:
         print(f"[ERROR] Error getting sales quantity: {e}")
@@ -6871,8 +6840,6 @@ def get_sales_quantity(product_id, product_type, from_date, to_date):
 def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
     """Get customer returns between dates"""
     try:
-        print(f"[DEBUG] Getting customer returns for product {product_id} ({product_type}) between {from_date} and {to_date}")
-        
         movements = StockMovement.query.filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
@@ -6882,7 +6849,6 @@ def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
         ).all()
         
         total = sum(movement.quantity for movement in movements if movement.quantity > 0)
-        print(f"[DEBUG] Found {len(movements)} customer return movements, total: {total}")
         return total
     except Exception as e:
         print(f"[ERROR] Error getting customer returns: {e}")
@@ -6893,7 +6859,6 @@ def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
 def get_dumps_quantity(product_id, product_type, from_date, to_date):
     """Get dumps/wastage between dates"""
     try:
-        print(f"[DEBUG] Getting dumps quantity for product {product_id} ({product_type}) between {from_date} and {to_date}")
         
         movements = StockMovement.query.filter(
             StockMovement.product_id == product_id,
@@ -6904,7 +6869,6 @@ def get_dumps_quantity(product_id, product_type, from_date, to_date):
         ).all()
         
         total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
-        print(f"[DEBUG] Found {len(movements)} dump movements, total: {total}")
         return total
     except Exception as e:
         print(f"[ERROR] Error getting dumps quantity: {e}")
@@ -6915,7 +6879,6 @@ def get_dumps_quantity(product_id, product_type, from_date, to_date):
 def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
     """Get supplier returns between dates"""
     try:
-        print(f"[DEBUG] Getting supplier returns for product {product_id} ({product_type}) between {from_date} and {to_date}")
         
         movements = StockMovement.query.filter(
             StockMovement.product_id == product_id,
@@ -6928,7 +6891,6 @@ def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
         # Supplier returns are stored as negative quantities (stock reduction)
         # But for stock check calculation, we need the absolute value
         total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
-        print(f"[DEBUG] Found {len(movements)} supplier return movements, total: {total}")
         return total
     except Exception as e:
         print(f"[ERROR] Error getting supplier returns: {e}")
@@ -7408,7 +7370,7 @@ def create_customer_return():
         last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
         ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
         # Calculate total value
-        quantity = int(data.get('quantity', 0))
+        quantity = float(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
         # Parse date string to date object
@@ -7478,8 +7440,29 @@ def create_customer_return():
             created_by=user_id
         )
         db.session.add(customer_return)
+        
+        # Create stock movement if status is completed
+        if customer_return_data.status == 'completed':
+            # Get current stock to calculate previous and new stock
+            current_stock = get_product_stock(customer_return_data.productId, customer_return_data.productType)
+            previous_stock = current_stock
+            new_stock = current_stock + quantity  # Customer returns increase stock
+            
+            stock_movement = StockMovement(
+                product_id=customer_return_data.productId,
+                product_type=customer_return_data.productType,
+                movement_type='customer_return',
+                quantity=quantity,
+                reference_id=customer_return.id,
+                reference_type='customer_return',
+                previous_stock=previous_stock,
+                new_stock=new_stock,
+                remarks=f"Customer return: {ref_number}",
+                created_by=user_id
+            )
+            db.session.add(stock_movement)
+        
         db.session.commit()
-        # Note: Stock is NOT updated here - it will be updated when the return is approved
         
         # If credit note is issued, update customer balance
         if customer_return_data.creditNoteIssued and customer_return_data.creditNoteAmount > 0:
@@ -7527,7 +7510,7 @@ def update_customer_return(id):
         old_credit_amount = customer_return.credit_note_amount
         
         # Calculate total value
-        quantity = int(data.get('quantity', 0))
+        quantity = float(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
         

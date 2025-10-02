@@ -104,8 +104,8 @@ export default function CustomerReturn() {
   });
 
   const totals = {
-    totalQuantity: returnData.reduce((sum, item) => sum + (item.quantity || 0), 0),
-    totalAmount: returnData.reduce((sum, item) => sum + (item.returnAmount || 0), 0)
+    totalQuantity: returnData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+    totalAmount: returnData.reduce((sum, item) => sum + (Number(item.returnAmount) || 0), 0)
   };
 
   // Export handlers
@@ -166,7 +166,7 @@ export default function CustomerReturn() {
         printWindow.document.write(`<td>${item.productName}</td>`);
         printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
         printWindow.document.write(`<td>${item.returnReason}</td>`);
-        printWindow.document.write(`<td>£${item.returnAmount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>£${Number(item.returnAmount).toFixed(2)}</td>`);
         printWindow.document.write(`<td>${item.refundStatus}</td>`);
         printWindow.document.write('</tr>');
       });
@@ -230,9 +230,9 @@ export default function CustomerReturn() {
         item.customerName || '',
         item.invoiceNo || '',
         item.productName || '',
-        item.quantity || 0,
+        Number(item.quantity) || 0,
         item.returnReason || '',
-        item.returnAmount || 0,
+        Number(item.returnAmount) || 0,
         item.refundStatus || ''
       ]);
       
@@ -258,22 +258,25 @@ export default function CustomerReturn() {
       // Add number formatting for numeric columns
       const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       for (let R = 1; R <= range.e.r; R++) {
-        // Format quantity column (0-based index 5)
+        // Format quantity column (0-based index 5) - allow up to 3 decimal places, remove trailing zeros
         const qtyCell = XLSX.utils.encode_cell({ r: R, c: 5 });
-        if (!ws[qtyCell]) ws[qtyCell] = {};
-        ws[qtyCell].t = 'n'; // Number type
+        if (ws[qtyCell] && typeof ws[qtyCell].v === 'number') {
+          ws[qtyCell].t = 'n'; // Number type
+          ws[qtyCell].z = '0.###'; // Format to show decimals only when needed (up to 3 places)
+        }
         
         // Format amount column (0-based index 7)
         const amtCell = XLSX.utils.encode_cell({ r: R, c: 7 });
-        if (!ws[amtCell]) ws[amtCell] = {};
-        ws[amtCell].t = 'n'; // Number type
-        ws[amtCell].z = '#,##0.00'; // Format as number with 2 decimal places
+        if (ws[amtCell] && typeof ws[amtCell].v === 'number') {
+          ws[amtCell].t = 'n'; // Number type
+          ws[amtCell].z = '#,##0.00'; // Format as number with 2 decimal places
+        }
       }
       
       // Add totals row
       const totalRow = [
         '', '', '', '', '',
-        { v: totals.totalQuantity, t: 'n' },
+        { v: totals.totalQuantity, t: 'n', z: '0.###' }, // Format quantity with up to 3 decimals, no trailing zeros
         'Total:',
         { v: totals.totalAmount, t: 'n', z: '#,##0.00' },
         ''
@@ -343,9 +346,9 @@ export default function CustomerReturn() {
       item.customerName,
       item.invoiceNo,
       item.productName,
-      item.quantity,
+      formatQuantity(item.quantity), // Use formatQuantity to handle decimals properly
       item.returnReason,
-      `£${item.returnAmount.toFixed(2)}`,
+      `£${Number(item.returnAmount).toFixed(2)}`,
       item.refundStatus
     ]);
     autoTable(doc, {
@@ -381,9 +384,9 @@ export default function CustomerReturn() {
       item.customerName,
       item.invoiceNo,
       item.productName,
-      item.quantity,
+      formatQuantity(item.quantity), // Use formatQuantity for proper decimal handling
       item.returnReason,
-      item.returnAmount,
+      Number(item.returnAmount).toFixed(2),
       item.refundStatus
     ].join('\t')).join('\n');
     await navigator.clipboard.writeText(text);
@@ -572,7 +575,7 @@ export default function CustomerReturn() {
                     <TableCell className="font-bold">TOTAL</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
-                    <TableCell className="text-center font-bold">{totals.totalQuantity}</TableCell>
+                    <TableCell className="text-center font-bold">{formatQuantity(totals.totalQuantity)}</TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-center font-bold">£{totals.totalAmount.toFixed(2)}</TableCell>
                     <TableCell></TableCell>

@@ -177,15 +177,28 @@ export default function StockCheck() {
     return passesStatusFilter && passesZeroFilter;
   });
 
+  // Calculate totals from all data (for summary)
   const totals = {
-    os: filteredData.reduce((sum, item) => sum + item.os, 0),
-    ns: filteredData.reduce((sum, item) => sum + item.ns, 0),
-    sales: filteredData.reduce((sum, item) => sum + item.sales, 0),
-    crtn: filteredData.reduce((sum, item) => sum + item.crtn, 0),
-    dmps: filteredData.reduce((sum, item) => sum + item.dmps, 0),
-    srtn: filteredData.reduce((sum, item) => sum + item.srtn, 0),
-    stock: filteredData.reduce((sum, item) => sum + item.stock, 0),
-    clStock: filteredData.reduce((sum, item) => sum + item.clStock, 0)
+    os: stockData.reduce((sum, item) => sum + (Number(item.os) || 0), 0),
+    ns: stockData.reduce((sum, item) => sum + (Number(item.ns) || 0), 0),
+    sales: stockData.reduce((sum, item) => sum + (Number(item.sales) || 0), 0),
+    crtn: stockData.reduce((sum, item) => sum + (Number(item.crtn) || 0), 0),
+    dmps: stockData.reduce((sum, item) => sum + (Number(item.dmps) || 0), 0),
+    srtn: stockData.reduce((sum, item) => sum + (Number(item.srtn) || 0), 0),
+    stock: stockData.reduce((sum, item) => sum + (Number(item.stock) || 0), 0),
+    clStock: stockData.reduce((sum, item) => sum + (Number(item.clStock) || 0), 0)
+  };
+
+  // Calculate filtered totals (for table display)
+  const filteredTotals = {
+    os: filteredData.reduce((sum, item) => sum + (Number(item.os) || 0), 0),
+    ns: filteredData.reduce((sum, item) => sum + (Number(item.ns) || 0), 0),
+    sales: filteredData.reduce((sum, item) => sum + (Number(item.sales) || 0), 0),
+    crtn: filteredData.reduce((sum, item) => sum + (Number(item.crtn) || 0), 0),
+    dmps: filteredData.reduce((sum, item) => sum + (Number(item.dmps) || 0), 0),
+    srtn: filteredData.reduce((sum, item) => sum + (Number(item.srtn) || 0), 0),
+    stock: filteredData.reduce((sum, item) => sum + (Number(item.stock) || 0), 0),
+    clStock: filteredData.reduce((sum, item) => sum + (Number(item.clStock) || 0), 0)
   };
 
   // Export handlers
@@ -366,8 +379,11 @@ export default function StockCheck() {
     // Add clean summary at the bottom
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
-    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)}`, 14, finalY + 10);
-    doc.text(`Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} | Filter: ${stockFilter}`, 14, finalY + 10);
+    doc.text(`All Data Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)} Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
+    if (stockFilter !== "Show All" || !showZeroEntries) {
+      doc.text(`Displayed Totals - O.S: ${formatQuantity(filteredTotals.os)} N.S: ${formatQuantity(filteredTotals.ns)} Sales: ${formatQuantity(filteredTotals.sales)} Stock: ${formatQuantity(filteredTotals.stock)} Cl.Stock: ${formatQuantity(filteredTotals.clStock)}`, 14, finalY + 26);
+    }
     
     doc.save(`stock-check-${format(osDate, "yyyyMMdd")}-${format(toDate, "yyyyMMdd")}.pdf`);
   };
@@ -480,8 +496,11 @@ export default function StockCheck() {
     // Add clean summary at the bottom (same format as regular PDF)
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
-    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)}`, 14, finalY + 10);
-    doc.text(`Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} | Filter: ${stockFilter}`, 14, finalY + 10);
+    doc.text(`All Data Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)} Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
+    if (stockFilter !== "Show All" || !showZeroEntries) {
+      doc.text(`Displayed Totals - O.S: ${formatQuantity(filteredTotals.os)} N.S: ${formatQuantity(filteredTotals.ns)} Sales: ${formatQuantity(filteredTotals.sales)} Stock: ${formatQuantity(filteredTotals.stock)} Cl.Stock: ${formatQuantity(filteredTotals.clStock)}`, 14, finalY + 26);
+    }
     
     return doc.output('blob');
   };
@@ -543,7 +562,7 @@ export default function StockCheck() {
           const emailData = {
             to: emailList,
             subject: `Stock Check Report - ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Stock Check report for the period from ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed stock analysis including:\n- Opening Stock (O.S) and New Stock (N.S)\n- Sales figures and Customer Returns (C.RTN)\n- Dumps and Supplier Returns (S.RTN)\n- Current Stock and Closing Stock (Cl.Stock)\n- Stock variance analysis (Short/Excess/Correct)\n\nSummary Totals:\n- Total O.S: ${totals.os}\n- Total N.S: ${totals.ns}\n- Total Sales: ${totals.sales}\n- Total C.RTN: ${totals.crtn}\n- Total Dmps: ${totals.dmps}\n- Total S.RTN: ${totals.srtn}\n- Total Stock: ${totals.stock}\n- Total Cl.Stock: ${totals.clStock}\n\nFilter Applied: ${stockFilter}\n\nBest regards,\n${companyDetails?.name || 'Stock Management Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Stock Check report for the period from ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed stock analysis including:\n- Opening Stock (O.S) and New Stock (N.S)\n- Sales figures and Customer Returns (C.RTN)\n- Dumps and Supplier Returns (S.RTN)\n- Current Stock and Closing Stock (Cl.Stock)\n- Stock variance analysis (Short/Excess/Correct)\n\nAll Data Summary Totals:\n- Total O.S: ${formatQuantity(totals.os)}\n- Total N.S: ${formatQuantity(totals.ns)}\n- Total Sales: ${formatQuantity(totals.sales)}\n- Total C.RTN: ${formatQuantity(totals.crtn)}\n- Total Dmps: ${formatQuantity(totals.dmps)}\n- Total S.RTN: ${formatQuantity(totals.srtn)}\n- Total Stock: ${formatQuantity(totals.stock)}\n- Total Cl.Stock: ${formatQuantity(totals.clStock)}\n\nFilter Applied: ${stockFilter}${!showZeroEntries ? ' (Zero entries hidden)' : ''}\n${(stockFilter !== "Show All" || !showZeroEntries) ? `\nDisplayed Data Totals:\n- Displayed O.S: ${formatQuantity(filteredTotals.os)}\n- Displayed N.S: ${formatQuantity(filteredTotals.ns)}\n- Displayed Sales: ${formatQuantity(filteredTotals.sales)}\n- Displayed Stock: ${formatQuantity(filteredTotals.stock)}\n- Displayed Cl.Stock: ${formatQuantity(filteredTotals.clStock)}` : ''}\n\nBest regards,\n${companyDetails?.name || 'Stock Management Team'}`,
             attachment: {
               filename: `stock-check-${format(osDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -885,18 +904,18 @@ export default function StockCheck() {
                       </TableRow>
                     ))}
                     
-                    {/* Total Row */}
+                    {/* Total Row - shows totals for filtered/displayed data */}
                     <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                       <TableCell></TableCell>
                       <TableCell className="font-bold">TOTAL</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.os)}</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.ns)}</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.sales)}</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.crtn)}</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.dmps)}</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.srtn)}</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.stock)}</TableCell>
-                      <TableCell className="text-center font-bold">{formatQuantity(totals.clStock)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.os)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.ns)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.sales)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.crtn)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.dmps)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.srtn)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.stock)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(filteredTotals.clStock)}</TableCell>
                       <TableCell></TableCell>
                     </TableRow>
                   </TableBody>
@@ -904,19 +923,67 @@ export default function StockCheck() {
               )}
             </div>
             {/* Summary below table, styled for print and screen */}
-            <div className="flex flex-wrap items-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2">
-              <div className="flex items-center font-semibold mr-2">Date Range:</div>
-              <div className="mr-6">{format(osDate, 'yyyy-MM-dd')} to {format(toDate, 'yyyy-MM-dd')}</div>
-              <div className="flex items-center font-semibold mr-2">Totals - O.S:</div>
-              <div className="mr-4">{formatQuantity(totals.os)}</div>
-              <div className="flex items-center font-semibold mr-2">N.S:</div>
-              <div className="mr-4">{formatQuantity(totals.ns)}</div>
-              <div className="flex items-center font-semibold mr-2">Sales:</div>
-              <div className="mr-4">{formatQuantity(totals.sales)}</div>
-              <div className="flex items-center font-semibold mr-2">Stock:</div>
-              <div className="mr-4">{formatQuantity(totals.stock)}</div>
-              <div className="flex items-center font-semibold mr-2">Cl.Stock:</div>
-              <div>{formatQuantity(totals.clStock)}</div>
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg border space-y-3">
+              {/* Date Range */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <div className="flex items-center font-semibold">Date Range:</div>
+                <div>{format(osDate, 'yyyy-MM-dd')} to {format(toDate, 'yyyy-MM-dd')}</div>
+                <div className="flex items-center font-semibold ml-4">Filter:</div>
+                <div>{stockFilter}</div>
+                {!showZeroEntries && <div className="text-sm text-gray-600">(Zero entries hidden)</div>}
+              </div>
+              
+              {/* All Data Totals */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <div className="flex items-center font-semibold text-blue-600">All Data Totals:</div>
+                <div className="flex items-center gap-1">
+                  <span className="font-medium">O.S:</span>
+                  <span>{formatQuantity(totals.os)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-medium">N.S:</span>
+                  <span>{formatQuantity(totals.ns)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-medium">Sales:</span>
+                  <span>{formatQuantity(totals.sales)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-medium">Stock:</span>
+                  <span>{formatQuantity(totals.stock)}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="font-medium">Cl.Stock:</span>
+                  <span>{formatQuantity(totals.clStock)}</span>
+                </div>
+              </div>
+              
+              {/* Filtered Data Totals (only show if different from all data) */}
+              {(stockFilter !== "Show All" || !showZeroEntries) && (
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <div className="flex items-center font-semibold text-green-600">Displayed Totals:</div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">O.S:</span>
+                    <span>{formatQuantity(filteredTotals.os)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">N.S:</span>
+                    <span>{formatQuantity(filteredTotals.ns)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">Sales:</span>
+                    <span>{formatQuantity(filteredTotals.sales)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">Stock:</span>
+                    <span>{formatQuantity(filteredTotals.stock)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">Cl.Stock:</span>
+                    <span>{formatQuantity(filteredTotals.clStock)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
