@@ -9,7 +9,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, TrendingUp, FileText, Download, Copy, Printer, Search, Mail } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
@@ -148,7 +148,7 @@ export default function ProfitLoss() {
     const ws = XLSX.utils.json_to_sheet(profitData.map((item: ProfitLossItem) => ({
       'Sl No': item.slNo,
       'Product Description': item.productDescription,
-      'Total Qty': item.totalQuantity,
+      'Total Qty': formatQuantity(item.totalQuantity),
       'Avg Purchase': item.avgPurchase,
       'Avg Sales': item.avgSales,
       'Avg Profit': item.avgProfit,
@@ -187,7 +187,7 @@ export default function ProfitLoss() {
       body: profitData.map((item: ProfitLossItem) => [
         item.slNo,
         item.productDescription,
-        item.totalQuantity,
+        formatQuantity(item.totalQuantity),
         item.avgPurchase,
         item.avgSales,
         item.avgProfit,
@@ -212,7 +212,7 @@ export default function ProfitLoss() {
     doc.setFont('helvetica', 'bold');
     doc.text('Total Quantity:', 16, finalY + 20);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${Number(totals.totalQuantity).toFixed(2)}`, 50, finalY + 20);
+    doc.text(`${formatQuantity(totals.totalQuantity)}`, 50, finalY + 20);
     if (showProfit) {
       doc.setFont('helvetica', 'bold');
       doc.text('Total Profit:', 16, finalY + 26);
@@ -245,7 +245,7 @@ export default function ProfitLoss() {
     text += profitData.map((item: ProfitLossItem) => [
       item.slNo,
       item.productDescription,
-      item.totalQuantity,
+      formatQuantity(item.totalQuantity),
       item.avgPurchase,
       item.avgSales,
       item.avgProfit,
@@ -291,7 +291,7 @@ export default function ProfitLoss() {
       const row = [
         item.slNo.toString(),
         item.productDescription,
-        item.totalQuantity.toString(),
+        formatQuantity(item.totalQuantity),
         `£${Number(item.avgPurchase).toFixed(2)}`,
         `£${Number(item.avgSales).toFixed(2)}`
       ];
@@ -333,7 +333,7 @@ export default function ProfitLoss() {
     doc.setFont('helvetica', 'bold');
     doc.text(`Summary - Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 16, finalY + 14);
     doc.setFont('helvetica', 'normal');
-    let summaryLine1 = `Total Quantity: ${totals.totalQuantity.toFixed(2)} | Total Purchase: £${Number(totals.totPurchase).toFixed(2)} | Total Sales: £${Number(totals.totSales).toFixed(2)}`;
+    let summaryLine1 = `Total Quantity: ${formatQuantity(totals.totalQuantity)} | Total Purchase: £${Number(totals.totPurchase).toFixed(2)} | Total Sales: £${Number(totals.totSales).toFixed(2)}`;
     doc.text(summaryLine1, 16, finalY + 20);
     if (showProfit) {
       let summaryLine2 = `Total Profit: £${Number(totals.totProfit).toFixed(2)} | Percent Profit: ${Number(overallProfitPercent).toFixed(2)}%`;
@@ -384,7 +384,7 @@ export default function ProfitLoss() {
           const emailData = {
             to: emailList,
             subject: `Profit/Loss Report - ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Profit/Loss Report for the period from ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed profit and loss analysis including:\n- Product-wise quantity analysis\n- Average and total purchase costs\n- Average and total sales amounts\n${showProfit ? '- Profit calculations and percentages\n- Loss identification (highlighted items)\n' : ''}- Overall financial performance summary\n\nReport Summary:\n- Total Products: ${profitData.length}\n- Total Quantity: ${totals.totalQuantity.toFixed(2)}\n- Total Purchase: £${Number(totals.totPurchase).toFixed(2)}\n- Total Sales: £${Number(totals.totSales).toFixed(2)}\n${showProfit ? `- Total Profit: £${Number(totals.totProfit).toFixed(2)}\n- Overall Profit Percentage: ${Number(overallProfitPercent).toFixed(2)}%\n` : ''}- Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.name || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Profit/Loss Report for the period from ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed profit and loss analysis including:\n- Product-wise quantity analysis\n- Average and total purchase costs\n- Average and total sales amounts\n${showProfit ? '- Profit calculations and percentages\n- Loss identification (highlighted items)\n' : ''}- Overall financial performance summary\n\nReport Summary:\n- Total Products: ${profitData.length}\n- Total Quantity: ${formatQuantity(totals.totalQuantity)}\n- Total Purchase: £${Number(totals.totPurchase).toFixed(2)}\n- Total Sales: £${Number(totals.totSales).toFixed(2)}\n${showProfit ? `- Total Profit: £${Number(totals.totProfit).toFixed(2)}\n- Overall Profit Percentage: ${Number(overallProfitPercent).toFixed(2)}%\n` : ''}- Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.name || 'Finance Team'}`,
             attachment: {
               filename: `profit-loss-report-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -587,7 +587,7 @@ export default function ProfitLoss() {
                       <TableRow key={item.id} className={item.isLoss ? "bg-orange-50" : ""}>
                         <TableCell>{item.slNo}</TableCell>
                         <TableCell>{item.productDescription}</TableCell>
-                        <TableCell className="text-center">{item.totalQuantity}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.totalQuantity)}</TableCell>
                         <TableCell className="text-center">{Number(item.avgPurchase).toFixed(2)}</TableCell>
                         <TableCell className="text-center">{Number(item.avgSales).toFixed(2)}</TableCell>
                         {showProfit && <TableCell className={`text-center ${item.isLoss ? 'text-red-600' : ''}`}>{Number(item.avgProfit).toFixed(2)}</TableCell>}
@@ -601,7 +601,7 @@ export default function ProfitLoss() {
                     <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                       <TableCell></TableCell>
                       <TableCell className="font-bold"></TableCell>
-                      <TableCell className="text-center font-bold">{totals.totalQuantity.toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold">{formatQuantity(totals.totalQuantity)}</TableCell>
                       <TableCell className="text-center font-bold"></TableCell>
                       <TableCell className="text-center font-bold"></TableCell>
                       {showProfit && <TableCell className="text-center font-bold"></TableCell>}
@@ -618,7 +618,7 @@ export default function ProfitLoss() {
                 <div className="flex items-center font-semibold mr-2">Date Range:</div>
                 <div className="mr-6">{format(fromDate, 'yyyy-MM-dd')} to {format(toDate, 'yyyy-MM-dd')}</div>
                 <div className="flex items-center font-semibold mr-2">Total Quantity:</div>
-                <div className="mr-6">{totals.totalQuantity.toFixed(2)}</div>
+                <div className="mr-6">{formatQuantity(totals.totalQuantity)}</div>
                 <div className="flex items-center font-semibold mr-2">Total Purchase:</div>
                 <div className="mr-6">£{Number(totals.totPurchase).toFixed(2)}</div>
                 <div className="flex items-center font-semibold mr-2">Total Sales:</div>

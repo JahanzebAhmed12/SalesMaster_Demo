@@ -7,6 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, FileText, Printer, Download, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatQuantity } from "@/lib/utils";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -115,7 +116,7 @@ export default function ProductSalesHistoryPage() {
         row.date,
         row.customerName,
         row.productDescription,
-        row.quantity,
+        formatQuantity(row.quantity),
         `£${Number(row.unitPrice).toFixed(2)}`,
         `£${Number(row.total).toFixed(2)}`
       ]),
@@ -134,7 +135,7 @@ export default function ProductSalesHistoryPage() {
         "Date": row.date,
         "Customer Name": row.customerName,
         "Product": row.productDescription,
-        "Quantity": row.quantity,
+        "Quantity": formatQuantity(row.quantity),
         "Unit Price": row.unitPrice,
         "Total": row.total,
       }))
@@ -165,7 +166,7 @@ export default function ProductSalesHistoryPage() {
         row.date,
         row.customerName,
         row.productDescription,
-        row.quantity,
+        formatQuantity(row.quantity),
         `£${Number(row.unitPrice).toFixed(2)}`,
         `£${Number(row.total).toFixed(2)}`
       ]),
@@ -363,7 +364,7 @@ export default function ProductSalesHistoryPage() {
                             {row.productDescription}
                           </span>
                         </td>
-                        <td className="border-b px-4 py-2 text-right">{row.quantity}</td>
+                        <td className="border-b px-4 py-2 text-right">{formatQuantity(row.quantity)}</td>
                         <td className="border-b px-4 py-2 text-right">£{Number(row.unitPrice).toFixed(2)}</td>
                         <td className="border-b px-4 py-2 text-right font-semibold">£{Number(row.total).toFixed(2)}</td>
                       </tr>

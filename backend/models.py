@@ -884,9 +884,10 @@ class CustomerReturn(db.Model):
             'productId': self.product_id,
             'productType': self.product_type,
             'description': self.description,
+            'productDescription': self.description,  # Add alias for frontend compatibility
             'invoiceNumber': self.invoice_number,
             'remarks': self.remarks,
-            'quantity': self.quantity,
+            'quantity': float(self.quantity) if self.quantity else 0,
             'unitPrice': float(self.unit_price) if self.unit_price else 0,
             'totalValue': float(self.total_value) if self.total_value else 0,
             'returnReason': self.return_reason,

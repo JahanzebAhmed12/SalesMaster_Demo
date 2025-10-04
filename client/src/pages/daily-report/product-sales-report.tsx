@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn, formatQuantity } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
 import { useBusinessDate } from '@/hooks/use-business-date';
 import PageLayout from '@/components/common/page-layout';
@@ -193,7 +193,7 @@ export default function ProductSalesReport() {
       salesData.forEach(item => {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${item.productDescription}</td>`);
-        printWindow.document.write(`<td>${item.quantity}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
         printWindow.document.write(`<td>£${item.avgPrice.toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${item.total.toFixed(2)}</td>`);
         printWindow.document.write('</tr>');
@@ -202,7 +202,7 @@ export default function ProductSalesReport() {
       
       // Add summary
       printWindow.document.write('<div style="margin-top:20px;padding:10px;background-color:#f9f9f9;border:1px solid #ccc;text-align:center;">');
-      printWindow.document.write(`<strong>Summary: Products: ${numberOfProducts} | Total Qty: ${totalQuantity} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}</strong>`);
+      printWindow.document.write(`<strong>Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}</strong>`);
       printWindow.document.write('</div>');
       
       printWindow.document.write('</body></html>');
@@ -215,7 +215,7 @@ export default function ProductSalesReport() {
   const handleExcel = () => {
     const ws = XLSX.utils.json_to_sheet(salesData.map((item: SalesReportData) => ({
       'Product Description': item.productDescription,
-      'Qty': item.quantity,
+      'Qty': formatQuantity(item.quantity),
       'Avg Price': item.avgPrice,
       'Total': item.total
     })));
@@ -277,7 +277,7 @@ export default function ProductSalesReport() {
       ]],
       body: salesData.map((item: SalesReportData) => [
         item.productDescription,
-        item.quantity,
+        formatQuantity(item.quantity),
         `£${item.avgPrice.toFixed(2)}`,
         `£${item.total.toFixed(2)}`
       ]),
@@ -297,7 +297,7 @@ export default function ProductSalesReport() {
     // Add summary at the bottom
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
-    doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${totalQuantity} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
+    doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
     
     doc.save(`product-sales-report-${formattedFromDate || 'all'}-${formattedToDate || 'all'}.pdf`);
   };
@@ -306,7 +306,7 @@ export default function ProductSalesReport() {
     const header = ['Product Description', 'Qty', 'Avg Price', 'Total'];
     const rows = salesData.map((item: SalesReportData) => [
       item.productDescription,
-      item.quantity,
+      formatQuantity(item.quantity),
       item.avgPrice,
       item.total
     ]);
@@ -367,7 +367,7 @@ export default function ProductSalesReport() {
       head: [['Product Description', 'Qty', 'Avg Price', 'Total']],
       body: salesData.map((item: SalesReportData) => [
         item.productDescription,
-        item.quantity.toString(),
+        formatQuantity(item.quantity),
         `£${item.avgPrice.toFixed(2)}`,
         `£${item.total.toFixed(2)}`
       ]),
@@ -387,7 +387,7 @@ export default function ProductSalesReport() {
     // Add summary at the bottom (same format as regular PDF)
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
-    doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${totalQuantity} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
+    doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
     
     return doc.output('blob');
   };
@@ -431,7 +431,7 @@ export default function ProductSalesReport() {
           const emailData = {
             to: emailList,
             subject: `Product Sales Report - ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}`,
-            body: `Dear Recipient,\n\nPlease find attached the Product Sales Report for the period from ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}.\n\nThis report contains detailed sales information including:\n- Product descriptions and quantities sold\n- Average selling prices\n- Total sales amounts per product\n- Overall sales summary\n\nReport Summary:\n- Total Products: ${numberOfProducts}\n- Total Quantity Sold: ${totalQuantity}\n- Average Price: £${averagePrice.toFixed(2)}\n- Total Sales Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}\n\nBest regards,\n${companyDetails?.name || 'Sales Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Product Sales Report for the period from ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}.\n\nThis report contains detailed sales information including:\n- Product descriptions and quantities sold\n- Average selling prices\n- Total sales amounts per product\n- Overall sales summary\n\nReport Summary:\n- Total Products: ${numberOfProducts}\n- Total Quantity Sold: ${formatQuantity(totalQuantity)}\n- Average Price: £${averagePrice.toFixed(2)}\n- Total Sales Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${formattedFromDate || 'N/A'} to ${formattedToDate || 'N/A'}\n\nBest regards,\n${companyDetails?.name || 'Sales Team'}`,
             attachment: {
               filename: `product-sales-report-${formattedFromDate || 'unknown'}-to-${formattedToDate || 'unknown'}.pdf`,
               content: base64PDF,
@@ -668,7 +668,7 @@ export default function ProductSalesReport() {
                             {item.productDescription}
                           </button>
                         </TableCell>
-                        <TableCell className="text-right px-6">{item.quantity}</TableCell>
+                        <TableCell className="text-right px-6">{formatQuantity(item.quantity)}</TableCell>
                         <TableCell className="text-right px-6">${item.avgPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-right font-semibold px-6">${item.total.toFixed(2)}</TableCell>
                       </TableRow>
@@ -683,7 +683,7 @@ export default function ProductSalesReport() {
                <div className="flex items-center font-semibold mr-2">Products:</div>
                <div className="mr-4">{numberOfProducts}</div>
                <div className="flex items-center font-semibold mr-2">Total Qty:</div>
-               <div className="mr-4">{totalQuantity}</div>
+               <div className="mr-4">{formatQuantity(totalQuantity)}</div>
                <div className="flex items-center font-semibold mr-2">Avg Price:</div>
                <div className="mr-4">£{averagePrice.toFixed(2)}</div>
                <div className="flex items-center font-semibold mr-2">Total Sales:</div>
