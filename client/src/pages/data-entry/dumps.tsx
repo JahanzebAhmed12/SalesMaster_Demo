@@ -148,7 +148,7 @@ export default function Dumps() {
   }, [newDump.productType, products]);
 
   const handleAddDump = () => {
-    if (!newDump.productId || !newDump.description || newDump.quantity <= 0) {
+    if (!newDump.productId || !newDump.description || newDump.quantity === 0) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -241,7 +241,7 @@ export default function Dumps() {
         printWindow.document.write(`<td>${item.refNumber}</td>`);
         printWindow.document.write(`<td>${item.date}</td>`);
         printWindow.document.write(`<td>${item.supplierName || 'N/A'}</td>`);
-        printWindow.document.write(`<td>${item.productType}</td>`);
+        printWindow.document.write(`<td>${item.productName || item.productType}</td>`);
         printWindow.document.write(`<td>${item.description}</td>`);
         printWindow.document.write(`<td>${item.remarks || 'N/A'}</td>`);
         printWindow.document.write(`<td>${item.quantity}</td>`);
@@ -268,7 +268,7 @@ export default function Dumps() {
         item.refNumber,
         item.date,
         item.supplierName || 'N/A',
-        item.productType,
+        item.productName || item.productType,
         item.description,
         item.remarks || 'N/A',
         item.quantity,
@@ -337,7 +337,7 @@ export default function Dumps() {
         item.refNumber,
         item.date,
         item.supplierName || 'N/A',
-        item.productType,
+        item.productName || item.productType,
         item.description,
         item.remarks || 'N/A',
         item.quantity,
@@ -397,7 +397,7 @@ export default function Dumps() {
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{totalQuantity}</div>
+              <div className="text-2xl font-bold">{formatQuantity(totalQuantity)}</div>
               <p className="text-xs text-muted-foreground">
                 Total quantity dumped
               </p>
@@ -647,6 +647,7 @@ export default function Dumps() {
                             onChange={(e) => setNewDump({...newDump, quantity: parseFloat(e.target.value) || 0})}
                             className="w-full min-w-[80px] text-center h-8"
                             min="0"
+                            step="0.001"
                           />
                         </div>
                         <div>
@@ -723,7 +724,7 @@ export default function Dumps() {
                           <TableCell className="font-mono text-sm min-w-[60px] sm:min-w-[80px] md:min-w-[100px]">{entry.refNumber}</TableCell>
                           <TableCell className="text-sm min-w-[80px] sm:min-w-[100px] md:min-w-[120px]">{entry.date}</TableCell>
                           <TableCell className="text-sm min-w-[90px] sm:min-w-[110px] md:min-w-[120px]">{entry.supplierName || "N/A"}</TableCell>
-                          <TableCell className="text-sm min-w-[60px] sm:min-w-[80px] md:min-w-[100px]">{entry.productType}</TableCell>
+                          <TableCell className="text-sm min-w-[60px] sm:min-w-[80px] md:min-w-[100px]">{entry.productName || entry.productType}</TableCell>
                           <TableCell className="text-sm max-w-[100px] sm:max-w-[120px] md:max-w-[150px] truncate min-w-[100px] sm:min-w-[120px] md:min-w-[150px]" title={entry.description}>
                             {entry.description}
                           </TableCell>

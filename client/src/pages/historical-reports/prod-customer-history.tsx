@@ -10,7 +10,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon } from "lucide-react";
 import { format, subWeeks } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -66,7 +66,8 @@ export default function ProdCustomerHistory() {
   const {
     data: historyData = [],
     isLoading: loadingHistory,
-    error: historyError
+    error: historyError,
+    refetch
   } = useQuery({
     queryKey: [
       "prod-customer-history",
@@ -93,6 +94,8 @@ export default function ProdCustomerHistory() {
       return apiRequest("GET", `/api/reports/prod-customer-history?${params.toString()}`);
     },
     enabled: !!searchClicked,
+    staleTime: 0, // Always consider data stale
+    cacheTime: 0, // Don't cache the data
   });
 
   // Totals
@@ -133,7 +136,7 @@ export default function ProdCustomerHistory() {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${row.slNo}</td>`);
         printWindow.document.write(`<td>${row.product}</td>`);
-        printWindow.document.write(`<td>${row.quantity}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(row.quantity)}</td>`);
         printWindow.document.write(`<td>${row.avgPrice.toFixed(2)}</td>`);
         printWindow.document.write(`<td>${row.total.toFixed(2)}</td>`);
         printWindow.document.write('</tr>');
@@ -177,7 +180,7 @@ export default function ProdCustomerHistory() {
       worksheetData.push([
         row.slNo || '',
         row.product || '',
-        row.quantity || 0,
+        Number(formatQuantity(row.quantity || 0)),
         Number(row.avgPrice || 0),
         Number(row.total || 0)
       ]);
@@ -187,7 +190,7 @@ export default function ProdCustomerHistory() {
     worksheetData.push([
       '',
       'TOTAL',
-      totalQuantity,
+      Number(formatQuantity(totalQuantity)),
       averagePrice,
       totalAmount
     ]);
@@ -256,7 +259,7 @@ export default function ProdCustomerHistory() {
     const tableData = historyData.map((row: any) => [
       String(row.slNo || ''),
       String(row.product || ''),
-      String(row.quantity || 0),
+      String(formatQuantity(row.quantity || 0)),
       String((row.avgPrice || 0).toFixed(2)),
       String((row.total || 0).toFixed(2))
     ]);
@@ -291,7 +294,7 @@ export default function ProdCustomerHistory() {
     doc.text('stand100', pageWidth - 30, pageHeight - 10);
     
     autoTable(doc, {
-      head: [['', 'TOTAL', totalQuantity.toFixed(2), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]],
+      head: [['', 'TOTAL', formatQuantity(totalQuantity), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]],
       bodyStyles: { fontStyle: 'bold' },
       startY: (doc as any).lastAutoTable.finalY + 10
     });
@@ -311,13 +314,13 @@ export default function ProdCustomerHistory() {
       text += historyData.map((row: any) => [
         row.slNo || '',
         row.product || '',
-        row.quantity || 0,
+        formatQuantity(row.quantity || 0),
         (row.avgPrice || 0).toFixed(2),
         (row.total || 0).toFixed(2)
       ].join('\t')).join('\n');
       
       // Add totals row
-      text += `\n\tTOTAL\t${totalQuantity}\t\t${averagePrice.toFixed(2)}\t\t${totalAmount.toFixed(2)}`;
+      text += `\n\tTOTAL\t${formatQuantity(totalQuantity)}\t\t${averagePrice.toFixed(2)}\t\t${totalAmount.toFixed(2)}`;
       
       await navigator.clipboard.writeText(text);
       alert('Data copied to clipboard!');
@@ -454,7 +457,10 @@ export default function ProdCustomerHistory() {
               </div>
 
               <div>
-                <Button className="bg-blue-600 hover:bg-blue-700 w-full" onClick={() => setSearchClicked((v) => !v)} disabled={loading}>
+                <Button className="bg-blue-600 hover:bg-blue-700 w-full" onClick={() => {
+                  setSearchClicked(true);
+                  refetch();
+                }} disabled={loading}>
                   {loading ? "Loading..." : "Search"}
                 </Button>
               </div>
@@ -509,7 +515,7 @@ export default function ProdCustomerHistory() {
                       <TableRow key={idx}>
                         <TableCell className="text-center">{row.slNo}</TableCell>
                         <TableCell className="text-center">{row.product}</TableCell>
-                        <TableCell className="text-center">{row.quantity}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(row.quantity)}</TableCell>
                         <TableCell className="text-center">{row.avgPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">{row.total.toFixed(2)}</TableCell>
                       </TableRow>
@@ -519,7 +525,7 @@ export default function ProdCustomerHistory() {
                   <TableRow className="bg-blue-100 font-semibold">
                     <TableCell></TableCell>
                     <TableCell className="text-center">TOTAL</TableCell>
-                    <TableCell className="text-center">{totalQuantity}</TableCell>
+                    <TableCell className="text-center">{formatQuantity(totalQuantity)}</TableCell>
                     <TableCell className="text-center">{averagePrice.toFixed(2)}</TableCell>
                     <TableCell className="text-center">{totalAmount.toFixed(2)}</TableCell>
                   </TableRow>

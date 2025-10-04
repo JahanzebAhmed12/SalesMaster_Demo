@@ -431,8 +431,8 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             new_stock = previous_stock + float(quantity_change)  # Convert to float to avoid Decimal binding issues
             
             # Allow negative stock for sales (overselling) but warn for regular products
-            # Only prevent negative stock for non-sale movements (except adjustments and cancellations)
-            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation']:
+            # Only prevent negative stock for non-sale movements (except adjustments, cancellations, and dumps)
+            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation', 'dump', 'dump_cancellation']:
                 raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
             
             # Update product stock (allow negative for sales)
@@ -7210,7 +7210,7 @@ def create_dump_entry():
         last_entry = DumpEntry.query.order_by(DumpEntry.id.desc()).first()
         ref_number = f"D{1 if not last_entry else last_entry.id + 1:04d}"
         # Calculate total value
-        quantity = int(data.get('quantity', 0))
+        quantity = float(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
         dump_entry_data = DumpEntrySchema(**{
@@ -7243,7 +7243,8 @@ def create_dump_entry():
             reference_id=None,  # or dump_entry.id if needed
             reference_type='dump',
             remarks=f"Dump entry: {dump_entry_data.description}",
-            user_id=user_id
+            user_id=user_id,
+            movement_date=business_date
         )
 
         if not success:
@@ -7265,7 +7266,7 @@ def update_dump_entry(id):
         dump_entry = DumpEntry.query.get_or_404(id)
         
         # Calculate total value
-        quantity = int(data.get('quantity', 0))
+        quantity = float(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
         
@@ -7302,7 +7303,8 @@ def delete_dump_entry(id):
             reference_id=dump_entry.id,
             reference_type='dump',
             remarks=f"Dump entry cancelled: {dump_entry.description}",
-            user_id=get_jwt_identity()
+            user_id=get_jwt_identity(),
+            movement_date=dump_entry.date
         )
         
         if not success:
@@ -9289,7 +9291,7 @@ def prod_customer_history():
         data.append({
             "slNo": idx,
             "product": row.product,
-            "quantity": int(row.quantity) if row.quantity else 0,
+            "quantity": float(row.quantity) if row.quantity else 0,
             "avgPrice": float(row.avg_price) if row.avg_price else 0,
             "total": float(row.total) if row.total else 0
         })

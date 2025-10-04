@@ -677,28 +677,29 @@ export default function ProductHistory() {
                   ) : (
                     purchases.map((purchase, idx) => (
                       <TableRow key={`purchase-${idx}`}>
-                        <TableCell className="text-right">{idx + 1}</TableCell>
-                        <TableCell>{purchase.date}</TableCell>
-                        <TableCell>{purchase.supplierName}</TableCell>
-                        <TableCell>{purchase.product}</TableCell>
-                        <TableCell className="text-right">{purchase.quantity}</TableCell>
-                        <TableCell className="text-right">{purchase.unitPrice}</TableCell>
-                        <TableCell className="text-right">{purchase.total}</TableCell>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{purchase.date}</TableCell>
+                        <TableCell className="text-center">{purchase.supplierName}</TableCell>
+                        <TableCell className="text-center">{purchase.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(purchase.quantity)}</TableCell>
+                        <TableCell className="text-center">£{Number(purchase.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(purchase.total).toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
                   {purchases.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
-                      <TableCell colSpan={4} className="text-right">Total</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={3}></TableCell>
+                      <TableCell className="text-center">
                         {formatQuantity(purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0))}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {purchases.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * (Number(p.quantity) || 0), 0) / 
-                         (purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0) || 1)}
+                      <TableCell className="text-center">
+                        £{(purchases.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * (Number(p.quantity) || 0), 0) / 
+                         (purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0) || 1)).toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {purchases.reduce((sum, p) => sum + (Number(p.total) || 0), 0).toFixed(2)}
+                      <TableCell className="text-center">
+                        £{purchases.reduce((sum, p) => sum + (Number(p.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -738,29 +739,30 @@ export default function ProductHistory() {
                   ) : (
                     supplierReturns.map((returnItem, idx) => (
                       <TableRow key={`return-${idx}`}>
-                        <TableCell className="text-right">{idx + 1}</TableCell>
-                        <TableCell>{returnItem.date}</TableCell>
-                        <TableCell>{returnItem.invoice}</TableCell>
-                        <TableCell>{returnItem.supplierName}</TableCell>
-                        <TableCell>{returnItem.product}</TableCell>
-                        <TableCell className="text-right">{returnItem.quantity}</TableCell>
-                        <TableCell className="text-right">{returnItem.unitPrice}</TableCell>
-                        <TableCell className="text-right">{returnItem.total}</TableCell>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{returnItem.date}</TableCell>
+                        <TableCell className="text-center">{returnItem.invoice}</TableCell>
+                        <TableCell className="text-center">{returnItem.supplierName}</TableCell>
+                        <TableCell className="text-center">{returnItem.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
+                        <TableCell className="text-center">£{Number(returnItem.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(returnItem.total).toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
                   {supplierReturns.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
-                      <TableCell colSpan={5} className="text-right">Total</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={4}></TableCell>
+                      <TableCell className="text-center">
                         {formatQuantity(supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {supplierReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
-                         (supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)}
+                      <TableCell className="text-center">
+                        £{(supplierReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
+                         (supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)).toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {supplierReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
+                      <TableCell className="text-center">
+                        £{supplierReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -800,29 +802,30 @@ export default function ProductHistory() {
                   ) : (
                     sales.map((sale, idx) => (
                       <TableRow key={`sale-${idx}`}>
-                        <TableCell className="text-right">{idx + 1}</TableCell>
-                        <TableCell>{sale.date}</TableCell>
-                        <TableCell>{sale.invoiceNo}</TableCell>
-                        <TableCell>{sale.customerName}</TableCell>
-                        <TableCell>{sale.product}</TableCell>
-                        <TableCell className="text-right">{sale.quantity}</TableCell>
-                        <TableCell className="text-right">{sale.unitPrice}</TableCell>
-                        <TableCell className="text-right">{sale.total}</TableCell>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{sale.date}</TableCell>
+                        <TableCell className="text-center">{sale.invoiceNo}</TableCell>
+                        <TableCell className="text-center">{sale.customerName}</TableCell>
+                        <TableCell className="text-center">{sale.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(sale.quantity)}</TableCell>
+                        <TableCell className="text-center">£{Number(sale.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(sale.total).toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
                   {sales.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
-                      <TableCell colSpan={5} className="text-right">Total</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={4}></TableCell>
+                      <TableCell className="text-center">
                         {formatQuantity(sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0))}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {sales.reduce((sum, s) => sum + (Number(s.unitPrice) || 0) * (Number(s.quantity) || 0), 0) / 
-                         (sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0) || 1)}
+                      <TableCell className="text-center">
+                        £{(sales.reduce((sum, s) => sum + (Number(s.unitPrice) || 0) * (Number(s.quantity) || 0), 0) / 
+                         (sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0) || 1)).toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {sales.reduce((sum, s) => sum + (Number(s.total) || 0), 0).toFixed(2)}
+                      <TableCell className="text-center">
+                        £{sales.reduce((sum, s) => sum + (Number(s.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -862,29 +865,30 @@ export default function ProductHistory() {
                   ) : (
                     customerReturns.map((returnItem, idx) => (
                       <TableRow key={`customer-return-${idx}`}>
-                        <TableCell className="text-right">{idx + 1}</TableCell>
-                        <TableCell>{returnItem.date}</TableCell>
-                        <TableCell>{returnItem.invoice}</TableCell>
-                        <TableCell>{returnItem.customerName}</TableCell>
-                        <TableCell>{returnItem.product}</TableCell>
-                        <TableCell className="text-right">{returnItem.quantity}</TableCell>
-                        <TableCell className="text-right">{returnItem.unitPrice}</TableCell>
-                        <TableCell className="text-right">{returnItem.total}</TableCell>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{returnItem.date}</TableCell>
+                        <TableCell className="text-center">{returnItem.invoice}</TableCell>
+                        <TableCell className="text-center">{returnItem.customerName}</TableCell>
+                        <TableCell className="text-center">{returnItem.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
+                        <TableCell className="text-center">£{Number(returnItem.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(returnItem.total).toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
                   {customerReturns.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
-                      <TableCell colSpan={5} className="text-right">Total</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={4}></TableCell>
+                      <TableCell className="text-center">
                         {formatQuantity(customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {customerReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
-                         (customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)}
+                      <TableCell className="text-center">
+                        £{(customerReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
+                         (customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)).toFixed(2)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {customerReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
+                      <TableCell className="text-center">
+                        £{customerReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -920,18 +924,19 @@ export default function ProductHistory() {
                   ) : (
                     dumps.map((dump, idx) => (
                       <TableRow key={`dump-${idx}`}>
-                        <TableCell className="text-right">{idx + 1}</TableCell>
-                        <TableCell>{dump.date}</TableCell>
-                        <TableCell>{dump.product}</TableCell>
-                        <TableCell className="text-right">{dump.totalQty}</TableCell>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{dump.date}</TableCell>
+                        <TableCell className="text-center">{dump.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(dump.totalQty)}</TableCell>
                       </TableRow>
                     ))
                   )}
                   {dumps.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
-                      <TableCell colSpan={3} className="text-right">Total</TableCell>
-                      <TableCell className="text-right">
-                        {dumps.reduce((sum, d) => sum + (Number(d.totalQty) || 0), 0).toFixed(2)}
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={2}></TableCell>
+                      <TableCell className="text-center">
+                        {formatQuantity(dumps.reduce((sum, d) => sum + (Number(d.totalQty) || 0), 0))}
                       </TableCell>
                     </TableRow>
                   )}

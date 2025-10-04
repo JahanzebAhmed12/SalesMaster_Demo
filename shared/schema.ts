@@ -586,6 +586,7 @@ export const dumpEntrySchema = z.object({
   supplierName: z.string().nullable(),
   productId: z.number(),
   productType: z.string(),
+  productName: z.string().nullable(),
   description: z.string(),
   remarks: z.string().nullable(),
   quantity: z.number(),
@@ -599,6 +600,7 @@ export const dumpEntrySchema = z.object({
 export const insertDumpEntrySchema = dumpEntrySchema.omit({
   id: true,
   supplierName: true,
+  productName: true,
   createdAt: true,
   updatedAt: true,
   createdBy: true

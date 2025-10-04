@@ -827,6 +827,15 @@ class DumpEntry(db.Model):
     user = db.relationship('User', backref='dump_entries_created', foreign_keys=[created_by])
 
     def to_dict(self):
+        # Get product name based on product type
+        product_name = None
+        if self.product_type == 'regular':
+            product = RegularProduct.query.get(self.product_id)
+            product_name = product.description if product else None
+        elif self.product_type == 'non':
+            product = NonProduct.query.get(self.product_id)
+            product_name = product.description if product else None
+        
         return {
             'id': self.id,
             'refNumber': self.ref_number,
@@ -835,9 +844,10 @@ class DumpEntry(db.Model):
             'supplierName': self.supplier.supplier_name if self.supplier else None,
             'productId': self.product_id,
             'productType': self.product_type,
+            'productName': product_name,
             'description': self.description,
             'remarks': self.remarks,
-            'quantity': self.quantity,
+            'quantity': float(self.quantity) if self.quantity else 0,
             'unitPrice': float(self.unit_price) if self.unit_price else 0,
             'totalValue': float(self.total_value) if self.total_value else 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None,

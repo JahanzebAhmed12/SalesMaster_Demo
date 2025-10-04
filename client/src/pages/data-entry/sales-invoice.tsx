@@ -137,6 +137,7 @@ const SalesInvoice = () => {
   const [applyPorterage, setApplyPorterage] = useState(true); // Track if porterage should be applied to this invoice
   const [isEditingPorterage, setIsEditingPorterage] = useState(false);
   const [customPorterage, setCustomPorterage] = useState<string>(porterageDetails.porterageCharge);
+  const [invoiceDataLoaded, setInvoiceDataLoaded] = useState(false);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
   const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
   const [isEditingDate, setIsEditingDate] = useState(false);
@@ -320,7 +321,36 @@ const SalesInvoice = () => {
           setNotes(data.notes || "");
           // Set the editable date when loading the sale
           setEditableDate(data.date ? parseISO(data.date) : new Date());
-          // Set other fields as needed
+          
+          // Set porterage settings based on loaded invoice data
+          const hasPorterage = data.porterage && data.porterage > 0;
+          setApplyPorterage(hasPorterage);
+          
+          if (hasPorterage) {
+            // Calculate the per-unit porterage charge from saved total porterage and total quantity
+            const totalQuantity = (data.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+            const perUnitPorterage = totalQuantity > 0 ? (data.porterage / totalQuantity) : 0;
+            
+            setPorterageDetails({
+              withPorterage: true,
+              porterageCharge: perUnitPorterage.toFixed(4) // Use more precision to preserve custom rates
+            });
+          } else {
+            // If no porterage or porterage is 0, ensure it's disabled
+            setApplyPorterage(false);
+          }
+          
+          // Set tax details based on loaded invoice data
+          const hasVat = data.vatAmount && data.vatAmount > 0;
+          if (hasVat) {
+            setTaxDetails({
+              withTax: true,
+              taxPercentage: data.vatRate ? data.vatRate.toString() : '0'
+            });
+          }
+          
+          // Mark that invoice data has been loaded
+          setInvoiceDataLoaded(true);
         });
     }
   }, []);
@@ -823,16 +853,25 @@ const SalesInvoice = () => {
 
     // Only update backend if invoice is already saved
     if (currentSale) {
+      // Recalculate totals with updated items
+      const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      const newPorterage = (porterageDetails.withPorterage && applyPorterage)
+        ? parseFloat(porterageDetails.porterageCharge) * newTotalQuantity
+        : 0;
+      const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
+      const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
+      
       const updatedSalePayload: BackendSalePayload = {
         invoice_number: currentSale.invoiceNumber,
         customer_id: currentSale.customerId,
         customer_type: currentSale.customerType,
         payment_status: currentSale.paymentStatus,
-        subtotal: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
-        porterage: currentSale.porterage,
-        vat_rate: currentSale.vatRate,
-        vat_amount: currentSale.vatAmount,
-        total_amount: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
+        subtotal: newSubtotal,
+        porterage: newPorterage,
+        vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
+        vat_amount: newVatAmount,
+        total_amount: newTotalAmount,
         vehicle_details: currentSale.vehicleDetails,
         gate_number: currentSale.gateNumber,
         notes: currentSale.notes,
@@ -1768,20 +1807,30 @@ const SalesInvoice = () => {
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invoiceNumber = params.get("invoiceNumber");
+    
     apiRequest("GET", "/api/settings").then(settings => {
-      setTaxDetails({
-        withTax: !!settings.withTax,
-        taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : '0',
-      });
-      setPorterageDetails({
-        withPorterage: !!settings.withPorterage,
-        porterageCharge: settings.porterageCharge ? String(settings.porterageCharge) : '0.00',
-      });
+      // Only load settings if invoice data hasn't been loaded yet (for new invoices)
+      // or if this is definitely a new invoice (no invoiceNumber)
+      if (!invoiceNumber || !invoiceDataLoaded) {
+        setTaxDetails({
+          withTax: !!settings.withTax,
+          taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : '0',
+        });
+        
+        if (!invoiceNumber) {
+          setPorterageDetails({
+            withPorterage: !!settings.withPorterage,
+            porterageCharge: settings.porterageCharge ? String(settings.porterageCharge) : '0.00',
+          });
+          setApplyPorterage(true);
+        }
+      }
+      
       setInvoicePrintFormat(settings.invoicePrintFormat || "A4");
-      // Reset applyPorterage to true when settings are loaded
-      setApplyPorterage(true);
     });
-  }, []);
+  }, [invoiceDataLoaded]);
 
   // Create refs to hold current state for event handlers
   const stateRef = useRef({
@@ -2416,16 +2465,25 @@ const SalesInvoice = () => {
                           <Button size="sm" variant="destructive" disabled={isReadOnly} onClick={() => {
                             const updatedItems = saleItems.filter((_, i) => i !== index);
                             if (currentSale) {
+                              // Recalculate totals with updated items
+                              const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+                              const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                              const newPorterage = (porterageDetails.withPorterage && applyPorterage)
+                                ? parseFloat(porterageDetails.porterageCharge) * newTotalQuantity
+                                : 0;
+                              const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
+                              const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
+                              
                               const updatedSalePayload: BackendSalePayload = {
                                 invoice_number: currentSale.invoiceNumber,
                                 customer_id: currentSale.customerId,
                                 customer_type: currentSale.customerType,
                                 payment_status: currentSale.paymentStatus,
-                                subtotal: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
-                                porterage: currentSale.porterage,
-                                vat_rate: currentSale.vatRate,
-                                vat_amount: currentSale.vatAmount,
-                                total_amount: updatedItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                                subtotal: newSubtotal,
+                                porterage: newPorterage,
+                                vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
+                                vat_amount: newVatAmount,
+                                total_amount: newTotalAmount,
                                 vehicle_details: currentSale.vehicleDetails,
                                 gate_number: currentSale.gateNumber,
                                 notes: currentSale.notes,
@@ -2678,16 +2736,17 @@ const SalesInvoice = () => {
                     <Button variant="outline" size="sm" disabled={isReadOnly} onClick={() => {
                       skipAutoHoldRef.current = true; // Prevent auto-hold on navigation after update
                       // Build update payload and call updateSaleMutation
+                      const { subtotal: calcSubtotal, vatAmount: calcVatAmount, porterage: calcPorterage, totalAmount: calcTotalAmount } = calculateTotalSummary();
                       const updatedSalePayload = {
                         invoice_number: currentSale.invoiceNumber,
                         customer_id: parseInt(customerId),
                         customer_type: currentSale.customerType,
                         payment_status: currentSale.paymentStatus,
-                        subtotal: saleItems.reduce((sum, item) => sum + item.totalPrice, 0),
-                        porterage: currentSale.porterage,
-                        vat_rate: currentSale.vatRate,
-                        vat_amount: currentSale.vatAmount,
-                        total_amount: saleItems.reduce((sum, item) => sum + item.totalPrice, 0),
+                        subtotal: calcSubtotal,
+                        porterage: calcPorterage,
+                        vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
+                        vat_amount: calcVatAmount,
+                        total_amount: calcTotalAmount,
                         vehicle_details: vehicleDetails || null,
                         gate_number: gateNumber || null,
                         notes: notes || null,
