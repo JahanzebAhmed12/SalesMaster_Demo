@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRoute } from "wouter";
 import logo from "@/public/printlogo.png";
 import { apiRequest } from "@/lib/queryClient";
@@ -36,6 +36,78 @@ interface PurchaseInvoiceData {
 function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
   if (!data) return null;
   const { company, supplier, invoice, items, notes } = data;
+  
+  // Refs for keyboard navigation
+  const inputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
+  
+  // Set ref for input elements
+  const setInputRef = (key: string) => (el: HTMLInputElement | null) => {
+    inputRefs.current[key] = el;
+  };
+  
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, currentRow: number, currentCol: 'quantity' | 'unitPrice' | 'total') => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      
+      let nextKey = '';
+      
+      if (currentCol === 'quantity') {
+        // Move to unit price in same row
+        nextKey = `unitPrice-${currentRow}`;
+      } else if (currentCol === 'unitPrice') {
+        // Move to total in same row
+        nextKey = `total-${currentRow}`;
+      } else if (currentCol === 'total') {
+        // Move to quantity in next row, or total quantity if last row
+        if (currentRow < items.length - 1) {
+          nextKey = `quantity-${currentRow + 1}`;
+        } else {
+          nextKey = 'totalQuantity';
+        }
+      }
+      
+      // Focus next input
+      if (nextKey && inputRefs.current[nextKey]) {
+        inputRefs.current[nextKey]?.focus();
+        inputRefs.current[nextKey]?.select();
+      }
+    }
+  };
+  
+  // Auto-focus first quantity input on mount
+  useEffect(() => {
+    if (items.length > 0) {
+      setTimeout(() => {
+        inputRefs.current['quantity-0']?.focus();
+      }, 100);
+    }
+  }, [items.length]);
+  
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + P to focus on first quantity field
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        if (items.length > 0) {
+          inputRefs.current['quantity-0']?.focus();
+          inputRefs.current['quantity-0']?.select();
+        }
+      }
+      // Escape to focus on first quantity field
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (items.length > 0) {
+          inputRefs.current['quantity-0']?.focus();
+          inputRefs.current['quantity-0']?.select();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [items.length]);
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
       {/* Header: Logo and Invoice Number */}
@@ -83,6 +155,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
               <td style={{ border: "1px solid #888", padding: 4 }}>{item.productName || item.description || "-"}</td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
                 <input 
+                  ref={setInputRef(`quantity-${idx}`)}
                   type="number" 
                   style={{ 
                     border: "none", 
@@ -94,10 +167,12 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                   }}
                   className="no-print-border"
                   placeholder="0"
+                  onKeyDown={(e) => handleKeyDown(e, idx, 'quantity')}
                 />
               </td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
                 <input 
+                  ref={setInputRef(`unitPrice-${idx}`)}
                   type="number" 
                   min="0"
                   step="0.01"
@@ -112,6 +187,11 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                   className="no-print-border"
                   placeholder="0.00"
                   onKeyDown={(e) => {
+                    // Handle navigation first
+                    if (e.key === 'Enter') {
+                      handleKeyDown(e, idx, 'unitPrice');
+                      return;
+                    }
                     // Only prevent negative numbers and invalid characters
                     if (e.key === '-' || ['e', 'E', '+'].includes(e.key)) {
                       e.preventDefault();
@@ -128,6 +208,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
               </td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
                 <input 
+                  ref={setInputRef(`total-${idx}`)}
                   type="number" 
                   min="0"
                   step="0.01"
@@ -142,6 +223,11 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                   className="no-print-border"
                   placeholder="0.00"
                   onKeyDown={(e) => {
+                    // Handle navigation first
+                    if (e.key === 'Enter') {
+                      handleKeyDown(e, idx, 'total');
+                      return;
+                    }
                     // Only prevent negative numbers and invalid characters
                     if (e.key === '-' || ['e', 'E', '+'].includes(e.key)) {
                       e.preventDefault();
@@ -163,6 +249,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
             <td style={{ border: "1px solid #888", padding: 4 }}>TOTAL</td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
               <input 
+                ref={setInputRef('totalQuantity')}
                 type="number" 
                 style={{ 
                   border: "none", 
@@ -175,11 +262,20 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                 }}
                 className="no-print-border"
                 placeholder="0"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    // Move to total amount field
+                    inputRefs.current['totalAmount']?.focus();
+                    inputRefs.current['totalAmount']?.select();
+                  }
+                }}
               />
             </td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
             <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
               <input 
+                ref={setInputRef('totalAmount')}
                 type="number" 
                 step="0.01"
                 style={{ 
@@ -193,6 +289,16 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                 }}
                 className="no-print-border"
                 placeholder="0.00"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    // Focus back to first quantity field for next entry
+                    if (items.length > 0) {
+                      inputRefs.current['quantity-0']?.focus();
+                      inputRefs.current['quantity-0']?.select();
+                    }
+                  }
+                }}
               />
             </td>
             <td style={{ border: "1px solid #888", padding: 4 }}></td>

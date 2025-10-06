@@ -112,6 +112,9 @@ const EmployeeDatabaseEdit = () => {
       // Refresh documents list
       queryClient.invalidateQueries({ queryKey: ["employee-documents", employeeId] });
       
+      // Also update the local state immediately
+      setEmployeeDocuments(prev => prev.filter(doc => doc.id !== documentId));
+      
       toast({
         title: "Success",
         description: "Document deleted successfully.",
@@ -245,6 +248,19 @@ const EmployeeDatabaseEdit = () => {
     }
   }, [existingEmployee, form]);
 
+  // Sync form documents with uploaded documents
+  useEffect(() => {
+    if (employeeId && documents && documents.length > 0) {
+      // Clear existing form documents and replace with uploaded documents
+      form.setValue("documents", documents.map(doc => ({
+        id: doc.id,
+        documentName: doc.documentName,
+        startDate: doc.startDate,
+        endDate: doc.endDate
+      })));
+    }
+  }, [documents, employeeId, form]);
+
   const onSubmit = (data: InsertEmployee) => {
     console.log('Form submitted with data:', data);
     console.log('Form is valid:', form.formState.isValid);
@@ -252,7 +268,9 @@ const EmployeeDatabaseEdit = () => {
     
     if (employeeId) {
       console.log('Updating existing employee:', employeeId);
-      updateEmployeeMutation.mutate({ ...data, id: employeeId } as Employee);
+      // Exclude documents from employee update - they're managed separately
+      const { documents, ...employeeData } = data;
+      updateEmployeeMutation.mutate({ ...employeeData, id: employeeId } as Employee);
     } else {
       console.log('Creating new employee');
       createEmployeeMutation.mutate(data);
@@ -776,7 +794,41 @@ const EmployeeDatabaseEdit = () => {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => removeDocument(index)}
+                        onClick={async () => {
+                          const documentData = form.watch(`documents.${index}`);
+                          
+                          // If this document has an ID, it's an uploaded document - delete it from server
+                          if (documentData.id && employeeId) {
+                            if (window.confirm('Are you sure you want to delete this document?')) {
+                              try {
+                                await apiRequest("DELETE", `/api/employees/documents/${documentData.id}`);
+                                
+                                // Refresh documents list
+                                queryClient.invalidateQueries({ queryKey: ["employee-documents", employeeId] });
+                                
+                                // Update local state
+                                setEmployeeDocuments(prev => prev.filter(doc => doc.id !== documentData.id));
+                                
+                                toast({
+                                  title: "Success",
+                                  description: "Document deleted successfully.",
+                                });
+                              } catch (error) {
+                                toast({
+                                  variant: "destructive",
+                                  title: "Error",
+                                  description: "Failed to delete document.",
+                                });
+                                return; // Don't remove from form if server deletion failed
+                              }
+                            } else {
+                              return; // User cancelled
+                            }
+                          }
+                          
+                          // Remove from form
+                          removeDocument(index);
+                        }}
                         className="text-red-600 hover:text-red-800"
                       >
                         <Trash2 className="h-4 w-4" />

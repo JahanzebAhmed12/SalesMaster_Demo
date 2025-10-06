@@ -3090,20 +3090,8 @@ def update_employee(id):
         employee.entitlement_days = employee_data.entitlementDays
         employee.is_active = employee_data.isActive
         
-        # Update documents - remove existing and add new ones
-        # Delete existing documents
-        EmployeeDocument.query.filter_by(employee_id=id).delete()
-        
-        # Add new documents
-        if employee_data.documents:
-            for doc_data in employee_data.documents:
-                document = EmployeeDocument(
-                    employee_id=id,
-                    document_name=doc_data.documentName,
-                    start_date=doc_data.startDate,
-                    end_date=doc_data.endDate
-                )
-                db.session.add(document)
+        # Skip document updates - documents are managed separately via upload API
+        # This prevents accidentally clearing file data when updating employee info
         
         db.session.commit()
         return jsonify(employee.to_dict())
@@ -3203,12 +3191,9 @@ def upload_employee_document(employee_id):
         try:
             db.session.execute(db.text("SELECT COUNT(*) FROM employee_documents LIMIT 1"))
         except Exception as table_error:
-            print(f"Creating employee_documents table: {str(table_error)}")
             try:
                 db.create_all()
-                print("Database tables created for document upload")
             except Exception as create_error:
-                print(f"Error creating tables: {str(create_error)}")
                 return jsonify({'error': 'Database setup failed', 'details': str(create_error)}), 500
         
         # Check if file is in request
@@ -3227,35 +3212,94 @@ def upload_employee_document(employee_id):
             return jsonify({'error': 'Document name is required'}), 400
         
         if file and allowed_file(file.filename):
+            # Ensure upload directory exists
+            upload_dir = app.config['UPLOAD_FOLDER']
+            os.makedirs(upload_dir, exist_ok=True)
+            
             # Generate unique filename
             file_extension = file.filename.rsplit('.', 1)[1].lower()
             unique_filename = f"{uuid.uuid4()}.{file_extension}"
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file_path = os.path.join(upload_dir, unique_filename)
             
             # Save file
             file.save(file_path)
             
-            # Create document record
-            document = EmployeeDocument(
-                employee_id=employee_id,
-                document_name=document_name,
-                file_name=file.filename,
-                file_path=unique_filename,  # Store relative path
-                file_size=os.path.getsize(file_path),
-                file_type=file.content_type,
-                start_date=datetime.strptime(start_date, '%Y-%m-%d').date() if start_date else None,
-                end_date=datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else None
-            )
+            # Verify file was saved
+            if not os.path.exists(file_path):
+                return jsonify({'error': 'Failed to save file'}), 500
             
-            db.session.add(document)
-            db.session.commit()
+            file_size = os.path.getsize(file_path)
             
-            return jsonify({
-                'message': 'Document uploaded successfully',
-                'document': document.to_dict()
-            }), 201
+            # Parse dates safely
+            parsed_start_date = None
+            parsed_end_date = None
+            
+            try:
+                if start_date:
+                    parsed_start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+            except Exception:
+                pass
+                
+            try:
+                if end_date:
+                    parsed_end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+            except Exception:
+                pass
+            
+            # Create document record with retry logic
+            max_retries = 3
+            retry_delay = 0.1
+            
+            for attempt in range(max_retries):
+                try:
+                    # Close any existing transactions
+                    db.session.rollback()
+                    
+                    # Use SQLAlchemy ORM
+                    document = EmployeeDocument(
+                        employee_id=employee_id,
+                        document_name=document_name,
+                        file_name=file.filename,
+                        file_path=unique_filename,
+                        file_size=file_size,
+                        file_type=file.content_type or 'application/octet-stream',
+                        start_date=parsed_start_date,
+                        end_date=parsed_end_date
+                    )
+                    
+                    db.session.add(document)
+                    db.session.commit()
+                    
+                    # Create response
+                    document_dict = {
+                        'id': document.id,
+                        'documentName': document.document_name,
+                        'fileName': document.file_name,
+                        'filePath': document.file_path,
+                        'fileSize': document.file_size,
+                        'fileType': document.file_type,
+                        'hasFile': bool(document.file_path)
+                    }
+                    
+                    return jsonify({
+                        'message': 'Document uploaded successfully',
+                        'document': document_dict
+                    }), 201
+                        
+                except Exception as db_error:
+                    db.session.rollback()
+                    
+                    if "database is locked" in str(db_error).lower() and attempt < max_retries - 1:
+                        import time
+                        time.sleep(retry_delay * (attempt + 1))
+                        continue
+                    else:
+                        return jsonify({'error': f'Database error: {str(db_error)}'}), 500
+            
+            # If we get here, all retries failed
+            return jsonify({'error': 'Failed to save document after multiple attempts'}), 500
         else:
-            return jsonify({'error': 'File type not allowed'}), 400
+            return jsonify({'error': f'File type not allowed. Allowed types: {ALLOWED_EXTENSIONS}'}), 400
             
     except Exception as e:
         db.session.rollback()
@@ -3319,16 +3363,21 @@ def download_employee_document(document_id):
             db.create_all()
             
         document = EmployeeDocument.query.get_or_404(document_id)
+        
+        # Check if file_path exists
+        if not document.file_path:
+            return jsonify({'error': 'No file associated with this document'}), 404
+            
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], document.file_path)
         
         if not os.path.exists(file_path):
-            return jsonify({'error': 'File not found'}), 404
+            return jsonify({'error': 'File not found on server'}), 404
         
         return send_file(
             file_path,
             as_attachment=True,
-            download_name=document.file_name,
-            mimetype=document.file_type
+            download_name=document.file_name or f"document_{document_id}",
+            mimetype=document.file_type or 'application/octet-stream'
         )
     except Exception as e:
         print(f"Error in download_employee_document: {str(e)}")
@@ -3360,17 +3409,63 @@ def delete_employee_document(document_id):
 def view_employee_document(document_id):
     """View an employee document (for PDFs and images)"""
     try:
-        document = EmployeeDocument.query.get_or_404(document_id)
+        # Check if document exists first
+        document = EmployeeDocument.query.get(document_id)
+        if not document:
+            return jsonify({'error': f'Document {document_id} not found'}), 404
+            
+        # Check if file_path exists
+        if not document.file_path:
+            return jsonify({'error': 'No file associated with this document'}), 404
+            
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], document.file_path)
         
         if not os.path.exists(file_path):
-            return jsonify({'error': 'File not found'}), 404
-        
+            return jsonify({'error': 'File not found on server'}), 404
         return send_file(
             file_path,
-            mimetype=document.file_type,
+            mimetype=document.file_type or 'application/octet-stream',
             as_attachment=False  # Display in browser instead of download
         )
+    except Exception as e:
+        print(f"Error in view_employee_document: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+
+
+# Debug route to check database content and connection
+@app.route('/api/debug/documents/<int:employee_id>', methods=['GET'])
+def debug_employee_documents(employee_id):
+    """Debug route to check what's in the database"""
+    try:
+        # Show which database file is being used
+        db_path = app.config['SQLALCHEMY_DATABASE_URI']
+        actual_db_file = db_path.replace('sqlite:///', '')
+        
+        documents = EmployeeDocument.query.filter_by(employee_id=employee_id).all()
+        result = []
+        for doc in documents:
+            result.append({
+                'id': doc.id,
+                'employee_id': doc.employee_id,
+                'document_name': doc.document_name,
+                'file_name': doc.file_name,
+                'file_path': doc.file_path,
+                'file_size': doc.file_size,
+                'file_type': doc.file_type,
+                'created_at': doc.created_at.isoformat() if doc.created_at else None,
+                'file_exists': os.path.exists(os.path.join(app.config['UPLOAD_FOLDER'], doc.file_path)) if doc.file_path else False
+            })
+        return jsonify({
+            'employee_id': employee_id,
+            'documents': result,
+            'upload_folder': app.config['UPLOAD_FOLDER'],
+            'database_uri': db_path,
+            'database_file': actual_db_file,
+            'database_exists': os.path.exists(actual_db_file)
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

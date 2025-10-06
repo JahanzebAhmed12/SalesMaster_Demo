@@ -196,11 +196,13 @@ export default function PurchaseEntry() {
                       ) : suppliers.length === 0 ? (
                         <SelectItem value="no-suppliers" disabled>No suppliers available</SelectItem>
                       ) : (
-                        suppliers.map((supplier: any) => (
-                          <SelectItem key={supplier.id} value={String(supplier.id)}>
-                            {supplier.supplier_name}
-                          </SelectItem>
-                        ))
+                        suppliers
+                          .sort((a: any, b: any) => a.supplier_name.localeCompare(b.supplier_name))
+                          .map((supplier: any) => (
+                            <SelectItem key={supplier.id} value={String(supplier.id)}>
+                              {supplier.supplier_name}
+                            </SelectItem>
+                          ))
                       )}
                     </SelectContent>
                   </Select>

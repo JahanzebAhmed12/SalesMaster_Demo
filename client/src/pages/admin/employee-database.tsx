@@ -15,6 +15,12 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// Helper to get the correct API URL
+const getApiUrl = (endpoint: string) => {
+  const API_BASE_URL = "http://localhost:5000";
+  return `${API_BASE_URL}${endpoint}`;
+};
+
 // DocumentsCell component for managing employee documents
 const DocumentsCell = ({ employeeId }: { employeeId: number }) => {
   const { toast } = useToast();
@@ -24,7 +30,7 @@ const DocumentsCell = ({ employeeId }: { employeeId: number }) => {
   const { data: documents = [], refetch } = useQuery({
     queryKey: ["employee-documents", employeeId],
     queryFn: () => apiRequest("GET", `/api/employees/${employeeId}/documents`),
-    enabled: isOpen, // Only fetch when dialog is open
+    // Always fetch to show correct count, but refetch when dialog opens
   });
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,7 +46,7 @@ const DocumentsCell = ({ employeeId }: { employeeId: number }) => {
     formData.append('documentName', documentName);
 
     try {
-      const response = await fetch(`/api/employees/${employeeId}/documents`, {
+      const response = await fetch(getApiUrl(`/api/employees/${employeeId}/documents`), {
         method: 'POST',
         body: formData,
         headers: {
@@ -69,11 +75,11 @@ const DocumentsCell = ({ employeeId }: { employeeId: number }) => {
   };
 
   const handleDownload = (documentId: number, fileName: string) => {
-    window.open(`/api/employees/documents/${documentId}`, '_blank');
+    window.open(getApiUrl(`/api/employees/documents/${documentId}`), '_blank');
   };
 
   const handleView = (documentId: number) => {
-    window.open(`/api/employees/documents/${documentId}/view`, '_blank');
+    window.open(getApiUrl(`/api/employees/documents/${documentId}/view`), '_blank');
   };
 
   const handleDelete = async (documentId: number, documentName: string) => {
