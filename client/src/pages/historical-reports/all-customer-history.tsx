@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { CalendarIcon, Users, FileText, Download, Copy, Printer, Search, Loader2
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -87,8 +88,21 @@ interface ApiResponse {
 
 export default function AllCustomerHistory() {
   const { toast } = useToast();
-  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  
+  // Initialize with current date, will be updated when businessDate loads
+  const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
+  
+  // Track if dates were manually changed
+  const fromDateManuallyChanged = useRef(false);
+  const toDateManuallyChanged = useRef(false);
+  
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
   const [customerFilter, setCustomerFilter] = useState("All Customer");
   const [searchTerm, setSearchTerm] = useState("");
   const [currencyFilter, setCurrencyFilter] = useState("all");
@@ -115,6 +129,54 @@ export default function AllCustomerHistory() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Update dates when business date changes, but only if not manually changed
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        // Only update fromDate if it hasn't been manually changed (set to one week before business date)
+        if (!fromDateManuallyChanged.current) {
+          const oneWeekBefore = subWeeks(businessDate, 1);
+          if (!fromDate || fromDate.getTime() !== oneWeekBefore.getTime()) {
+            setFromDate(oneWeekBefore);
+          }
+        }
+        // Only update toDate if it hasn't been manually changed
+        if (!toDateManuallyChanged.current && (!toDate || toDate.getTime() !== businessDate.getTime())) {
+          setToDate(new Date(businessDate));
+        }
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, [businessDate, isLoadingBusinessDate]);
+
+  // Handle date changes
+  const handleFromDateChange = (date: Date | undefined) => {
+    if (date) {
+      fromDateManuallyChanged.current = true;
+      setFromDate(date);
+    }
+  };
+
+  const handleToDateChange = (date: Date | undefined) => {
+    if (date) {
+      toDateManuallyChanged.current = true;
+      setToDate(date);
+    }
+  };
+
+  // Format date for display
+  const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'dd/MM/yyyy') => {
+    if (!date) return '';
+    try {
+      const d = date instanceof Date ? date : new Date(date);
+      return isNaN(d.getTime()) ? '' : format(d, formatStr);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
+  };
 
   // Fetch available currencies
   useEffect(() => {
@@ -516,14 +578,14 @@ export default function AllCustomerHistory() {
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
+                        {fromDate ? formatDateForDisplay(fromDate, "yyyyMMdd") : "Pick date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
                         selected={fromDate}
-                        onSelect={(date) => date && setFromDate(date)}
+                        onSelect={handleFromDateChange}
                         initialFocus
                       />
                     </PopoverContent>
@@ -541,14 +603,14 @@ export default function AllCustomerHistory() {
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
+                        {toDate ? formatDateForDisplay(toDate, "yyyyMMdd") : "Pick date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
                       <Calendar
                         mode="single"
                         selected={toDate}
-                        onSelect={(date) => date && setToDate(date)}
+                        onSelect={handleToDateChange}
                         initialFocus
                       />
                     </PopoverContent>

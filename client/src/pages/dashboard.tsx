@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Pagination } from "@/components/ui/pagination";
 // Dashboard page content without layout wrapper
 import SalesPurchaseChart from "@/components/charts/sales-purchase-chart";
 import ProfitTrendChart from "@/components/charts/profit-trend-chart";
@@ -20,6 +21,16 @@ export default function Dashboard() {
   const [showProfit, setShowProfit] = React.useState(true);
   const { user } = useAuth();
   const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
+
+  // Pagination states for each section
+  const [holidayCurrentPage, setHolidayCurrentPage] = React.useState(1);
+  const [holidayItemsPerPage, setHolidayItemsPerPage] = React.useState(5);
+  const [holidayRequestsPage, setHolidayRequestsPage] = React.useState(1);
+  const [holidayRequestsPerPage, setHolidayRequestsPerPage] = React.useState(5);
+  const [documentsPage, setDocumentsPage] = React.useState(1);
+  const [documentsPerPage, setDocumentsPerPage] = React.useState(5);
+  const [equipmentPage, setEquipmentPage] = React.useState(1);
+  const [equipmentPerPage, setEquipmentPerPage] = React.useState(5);
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/dashboard/stats"],
@@ -290,6 +301,38 @@ export default function Dashboard() {
     };
   }, [holidayRequestsResponse, businessDate]);
 
+  // Helper function to paginate data
+  const paginateData = (data: any[], page: number, itemsPerPage: number) => {
+    const startIndex = (page - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return {
+      data: data.slice(startIndex, endIndex),
+      totalPages: Math.ceil(data.length / itemsPerPage),
+      totalItems: data.length
+    };
+  };
+
+  // Paginated data for each section
+  const paginatedHolidayEmployees = React.useMemo(() => 
+    paginateData(employeesOnHoliday, holidayCurrentPage, holidayItemsPerPage),
+    [employeesOnHoliday, holidayCurrentPage, holidayItemsPerPage]
+  );
+
+  const paginatedHolidayRequests = React.useMemo(() => 
+    paginateData(allGrantedRequests, holidayRequestsPage, holidayRequestsPerPage),
+    [allGrantedRequests, holidayRequestsPage, holidayRequestsPerPage]
+  );
+
+  const paginatedDocuments = React.useMemo(() => 
+    paginateData(processedDocs, documentsPage, documentsPerPage),
+    [processedDocs, documentsPage, documentsPerPage]
+  );
+
+  const paginatedEquipment = React.useMemo(() => 
+    paginateData(processedEquipment, equipmentPage, equipmentPerPage),
+    [processedEquipment, equipmentPage, equipmentPerPage]
+  );
+
   React.useEffect(() => {
     const getApiUrl = (endpoint: string) => {
       return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
@@ -328,270 +371,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Employee Documents Section */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <User className="text-blue-600 h-5 w-5" />
-              <CardTitle>Employee Documents</CardTitle>
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                {processedDocs.length} {processedDocs.length === 1 ? 'Document' : 'Documents'}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {allDocsLoading ? (
-                <div className="flex justify-center items-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                  <span className="ml-2 text-gray-500">Loading documents...</span>
-                </div>
-              ) : (
-                processedDocs.map((doc: any) => (
-                <div 
-                  key={doc.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                    doc.status === 'expired' || doc.status === 'warning' 
-                      ? 'bg-red-50 border-red-200' 
-                      : doc.status === 'expiring'
-                        ? 'bg-yellow-50 border-yellow-200'
-                        : 'bg-green-50 border-green-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${
-                      doc.status === 'expired' || doc.status === 'warning' 
-                        ? 'bg-red-100' 
-                        : doc.status === 'expiring'
-                          ? 'bg-yellow-100'
-                          : 'bg-green-100'
-                    }`}>
-                      {doc.status === 'expired' ? (
-                        <AlertTriangle className="h-4 w-4 text-red-600" />
-                      ) : (
-                        <User className={`h-4 w-4 ${
-                          doc.status === 'warning' 
-                            ? 'text-red-600' 
-                            : doc.status === 'expiring'
-                              ? 'text-yellow-600'
-                              : 'text-green-600'
-                        }`} />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{doc.employeeName || 'Unknown Employee'}</p>
-                      <p className="text-sm text-gray-600">{doc.documentName || 'Unnamed Document'}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-1 text-sm text-gray-600">
-                      <Calendar className="h-4 w-4" />
-                      <span>{doc.endDate ? new Date(doc.endDate).toLocaleDateString() : 'No expiry'}</span>
-                    </div>
-                    {doc.endDate && (
-                      <p className={`text-sm font-medium ${
-                        doc.status === 'expired' || doc.status === 'warning' 
-                          ? 'text-red-600' 
-                          : doc.status === 'expiring'
-                            ? 'text-yellow-600'
-                            : 'text-green-600'
-                      }`}>
-                        {doc.daysUntilExpiry === 0 
-                          ? 'Expires today' 
-                          : doc.daysUntilExpiry === 1 
-                            ? 'Expires tomorrow'
-                            : doc.daysUntilExpiry < 0
-                              ? 'Expired'
-                              : `Expires in ${doc.daysUntilExpiry} days`
-                        }
-                      </p>
-                    )}
-                  </div>
-                </div>
-                ))
-              )}
-              {!allDocsLoading && processedDocs.length === 0 && (
-                <p className="text-center text-gray-500 py-4">No documents with expiry dates found</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Equipment Section */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Settings className="text-purple-600 h-5 w-5" />
-              <CardTitle>Equipment</CardTitle>
-              <Badge variant="secondary" className="bg-purple-100 text-purple-800">
-                {processedEquipment.length} {processedEquipment.length === 1 ? 'Item' : 'Items'}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {equipmentLoading ? (
-                <div className="flex justify-center items-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
-                  <span className="ml-2 text-gray-500">Loading equipment...</span>
-                </div>
-              ) : (
-                processedEquipment.map((eq: any) => (
-                <div 
-                  key={eq.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                    eq.status === 'expired' || eq.status === 'warning' 
-                      ? 'bg-red-50 border-red-200' 
-                      : eq.status === 'expiring'
-                        ? 'bg-yellow-50 border-yellow-200'
-                        : 'bg-green-50 border-green-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${
-                      eq.status === 'expired' || eq.status === 'warning' 
-                        ? 'bg-red-100' 
-                        : eq.status === 'expiring'
-                          ? 'bg-yellow-100'
-                          : 'bg-green-100'
-                    }`}>
-                      {eq.status === 'expired' ? (
-                        <AlertTriangle className="h-4 w-4 text-red-600" />
-                      ) : (
-                        <Settings className={`h-4 w-4 ${
-                          eq.status === 'warning' 
-                            ? 'text-red-600' 
-                            : eq.status === 'expiring'
-                              ? 'text-yellow-600'
-                              : 'text-green-600'
-                        }`} />
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{eq.description || 'No Description'}</p>
-                      <p className="text-sm text-gray-600">Equipment</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    {eq.expiryDate ? (
-                      <>
-                        <div className="flex items-center gap-1 text-sm text-gray-600">
-                          <Calendar className="h-4 w-4" />
-                          <span>{new Date(eq.expiryDate).toLocaleDateString()}</span>
-                        </div>
-                        <p className={`text-sm font-medium ${
-                          eq.status === 'expired' || eq.status === 'warning' 
-                            ? 'text-red-600' 
-                            : eq.status === 'expiring'
-                              ? 'text-yellow-600'
-                              : 'text-green-600'
-                        }`}>
-                          {eq.daysUntilExpiry === 0 
-                            ? 'Expires today' 
-                            : eq.daysUntilExpiry === 1 
-                              ? 'Expires tomorrow'
-                              : eq.daysUntilExpiry < 0
-                                ? 'Expired'
-                                : `Expires in ${eq.daysUntilExpiry} days`
-                          }
-                        </p>
-                      </>
-                    ) : (
-                      <div className="flex flex-col items-end">
-                        <div className="flex items-center gap-1 text-sm text-gray-400">
-                          <Calendar className="h-4 w-4 opacity-50" />
-                          <span>No expiry</span>
-                        </div>
-                        <p className="text-xs text-gray-400">No expiration date set</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                ))
-              )}
-              {!equipmentLoading && processedEquipment.length === 0 && (
-                <p className="text-center text-gray-500 py-4">No equipment with expiry dates found</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Holiday Requests Overview */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="text-blue-600 h-5 w-5" />
-              <CardTitle>Holiday Requests</CardTitle>
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                {allGrantedRequests.length} Granted
-              </Badge>
-              {!isLoadingBusinessDate && (
-                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                  <span>Using Business Date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3 max-h-60 overflow-y-auto">
-              {holidayLoading ? (
-                <div className="flex justify-center items-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                  <span className="ml-2 text-gray-500">Loading holiday requests...</span>
-                </div>
-              ) : allGrantedRequests.length > 0 ? (
-                allGrantedRequests.map((request: any) => {
-                  const lastWorkDate = new Date(request.lastDateAtWork);
-                  const returnDate = new Date(request.returnDateToWork);
-                  const today = businessDate ? new Date(businessDate) : new Date();
-                  today.setHours(0, 0, 0, 0);
-                  
-                  // Determine status relative to business date
-                  let statusColor = 'bg-gray-50 border-gray-200';
-                  let statusText = 'Scheduled';
-                  
-                  if (today > lastWorkDate && today < returnDate) {
-                    statusColor = 'bg-green-50 border-green-200';
-                    statusText = 'Currently on Holiday';
-                  } else if (today >= returnDate) {
-                    statusColor = 'bg-blue-50 border-blue-200';
-                    statusText = 'Completed';
-                  } else if (today <= lastWorkDate) {
-                    statusColor = 'bg-yellow-50 border-yellow-200';
-                    statusText = 'Upcoming';
-                  }
-                  
-                  return (
-                    <div key={request.id} className={`p-3 rounded-lg border ${statusColor}`}>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">{request.employeeName}</p>
-                          <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
-                        </div>
-                        <div className="text-right">
-                          <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
-                            <Calendar className="h-4 w-4" />
-                            <span>
-                              {lastWorkDate.toLocaleDateString()} - {returnDate.toLocaleDateString()}
-                            </span>
-                          </div>
-                          <p className="text-xs font-medium text-gray-700">
-                            {statusText} • {request.totalDaysRequested} days
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-center text-gray-500 py-4">No granted holiday requests found</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Employees Currently on Holiday */}
+        {/* 1. Employees Currently on Holiday */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
@@ -615,46 +395,64 @@ export default function Dashboard() {
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
                   <span className="ml-2 text-gray-500">Loading holiday information...</span>
                 </div>
-              ) : employeesOnHoliday.length > 0 ? (
-                employeesOnHoliday.map((request: any) => (
-                <div 
-                  key={request.id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-green-50 border-green-200"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-full bg-green-100">
-                      <User className="h-4 w-4 text-green-600" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{request.employeeName}</p>
-                      <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
-                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                        <span>On Holiday</span>
+              ) : paginatedHolidayEmployees.data.length > 0 ? (
+                <>
+                  {paginatedHolidayEmployees.data.map((request: any) => (
+                    <div 
+                      key={request.id}
+                      className="flex items-center justify-between p-3 rounded-lg border bg-green-50 border-green-200"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-full bg-green-100">
+                          <User className="h-4 w-4 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{request.employeeName}</p>
+                          <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                            <span>On Holiday</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>
+                            {new Date(request.lastDateAtWork).toLocaleDateString()} - {new Date(request.returnDateToWork).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-green-600">
+                          {request.daysUntilReturn === 0 
+                            ? 'Returns today' 
+                            : request.daysUntilReturn === 1 
+                              ? 'Returns tomorrow'
+                              : `Returns in ${request.daysUntilReturn} days`
+                          }
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {request.totalDaysRequested} days total
+                        </p>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
-                      <Calendar className="h-4 w-4" />
-                      <span>
-                        {new Date(request.lastDateAtWork).toLocaleDateString()} - {new Date(request.returnDateToWork).toLocaleDateString()}
-                      </span>
+                  ))}
+                  {paginatedHolidayEmployees.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={holidayCurrentPage}
+                        totalPages={paginatedHolidayEmployees.totalPages}
+                        totalItems={paginatedHolidayEmployees.totalItems}
+                        itemsPerPage={holidayItemsPerPage}
+                        onPageChange={setHolidayCurrentPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setHolidayItemsPerPage(newSize);
+                          setHolidayCurrentPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
                     </div>
-                    <p className="text-sm font-medium text-green-600">
-                      {request.daysUntilReturn === 0 
-                        ? 'Returns today' 
-                        : request.daysUntilReturn === 1 
-                          ? 'Returns tomorrow'
-                          : `Returns in ${request.daysUntilReturn} days`
-                      }
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {request.totalDaysRequested} days total
-                    </p>
-                  </div>
-                </div>
-                ))
+                  )}
+                </>
               ) : (
                 <div className="text-center py-8">
                   <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -665,6 +463,321 @@ export default function Dashboard() {
                     Based on business date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}
                   </p>
                 </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 2. Holiday Requests Overview */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-blue-600 h-5 w-5" />
+              <CardTitle>Holiday Requests</CardTitle>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {allGrantedRequests.length} Granted
+              </Badge>
+              {!isLoadingBusinessDate && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                  <span>Using Business Date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {holidayLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">Loading holiday requests...</span>
+                </div>
+              ) : paginatedHolidayRequests.data.length > 0 ? (
+                <>
+                  {paginatedHolidayRequests.data.map((request: any) => {
+                    const lastWorkDate = new Date(request.lastDateAtWork);
+                    const returnDate = new Date(request.returnDateToWork);
+                    const today = businessDate ? new Date(businessDate) : new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    // Determine status relative to business date
+                    let statusColor = 'bg-gray-50 border-gray-200';
+                    let statusText = 'Scheduled';
+                    
+                    if (today > lastWorkDate && today < returnDate) {
+                      statusColor = 'bg-green-50 border-green-200';
+                      statusText = 'Currently on Holiday';
+                    } else if (today >= returnDate) {
+                      statusColor = 'bg-blue-50 border-blue-200';
+                      statusText = 'Completed';
+                    } else if (today <= lastWorkDate) {
+                      statusColor = 'bg-yellow-50 border-yellow-200';
+                      statusText = 'Upcoming';
+                    }
+                    
+                    return (
+                      <div key={request.id} className={`p-3 rounded-lg border ${statusColor}`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">{request.employeeName}</p>
+                            <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                              <Calendar className="h-4 w-4" />
+                              <span>
+                                {lastWorkDate.toLocaleDateString()} - {returnDate.toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-xs font-medium text-gray-700">
+                              {statusText} • {request.totalDaysRequested} days
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {paginatedHolidayRequests.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={holidayRequestsPage}
+                        totalPages={paginatedHolidayRequests.totalPages}
+                        totalItems={paginatedHolidayRequests.totalItems}
+                        itemsPerPage={holidayRequestsPerPage}
+                        onPageChange={setHolidayRequestsPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setHolidayRequestsPerPage(newSize);
+                          setHolidayRequestsPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-center text-gray-500 py-4">No granted holiday requests found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Employee Documents Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <User className="text-blue-600 h-5 w-5" />
+              <CardTitle>Employee Documents</CardTitle>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {processedDocs.length} {processedDocs.length === 1 ? 'Document' : 'Documents'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {allDocsLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">Loading documents...</span>
+                </div>
+              ) : paginatedDocuments.data.length > 0 ? (
+                <>
+                  {paginatedDocuments.data.map((doc: any) => (
+                    <div 
+                      key={doc.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                        doc.status === 'expired' || doc.status === 'warning' 
+                          ? 'bg-red-50 border-red-200' 
+                          : doc.status === 'expiring'
+                            ? 'bg-yellow-50 border-yellow-200'
+                            : 'bg-green-50 border-green-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${
+                          doc.status === 'expired' || doc.status === 'warning' 
+                            ? 'bg-red-100' 
+                            : doc.status === 'expiring'
+                              ? 'bg-yellow-100'
+                              : 'bg-green-100'
+                        }`}>
+                          {doc.status === 'expired' ? (
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                          ) : (
+                            <User className={`h-4 w-4 ${
+                              doc.status === 'warning' 
+                                ? 'text-red-600' 
+                                : doc.status === 'expiring'
+                                  ? 'text-yellow-600'
+                                  : 'text-green-600'
+                            }`} />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{doc.employeeName || 'Unknown Employee'}</p>
+                          <p className="text-sm text-gray-600">{doc.documentName || 'Unnamed Document'}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Calendar className="h-4 w-4" />
+                          <span>{doc.endDate ? new Date(doc.endDate).toLocaleDateString() : 'No expiry'}</span>
+                        </div>
+                        {doc.endDate && (
+                          <p className={`text-sm font-medium ${
+                            doc.status === 'expired' || doc.status === 'warning' 
+                              ? 'text-red-600' 
+                              : doc.status === 'expiring'
+                                ? 'text-yellow-600'
+                                : 'text-green-600'
+                          }`}>
+                            {doc.daysUntilExpiry === 0 
+                              ? 'Expires today' 
+                              : doc.daysUntilExpiry === 1 
+                                ? 'Expires tomorrow'
+                                : doc.daysUntilExpiry < 0
+                                  ? 'Expired'
+                                  : `Expires in ${doc.daysUntilExpiry} days`
+                            }
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {paginatedDocuments.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={documentsPage}
+                        totalPages={paginatedDocuments.totalPages}
+                        totalItems={paginatedDocuments.totalItems}
+                        itemsPerPage={documentsPerPage}
+                        onPageChange={setDocumentsPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setDocumentsPerPage(newSize);
+                          setDocumentsPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-center text-gray-500 py-4">No documents with expiry dates found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 4. Equipment Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Settings className="text-purple-600 h-5 w-5" />
+              <CardTitle>Equipment</CardTitle>
+              <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                {processedEquipment.length} {processedEquipment.length === 1 ? 'Item' : 'Items'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {equipmentLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+                  <span className="ml-2 text-gray-500">Loading equipment...</span>
+                </div>
+              ) : paginatedEquipment.data.length > 0 ? (
+                <>
+                  {paginatedEquipment.data.map((eq: any) => (
+                    <div 
+                      key={eq.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                        eq.status === 'expired' || eq.status === 'warning' 
+                          ? 'bg-red-50 border-red-200' 
+                          : eq.status === 'expiring'
+                            ? 'bg-yellow-50 border-yellow-200'
+                            : 'bg-green-50 border-green-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${
+                          eq.status === 'expired' || eq.status === 'warning' 
+                            ? 'bg-red-100' 
+                            : eq.status === 'expiring'
+                              ? 'bg-yellow-100'
+                              : 'bg-green-100'
+                        }`}>
+                          {eq.status === 'expired' ? (
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                          ) : (
+                            <Settings className={`h-4 w-4 ${
+                              eq.status === 'warning' 
+                                ? 'text-red-600' 
+                                : eq.status === 'expiring'
+                                  ? 'text-yellow-600'
+                                  : 'text-green-600'
+                            }`} />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{eq.description || 'No Description'}</p>
+                          <p className="text-sm text-gray-600">Equipment</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {eq.expiryDate ? (
+                          <>
+                            <div className="flex items-center gap-1 text-sm text-gray-600">
+                              <Calendar className="h-4 w-4" />
+                              <span>{new Date(eq.expiryDate).toLocaleDateString()}</span>
+                            </div>
+                            <p className={`text-sm font-medium ${
+                              eq.status === 'expired' || eq.status === 'warning' 
+                                ? 'text-red-600' 
+                                : eq.status === 'expiring'
+                                  ? 'text-yellow-600'
+                                  : 'text-green-600'
+                            }`}>
+                              {eq.daysUntilExpiry === 0 
+                                ? 'Expires today' 
+                                : eq.daysUntilExpiry === 1 
+                                  ? 'Expires tomorrow'
+                                  : eq.daysUntilExpiry < 0
+                                    ? 'Expired'
+                                    : `Expires in ${eq.daysUntilExpiry} days`
+                              }
+                            </p>
+                          </>
+                        ) : (
+                          <div className="flex flex-col items-end">
+                            <div className="flex items-center gap-1 text-sm text-gray-400">
+                              <Calendar className="h-4 w-4 opacity-50" />
+                              <span>No expiry</span>
+                            </div>
+                            <p className="text-xs text-gray-400">No expiration date set</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {paginatedEquipment.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={equipmentPage}
+                        totalPages={paginatedEquipment.totalPages}
+                        totalItems={paginatedEquipment.totalItems}
+                        itemsPerPage={equipmentPerPage}
+                        onPageChange={setEquipmentPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setEquipmentPerPage(newSize);
+                          setEquipmentPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-center text-gray-500 py-4">No equipment with expiry dates found</p>
               )}
             </div>
           </CardContent>

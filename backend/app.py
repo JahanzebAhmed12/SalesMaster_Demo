@@ -4278,6 +4278,7 @@ def manage_payment_batch(batch_id):
                             payment_date=payment_date_obj,
                             batch_id=batch_id,
                             payment_type='on-account',
+                            payment_source='customer_payment',
                             remarks=f"{remarks} - On-account payment (Updated)"
                         )
                     else:
@@ -4290,6 +4291,7 @@ def manage_payment_batch(batch_id):
                             payment_date=payment_date_obj,
                             batch_id=batch_id,
                             payment_type='direct',
+                            payment_source='customer_payment',
                             remarks=f"{remarks} - Invoice payment (Updated)"
                         )
                         
@@ -4500,7 +4502,8 @@ def create_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='on-account',
-                        remarks=f"{remarks} - On-account payment via customer payment page"
+                        payment_source='customer_payment',
+                        remarks=remarks
                     )
                 else:
                     # Invoice payment
@@ -4512,7 +4515,8 @@ def create_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='direct',
-                        remarks=f"{remarks} - Invoice payment via customer payment page"
+                        payment_source='customer_payment',
+                        remarks=remarks
                     )
                     
                     # Update sale payment status
@@ -4608,7 +4612,7 @@ def create_bulk_payment():
                                 payment_date=payment_date_obj,
                                 batch_id=batch_id,
                                 payment_type='direct',
-                                remarks=f"{remarks} - Invoice payment via customer payment page"
+                                remarks=remarks
                             )
                             db.session.add(payment)
                             payments_created.append(payment)
@@ -4638,7 +4642,7 @@ def create_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='on-account',
-                        remarks=f"{remarks} - On-account payment via customer payment page"
+                        remarks=remarks
                     )
                     db.session.add(payment)
                     payments_created.append(payment)
@@ -5364,78 +5368,108 @@ def customer_history():
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
-    # Fetch sales for this customer in the date range
-    sales_query = Sale.query.filter(
+    # Get all transactions for this customer in the date range from customer payment page only
+    history = []
+    running_balance = 0
+    sl_no = 1
+    
+    # 1. Get sales with payments made via customer payment page
+    sales_with_payments = Sale.query.filter(
         Sale.customer_id == customer_id,
         Sale.date >= from_dt,
         Sale.date < to_dt,
         Sale.status == 'finalized'
-    )
-    if filter_type == "Account":
-        sales_query = sales_query.filter(Sale.customer_type.ilike('account'))
-    elif filter_type == "Cast":
-        sales_query = sales_query.filter(Sale.customer_type.ilike('cash'))
-
-    sales = sales_query.order_by(Sale.date.asc()).all()
-
-    # Build history entries
-    history = []
-    running_balance = 0
-    sl_no = 1
-    for sale in sales:
-        # Check if any payments were made via customer payment page
+    ).join(Payment, Sale.id == Payment.sale_id).filter(
+        Payment.payment_source == 'customer_payment'
+    ).distinct().order_by(Sale.date.asc()).all()
+    
+    # 2. Get on-account payments made via customer payment page (no associated sale)
+    on_account_payments = Payment.query.filter(
+        Payment.customer_id == customer_id,
+        Payment.payment_date >= from_dt.date(),
+        Payment.payment_date < to_dt.date(),
+        Payment.payment_source == 'customer_payment',
+        Payment.sale_id.is_(None)  # On-account payments have no sale_id
+    ).order_by(Payment.payment_date.asc()).all()
+    
+    # Combine and sort all transactions by date
+    all_transactions = []
+    
+    # Add sales transactions
+    for sale in sales_with_payments:
         sale_payments = Payment.query.filter(
             Payment.sale_id == sale.id,
-            Payment.payment_type == 'direct'
+            Payment.payment_source == 'customer_payment'
         ).all()
         
-        is_paid_via_customer_payment = any(
-            payment.payment_type == 'direct' and 
-            payment.remarks and 
-            'Invoice payment via customer payment page' in payment.remarks
-            for payment in sale_payments
-        )
-        
-        
-        if is_paid_via_customer_payment:
-            # If paid via customer payment page, show actual payment allocation
-            # Sum up payments by mode for this specific invoice
+        if sale_payments:
+            # Sum up payments by mode for this specific invoice from customer payment page only
             cash_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cash')
             card_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank')
             bank_transfer_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank_transfer')
             cheque_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cheque')
             
-            
             # Show the actual payment allocation - cash payments go to cash_inv, others to account_inv
             account_inv = card_payments + bank_transfer_payments + cheque_payments
             cash_inv = cash_payments
-        else:
-            # Regular logic based on customer type
-            account_inv = float(sale.total_amount) if sale.customer_type == 'account' else 0
-            cash_inv = float(sale.total_amount) if sale.customer_type == 'cash' else 0
-        
-        paid = float(sale.paid_amount or 0)
-        
-        if is_paid_via_customer_payment:
-            # For invoices paid via customer payment page, balance should be 0 (fully paid)
-            # But we need to adjust running balance based on payment method
-            balance = 0  # Invoice is fully paid
-            # Cash payments reduce the running balance (negative impact)
-            # Account payments don't affect running balance (already accounted for)
-            running_balance -= cash_payments  # Subtract cash payments from running balance
-        else:
-            # Regular logic for unpaid invoices
+            
+            # Calculate total paid via customer payment page
+            paid = sum(float(p.amount) for p in sale_payments if p.amount > 0)
+            
+            # Calculate balance (should be 0 or minimal for fully paid invoices)
             balance = float(sale.total_amount) - paid
-            running_balance += balance
+            
+            all_transactions.append({
+                'date': sale.date,
+                'type': 'sale',
+                'invoiceNo': sale.invoice_number,
+                'accountInv': account_inv,
+                'cashInv': cash_inv,
+                'paid': paid,
+                'balance': balance
+            })
+    
+    # Add on-account payment transactions
+    for payment in on_account_payments:
+        # On-account payments are credits that reduce the customer's outstanding balance
+        all_transactions.append({
+            'date': datetime.combine(payment.payment_date, datetime.min.time()),
+            'type': 'on_account_payment',
+            'invoiceNo': 'On Account',
+            'accountInv': 0,
+            'cashInv': 0,
+            'paid': float(payment.amount),
+            'balance': -float(payment.amount)  # Negative balance for credit
+        })
+    
+    # Sort all transactions by date
+    all_transactions.sort(key=lambda x: x['date'])
+    
+    # Apply filter type if specified
+    if filter_type != "All":
+        filtered_transactions = []
+        for transaction in all_transactions:
+            if filter_type == "Account" and transaction['accountInv'] > 0:
+                filtered_transactions.append(transaction)
+            elif filter_type == "Cash" and transaction['cashInv'] > 0:
+                filtered_transactions.append(transaction)
+            elif filter_type == "All":
+                filtered_transactions.append(transaction)
+        all_transactions = filtered_transactions
+    
+    # Build final history with running balance
+    for transaction in all_transactions:
+        running_balance += transaction['balance']
+        
         history.append({
             'id': sl_no,
             'slNo': sl_no,
-            'date': sale.date.strftime("%Y-%m-%d"),
-            'invoiceNo': sale.invoice_number,
-            'accountInv': account_inv,
-            'cashInv': cash_inv,
-            'paid': paid,
-            'balance': balance,
+            'date': transaction['date'].strftime("%Y-%m-%d"),
+            'invoiceNo': transaction['invoiceNo'],
+            'accountInv': transaction['accountInv'],
+            'cashInv': transaction['cashInv'],
+            'paid': transaction['paid'],
+            'balance': transaction['balance'],
             'runningBalance': running_balance
         })
         sl_no += 1
@@ -5877,8 +5911,8 @@ def get_supplier_payment_history():
         to_date = request.args.get('toDate')
         payment_mode = request.args.get('paymentMode')
         
-        # Build query
-        query = SupplierPayment.query.join(Supplier) # Eager load supplier
+        # Build query with left joins to include all payments
+        query = SupplierPayment.query.join(Supplier).outerjoin(PurchaseInvoice) # Eager load supplier and purchase invoice
         
         # Filter by supplier if provided
         if supplier_id:
@@ -5899,6 +5933,19 @@ def get_supplier_payment_history():
         
         payments = query.all()
         
+        # Debug: Print payment information
+        print(f"Found {len(payments)} payments")
+        for payment in payments[:3]:  # Print first 3 payments for debugging
+            print(f"Payment ID: {payment.id}, Purchase Invoice ID: {payment.purchase_invoice_id}, Supplier: {payment.supplier.supplier_name}")
+            
+        # Also check if there are any purchase invoices for these suppliers
+        if payments:
+            supplier_ids = list(set([p.supplier_id for p in payments]))
+            print(f"Checking purchase invoices for suppliers: {supplier_ids}")
+            for supplier_id in supplier_ids[:2]:  # Check first 2 suppliers
+                invoices = PurchaseInvoice.query.join(Purchase).filter(Purchase.supplier_id == supplier_id).all()
+                print(f"Supplier {supplier_id} has {len(invoices)} purchase invoices")
+        
         # Create detailed payment history with invoice information
         payment_history = []
         for idx, payment in enumerate(payments, 1):
@@ -5909,10 +5956,40 @@ def get_supplier_payment_history():
             invoice_number = None
             invoice_date = None
             invoice_amount = None
-            if payment.purchase_invoice:
-                invoice_number = payment.purchase_invoice.id
-                invoice_date = payment.purchase_invoice.date.isoformat() if payment.purchase_invoice.date else None
-                invoice_amount = sum(item.total_price for item in payment.purchase_invoice.items)
+            
+            # Check if payment is linked to a purchase invoice
+            if payment.purchase_invoice_id:
+                # Try to get the purchase invoice
+                purchase_invoice = PurchaseInvoice.query.get(payment.purchase_invoice_id)
+                if purchase_invoice:
+                    invoice_number = purchase_invoice.id
+                    invoice_date = purchase_invoice.date.isoformat() if purchase_invoice.date else None
+                    # Calculate invoice amount from items
+                    if purchase_invoice.items:
+                        invoice_amount = sum(float(item.total_price) for item in purchase_invoice.items)
+                    else:
+                        invoice_amount = 0
+                else:
+                    # Purchase invoice was deleted or doesn't exist
+                    invoice_number = payment.purchase_invoice_id
+                    invoice_date = None
+                    invoice_amount = 0
+            else:
+                # Payment is not linked to a specific invoice, try to find any purchase invoice for this supplier around the payment date
+                # This is a fallback to show some purchase invoice data even for unlinked payments
+                nearby_invoice = PurchaseInvoice.query.join(Purchase).filter(
+                    Purchase.supplier_id == payment.supplier_id,
+                    PurchaseInvoice.date <= payment.payment_date
+                ).order_by(PurchaseInvoice.date.desc()).first()
+                
+                if nearby_invoice:
+                    invoice_number = nearby_invoice.id
+                    invoice_date = nearby_invoice.date.isoformat() if nearby_invoice.date else None
+                    # Calculate invoice amount from items
+                    if nearby_invoice.items:
+                        invoice_amount = sum(float(item.total_price) for item in nearby_invoice.items)
+                    else:
+                        invoice_amount = 0
 
             payment_history.append({
                 'slNo': idx,
@@ -5925,7 +6002,9 @@ def get_supplier_payment_history():
                 'supplier': supplier_name,
                 'invoiceAmt': float(invoice_amount) if invoice_amount is not None else 0,
                 'allocated': float(payment.amount) if invoice_number is not None else 0,
-                'remarks': payment.remarks
+                'remarks': payment.remarks or '',
+                'supplierInvoiceNumber': payment.supplier_invoice_number or '',
+                'supplierInvoiceDate': payment.supplier_invoice_date.isoformat() if payment.supplier_invoice_date else None
             })
         
         return jsonify(payment_history), 200
@@ -13036,7 +13115,8 @@ def create_customer_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='on-account',
-                        remarks=f"{remarks} - On-account payment via customer payment page"
+                        payment_source='customer_payment',
+                        remarks=remarks
                     )
                     db.session.add(payment)
                     payments_created.append(payment)
@@ -13051,7 +13131,8 @@ def create_customer_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='direct',
-                        remarks=f"{remarks} - Invoice payment via customer payment page"
+                        payment_source='customer_payment',
+                        remarks=remarks
                     )
                     db.session.add(payment)
                     payments_created.append(payment)
@@ -13151,7 +13232,7 @@ def create_customer_bulk_payment():
                                 payment_date=payment_date_obj,
                                 batch_id=batch_id,
                                 payment_type='direct',
-                                remarks=f"{remarks} - Invoice payment via customer payment page"
+                                remarks=remarks
                             )
                             db.session.add(payment)
                             payments_created.append(payment)
@@ -13190,7 +13271,7 @@ def create_customer_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='on-account',
-                        remarks=f"{remarks} - On-account payment via customer payment page"
+                        remarks=remarks
                     )
                     db.session.add(payment)
                     payments_created.append(payment)

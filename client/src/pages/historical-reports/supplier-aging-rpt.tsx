@@ -12,6 +12,7 @@ import { CalendarIcon, TrendingUp, FileText, Download, Printer, Search, Loader2 
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
@@ -86,7 +87,19 @@ interface CompanyDetails {
 
 export default function SupplierAgingRpt() {
   const { toast } = useToast();
+  
+  // Initialize with current date, will be updated when businessDate loads
   const [asOfDate, setAsOfDate] = useState<Date>(new Date());
+  
+  // Track if date was manually changed
+  const asOfDateManuallyChanged = useRef(false);
+  
+  // Get business date with formatting utilities
+  const { 
+    businessDate, 
+    isLoading: isLoadingBusinessDate, 
+    formatForApi 
+  } = useBusinessDate();
   const [supplierFilter, setSupplierFilter] = useState("All Suppliers");
   const [searchTerm, setSearchTerm] = useState("");
   const [currencyFilter, setCurrencyFilter] = useState("all");
@@ -114,6 +127,40 @@ export default function SupplierAgingRpt() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const tableSectionRef = useRef<HTMLDivElement>(null);
+
+  // Update date when business date changes, but only if not manually changed
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      try {
+        // Only update asOfDate if it hasn't been manually changed
+        if (!asOfDateManuallyChanged.current && (!asOfDate || asOfDate.getTime() !== businessDate.getTime())) {
+          setAsOfDate(new Date(businessDate));
+        }
+      } catch (error) {
+        console.error('Error processing business date:', error);
+      }
+    }
+  }, [businessDate, isLoadingBusinessDate]);
+
+  // Handle date change
+  const handleAsOfDateChange = (date: Date | undefined) => {
+    if (date) {
+      asOfDateManuallyChanged.current = true;
+      setAsOfDate(date);
+    }
+  };
+
+  // Format date for display
+  const formatDateForDisplay = (date: Date | string | null | undefined, formatStr = 'dd/MM/yyyy') => {
+    if (!date) return '';
+    try {
+      const d = date instanceof Date ? date : new Date(date);
+      return isNaN(d.getTime()) ? '' : format(d, formatStr);
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return '';
+    }
+  };
 
   // Fetch available currencies
   useEffect(() => {
@@ -454,14 +501,14 @@ export default function SupplierAgingRpt() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {asOfDate ? format(asOfDate, "yyyyMMdd") : "Pick date"}
+                      {asOfDate ? formatDateForDisplay(asOfDate, "yyyyMMdd") : "Pick date"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
                     <Calendar
                       mode="single"
                       selected={asOfDate}
-                      onSelect={(date) => date && setAsOfDate(date)}
+                      onSelect={handleAsOfDateChange}
                       initialFocus
                     />
                   </PopoverContent>

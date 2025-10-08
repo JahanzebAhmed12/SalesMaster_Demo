@@ -740,7 +740,7 @@ export default function CustomerPayment() {
       customerId: parseInt(selectedCustomerId),
       amount: totalDistributionAmount + onAccountAmount, // Net amount (should equal user's payment)
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
-      remarks: isEditMode ? remarks : (remarks || "Payment"),
+      remarks: remarks || "", // Only use manual remarks, no auto-generated ones
       splitPayment: getSplitPaymentNumbers(), // Use user's actual split payment amounts
       invoiceIds: Array.from(selectedInvoiceIds),
       onAccountAmount: onAccountAmount,

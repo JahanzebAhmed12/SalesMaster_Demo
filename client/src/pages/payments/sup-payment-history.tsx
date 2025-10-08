@@ -29,6 +29,8 @@ interface SupplierPaymentHistoryData {
   invoiceAmt: number;
   allocated: number;
   remarks: string;
+  supplierInvoiceNumber?: string;
+  supplierInvoiceDate?: string;
 }
 
 export default function SupPaymentHistory() {
@@ -123,7 +125,7 @@ export default function SupPaymentHistory() {
     autoTable(doc, {
       head: [[
         //'Sl.No',
-        'Payment date', 'Payment mode', /*'Payment ID',*/ 'Paid Amt', 'INV #', 'INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'
+        'Payment date', 'Payment mode', /*'Payment ID',*/ 'Paid Amt', 'Supplier INV #', 'Supplier INV Date', 'Purchase INV #', 'Purchase INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'
       ]],
       body: paymentHistory.map((item) => [
         // skip serial number and payment id
@@ -131,6 +133,8 @@ export default function SupPaymentHistory() {
         item.paymentMode,
         // item.paymentId, // removed
         `£${Number(item.paidAmt).toFixed(2)}`,
+        item.supplierInvoiceNumber || '-',
+        item.supplierInvoiceDate ? format(new Date(item.supplierInvoiceDate), 'dd-MM-yyyy') : '-',
         item.invNo,
         item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
         item.supplier,
@@ -140,15 +144,17 @@ export default function SupPaymentHistory() {
       ]),
       startY: 32,
       columnStyles: {
-        0: { cellWidth: 28 }, // Payment date
-        1: { cellWidth: 28 }, // Payment mode
-        2: { cellWidth: 28 }, // Paid Amt
-        3: { cellWidth: 22 }, // INV #
-        4: { cellWidth: 28 }, // INV Date
-        5: { cellWidth: 40 }, // Supplier
-        6: { cellWidth: 28 }, // Invoice Amt
-        7: { cellWidth: 28 }, // Allocated
-        8: { cellWidth: 40 }, // Remarks
+        0: { cellWidth: 20 }, // Payment date
+        1: { cellWidth: 20 }, // Payment mode
+        2: { cellWidth: 18 }, // Paid Amt
+        3: { cellWidth: 18 }, // Supplier INV #
+        4: { cellWidth: 20 }, // Supplier INV Date
+        5: { cellWidth: 18 }, // Purchase INV #
+        6: { cellWidth: 20 }, // Purchase INV Date
+        7: { cellWidth: 25 }, // Supplier
+        8: { cellWidth: 18 }, // Invoice Amt
+        9: { cellWidth: 18 }, // Allocated
+        10: { cellWidth: 25 }, // Remarks
       },
     });
     // Add summary below table, centered
@@ -167,8 +173,10 @@ export default function SupPaymentHistory() {
       'Payment mode': item.paymentMode,
       // 'Payment ID': item.paymentId,
       'Paid Amt': item.paidAmt,
-      'INV #': item.invNo,
-      'INV Date': item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
+      'Supplier INV #': item.supplierInvoiceNumber || '-',
+      'Supplier INV Date': item.supplierInvoiceDate ? format(new Date(item.supplierInvoiceDate), 'dd-MM-yyyy') : '-',
+      'Purchase INV #': item.invNo,
+      'Purchase INV Date': item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
       'Supplier': item.supplier,
       'Invoice Amt': item.invoiceAmt,
       'Allocated': item.allocated,
@@ -180,11 +188,13 @@ export default function SupPaymentHistory() {
   };
 
   const handleCopy = () => {
-    const header = ['Payment date', 'Payment mode', 'Paid Amt', 'INV #', 'INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'];
+    const header = ['Payment date', 'Payment mode', 'Paid Amt', 'Supplier INV #', 'Supplier INV Date', 'Purchase INV #', 'Purchase INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'];
     const rows = paymentHistory.map((item) => [
       item.paymentDate ? format(new Date(item.paymentDate), 'dd-MM-yyyy') : '',
       item.paymentMode,
       `£${Number(item.paidAmt).toFixed(2)}`,
+      item.supplierInvoiceNumber || '-',
+      item.supplierInvoiceDate ? format(new Date(item.supplierInvoiceDate), 'dd-MM-yyyy') : '-',
       item.invNo,
       item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
       item.supplier,
@@ -216,12 +226,14 @@ export default function SupPaymentHistory() {
     
     autoTable(doc, {
       head: [[
-        'Payment date', 'Payment mode', 'Paid Amt', 'INV #', 'INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'
+        'Payment date', 'Payment mode', 'Paid Amt', 'Supplier INV #', 'Supplier INV Date', 'Purchase INV #', 'Purchase INV Date', 'Supplier', 'Invoice Amt', 'Allocated', 'Remarks'
       ]],
       body: paymentHistory.map((item) => [
         item.paymentDate ? format(new Date(item.paymentDate), 'dd-MM-yyyy') : '',
         item.paymentMode,
         `£${Number(item.paidAmt).toFixed(2)}`,
+        item.supplierInvoiceNumber || '-',
+        item.supplierInvoiceDate ? format(new Date(item.supplierInvoiceDate), 'dd-MM-yyyy') : '-',
         item.invNo,
         item.invDate ? format(new Date(item.invDate), 'dd-MM-yyyy') : '',
         item.supplier,
@@ -487,8 +499,10 @@ export default function SupPaymentHistory() {
                     <TableHead className="text-center min-w-[120px]">Payment date</TableHead>
                     <TableHead className="text-center min-w-[120px]">Payment mode</TableHead>
                     <TableHead className="text-center min-w-[100px]">Paid Amt</TableHead>
-                    <TableHead className="text-center min-w-[80px]">INV #</TableHead>
-                    <TableHead className="text-center min-w-[80px]">INV Date</TableHead>
+                    <TableHead className="text-center min-w-[120px]">Supplier INV #</TableHead>
+                    <TableHead className="text-center min-w-[120px]">Supplier INV Date</TableHead>
+                    <TableHead className="text-center min-w-[80px]">Purchase INV #</TableHead>
+                    <TableHead className="text-center min-w-[80px]">Purchase INV Date</TableHead>
                     <TableHead className="text-center min-w-[120px]">Supplier</TableHead>
                     <TableHead className="text-center min-w-[120px]">Invoice Amt</TableHead>
                     <TableHead className="text-center min-w-[100px]">Allocated</TableHead>
@@ -498,11 +512,11 @@ export default function SupPaymentHistory() {
                 <TableBody>
                   {historyLoading ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8">Loading...</TableCell>
+                      <TableCell colSpan={11} className="text-center py-8">Loading...</TableCell>
                     </TableRow>
                   ) : paymentHistory.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8">No data found.</TableCell>
+                      <TableCell colSpan={11} className="text-center py-8">No data found.</TableCell>
                     </TableRow>
                   ) : (
                     paymentHistory.map(item => (
@@ -510,6 +524,8 @@ export default function SupPaymentHistory() {
                         <TableCell className="text-center">{item.paymentDate ? format(new Date(item.paymentDate), "dd-MM-yyyy") : ""}</TableCell>
                         <TableCell className="text-center">{item.paymentMode}</TableCell>
                         <TableCell className="text-center">£{item.paidAmt.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">{item.supplierInvoiceNumber || "-"}</TableCell>
+                        <TableCell className="text-center">{item.supplierInvoiceDate ? format(new Date(item.supplierInvoiceDate), "dd-MM-yyyy") : "-"}</TableCell>
                         <TableCell className="text-center">{item.invNo}</TableCell>
                         <TableCell className="text-center">{item.invDate ? format(new Date(item.invDate), "dd-MM-yyyy") : ""}</TableCell>
                         <TableCell className="text-left">{item.supplier}</TableCell>
@@ -522,6 +538,8 @@ export default function SupPaymentHistory() {
                   <TableRow className="bg-blue-100 font-semibold">
                     <TableCell colSpan={2} className="text-center">TOTAL</TableCell>
                     <TableCell className="text-center">£{totalPaid.toFixed(2)}</TableCell>
+                    <TableCell></TableCell>
+                    <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
