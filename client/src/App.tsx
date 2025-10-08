@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
 import { useAuth } from "@/lib/auth";
 import { useEffect } from "react";
+import { useAutoLogout } from "@/hooks/useAutoLogout";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -621,6 +622,9 @@ function Router() {
 
 function App() {
   const { checkAuth } = useAuth();
+  
+  // Initialize auto-logout functionality
+  useAutoLogout();
 
   useEffect(() => {
     // Check authentication status once on app startup

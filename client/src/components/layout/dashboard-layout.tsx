@@ -3,6 +3,7 @@ import { useAuth } from "@/lib/auth";
 import { useLocation } from "wouter";
 import Sidebar from "./sidebar";
 import Header from "./header";
+import { SessionTimer } from "@/components/ui/session-timer";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -46,6 +47,9 @@ export default function DashboardLayout({ children, title, breadcrumb }: Dashboa
           {children}
         </main>
       </div>
+      
+      {/* Session Timer */}
+      <SessionTimer />
     </div>
   );
 }
