@@ -431,8 +431,8 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             new_stock = previous_stock + float(quantity_change)  # Convert to float to avoid Decimal binding issues
             
             # Allow negative stock for sales (overselling) but warn for regular products
-            # Only prevent negative stock for non-sale movements (except adjustments, cancellations, and dumps)
-            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation', 'dump', 'dump_cancellation']:
+            # Only prevent negative stock for non-sale movements (except adjustments, cancellations, dumps, and purchases)
+            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation', 'dump', 'dump_cancellation', 'purchase', 'purchase_reversal']:
                 raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
             
             # Update product stock (allow negative for sales)
@@ -5598,9 +5598,19 @@ def create_purchase_invoice():
         db.session.add(invoice_item)
         
         # Update stock for the product
-        # Note: We need to determine if it's a regular or non-product
-        # For now, we'll assume regular products and handle both cases
-        product_type = 'regular'  # Default assumption
+        # Determine if it's a regular or non-product by checking both tables
+        regular_product = RegularProduct.query.get(item['productId'])
+        non_product = NonProduct.query.get(item['productId'])
+        
+        if regular_product:
+            product_type = 'regular'
+        elif non_product:
+            product_type = 'non'
+        else:
+            db.session.rollback()
+            return jsonify({"error": f"Product with ID {item['productId']} not found"}), 400
+        
+        print(f"[DEBUG] Creating stock movement for product {item['productId']} ({product_type}): quantity={item['quantity']}, movement_type=purchase")
         success, result = update_product_stock(
             product_id=item['productId'],
             product_type=product_type,
@@ -5609,11 +5619,15 @@ def create_purchase_invoice():
             reference_id=invoice.id,
             reference_type='purchase',
             remarks=f"Purchase invoice for purchase {data['purchaseId']}",
-            user_id=None  # TODO: Get user_id from JWT if needed
+            user_id=None,  # TODO: Get user_id from JWT if needed
+            movement_date=invoice_date  # Use the invoice date for the movement
         )
         if not success:
             db.session.rollback()
+            print(f"[ERROR] Stock update failed for product {item['productId']}: {result}")
             return jsonify({"error": f"Stock update failed: {result}"}), 400
+        else:
+            print(f"[DEBUG] Stock movement created successfully for product {item['productId']}: {result}")
     
     db.session.commit()
     return jsonify(invoice.to_dict()), 201
@@ -5657,20 +5671,38 @@ def delete_purchase_invoice(invoice_id):
         
         # Reverse stock updates for each item
         for item in invoice_items:
+            # Determine if it's a regular or non-product by checking both tables
+            regular_product = RegularProduct.query.get(item.product_id)
+            non_product = NonProduct.query.get(item.product_id)
+            
+            if regular_product:
+                product_type = 'regular'
+            elif non_product:
+                product_type = 'non'
+            else:
+                db.session.rollback()
+                return jsonify({"error": f"Product with ID {item.product_id} not found during deletion"}), 400
+            
+            print(f"[DEBUG] Reversing stock movement for product {item.product_id} ({product_type}): quantity={-item.quantity}, movement_type=purchase_reversal")
+            
             # Reverse the stock update (negative quantity to reduce stock)
             success, result = update_product_stock(
                 product_id=item.product_id,
-                product_type='regular',  # Default assumption, same as create
+                product_type=product_type,
                 quantity_change=-item.quantity,  # Negative to reverse the purchase
                 movement_type='purchase_reversal',
                 reference_id=invoice.id,
                 reference_type='purchase_invoice_delete',
                 remarks=f"Reversed purchase invoice {invoice_id} deletion",
-                user_id=None  # TODO: Get user_id from JWT if needed
+                user_id=None,  # TODO: Get user_id from JWT if needed
+                movement_date=invoice.date  # Use the original invoice date for the reversal
             )
             if not success:
                 db.session.rollback()
+                print(f"[ERROR] Stock reversal failed for product {item.product_id}: {result}")
                 return jsonify({"error": f"Stock reversal failed for product {item.product_id}: {result}"}), 400
+            else:
+                print(f"[DEBUG] Stock reversal successful for product {item.product_id}: {result}")
         
         # Delete invoice items first (foreign key constraint)
         PurchaseInvoiceItem.query.filter_by(invoice_id=invoice_id).delete()
@@ -5692,10 +5724,45 @@ def delete_purchase_invoice(invoice_id):
 @app.route('/api/purchase-invoices/<int:invoice_id>', methods=['PUT'])
 @jwt_required()
 def update_purchase_invoice(invoice_id):
-    """Update an existing purchase invoice"""
+    """Update an existing purchase invoice with proper stock movement handling"""
     try:
         data = request.get_json()
         invoice = PurchaseInvoice.query.get_or_404(invoice_id)
+        
+        # Get existing items before deletion to reverse their stock movements
+        existing_items = PurchaseInvoiceItem.query.filter_by(invoice_id=invoice_id).all()
+        
+        # Reverse stock movements for existing items
+        for item in existing_items:
+            # Determine product type
+            regular_product = RegularProduct.query.get(item.product_id)
+            non_product = NonProduct.query.get(item.product_id)
+            
+            if regular_product:
+                product_type = 'regular'
+            elif non_product:
+                product_type = 'non'
+            else:
+                continue  # Skip if product not found
+            
+            print(f"[DEBUG] Reversing stock for invoice update - product {item.product_id} ({product_type}): quantity={-item.quantity}")
+            
+            # Reverse the original stock movement
+            success, result = update_product_stock(
+                product_id=item.product_id,
+                product_type=product_type,
+                quantity_change=-item.quantity,  # Negative to reverse
+                movement_type='purchase_reversal',
+                reference_id=invoice.id,
+                reference_type='purchase_invoice_update',
+                remarks=f"Reversed for invoice {invoice_id} update",
+                user_id=None,
+                movement_date=invoice.date
+            )
+            if not success:
+                db.session.rollback()
+                print(f"[ERROR] Stock reversal failed during update for product {item.product_id}: {result}")
+                return jsonify({"error": f"Stock reversal failed for product {item.product_id}: {result}"}), 400
         
         # Update invoice fields
         invoice.remarks = data.get('remarks', '')
@@ -5703,8 +5770,9 @@ def update_purchase_invoice(invoice_id):
         # Delete existing items
         PurchaseInvoiceItem.query.filter_by(invoice_id=invoice_id).delete()
         
-        # Add new items
+        # Add new items and create stock movements
         for item_data in data.get('items', []):
+            # Create new invoice item
             item = PurchaseInvoiceItem(
                 invoice_id=invoice.id,
                 product_id=item_data['productId'],
@@ -5715,12 +5783,46 @@ def update_purchase_invoice(invoice_id):
                 remarks=item_data.get('remarks', '')
             )
             db.session.add(item)
+            
+            # Determine product type for new item
+            regular_product = RegularProduct.query.get(item_data['productId'])
+            non_product = NonProduct.query.get(item_data['productId'])
+            
+            if regular_product:
+                product_type = 'regular'
+            elif non_product:
+                product_type = 'non'
+            else:
+                db.session.rollback()
+                return jsonify({"error": f"Product with ID {item_data['productId']} not found"}), 400
+            
+            print(f"[DEBUG] Creating new stock movement for invoice update - product {item_data['productId']} ({product_type}): quantity={item_data['quantity']}")
+            
+            # Create new stock movement
+            success, result = update_product_stock(
+                product_id=item_data['productId'],
+                product_type=product_type,
+                quantity_change=item_data['quantity'],  # Positive for new purchase
+                movement_type='purchase',
+                reference_id=invoice.id,
+                reference_type='purchase_invoice_update',
+                remarks=f"Updated purchase invoice {invoice_id}",
+                user_id=None,
+                movement_date=invoice.date
+            )
+            if not success:
+                db.session.rollback()
+                print(f"[ERROR] Stock update failed during update for product {item_data['productId']}: {result}")
+                return jsonify({"error": f"Stock update failed for product {item_data['productId']}: {result}"}), 400
         
         db.session.commit()
         return jsonify(invoice.to_dict())
         
     except Exception as e:
         db.session.rollback()
+        print(f"[ERROR] Purchase invoice update failed: {str(e)}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -5753,6 +5855,38 @@ def send_purchase_invoice(invoice_id):
         return jsonify({"success": True, "message": "Email sent"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
+
+@app.route('/api/debug/stock-movements/<int:product_id>/<product_type>', methods=['GET'])
+def debug_stock_movements(product_id, product_type):
+    """Debug endpoint to check stock movements for a specific product"""
+    try:
+        movements = StockMovement.query.filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type
+        ).order_by(StockMovement.created_at.desc()).limit(20).all()
+        
+        result = []
+        for movement in movements:
+            result.append({
+                'id': movement.id,
+                'quantity': float(movement.quantity),
+                'movement_type': movement.movement_type,
+                'created_at': movement.created_at.isoformat(),
+                'reference_id': movement.reference_id,
+                'reference_type': movement.reference_type,
+                'remarks': movement.remarks,
+                'previous_stock': movement.previous_stock,
+                'new_stock': movement.new_stock
+            })
+        
+        return jsonify({
+            'product_id': product_id,
+            'product_type': product_type,
+            'movements': result,
+            'total_movements': len(result)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/debug/products', methods=['GET'])
 def debug_products():
@@ -6753,6 +6887,8 @@ def stock_check_report():
         # Set to_dt to end of day (23:59:59) to include the entire day
         to_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
         
+        print(f"[DEBUG] Stock check report: from_dt={from_dt}, to_dt={to_dt}")
+        
         # Get all products (regular and non)
         regular_products = RegularProduct.query.filter(RegularProduct.status == 'active').all()
         non_products = NonProduct.query.filter(NonProduct.status == 'active').all()
@@ -6770,6 +6906,7 @@ def stock_check_report():
                 
                 # Get new stock (purchases) between dates
                 new_stock = get_new_stock(product.id, 'regular', from_dt, to_dt)
+                print(f"[DEBUG] Regular product {product.description} (ID: {product.id}): new_stock={new_stock}")
                 
                 # Get sales between dates
                 sales = get_sales_quantity(product.id, 'regular', from_dt, to_dt)
@@ -6845,6 +6982,7 @@ def stock_check_report():
                 
                 # Get new stock
                 new_stock = get_new_stock(product.id, 'non', from_dt, to_dt)
+                print(f"[DEBUG] Non-product {product.description} (ID: {product.id}): new_stock={new_stock}")
                 
                 # Get sales
                 sales = get_sales_quantity(product.id, 'non', from_dt, to_dt)
@@ -6974,18 +7112,31 @@ def get_opening_stock(product_id, product_type, from_date):
         return 0
 
 def get_new_stock(product_id, product_type, from_date, to_date):
-    """Get new stock (purchases) between dates"""
+    """Get new stock (purchases) between dates, accounting for purchase reversals"""
     try:
+        # Get all purchase-related movements (including updates)
         movements = StockMovement.query.filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
-            StockMovement.movement_type == 'purchase',
+            StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
             StockMovement.created_at >= from_date,
             StockMovement.created_at <= to_date
         ).all()
         
-        total = sum(movement.quantity for movement in movements if movement.quantity > 0)
-        return total
+        print(f"[DEBUG] get_new_stock for product {product_id} ({product_type}) from {from_date} to {to_date}: found {len(movements)} movements")
+        
+        total = 0
+        for movement in movements:
+            print(f"[DEBUG] Movement: type={movement.movement_type}, quantity={movement.quantity}, created_at={movement.created_at}, reference_id={movement.reference_id}")
+            
+            if movement.movement_type == 'purchase' and movement.quantity > 0:
+                total += movement.quantity
+            elif movement.movement_type == 'purchase_reversal' and movement.quantity < 0:
+                # Purchase reversals have negative quantities, so we add them (which reduces the total)
+                total += movement.quantity
+        
+        print(f"[DEBUG] Total new stock for product {product_id}: {total}")
+        return max(0, total)  # Ensure we don't return negative new stock
     except Exception as e:
         print(f"[ERROR] Error getting new stock: {e}")
         import traceback

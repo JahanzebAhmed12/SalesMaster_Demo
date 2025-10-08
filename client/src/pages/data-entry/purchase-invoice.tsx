@@ -46,7 +46,7 @@ export default function PurchaseInvoice() {
     const editMode = params.get("edit");
     console.log("PurchaseInvoice: Extracted purchaseId from URL:", id, "Edit mode:", editMode);
     setPurchaseId(id);
-    
+
     // If in edit mode, fetch existing invoice data
     if (editMode === "true" && id) {
       fetchExistingInvoiceData(id);
@@ -68,7 +68,7 @@ export default function PurchaseInvoice() {
         setIsEditMode(true);
         setInvoiceId(response.invoice.id);
         setRemarks(response.invoice.remarks || "");
-        
+
         // Pre-fill items if they exist
         if (response.invoice.items && response.invoice.items.length > 0) {
           const formattedItems = response.invoice.items.map((item: any) => ({
@@ -81,7 +81,7 @@ export default function PurchaseInvoice() {
           }));
           setItems(formattedItems);
         }
-        
+
         toast({
           title: "Invoice Loaded",
           description: "Existing invoice data has been loaded for editing.",
@@ -242,12 +242,12 @@ export default function PurchaseInvoice() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock-movements"] });
-      
+
       toast({
         title: "Success",
         description: isEditMode ? "Purchase invoice updated successfully!" : "Purchase invoice saved successfully!",
       });
-      
+
       if (!isEditMode) {
         setLocation(`/data-entry/purchase-invoice?purchaseId=${purchaseId}&invoiceId=${invoice.id}`);
         setInvoiceId(invoice.id);
@@ -266,7 +266,21 @@ export default function PurchaseInvoice() {
   const deleteInvoiceMutation = useMutation({
     mutationFn: () => apiRequest("DELETE", `/api/purchase-invoices/${invoiceId}`),
     onSuccess: () => {
-      toast({ title: "Deleted", description: "Invoice deleted" });
+      // Invalidate all relevant queries to update data across the app
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/purchase-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stock-movements"] });
+      // Invalidate daily book purchase queries
+      queryClient.invalidateQueries({ queryKey: ["daily-book-purchase"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/daily-book-purchase"] });
+      // Invalidate stock check queries
+      queryClient.invalidateQueries({ queryKey: ["stock-check"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/stock-check"] });
+
+      toast({ title: "Deleted", description: "Invoice deleted successfully" });
       setLocation("/data-entry/purchase-entry");
     },
     onError: () => {
@@ -277,7 +291,7 @@ export default function PurchaseInvoice() {
   // Add product to invoice
   const handleAddProduct = () => {
     let product = null;
-    
+
     // Check if it's a regular product (starts with 'regular-') or non-product
     if (selectedProductId.startsWith('regular-')) {
       const productId = selectedProductId.replace('regular-', '');
@@ -286,7 +300,7 @@ export default function PurchaseInvoice() {
       const productId = selectedProductId.replace('non-', '');
       product = nonProducts.find((p: any) => String(p.id) === productId);
     }
-    
+
     if (!product) {
       toast({
         title: "Validation Error",
@@ -308,10 +322,10 @@ export default function PurchaseInvoice() {
       return;
     }
 
-    if (!unitPrice || Number(unitPrice) <= 0) {
+    if (!unitPrice || Number(unitPrice) < 0) {
       toast({
         title: "Validation Error",
-        description: "Please enter a valid unit price greater than 0.",
+        description: "Please enter a valid unit price (0 or greater).",
         variant: "destructive",
       });
       priceInputRef.current?.focus();
@@ -474,10 +488,10 @@ export default function PurchaseInvoice() {
             ) : isError ? (
               <div className="text-center py-4 text-red-500">
                 <p>Error loading purchase details</p>
-                <Button 
-                  onClick={() => refetch()} 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  onClick={() => refetch()}
+                  variant="outline"
+                  size="sm"
                   className="mt-2"
                 >
                   Retry
@@ -512,10 +526,10 @@ export default function PurchaseInvoice() {
             ) : (
               <div className="text-center py-4 text-gray-500">
                 <p>No purchase found</p>
-                <Button 
-                  onClick={() => refetch()} 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  onClick={() => refetch()}
+                  variant="outline"
+                  size="sm"
                   className="mt-2"
                 >
                   Retry
@@ -531,7 +545,7 @@ export default function PurchaseInvoice() {
             <CardTitle>{isEditMode ? "Edit Purchase Invoice" : "Create Purchase Invoice"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-          
+
 
             <Separator />
 
@@ -591,21 +605,26 @@ export default function PurchaseInvoice() {
                     ref={quantityInputRef}
                     id="quantity"
                     type="number"
-                    min="1"
+                    min="0.01"
+                    step="0.01"
                     placeholder="Qty"
                     value={quantity === 0 ? "" : quantity}
                     onChange={e => setQuantity(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
                     onKeyDown={handleQuantityKeyDown}
                     onKeyPress={(e) => {
-                      // Only allow numbers, backspace, delete, and arrow keys
-                      if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                      // Allow numbers, decimal point, backspace, delete, and arrow keys
+                      if (!/[0-9.]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
+                        e.preventDefault();
+                      }
+                      // Prevent multiple decimal points
+                      if (e.key === '.' && e.currentTarget.value.includes('.')) {
                         e.preventDefault();
                       }
                     }}
                     onPaste={(e) => {
-                      // Prevent pasting non-numeric content
+                      // Allow pasting decimal numbers
                       const paste = e.clipboardData?.getData('text');
-                      if (paste && !/^\d+$/.test(paste)) {
+                      if (paste && !/^\d*\.?\d*$/.test(paste)) {
                         e.preventDefault();
                       }
                     }}
@@ -643,18 +662,18 @@ export default function PurchaseInvoice() {
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button 
-                    onClick={handleAddProduct} 
+                  <Button
+                    onClick={handleAddProduct}
                     className="w-full"
-                    disabled={!selectedProductId || quantity <= 0 || !unitPrice || Number(unitPrice) <= 0}
+                    disabled={!selectedProductId || quantity <= 0 || !unitPrice || Number(unitPrice) < 0}
                   >
                     Add Product
                   </Button>
                 </div>
               </div>
-              
+
               {/* Live calculation display */}
-              {selectedProductId && quantity > 0 && unitPrice && Number(unitPrice) > 0 && (
+              {selectedProductId && quantity > 0 && unitPrice && Number(unitPrice) >= 0 && (
                 <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
                   <div className="text-sm text-blue-800">
                     <span className="font-medium">Preview:</span> {quantity} × £{Number(unitPrice).toFixed(2)} = <span className="font-bold">£{(quantity * Number(unitPrice)).toFixed(2)}</span>
@@ -743,13 +762,13 @@ export default function PurchaseInvoice() {
                     {deleteInvoiceMutation.isPending ? "Deleting..." : "Delete"}
                   </Button>
                 )}
-                <Button 
+                <Button
                   onClick={handleSaveInvoice}
                   disabled={createInvoiceMutation.isPending || items.length === 0}
                   className="px-8"
                 >
-                  {createInvoiceMutation.isPending 
-                    ? (isEditMode ? "Updating..." : "Saving...") 
+                  {createInvoiceMutation.isPending
+                    ? (isEditMode ? "Updating..." : "Saving...")
                     : (isEditMode ? "Update Purchase Invoice" : "Save Purchase Invoice")
                   }
                 </Button>
