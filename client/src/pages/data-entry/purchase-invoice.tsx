@@ -34,6 +34,9 @@ export default function PurchaseInvoice() {
   const [highlightedProduct, setHighlightedProduct] = useState(-1);
   const productInputRef = useRef<HTMLInputElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const remarksInputRef = useRef<HTMLInputElement>(null);
   const [isEditMode, setIsEditMode] = useState(false);
 
   // Extract purchaseId from URL on component mount and URL changes
@@ -139,7 +142,16 @@ export default function PurchaseInvoice() {
 
   // Keyboard navigation for product dropdown
   const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showProductDropdown || productOptions.length === 0) return;
+    if (!showProductDropdown || productOptions.length === 0) {
+      // If no dropdown is showing and user presses Enter, move to quantity
+      if (e.key === "Enter" && selectedProductId) {
+        e.preventDefault();
+        quantityInputRef.current?.focus();
+        return;
+      }
+      return;
+    }
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightedProduct((prev) => (prev < productOptions.length - 1 ? prev + 1 : 0));
@@ -155,9 +167,40 @@ export default function PurchaseInvoice() {
         // Keep unit price empty for manual entry
         setUnitPrice("");
         setShowProductDropdown(false);
+        // Auto-focus to quantity input after product selection
+        setTimeout(() => {
+          quantityInputRef.current?.focus();
+        }, 100);
       }
     } else if (e.key === "Escape") {
       setShowProductDropdown(false);
+    }
+  };
+
+  // Keyboard handler for quantity input
+  const handleQuantityKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Move to price input
+      priceInputRef.current?.focus();
+    }
+  };
+
+  // Keyboard handler for price input
+  const handlePriceKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Move to remarks input
+      remarksInputRef.current?.focus();
+    }
+  };
+
+  // Keyboard handler for remarks input
+  const handleRemarksKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Add the item and return focus to product search
+      handleAddProduct();
     }
   };
 
@@ -244,12 +287,35 @@ export default function PurchaseInvoice() {
       product = nonProducts.find((p: any) => String(p.id) === productId);
     }
     
-    if (!product || quantity <= 0 || !unitPrice || Number(unitPrice) <= 0) {
+    if (!product) {
       toast({
-        title: "Error",
-        description: "Please select a product and enter valid quantity and price",
+        title: "Validation Error",
+        description: "Please select a product.",
         variant: "destructive",
       });
+      productInputRef.current?.focus();
+      return;
+    }
+
+    if (quantity <= 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid quantity greater than 0.",
+        variant: "destructive",
+      });
+      quantityInputRef.current?.focus();
+      quantityInputRef.current?.select();
+      return;
+    }
+
+    if (!unitPrice || Number(unitPrice) <= 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid unit price greater than 0.",
+        variant: "destructive",
+      });
+      priceInputRef.current?.focus();
+      priceInputRef.current?.select();
       return;
     }
 
@@ -271,11 +337,26 @@ export default function PurchaseInvoice() {
       totalPrice,
       remarks: productRemarks // Add remarks to item
     }]);
+
+    // Show success message
+    toast({
+      title: "Product Added",
+      description: `${product.description} (Qty: ${quantity}) added to invoice.`,
+    });
+
     setSelectedProductId("");
     setProductSearch(""); // Clear the product search field
     setQuantity(0); // Reset to 0 for completely manual entry
     setUnitPrice(""); // Keep unit price empty for next product
     setProductRemarks(""); // Clear remarks after adding
+
+    // Focus back to product input field for next item
+    setTimeout(() => {
+      if (productInputRef.current) {
+        productInputRef.current.focus();
+        productInputRef.current.select(); // Select all text for easy replacement
+      }
+    }, 100);
   };
 
   // Save invoice
@@ -303,6 +384,46 @@ export default function PurchaseInvoice() {
   };
 
   const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0);
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + P to focus on product search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+        e.preventDefault();
+        productInputRef.current?.focus();
+        productInputRef.current?.select();
+      }
+      // Escape to clear current inputs and focus on product search
+      if (e.key === 'Escape' && !showProductDropdown) {
+        e.preventDefault();
+        setSelectedProductId("");
+        setQuantity(0);
+        setUnitPrice("");
+        setProductRemarks("");
+        setProductSearch("");
+        productInputRef.current?.focus();
+      }
+      // Ctrl/Cmd + Enter to add product
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleAddProduct();
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [showProductDropdown, selectedProductId, quantity, unitPrice, productRemarks]);
+
+  // Auto-focus product input on component mount
+  useEffect(() => {
+    if (productInputRef.current && !isEditMode) {
+      // Only auto-focus for new invoices, not when editing existing ones
+      setTimeout(() => {
+        productInputRef.current?.focus();
+      }, 500); // Small delay to ensure component is fully rendered
+    }
+  }, [isEditMode]);
 
   // Handler for Supplier History navigation
   const handleSupplierHistory = () => {
@@ -416,7 +537,12 @@ export default function PurchaseInvoice() {
 
             {/* Add Product Section */}
             <div>
-              <Label className="text-base font-medium">Add Products</Label>
+              <div className="flex justify-between items-center mb-4">
+                <Label className="text-base font-medium">Add Products</Label>
+                <div className="text-xs text-gray-500 bg-gray-50 px-3 py-1 rounded-md">
+                  <span className="font-medium">Flow:</span> Product → Quantity → Price → Remarks → Add | <span className="font-medium">Shortcuts:</span> Ctrl+P (Focus Product) | Ctrl+Enter (Add Product) | Esc (Clear)
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
                 <div>
                   <Label htmlFor="product">Product</Label>
@@ -462,12 +588,14 @@ export default function PurchaseInvoice() {
                 <div>
                   <Label htmlFor="quantity">Quantity</Label>
                   <Input
+                    ref={quantityInputRef}
                     id="quantity"
                     type="number"
                     min="1"
                     placeholder="Qty"
                     value={quantity === 0 ? "" : quantity}
                     onChange={e => setQuantity(e.target.value === "" ? 0 : Number(e.target.value) || 0)}
+                    onKeyDown={handleQuantityKeyDown}
                     onKeyPress={(e) => {
                       // Only allow numbers, backspace, delete, and arrow keys
                       if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
@@ -481,12 +609,14 @@ export default function PurchaseInvoice() {
                         e.preventDefault();
                       }
                     }}
+                    onFocus={(e) => e.target.select()}
                     className="mt-1"
                   />
                 </div>
                 <div>
                   <Label htmlFor="unitPrice">Unit Price</Label>
                   <Input
+                    ref={priceInputRef}
                     id="unitPrice"
                     type="number"
                     min="0"
@@ -494,25 +624,43 @@ export default function PurchaseInvoice() {
                     placeholder="£0.00"
                     value={unitPrice}
                     onChange={e => setUnitPrice(e.target.value)}
+                    onKeyDown={handlePriceKeyDown}
+                    onFocus={(e) => e.target.select()}
                     className="mt-1"
                   />
                 </div>
                 <div>
                   <Label htmlFor="productRemarks">Remarks</Label>
                   <Input
+                    ref={remarksInputRef}
                     id="productRemarks"
                     placeholder="Remarks (optional)"
                     value={productRemarks}
                     onChange={e => setProductRemarks(e.target.value)}
+                    onKeyDown={handleRemarksKeyDown}
+                    onFocus={(e) => e.target.select()}
                     className="mt-1"
                   />
                 </div>
                 <div className="flex items-end">
-                  <Button onClick={handleAddProduct} className="w-full">
+                  <Button 
+                    onClick={handleAddProduct} 
+                    className="w-full"
+                    disabled={!selectedProductId || quantity <= 0 || !unitPrice || Number(unitPrice) <= 0}
+                  >
                     Add Product
                   </Button>
                 </div>
               </div>
+              
+              {/* Live calculation display */}
+              {selectedProductId && quantity > 0 && unitPrice && Number(unitPrice) > 0 && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="text-sm text-blue-800">
+                    <span className="font-medium">Preview:</span> {quantity} × £{Number(unitPrice).toFixed(2)} = <span className="font-bold">£{(quantity * Number(unitPrice)).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Products Table */}

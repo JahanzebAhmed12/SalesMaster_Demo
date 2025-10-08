@@ -9886,11 +9886,11 @@ def get_invoice_data(invoice_number):
         packing_items = []
         for item in sale.items:
             if item.product:
-                weight = float(item.product.unit_weight or 0) * item.quantity
+                weight = float(item.product.unit_weight or 0) * float(item.quantity)
                 hs_code = item.product.hs_code or ""
                 product_name = item.product.description
             elif item.non_product:
-                weight = float(item.non_product.unit_weight or 0) * item.quantity
+                weight = float(item.non_product.unit_weight or 0) * float(item.quantity)
                 hs_code = ""
                 product_name = item.non_product.description
             else:
@@ -9898,7 +9898,7 @@ def get_invoice_data(invoice_number):
                 hs_code = ""
                 product_name = ""
             packing_items.append({
-                "qty": item.quantity,
+                "qty": float(item.quantity),
                 "weight": weight,
                 "product": product_name,
                 "hsCode": hs_code

@@ -321,16 +321,16 @@ const SalesInvoice = () => {
           setNotes(data.notes || "");
           // Set the editable date when loading the sale
           setEditableDate(data.date ? parseISO(data.date) : new Date());
-          
+
           // Set porterage settings based on loaded invoice data
           const hasPorterage = data.porterage && data.porterage > 0;
           setApplyPorterage(hasPorterage);
-          
+
           if (hasPorterage) {
             // Calculate the per-unit porterage charge from saved total porterage and total quantity
             const totalQuantity = (data.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
             const perUnitPorterage = totalQuantity > 0 ? (data.porterage / totalQuantity) : 0;
-            
+
             setPorterageDetails({
               withPorterage: true,
               porterageCharge: perUnitPorterage.toFixed(4) // Use more precision to preserve custom rates
@@ -339,7 +339,7 @@ const SalesInvoice = () => {
             // If no porterage or porterage is 0, ensure it's disabled
             setApplyPorterage(false);
           }
-          
+
           // Set tax details based on loaded invoice data
           const hasVat = data.vatAmount && data.vatAmount > 0;
           if (hasVat) {
@@ -348,7 +348,7 @@ const SalesInvoice = () => {
               taxPercentage: data.vatRate ? data.vatRate.toString() : '0'
             });
           }
-          
+
           // Mark that invoice data has been loaded
           setInvoiceDataLoaded(true);
         });
@@ -475,7 +475,12 @@ const SalesInvoice = () => {
       // If no dropdown is showing and user presses Enter, move to notes
       if (e.key === "Enter" && selectedProductId) {
         e.preventDefault();
-        notesInputRef.current?.focus();
+        if (editingIndex !== null) {
+          notesInputRef.current?.focus();
+        }
+        else {
+          quantityInputRef.current?.focus()
+        }
         return;
       }
       return;
@@ -494,9 +499,14 @@ const SalesInvoice = () => {
         setSelectedProductId(p.id.toString());
         setProductSearch(`${p.productCode} - ${p.description}`);
         setShowProductDropdown(false);
-        // Auto-focus to notes input after product selection
+        // Auto-focus to notes input if input otherwise quanitty
         setTimeout(() => {
-          notesInputRef.current?.focus();
+          if (editingIndex !== null) {
+            notesInputRef.current?.focus();
+          }
+          else {
+            quantityInputRef.current?.focus();
+          }
         }, 100);
       }
     } else if (e.key === "Escape") {
@@ -861,7 +871,7 @@ const SalesInvoice = () => {
         : 0;
       const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
       const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
-      
+
       const updatedSalePayload: BackendSalePayload = {
         invoice_number: currentSale.invoiceNumber,
         customer_id: currentSale.customerId,
@@ -1809,7 +1819,7 @@ const SalesInvoice = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const invoiceNumber = params.get("invoiceNumber");
-    
+
     apiRequest("GET", "/api/settings").then(settings => {
       // Only load settings if invoice data hasn't been loaded yet (for new invoices)
       // or if this is definitely a new invoice (no invoiceNumber)
@@ -1818,7 +1828,7 @@ const SalesInvoice = () => {
           withTax: !!settings.withTax,
           taxPercentage: settings.taxPercentage ? String(settings.taxPercentage) : '0',
         });
-        
+
         if (!invoiceNumber) {
           setPorterageDetails({
             withPorterage: !!settings.withPorterage,
@@ -1827,7 +1837,7 @@ const SalesInvoice = () => {
           setApplyPorterage(true);
         }
       }
-      
+
       setInvoicePrintFormat(settings.invoicePrintFormat || "A4");
     });
   }, [invoiceDataLoaded]);
@@ -2391,7 +2401,7 @@ const SalesInvoice = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    <TableHead className="text-center">Notes</TableHead>
+                    {editingIndex !== null && <TableHead className="text-center">Notes</TableHead>}
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">Unit price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
@@ -2453,7 +2463,6 @@ const SalesInvoice = () => {
                     ) : (
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell className="text-center">{item.notes || "-"}</TableCell>
                         <TableCell className="text-center">{formatQuantity(item.quantity)}</TableCell>
                         <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
@@ -2473,7 +2482,7 @@ const SalesInvoice = () => {
                                 : 0;
                               const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
                               const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
-                              
+
                               const updatedSalePayload: BackendSalePayload = {
                                 invoice_number: currentSale.invoiceNumber,
                                 customer_id: currentSale.customerId,
@@ -2547,7 +2556,7 @@ const SalesInvoice = () => {
                                   setShowProductDropdown(false);
                                   // Auto-focus to quantity input after product selection
                                   setTimeout(() => {
-                                    notesInputRef.current?.focus();
+                                    editingIndex !== null ? notesInputRef.current?.focus() : quantityInputRef.current?.focus();
                                   }, 100);
                                 }}
                                 onMouseEnter={() => setHighlightedProduct(idx)}
@@ -2578,18 +2587,20 @@ const SalesInvoice = () => {
                         })()}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Input
-                        ref={notesInputRef}
-                        className="text-center"
-                        placeholder="Notes (optional)"
-                        value={itemNotes}
-                        disabled={isReadOnly}
-                        onChange={(e) => setItemNotes(e.target.value)}
-                        onKeyDown={handleNotesKeyDown}
-                        style={{ minWidth: 120 }}
-                      />
-                    </TableCell>
+                    {editingIndex !== null && (
+                      <TableCell>
+                        <Input
+                          ref={notesInputRef}
+                          className="text-center"
+                          placeholder="Notes (optional)"
+                          value={itemNotes}
+                          disabled={isReadOnly}
+                          onChange={(e) => setItemNotes(e.target.value)}
+                          onKeyDown={handleNotesKeyDown}
+                          style={{ minWidth: 120 }}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Input
                         ref={quantityInputRef}

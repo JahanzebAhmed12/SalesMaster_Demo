@@ -45,6 +45,35 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
     inputRefs.current[key] = el;
   };
   
+  // Auto-calculate totals
+  const calculateTotals = () => {
+    let totalQuantity = 0;
+    let totalAmount = 0;
+    
+    items.forEach((_, idx) => {
+      const quantityInput = inputRefs.current[`quantity-${idx}`];
+      const totalInput = inputRefs.current[`total-${idx}`];
+      
+      if (quantityInput) {
+        totalQuantity += parseFloat(quantityInput.value) || 0;
+      }
+      if (totalInput) {
+        totalAmount += parseFloat(totalInput.value) || 0;
+      }
+    });
+    
+    // Update total fields
+    const totalQuantityInput = inputRefs.current['totalQuantity'];
+    const totalAmountInput = inputRefs.current['totalAmount'];
+    
+    if (totalQuantityInput) {
+      totalQuantityInput.value = totalQuantity.toFixed(3);
+    }
+    if (totalAmountInput) {
+      totalAmountInput.value = totalAmount.toFixed(2);
+    }
+  };
+  
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, currentRow: number, currentCol: 'quantity' | 'unitPrice' | 'total') => {
     if (e.key === 'Enter') {
@@ -72,6 +101,91 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
         inputRefs.current[nextKey]?.focus();
         inputRefs.current[nextKey]?.select();
       }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      // Move to same column in next row
+      if (currentRow < items.length - 1) {
+        const nextKey = `${currentCol}-${currentRow + 1}`;
+        inputRefs.current[nextKey]?.focus();
+        inputRefs.current[nextKey]?.select();
+      } else if (currentCol === 'quantity') {
+        // If at last row quantity, move to total quantity
+        inputRefs.current['totalQuantity']?.focus();
+        inputRefs.current['totalQuantity']?.select();
+      } else if (currentCol === 'total') {
+        // If at last row total, move to total amount
+        inputRefs.current['totalAmount']?.focus();
+        inputRefs.current['totalAmount']?.select();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      // Move to same column in previous row
+      if (currentRow > 0) {
+        const prevKey = `${currentCol}-${currentRow - 1}`;
+        inputRefs.current[prevKey]?.focus();
+        inputRefs.current[prevKey]?.select();
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      // Move to previous column in same row
+      if (currentCol === 'unitPrice') {
+        inputRefs.current[`quantity-${currentRow}`]?.focus();
+        inputRefs.current[`quantity-${currentRow}`]?.select();
+      } else if (currentCol === 'total') {
+        inputRefs.current[`unitPrice-${currentRow}`]?.focus();
+        inputRefs.current[`unitPrice-${currentRow}`]?.select();
+      }
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      // Move to next column in same row
+      if (currentCol === 'quantity') {
+        inputRefs.current[`unitPrice-${currentRow}`]?.focus();
+        inputRefs.current[`unitPrice-${currentRow}`]?.select();
+      } else if (currentCol === 'unitPrice') {
+        inputRefs.current[`total-${currentRow}`]?.focus();
+        inputRefs.current[`total-${currentRow}`]?.select();
+      }
+    } else if (e.key === 'Tab') {
+      // Let Tab work naturally but ensure proper focus
+      if (!e.shiftKey) {
+        // Tab forward - same as Enter
+        e.preventDefault();
+        let nextKey = '';
+        
+        if (currentCol === 'quantity') {
+          nextKey = `unitPrice-${currentRow}`;
+        } else if (currentCol === 'unitPrice') {
+          nextKey = `total-${currentRow}`;
+        } else if (currentCol === 'total') {
+          if (currentRow < items.length - 1) {
+            nextKey = `quantity-${currentRow + 1}`;
+          } else {
+            nextKey = 'totalQuantity';
+          }
+        }
+        
+        if (nextKey && inputRefs.current[nextKey]) {
+          inputRefs.current[nextKey]?.focus();
+          inputRefs.current[nextKey]?.select();
+        }
+      } else {
+        // Shift+Tab backward
+        e.preventDefault();
+        let prevKey = '';
+        
+        if (currentCol === 'unitPrice') {
+          prevKey = `quantity-${currentRow}`;
+        } else if (currentCol === 'total') {
+          prevKey = `unitPrice-${currentRow}`;
+        } else if (currentCol === 'quantity' && currentRow > 0) {
+          prevKey = `total-${currentRow - 1}`;
+        }
+        
+        if (prevKey && inputRefs.current[prevKey]) {
+          inputRefs.current[prevKey]?.focus();
+          inputRefs.current[prevKey]?.select();
+        }
+      }
     }
   };
   
@@ -80,6 +194,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
     if (items.length > 0) {
       setTimeout(() => {
         inputRefs.current['quantity-0']?.focus();
+        inputRefs.current['quantity-0']?.select();
       }, 100);
     }
   }, [items.length]);
@@ -95,13 +210,32 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
           inputRefs.current['quantity-0']?.select();
         }
       }
-      // Escape to focus on first quantity field
+      // Escape to clear current inputs and focus on first quantity field
       if (e.key === 'Escape') {
         e.preventDefault();
+        // Clear all input values
+        Object.keys(inputRefs.current).forEach(key => {
+          if (inputRefs.current[key]) {
+            inputRefs.current[key]!.value = '';
+          }
+        });
+        // Focus first quantity field
         if (items.length > 0) {
           inputRefs.current['quantity-0']?.focus();
           inputRefs.current['quantity-0']?.select();
         }
+      }
+      // Ctrl/Cmd + S to focus on total quantity field
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        inputRefs.current['totalQuantity']?.focus();
+        inputRefs.current['totalQuantity']?.select();
+      }
+      // Ctrl/Cmd + T to focus on total amount field
+      if ((e.ctrlKey || e.metaKey) && e.key === 't') {
+        e.preventDefault();
+        inputRefs.current['totalAmount']?.focus();
+        inputRefs.current['totalAmount']?.select();
       }
     };
 
@@ -157,6 +291,8 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                 <input 
                   ref={setInputRef(`quantity-${idx}`)}
                   type="number" 
+                  min="0"
+                  step="0.001"
                   style={{ 
                     border: "none", 
                     background: "transparent", 
@@ -168,6 +304,22 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                   className="no-print-border"
                   placeholder="0"
                   onKeyDown={(e) => handleKeyDown(e, idx, 'quantity')}
+                  onChange={(e) => {
+                    // Auto-calculate total when quantity changes
+                    const quantity = parseFloat(e.target.value) || 0;
+                    const unitPriceInput = inputRefs.current[`unitPrice-${idx}`];
+                    const totalInput = inputRefs.current[`total-${idx}`];
+                    
+                    if (unitPriceInput && totalInput) {
+                      const unitPrice = parseFloat(unitPriceInput.value) || 0;
+                      const total = quantity * unitPrice;
+                      totalInput.value = total.toFixed(2);
+                    }
+                    
+                    // Recalculate grand totals
+                    setTimeout(calculateTotals, 10);
+                  }}
+                  onFocus={(e) => e.target.select()}
                 />
               </td>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>
@@ -197,6 +349,22 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                       e.preventDefault();
                     }
                   }}
+                  onChange={(e) => {
+                    // Auto-calculate total when unit price changes
+                    const unitPrice = parseFloat(e.target.value) || 0;
+                    const quantityInput = inputRefs.current[`quantity-${idx}`];
+                    const totalInput = inputRefs.current[`total-${idx}`];
+                    
+                    if (quantityInput && totalInput) {
+                      const quantity = parseFloat(quantityInput.value) || 0;
+                      const total = quantity * unitPrice;
+                      totalInput.value = total.toFixed(2);
+                    }
+                    
+                    // Recalculate grand totals
+                    setTimeout(calculateTotals, 10);
+                  }}
+                  onFocus={(e) => e.target.select()}
                   onPaste={(e) => {
                     // Get pasted data and validate it's a non-negative number
                     const pasteData = e.clipboardData.getData('text/plain');
@@ -233,6 +401,24 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                       e.preventDefault();
                     }
                   }}
+                  onChange={(e) => {
+                    // When total is manually changed, calculate unit price if quantity exists
+                    const total = parseFloat(e.target.value) || 0;
+                    const quantityInput = inputRefs.current[`quantity-${idx}`];
+                    const unitPriceInput = inputRefs.current[`unitPrice-${idx}`];
+                    
+                    if (quantityInput && unitPriceInput) {
+                      const quantity = parseFloat(quantityInput.value) || 0;
+                      if (quantity > 0) {
+                        const unitPrice = total / quantity;
+                        unitPriceInput.value = unitPrice.toFixed(4); // More precision for unit price
+                      }
+                    }
+                    
+                    // Recalculate grand totals
+                    setTimeout(calculateTotals, 10);
+                  }}
+                  onFocus={(e) => e.target.select()}
                   onPaste={(e) => {
                     // Get pasted data and validate it's a non-negative number
                     const pasteData = e.clipboardData.getData('text/plain');
@@ -251,6 +437,8 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
               <input 
                 ref={setInputRef('totalQuantity')}
                 type="number" 
+                min="0"
+                step="0.001"
                 style={{ 
                   border: "none", 
                   background: "transparent", 
@@ -268,7 +456,24 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                     // Move to total amount field
                     inputRefs.current['totalAmount']?.focus();
                     inputRefs.current['totalAmount']?.select();
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    // Move to last row quantity
+                    if (items.length > 0) {
+                      inputRefs.current[`quantity-${items.length - 1}`]?.focus();
+                      inputRefs.current[`quantity-${items.length - 1}`]?.select();
+                    }
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    // Move to total amount
+                    inputRefs.current['totalAmount']?.focus();
+                    inputRefs.current['totalAmount']?.select();
                   }
+                }}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => {
+                  // Auto-calculate individual quantities proportionally if needed
+                  // This is optional - you might want to implement this logic
                 }}
               />
             </td>
@@ -277,6 +482,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
               <input 
                 ref={setInputRef('totalAmount')}
                 type="number" 
+                min="0"
                 step="0.01"
                 style={{ 
                   border: "none", 
@@ -292,12 +498,29 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    // Focus back to first quantity field for next entry
+                    // Focus back to first quantity field for next entry cycle
+                    if (items.length > 0) {
+                      inputRefs.current['quantity-0']?.focus();
+                      inputRefs.current['quantity-0']?.select();
+                    }
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    // Move to total quantity
+                    inputRefs.current['totalQuantity']?.focus();
+                    inputRefs.current['totalQuantity']?.select();
+                  } else if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    // Move to first quantity field
                     if (items.length > 0) {
                       inputRefs.current['quantity-0']?.focus();
                       inputRefs.current['quantity-0']?.select();
                     }
                   }
+                }}
+                onFocus={(e) => e.target.select()}
+                onChange={(e) => {
+                  // Auto-calculate individual totals proportionally if needed
+                  // This is optional - you might want to implement this logic
                 }}
               />
             </td>
@@ -316,6 +539,21 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
         <div>Invoice Time: {invoice?.date ? new Date(invoice.date).toLocaleString() : "-"}</div>
         <div>Current Time: {new Date().toLocaleString()}</div>
       </div>
+      {/* Keyboard shortcuts help */}
+      <div style={{ marginTop: 16, padding: 8, background: "#f8f9fa", border: "1px solid #dee2e6", borderRadius: 4, fontSize: 12, color: "#6c757d" }} className="no-print">
+        <strong>Keyboard Shortcuts:</strong>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px", marginTop: 4 }}>
+          <span>• Enter: Next field</span>
+          <span>• Ctrl+P: First quantity</span>
+          <span>• Arrow keys: Navigate</span>
+          <span>• Ctrl+S: Total quantity</span>
+          <span>• Tab/Shift+Tab: Forward/Back</span>
+          <span>• Ctrl+T: Total amount</span>
+          <span>• Escape: Clear & reset</span>
+          <span>• Auto-calculation enabled</span>
+        </div>
+      </div>
+      
       <button
         onClick={() => window.print()}
         style={{ marginTop: 24, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
