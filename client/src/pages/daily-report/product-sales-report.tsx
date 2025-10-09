@@ -35,16 +35,16 @@ export default function ProductSalesReport() {
   const [queryToDate, setQueryToDate] = useState<Date>();
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
-  
+
   // Track if dates were manually changed
   const fromDateManuallyChanged = useRef(false);
   const toDateManuallyChanged = useRef(false);
-  
+
   // Get business date with formatting utilities
-  const { 
-    businessDate, 
-    isLoading: isLoadingBusinessDate, 
-    formatForApi 
+  const {
+    businessDate,
+    isLoading: isLoadingBusinessDate,
+    formatForApi
   } = useBusinessDate();
 
   // Update dates when business date changes, but only if not manually changed
@@ -56,7 +56,7 @@ export default function ProductSalesReport() {
           console.error('Invalid business date:', businessDate);
           return;
         }
-        
+
         // Only update fromDate if it hasn't been manually changed
         if (!fromDateManuallyChanged.current) {
           setFromDate(businessDateObj);
@@ -151,23 +151,23 @@ export default function ProductSalesReport() {
       printWindow.document.write('<html><head><title>Product Sales Report</title>');
       printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
-      
+
       // Add company details header following the specific structure
       printWindow.document.write('<div class="company-details">');
       if (companyDetails) {
         // Company name
         printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
-        
+
         // Email
         if (companyDetails.email) {
           printWindow.document.write(`<p>${companyDetails.email}</p>`);
         }
-        
+
         // Bank details
         if (companyDetails.bankDetails) {
           printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
         }
-        
+
         // VAT and Registration info
         let regInfo = [];
         if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
@@ -175,13 +175,13 @@ export default function ProductSalesReport() {
         if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
       }
       printWindow.document.write('</div>');
-      
+
       // Add report title
       printWindow.document.write('<div class="header">');
       printWindow.document.write('<h3>PRODUCT SALES REPORT</h3>');
       printWindow.document.write(`<p>Period: ${formattedFromDate || 'All'} to ${formattedToDate || 'All'}</p>`);
       printWindow.document.write('</div>');
-      
+
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
@@ -199,12 +199,12 @@ export default function ProductSalesReport() {
         printWindow.document.write('</tr>');
       });
       printWindow.document.write('</tbody></table>');
-      
+
       // Add summary
       printWindow.document.write('<div style="margin-top:20px;padding:10px;background-color:#f9f9f9;border:1px solid #ccc;text-align:center;">');
       printWindow.document.write(`<strong>Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}</strong>`);
       printWindow.document.write('</div>');
-      
+
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -227,28 +227,28 @@ export default function ProductSalesReport() {
   const handlePDF = () => {
     const doc = new jsPDF();
     let yPosition = 20;
-    
+
     // Add company details following the specific structure
     if (companyDetails) {
       // Company name
       doc.setFontSize(16);
       doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
       yPosition += 8;
-      
+
       doc.setFontSize(10);
-      
+
       // Email
       if (companyDetails.email) {
         doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // Bank details
       if (companyDetails.bankDetails) {
         doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // VAT and Registration info
       let regInfo = [];
       if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
@@ -260,16 +260,16 @@ export default function ProductSalesReport() {
         yPosition += 5;
       }
     }
-    
+
     // Add report title
     doc.setFontSize(14);
     doc.text('PRODUCT SALES REPORT', 105, yPosition, { align: 'center' });
     yPosition += 8;
-    
+
     doc.setFontSize(10);
     doc.text(`Period: ${formattedFromDate || 'All'} to ${formattedToDate || 'All'}`, 105, yPosition, { align: 'center' });
     yPosition += 10;
-    
+
     // Add table
     autoTable(doc, {
       head: [[
@@ -293,12 +293,12 @@ export default function ProductSalesReport() {
         3: { cellWidth: 35 }
       }
     });
-    
+
     // Add summary at the bottom
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
     doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
-    
+
     doc.save(`product-sales-report-${formattedFromDate || 'all'}-${formattedToDate || 'all'}.pdf`);
   };
 
@@ -319,28 +319,28 @@ export default function ProductSalesReport() {
   const generatePDFBlob = () => {
     const doc = new jsPDF();
     let yPosition = 20;
-    
+
     // Add company details following the specific structure
     if (companyDetails) {
       // Company name
       doc.setFontSize(16);
       doc.text(companyDetails.companyName || '', 105, yPosition, { align: 'center' });
       yPosition += 8;
-      
+
       doc.setFontSize(10);
-      
+
       // Email
       if (companyDetails.email) {
         doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // Bank details
       if (companyDetails.bankDetails) {
         doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
         yPosition += 5;
       }
-      
+
       // VAT and Registration info
       let regInfo = [];
       if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
@@ -352,16 +352,16 @@ export default function ProductSalesReport() {
         yPosition += 5;
       }
     }
-    
+
     // Add report title
     doc.setFontSize(14);
     doc.text('PRODUCT SALES REPORT', 105, yPosition, { align: 'center' });
     yPosition += 8;
-    
+
     doc.setFontSize(10);
     doc.text(`Period: ${formattedFromDate || 'All'} to ${formattedToDate || 'All'}`, 105, yPosition, { align: 'center' });
     yPosition += 10;
-    
+
     // Add table
     autoTable(doc, {
       head: [['Product Description', 'Qty', 'Avg Price', 'Total']],
@@ -383,12 +383,12 @@ export default function ProductSalesReport() {
         3: { cellWidth: 35 }
       }
     });
-    
+
     // Add summary at the bottom (same format as regular PDF)
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
     doc.setFontSize(10);
     doc.text(`Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}`, 105, finalY + 10, { align: 'center' });
-    
+
     return doc.output('blob');
   };
 
@@ -403,7 +403,7 @@ export default function ProductSalesReport() {
     const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const invalidEmails = emailList.filter(email => !emailRegex.test(email));
-    
+
     if (invalidEmails.length > 0) {
       alert(`Invalid email addresses: ${invalidEmails.join(', ')}`);
       return;
@@ -415,18 +415,18 @@ export default function ProductSalesReport() {
     }
 
     setIsEmailSending(true);
-    
+
     try {
       // Generate PDF blob
       const pdfBlob = generatePDFBlob();
-      
+
       // Convert blob to base64
       const reader = new FileReader();
       reader.onloadend = async () => {
         try {
           const base64data = reader.result as string;
           const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
-          
+
           // Send email with PDF attachment
           const emailData = {
             to: emailList,
@@ -438,9 +438,9 @@ export default function ProductSalesReport() {
               contentType: 'application/pdf'
             }
           };
-          
+
           const response = await apiRequest('POST', '/api/send-email', emailData);
-          
+
           if (response.message) {
             alert(`✅ ${response.message}`);
             if (response.warnings) {
@@ -449,12 +449,12 @@ export default function ProductSalesReport() {
           } else {
             alert(`📧 Product sales report sent successfully to ${emailList.length} email(s)`);
           }
-          
+
           setEmails(''); // Clear email field after successful send
-          
+
         } catch (emailError) {
           console.error('Error sending email:', emailError);
-          
+
           // Handle specific error messages
           let errorMessage = 'Failed to send email. Please try again.';
           if (emailError && typeof emailError === 'object' && 'error' in emailError) {
@@ -462,21 +462,21 @@ export default function ProductSalesReport() {
           } else if (emailError && typeof emailError === 'string') {
             errorMessage = `Email Error: ${emailError}`;
           }
-          
+
           alert(`❌ ${errorMessage}`);
         } finally {
           // Always reset the sending state
           setIsEmailSending(false);
         }
       };
-      
+
       reader.onerror = () => {
         alert('❌ Failed to process PDF file. Please try again.');
         setIsEmailSending(false);
       };
-      
+
       reader.readAsDataURL(pdfBlob);
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('❌ Failed to generate PDF. Please try again.');
@@ -485,8 +485,8 @@ export default function ProductSalesReport() {
   };
 
   return (
-    <PageLayout 
-      title="Product Sales Report" 
+    <PageLayout
+      title="Product Sales Report"
       breadcrumb="Reports > Product Sales Report"
     >
       <div className="space-y-4 sm:space-y-6">
@@ -567,8 +567,8 @@ export default function ProductSalesReport() {
               </div>
               {/* Action Buttons (right) */}
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 ml-0 sm:ml-4">
-                <Button 
-                  variant="default" 
+                <Button
+                  variant="default"
                   className="flex items-center justify-center gap-2"
                   onClick={() => {
                     setQueryFromDate(fromDate);
@@ -579,8 +579,8 @@ export default function ProductSalesReport() {
                   <Download className="h-4 w-4" />
                   <span>Get Data</span>
                 </Button>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="flex items-center justify-center gap-2"
                   onClick={() => navigate('/daily-report/compare-with-purchase')}
                 >
@@ -601,7 +601,7 @@ export default function ProductSalesReport() {
                 <Button size="sm" variant="outline" onClick={handleExcel}>Excel</Button>
                 <Button size="sm" variant="outline" onClick={handlePDF}>PDF</Button>
                 <Button size="sm" variant="outline" onClick={handleCopy}>Copy</Button>
-                
+
                 {/* Email Section - next to Copy button */}
                 <div className="flex items-center gap-2 ml-2">
                   <input
@@ -612,9 +612,9 @@ export default function ProductSalesReport() {
                     className="w-48 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
                     disabled={isEmailSending}
                   />
-                  <Button 
-                    variant="outline" 
-                    onClick={handleEmailPDF} 
+                  <Button
+                    variant="outline"
+                    onClick={handleEmailPDF}
                     className="flex items-center gap-1"
                     disabled={isEmailSending}
                     size="sm"
@@ -669,26 +669,26 @@ export default function ProductSalesReport() {
                           </button>
                         </TableCell>
                         <TableCell className="text-right px-6">{formatQuantity(item.quantity)}</TableCell>
-                        <TableCell className="text-right px-6">${item.avgPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-semibold px-6">${item.total.toFixed(2)}</TableCell>
+                        <TableCell className="text-right px-6">£{item.avgPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-semibold px-6">£{item.total.toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
                 </TableBody>
               </Table>
-             {/* Summary below table, styled for print and screen */}
-             <div className="summary-print flex flex-wrap items-center justify-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2 text-center">
-               <div className="flex items-center font-semibold mr-2">Date Range:</div>
-               <div className="mr-6">{formattedFromDate || '-'} to {formattedToDate || '-'}</div>
-               <div className="flex items-center font-semibold mr-2">Products:</div>
-               <div className="mr-4">{numberOfProducts}</div>
-               <div className="flex items-center font-semibold mr-2">Total Qty:</div>
-               <div className="mr-4">{formatQuantity(totalQuantity)}</div>
-               <div className="flex items-center font-semibold mr-2">Avg Price:</div>
-               <div className="mr-4">£{averagePrice.toFixed(2)}</div>
-               <div className="flex items-center font-semibold mr-2">Total Sales:</div>
-               <div>£{totalAmount.toFixed(2)}</div>
-             </div>
+              {/* Summary below table, styled for print and screen */}
+              <div className="summary-print flex flex-wrap items-center justify-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2 text-center">
+                <div className="flex items-center font-semibold mr-2">Date Range:</div>
+                <div className="mr-6">{formattedFromDate || '-'} to {formattedToDate || '-'}</div>
+                <div className="flex items-center font-semibold mr-2">Products:</div>
+                <div className="mr-4">{numberOfProducts}</div>
+                <div className="flex items-center font-semibold mr-2">Total Qty:</div>
+                <div className="mr-4">{formatQuantity(totalQuantity)}</div>
+                <div className="flex items-center font-semibold mr-2">Avg Price:</div>
+                <div className="mr-4">£{averagePrice.toFixed(2)}</div>
+                <div className="flex items-center font-semibold mr-2">Total Sales:</div>
+                <div>£{totalAmount.toFixed(2)}</div>
+              </div>
             </div>
           </CardContent>
         </Card>

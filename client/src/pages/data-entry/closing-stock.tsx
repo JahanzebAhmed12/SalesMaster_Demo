@@ -458,7 +458,7 @@ export default function ClosingStock() {
         </div>
 
         {/* Closing Stock Table */}
-        <Table id="closing-stock-table" className="w-full border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+        <Table id="closing-stock-table" className="w-full border border-gray-300 rounded-lg shadow-sm" style={{ overflow: 'visible' }}>
           <TableHeader>
             <TableRow className="bg-gray-100 border-b border-gray-300">
               <TableHead className="font-bold text-gray-700 text-base py-3 px-4 border-r border-gray-300">Product</TableHead>
@@ -468,8 +468,8 @@ export default function ClosingStock() {
           </TableHeader>
           <TableBody>
             {/* Inline Add Row */}
-            <TableRow className="bg-blue-50 border-b border-gray-300">
-              <TableCell className="py-2 px-4 border-r border-gray-200">
+            <TableRow className="bg-blue-50 border-b border-gray-300" style={{ overflow: 'visible' }}>
+              <TableCell className="py-2 px-4 border-r border-gray-200 overflow-visible">
                 <div className="relative">
                   <Input
                     placeholder="Type to search products..."
@@ -486,7 +486,7 @@ export default function ClosingStock() {
                     className="w-full border-gray-300 focus:border-blue-500 focus:ring-blue-500"
                   />
                   {showProductDropdown && filteredProducts.length > 0 && (
-                    <div className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow">
+                    <div className="absolute z-[9999] bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg border-gray-300" style={{ zIndex: 9999 }}>
                       {filteredProducts.map((p, idx) => (
                         <div
                           key={p.id}

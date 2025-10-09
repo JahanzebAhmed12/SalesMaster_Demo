@@ -501,7 +501,7 @@ export default function PurchaseInvoice() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Date</Label>
-                  <p className="text-sm">{new Date(purchase.date).toLocaleDateString()}</p>
+                  <p className="text-sm">{format(new Date(purchase.date), "dd/MM/yyyy")}</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-gray-500">Supplier</Label>
@@ -577,7 +577,7 @@ export default function PurchaseInvoice() {
                       autoComplete="off"
                     />
                     {showProductDropdown && productOptions.length > 0 && (
-                      <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow">
+                      <div ref={productDropdownRef} className="absolute z-[9999] bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg border-gray-300">
                         {productOptions.map((p, idx) => (
                           <div
                             key={p.productType + '-' + p.id}

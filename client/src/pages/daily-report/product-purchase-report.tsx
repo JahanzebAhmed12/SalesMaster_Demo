@@ -46,6 +46,7 @@ export default function ProductPurchaseReport() {
   // Track if dates were manually changed
   const fromDateManuallyChanged = useRef(false);
   const toDateManuallyChanged = useRef(false);
+  const initialSetupDone = useRef(false);
   
   // Get business date with formatting utilities
   const { 
@@ -55,8 +56,8 @@ export default function ProductPurchaseReport() {
   } = useBusinessDate();
   
   const [filters, setFilters] = useState({
-    fromDate: format(new Date(), "yyyy-MM-dd"),
-    toDate: format(new Date(), "yyyy-MM-dd"),
+    fromDate: "",
+    toDate: "",
     showAll: "All",
     search: "",
   });
@@ -87,8 +88,37 @@ export default function ProductPurchaseReport() {
           fromDate: fromDateManuallyChanged.current ? prev.fromDate : formattedDate,
           toDate: toDateManuallyChanged.current ? prev.toDate : formattedDate
         }));
+        
+        // Trigger initial data fetch if both dates are set and not manually changed
+        if (!fromDateManuallyChanged.current && !toDateManuallyChanged.current && !initialSetupDone.current) {
+          initialSetupDone.current = true;
+          setTrigger(prev => prev + 1);
+        }
       } catch (error) {
         console.error('Error processing business date:', error);
+      }
+    } else if (!businessDate && !isLoadingBusinessDate) {
+      // Fallback to current date if no business date is available
+      const currentDate = new Date();
+      const formattedDate = format(currentDate, 'yyyy-MM-dd');
+      
+      if (!fromDateManuallyChanged.current) {
+        setFromDate(currentDate);
+      }
+      if (!toDateManuallyChanged.current) {
+        setToDate(currentDate);
+      }
+      
+      setFilters(prev => ({
+        ...prev,
+        fromDate: fromDateManuallyChanged.current ? prev.fromDate : formattedDate,
+        toDate: toDateManuallyChanged.current ? prev.toDate : formattedDate
+      }));
+      
+      // Trigger initial data fetch if both dates are set and not manually changed
+      if (!fromDateManuallyChanged.current && !toDateManuallyChanged.current && !initialSetupDone.current) {
+        initialSetupDone.current = true;
+        setTrigger(prev => prev + 1);
       }
     }
   }, [businessDate, isLoadingBusinessDate]);
@@ -97,13 +127,15 @@ export default function ProductPurchaseReport() {
   const { data: purchaseData = [], isLoading, isError, error, refetch } = useQuery<PurchaseItem[]>({
     queryKey: ["/api/reports/product-purchase", filters, trigger],
     queryFn: () => {
-      const fromDateStr = filters.fromDate ? `${filters.fromDate} 00:00:00` : '';
-      const toDateStr = filters.toDate ? `${filters.toDate} 23:59:59` : '';
+      const params = new URLSearchParams();
+      if (filters.fromDate) params.append('fromDate', filters.fromDate);
+      if (filters.toDate) params.append('toDate', filters.toDate);
+      if (filters.showAll) params.append('showAll', filters.showAll);
+      if (filters.search) params.append('search', filters.search);
       
-      return apiRequest("GET", 
-        `/api/reports/product-purchase?fromDate=${fromDateStr}&toDate=${toDateStr}&showAll=${filters.showAll}&search=${encodeURIComponent(filters.search || '')}`
-      );
+      return apiRequest("GET", `/api/reports/product-purchase?${params.toString()}`);
     },
+    enabled: !!(filters.fromDate && filters.toDate && trigger > 0), // Only run when dates are set and trigger is positive
   });
 
   const { data: companyDetails } = useQuery<any>({
@@ -496,6 +528,7 @@ export default function ProductPurchaseReport() {
         showAll,
         search: searchTerm
       }));
+      setTrigger(prev => prev + 1); // Force refetch
     }
   };
 

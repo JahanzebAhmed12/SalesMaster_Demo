@@ -297,8 +297,30 @@ export default function ProductHistory() {
           head: [table.headers],
           body: tableData,
           startY: yPosition,
-          styles: { fontSize: 8 },
-          headStyles: { fillColor: [240, 240, 240] },
+          styles: {
+            fontSize: 9,
+            cellPadding: 2
+          },
+          headStyles: {
+            fillColor: [66, 139, 202],
+            textColor: 255,
+            fontStyle: 'bold'
+          },
+          columnStyles: table.title === 'DUMPS' ? {
+            0: { cellWidth: 20, halign: 'center' },
+            1: { cellWidth: 30, halign: 'center' },
+            2: { cellWidth: 80, halign: 'left' },
+            3: { cellWidth: 25, halign: 'center' }
+          } : {
+            0: { cellWidth: 15, halign: 'center' },
+            1: { cellWidth: 25, halign: 'center' },
+            2: { cellWidth: 25, halign: 'center' },
+            3: { cellWidth: 60, halign: 'left' },
+            4: { cellWidth: 60, halign: 'left' },
+            5: { cellWidth: 20, halign: 'center' },
+            6: { cellWidth: 25, halign: 'right' },
+            7: { cellWidth: 25, halign: 'right' }
+          },
           margin: { left: 20, right: 20 }
         });
         
@@ -311,6 +333,12 @@ export default function ProductHistory() {
         }
       }
     });
+    
+    // Add footer
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFontSize(8);
+    doc.text('stand100', pageWidth - 30, pageHeight - 10);
     
     doc.save(`Product_History_${fromDate ? format(fromDate, 'yyyy-MM-dd') : 'All'}_to_${toDate ? format(toDate, 'yyyy-MM-dd') : 'All'}.pdf`);
   };
@@ -472,21 +500,10 @@ export default function ProductHistory() {
       if (supplierId && supplierId !== "All") params.append("supplierId", supplierId);
       params.append("email", emailAddress);
       
-      const response = await fetch(`/api/reports/product-history/email?${params.toString()}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      const response = await apiRequest('POST', `/api/reports/product-history/email?${params.toString()}`);
       
-      if (response.ok) {
-        alert('Email sent successfully!');
-        setEmailAddress('');
-      } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to send email');
-      }
+      alert('Email sent successfully!');
+      setEmailAddress('');
     } catch (error) {
       console.error('Error sending email:', error);
       alert('Failed to send email. Please try again.');

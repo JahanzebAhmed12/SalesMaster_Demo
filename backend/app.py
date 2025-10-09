@@ -4804,17 +4804,18 @@ def get_payment_history():
         # Build query
         query = Payment.query
         
+        # Always exclude payments made via daily book sales from customer payment history
+        # These payments affect outstanding balances but don't show in customer payment history
+        query = query.filter(
+            or_(
+                Payment.payment_source != 'daily_book_sales',
+                Payment.payment_source.is_(None)  # Include legacy payments without payment_source
+            )
+        )
+        
         # Filter by customer if provided
         if customer_id:
             query = query.filter(Payment.customer_id == customer_id)
-            # Exclude payments made via daily book sales from payment history display
-            # These payments affect outstanding balances but don't show in customer payment history
-            query = query.filter(
-                or_(
-                    Payment.payment_source != 'daily_book_sales',
-                    Payment.payment_source.is_(None)  # Include legacy payments without payment_source
-                )
-            )
         
         # Filter by date range if provided
         if from_date:
@@ -5373,22 +5374,19 @@ def customer_history():
     running_balance = 0
     sl_no = 1
     
-    # 1. Get sales with payments made via customer payment page
+    # 1. Get all sales with any payments (from any source)
     sales_with_payments = Sale.query.filter(
         Sale.customer_id == customer_id,
         Sale.date >= from_dt,
         Sale.date < to_dt,
         Sale.status == 'finalized'
-    ).join(Payment, Sale.id == Payment.sale_id).filter(
-        Payment.payment_source == 'customer_payment'
-    ).distinct().order_by(Sale.date.asc()).all()
+    ).join(Payment, Sale.id == Payment.sale_id).distinct().order_by(Sale.date.asc()).all()
     
-    # 2. Get on-account payments made via customer payment page (no associated sale)
+    # 2. Get all on-account payments (from any source)
     on_account_payments = Payment.query.filter(
         Payment.customer_id == customer_id,
         Payment.payment_date >= from_dt.date(),
         Payment.payment_date < to_dt.date(),
-        Payment.payment_source == 'customer_payment',
         Payment.sale_id.is_(None)  # On-account payments have no sale_id
     ).order_by(Payment.payment_date.asc()).all()
     
@@ -5398,12 +5396,11 @@ def customer_history():
     # Add sales transactions
     for sale in sales_with_payments:
         sale_payments = Payment.query.filter(
-            Payment.sale_id == sale.id,
-            Payment.payment_source == 'customer_payment'
+            Payment.sale_id == sale.id
         ).all()
         
         if sale_payments:
-            # Sum up payments by mode for this specific invoice from customer payment page only
+            # Sum up payments by mode for this specific invoice from all sources
             cash_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cash')
             card_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank')
             bank_transfer_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank_transfer')
@@ -5413,10 +5410,10 @@ def customer_history():
             account_inv = card_payments + bank_transfer_payments + cheque_payments
             cash_inv = cash_payments
             
-            # Calculate total paid via customer payment page
+            # Calculate total paid from all sources
             paid = sum(float(p.amount) for p in sale_payments if p.amount > 0)
             
-            # Calculate balance (should be 0 or minimal for fully paid invoices)
+            # Calculate balance
             balance = float(sale.total_amount) - paid
             
             all_transactions.append({
@@ -6786,25 +6783,45 @@ def get_closing_stock_entries():
 @app.route('/api/closing-stock', methods=['POST'])
 @jwt_required()
 def save_closing_stock_entries():
-    data = request.get_json()
-    date_str = data.get('date')
-    items = data.get('items', [])
-    if not date_str or not items:
-        return jsonify({"error": "Missing date or items"}), 400
-    date = datetime.strptime(date_str, "%Y-%m-%d").date()
-    # Remove existing entries for this date
-    ClosingStock.query.filter_by(date=date).delete()
-    for item in items:
-        entry = ClosingStock(
-            product_id=item['productId'],
-            product_type=item['productType'],
-            date=date,
-            quantity=item['quantity'],
-            manual_entry=True  # Mark as manual entry
-        )
-        db.session.add(entry)
-    db.session.commit()
-    return jsonify({"success": True}), 200
+    try:
+        data = request.get_json()
+        date_str = data.get('date')
+        items = data.get('items', [])
+        
+        print(f"[DEBUG] Closing stock save request: date={date_str}, items_count={len(items)}")
+        
+        if not date_str:
+            return jsonify({"error": "Missing date"}), 400
+        
+        # Allow empty items array for deletion of all entries
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        
+        # Remove existing entries for this date
+        deleted_count = ClosingStock.query.filter_by(date=date).delete()
+        print(f"[DEBUG] Deleted {deleted_count} existing entries for date {date}")
+        
+        # Add new entries
+        for item in items:
+            print(f"[DEBUG] Adding entry: product_id={item['productId']}, type={item['productType']}, quantity={item['quantity']}")
+            entry = ClosingStock(
+                product_id=item['productId'],
+                product_type=item['productType'],
+                date=date,
+                quantity=item['quantity'],
+                manual_entry=True  # Mark as manual entry
+            )
+            db.session.add(entry)
+        
+        db.session.commit()
+        print(f"[DEBUG] Successfully saved {len(items)} closing stock entries")
+        return jsonify({"success": True}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"[ERROR] Closing stock save failed: {str(e)}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
 
 
 
@@ -9396,18 +9413,9 @@ def product_history_email():
         if not email:
             return jsonify({'error': 'Email address is required'}), 400
         
-        # Generate PDF (reuse the PDF generation logic)
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-        from reportlab.lib import colors
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import inch
-        from io import BytesIO
-        import tempfile
-        
-        # Get the same data as the regular endpoint
-        from datetime import datetime
-        from sqlalchemy import or_
+        # Get the same data as the regular endpoint - reuse the existing logic
+        from datetime import datetime, timedelta
+        from sqlalchemy import or_, func
         from models import (
             PurchaseInvoice, PurchaseInvoiceItem, Purchase, Supplier,
             Sale, SaleItem, Customer,
@@ -9422,33 +9430,109 @@ def product_history_email():
         supplier_id = request.args.get('supplierId', type=int)
 
         from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
-        to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1) if to_date else None
 
-        # Get sales data for email
+        # Get all data using the same logic as the main endpoint
+        # 1. Purchases from purchase invoices (only regular products)
+        purchases_query = (
+            db.session.query(
+                PurchaseInvoice.date,
+                Purchase.supplier_name,
+                PurchaseInvoiceItem.product_name.label('product'),
+                PurchaseInvoiceItem.quantity,
+                PurchaseInvoiceItem.unit_price,
+                PurchaseInvoiceItem.total_price
+            )
+            .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+            .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+        )
+        
+        # 2. Supplier Returns
+        supplier_returns_query = (
+            db.session.query(
+                SupplierReturn.date,
+                SupplierReturn.invoice_number,
+                Supplier.supplier_name,
+                SupplierReturn.description.label('product'),
+                SupplierReturn.quantity,
+                SupplierReturn.unit_price,
+                SupplierReturn.total_value.label('total_amount')
+            )
+            .join(Supplier, SupplierReturn.supplier_id == Supplier.id)
+        )
+        
+        # 3. Sales
         sales_query = (
             db.session.query(
                 Sale.date,
                 Sale.invoice_number,
                 Customer.customer_name,
-                SaleItem.product_id,
-                SaleItem.non_product_id,
+                func.coalesce(RegularProduct.description, NonProduct.description, 'Unknown').label('product'),
                 SaleItem.quantity,
                 SaleItem.unit_price,
-                SaleItem.total_price,
-                RegularProduct.description.label('regular_product_desc'),
-                NonProduct.description.label('non_product_desc')
+                SaleItem.total_price
             )
             .join(SaleItem, Sale.id == SaleItem.sale_id)
             .join(Customer, Sale.customer_id == Customer.id)
             .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
             .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
+            .filter(Sale.status == 'finalized')
         )
+        
+        # 4. Customer Returns
+        customer_returns_query = (
+            db.session.query(
+                CustomerReturn.date,
+                CustomerReturn.invoice_number,
+                Customer.customer_name,
+                CustomerReturn.description.label('product'),
+                CustomerReturn.quantity,
+                CustomerReturn.unit_price,
+                CustomerReturn.total_value.label('total_amount')
+            )
+            .join(Customer, CustomerReturn.customer_id == Customer.id)
+        )
+        
+        # 5. Dumps
+        dumps_query = (
+            db.session.query(
+                DumpEntry.date,
+                DumpEntry.description.label('product'),
+                func.sum(DumpEntry.quantity).label('total_qty')
+            )
+            .group_by(DumpEntry.date, DumpEntry.description)
+        )
+        
+        # Apply filters to each query individually
+        # Purchases filters
+        if from_dt:
+            purchases_query = purchases_query.filter(PurchaseInvoice.date >= from_dt)
+        if to_dt:
+            purchases_query = purchases_query.filter(PurchaseInvoice.date < to_dt)
+        if product_id:
+            purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_id == product_id)
+        if product_like:
+            purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_name.ilike(f'%{product_like}%'))
+        if supplier_id:
+            purchases_query = purchases_query.filter(Purchase.supplier_id == supplier_id)
+        
+        # Supplier returns filters
+        if from_dt:
+            supplier_returns_query = supplier_returns_query.filter(SupplierReturn.date >= from_dt.date())
+        if to_dt:
+            supplier_returns_query = supplier_returns_query.filter(SupplierReturn.date < to_dt.date())
+        if product_id:
+            supplier_returns_query = supplier_returns_query.filter(SupplierReturn.product_id == product_id)
+        if product_like:
+            supplier_returns_query = supplier_returns_query.filter(SupplierReturn.description.ilike(f'%{product_like}%'))
+        if supplier_id:
+            supplier_returns_query = supplier_returns_query.filter(SupplierReturn.supplier_id == supplier_id)
+        
+        # Sales filters
         if from_dt:
             sales_query = sales_query.filter(Sale.date >= from_dt)
         if to_dt:
             sales_query = sales_query.filter(Sale.date < to_dt)
-        if customer_id:
-            sales_query = sales_query.filter(Sale.customer_id == customer_id)
         if product_id:
             sales_query = sales_query.filter(
                 or_(SaleItem.product_id == product_id, SaleItem.non_product_id == product_id)
@@ -9460,66 +9544,124 @@ def product_history_email():
                     NonProduct.description.ilike(f'%{product_like}%')
                 )
             )
-        sales_query = sales_query.filter(Sale.status == 'finalized')
+        if customer_id:
+            sales_query = sales_query.filter(Sale.customer_id == customer_id)
+        
+        # Customer returns filters
+        if from_dt:
+            customer_returns_query = customer_returns_query.filter(CustomerReturn.date >= from_dt.date())
+        if to_dt:
+            customer_returns_query = customer_returns_query.filter(CustomerReturn.date < to_dt.date())
+        if product_id:
+            customer_returns_query = customer_returns_query.filter(CustomerReturn.product_id == product_id)
+        if product_like:
+            customer_returns_query = customer_returns_query.filter(CustomerReturn.description.ilike(f'%{product_like}%'))
+        if customer_id:
+            customer_returns_query = customer_returns_query.filter(CustomerReturn.customer_id == customer_id)
+        
+        # Dumps filters
+        if from_dt:
+            dumps_query = dumps_query.filter(DumpEntry.date >= from_dt.date())
+        if to_dt:
+            dumps_query = dumps_query.filter(DumpEntry.date < to_dt.date())
+        if product_id:
+            dumps_query = dumps_query.filter(DumpEntry.product_id == product_id)
+        if product_like:
+            dumps_query = dumps_query.filter(DumpEntry.description.ilike(f'%{product_like}%'))
+        
+        # Execute queries
+        purchases = purchases_query.all()
+        supplier_returns = supplier_returns_query.all()
         sales = sales_query.all()
+        customer_returns = customer_returns_query.all()
+        dumps = dumps_query.all()
 
-        # Create PDF
+        # Generate PDF with jsPDF-like styling
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib import colors
+        from reportlab.lib.styles import getSampleStyleSheet
+        from io import BytesIO
+        
         buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
         
         elements = []
         styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=16,
-            spaceAfter=30,
-            alignment=1
-        )
         
-        # Add title
-        date_range = ""
-        if from_date and to_date:
-            date_range = f" ({from_date} to {to_date})"
-        elif from_date:
-            date_range = f" (from {from_date})"
-        elif to_date:
-            date_range = f" (to {to_date})"
-        
-        title = Paragraph(f"Product History Report{date_range}", title_style)
-        elements.append(title)
+        # Add header
+        elements.append(Paragraph('PRODUCT HISTORY REPORT', styles['Title']))
+        elements.append(Paragraph('TROPIFRUIT UK LTD', styles['Normal']))
+        elements.append(Paragraph('3 Dolphin Way, Purfleet, RM19 1NZ', styles['Normal']))
         elements.append(Spacer(1, 12))
         
-        # Add sales table
-        if sales:
-            elements.append(Paragraph("Sales Data", styles['Heading2']))
-            sales_data = [['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']]
-            for idx, row in enumerate(sales, 1):
-                product_desc = row.regular_product_desc or row.non_product_desc or ''
-                sales_data.append([
-                    str(idx),
-                    row.date.strftime('%Y-%m-%d') if row.date else '',
-                    row.invoice_number or '',
-                    row.customer_name or '',
-                    product_desc,
-                    str(int(row.quantity)) if row.quantity else '0',
-                    f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
-                    f"{float(row.total_price):.2f}" if row.total_price else '0.00'
-                ])
-            
-            sales_table = Table(sales_data)
-            sales_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('FONTSIZE', (0, 1), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            elements.append(sales_table)
+        date_range_text = f"Report Period: {from_date or 'All'} to {to_date or 'All'}"
+        elements.append(Paragraph(date_range_text, styles['Normal']))
+        elements.append(Paragraph(f"Generated: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+        elements.append(Spacer(1, 20))
+        
+        # Define table style matching frontend PDF
+        table_style = TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(66/255, 139/255, 202/255)),  # Blue header
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ])
+        
+        # Add all tables
+        tables_data = [
+            ('FROM SUPPLIER', purchases, ['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total']),
+            ('SUPPLIER RETURNS', supplier_returns, ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total']),
+            ('SALES', sales, ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']),
+            ('CUSTOMER RETURNS', customer_returns, ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']),
+            ('DUMPS', dumps, ['Sl.No', 'Date', 'Product', 'Total Qty'])
+        ]
+        
+        for title, data, headers in tables_data:
+            if data:
+                elements.append(Paragraph(title, styles['Heading2']))
+                elements.append(Spacer(1, 6))
+                
+                # Prepare table data
+                table_data = [headers]
+                for idx, row in enumerate(data, 1):
+                    if title == 'DUMPS':
+                        table_data.append([
+                            str(idx),
+                            row.date.strftime('%Y-%m-%d') if row.date else '',
+                            str(row.product or ''),
+                            str(int(row.total_qty)) if row.total_qty else '0'
+                        ])
+                    else:
+                        table_data.append([
+                            str(idx),
+                            row.date.strftime('%Y-%m-%d') if row.date else '',
+                            str(getattr(row, 'invoice_number', '') or getattr(row, 'supplier_name', '') or getattr(row, 'customer_name', '')),
+                            str(getattr(row, 'supplier_name', '') or getattr(row, 'customer_name', '')),
+                            str(row.product or ''),
+                            str(int(row.quantity)) if row.quantity else '0',
+                            f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
+                            f"{float(getattr(row, 'total_price', 0) or getattr(row, 'total_amount', 0)):.2f}"
+                        ])
+                
+                # Create table
+                table = Table(table_data)
+                table.setStyle(table_style)
+                elements.append(table)
+                elements.append(Spacer(1, 15))
+        
+        # Add footer
+        elements.append(Spacer(1, 20))
+        footer_style = styles['Normal']
+        footer_style.fontSize = 8
+        footer_style.alignment = 2  # Right align
+        elements.append(Paragraph('stand100', footer_style))
         
         # Build PDF
         doc.build(elements)
@@ -9527,6 +9669,14 @@ def product_history_email():
         
         # Send email with PDF attachment
         from flask_mail import Message
+        
+        date_range = ""
+        if from_date and to_date:
+            date_range = f" ({from_date} to {to_date})"
+        elif from_date:
+            date_range = f" (from {from_date})"
+        elif to_date:
+            date_range = f" (to {to_date})"
         
         msg = Message(
             subject=f'Product History Report{date_range}',

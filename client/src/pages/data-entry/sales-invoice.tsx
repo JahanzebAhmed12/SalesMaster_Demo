@@ -1366,7 +1366,7 @@ const SalesInvoice = () => {
         const rightX = pageWidth - 50;
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
-        doc.text(`Date: ${new Date().toLocaleDateString()}`, rightX, yPos);
+        doc.text(`Date: ${format(new Date(), "dd/MM/yyyy")}`, rightX, yPos);
 
         doc.setFontSize(14);
         doc.setFont("helvetica", "bold");

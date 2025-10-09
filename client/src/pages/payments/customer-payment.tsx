@@ -148,10 +148,18 @@ export default function CustomerPayment() {
   }, [selectedCustomerId, selectedInvoiceIds.size]);
 
   // Fetch customers
-  const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
+  const { data: customersData, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
     queryFn: () => apiRequest("GET", "/api/customers"),
   });
+
+  // Sort customers alphabetically by name
+  const customers = useMemo(() => {
+    if (!customersData) return [];
+    return [...customersData].sort((a, b) => 
+      a.customer_name.localeCompare(b.customer_name, undefined, { sensitivity: 'base' })
+    );
+  }, [customersData]);
 
   // Fetch outstanding invoices for the selected customer
   const { data: outstandingInvoices, isLoading: isLoadingInvoices, refetch: refetchOutstandingInvoices } = useQuery<Sale[]>({
@@ -352,6 +360,7 @@ export default function CustomerPayment() {
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
       setOnAccountAmount(0);
+      setSelectedCustomerId(""); // Reset customer selection
       resetSplitPayment();
     },
     onError: (error) => {

@@ -137,7 +137,13 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   const permissions = usePermissions();
 
-  const toggleSection = (title: string) => {
+  const toggleSection = (title: string, event?: React.MouseEvent) => {
+    // Prevent event propagation to avoid conflicts
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    
     setExpandedSections(prev =>
       prev.includes(title)
         ? prev.filter(s => s !== title)
@@ -145,8 +151,20 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
     );
   };
 
-  const handleLogout = () => {
+  const handleLogout = (event?: React.MouseEvent) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     logout();
+  };
+
+  // Handle navigation clicks - close mobile menu on navigation
+  const handleNavClick = () => {
+    // Close mobile menu when navigating on mobile/tablet
+    if (window.innerWidth < 1024) { // lg breakpoint
+      onToggle();
+    }
   };
 
   // Helper function to check if user has permission for a section
@@ -183,12 +201,16 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile menu button */}
+      {/* Mobile/Tablet menu button */}
       <Button
         variant="ghost"
         size="icon"
-        onClick={onToggle}
-        className="fixed top-4 left-4 z-50 md:hidden bg-white shadow-lg"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggle();
+        }}
+        className="fixed top-4 left-4 z-50 lg:hidden bg-white shadow-lg"
       >
         {isOpen ? <X /> : <Menu />}
       </Button>
@@ -196,7 +218,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       {/* Sidebar */}
       <div
         className={`fixed left-0 top-0 h-full w-64 bg-white shadow-lg transform transition-transform duration-300 z-40 flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'
-          } md:translate-x-0`}
+          } lg:translate-x-0`}
       >
         {/* Header */}
         <div className="p-6 border-b border-gray-200 flex-shrink-0">
@@ -215,8 +237,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto py-4">
           {hasPermission('dashboard') && (
             <Link href="/dashboard">
-              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/dashboard' ? 'active' : ''
-                }`}>
+              <a 
+                className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/dashboard' ? 'active' : ''
+                }`}
+                onClick={handleNavClick}
+              >
                 <LayoutDashboard size={20} />
                 <span className="ml-3 font-medium">Dashboard</span>
               </a>
@@ -233,8 +258,9 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             return (
               <div key={section.title} className="nav-section">
                 <button
-                  onClick={() => toggleSection(section.title)}
-                  className="nav-item w-full flex items-center justify-between px-6 py-3 text-gray-700 hover:bg-gray-50"
+                  onClick={(e) => toggleSection(section.title, e)}
+                  className="nav-item w-full flex items-center justify-between px-6 py-3 text-gray-700 hover:bg-gray-50 focus:outline-none focus:bg-gray-50"
+                  type="button"
                 >
                   <div className="flex items-center">
                     <Icon size={20} />
@@ -251,12 +277,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                     {section.items.map((item) => (
                       <Link key={item.path} href={item.path}>
                         <a
-                          className={`nav-sub-item block px-12 py-2 text-sm text-gray-600 hover:text-primary ${location === item.path ? 'text-primary bg-blue-25' : ''
+                          className={`nav-sub-item block px-12 py-2 text-sm text-gray-600 hover:text-primary transition-colors ${location === item.path ? 'text-primary bg-blue-50 font-medium' : ''
                             }`}
-                          onClick={() => {
-                            if (window.innerWidth < 768) {
-                              onToggle();
-                            }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNavClick();
                           }}
                         >
                           {item.title}
@@ -272,8 +297,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           {/* Daily Attendance */}
           {hasPermission('daily_attendance') && (
             <Link href="/daily-attendance">
-              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-attendance' ? 'active' : ''
-                }`}>
+              <a 
+                className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-attendance' ? 'active' : ''
+                }`}
+                onClick={handleNavClick}
+              >
                 <Clock size={20} />
                 <span className="ml-3 font-medium">Daily Attendance</span>
               </a>
@@ -283,8 +311,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           {/* Timings Setup */}
           {hasPermission('timings_setup') && (
             <Link href="/closing-time">
-              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${location === '/closing-time' ? 'active' : ''
-                }`}>
+              <a 
+                className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-gray-50 ${location === '/closing-time' ? 'active' : ''
+                }`}
+                onClick={handleNavClick}
+              >
                 <Clock size={20} />
                 <span className="ml-3 font-medium">Timings Setup</span>
               </a>
@@ -294,8 +325,11 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
           {/* Daily Summary */}
           {hasPermission('daily_summary') && (
             <Link href="/daily-report/daily-summary">
-              <a className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-report/daily-summary' ? 'active' : ''
-                }`}>
+              <a 
+                className={`nav-item flex items-center px-6 py-3 text-gray-700 hover:bg-blue-50 hover:text-primary ${location === '/daily-report/daily-summary' ? 'active' : ''
+                }`}
+                onClick={handleNavClick}
+              >
                 <BarChart3 size={20} />
                 <span className="ml-3 font-medium">Daily Summary</span>
               </a>
@@ -306,8 +340,9 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         {/* Footer */}
         <div className="p-6 border-t border-gray-200 flex-shrink-0">
           <button
-            onClick={handleLogout}
-            className="w-full flex items-center text-gray-500 hover:text-gray-700"
+            onClick={(e) => handleLogout(e)}
+            className="w-full flex items-center text-gray-500 hover:text-gray-700 focus:outline-none focus:text-gray-700"
+            type="button"
           >
             <LogOut size={20} />
             <span className="ml-3">Logout</span>
@@ -315,11 +350,15 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
         </div>
       </div>
 
-      {/* Mobile overlay */}
+      {/* Mobile/Tablet overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
-          onClick={onToggle}
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onToggle();
+          }}
         />
       )}
     </>
