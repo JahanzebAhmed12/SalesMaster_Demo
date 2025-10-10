@@ -179,6 +179,7 @@ export default function ProductPurchaseReport() {
 
   const totalQuantity = purchaseData.reduce((sum, item) => sum + item.quantity, 0);
   const totalAmount = purchaseData.reduce((sum, item) => sum + item.total, 0);
+  const averagePrice = purchaseData.length > 0 ? totalAmount / totalQuantity : 0;
 
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -237,6 +238,14 @@ export default function ProductPurchaseReport() {
         printWindow.document.write(`<td>£${item.total.toFixed(2)}</td>`);
         printWindow.document.write('</tr>');
       });
+      // Add totals row
+      printWindow.document.write('<tr class="totals">');
+      printWindow.document.write('<td></td>');
+      printWindow.document.write(`<td><strong>${purchaseData.length} Items</strong></td>`);
+      printWindow.document.write(`<td><strong>${totalQuantity}</strong></td>`);
+      printWindow.document.write(`<td><strong>£${averagePrice.toFixed(2)}</strong></td>`);
+      printWindow.document.write(`<td><strong>£${totalAmount.toFixed(2)}</strong></td>`);
+      printWindow.document.write('</tr>');
       printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
@@ -309,13 +318,17 @@ export default function ProductPurchaseReport() {
       head: [[
         'Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'
       ]],
-      body: purchaseData.map((item: PurchaseItem) => [
-        item.slNo,
-        item.productDescription,
-        item.quantity,
-        `£${item.avgPrice.toFixed(2)}`,
-        `£${item.total.toFixed(2)}`
-      ]),
+      body: [
+        ...purchaseData.map((item: PurchaseItem) => [
+          item.slNo,
+          item.productDescription,
+          item.quantity,
+          `£${item.avgPrice.toFixed(2)}`,
+          `£${item.total.toFixed(2)}`
+        ]),
+        // Add totals row
+        ['', `${purchaseData.length} Items`, totalQuantity, `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
+      ],
       startY: yPosition,
       styles: {
         fontSize: 8,
@@ -327,6 +340,13 @@ export default function ProductPurchaseReport() {
         2: { cellWidth: 25 },
         3: { cellWidth: 30 },
         4: { cellWidth: 30 }
+      },
+      didParseCell: function(data) {
+        // Make the last row (totals) bold
+        if (data.row.index === purchaseData.length) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [240, 240, 240];
+        }
       }
     });
     
@@ -397,13 +417,17 @@ export default function ProductPurchaseReport() {
     // Add table
     autoTable(doc, {
       head: [['Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total']],
-      body: purchaseData.map((item: PurchaseItem) => [
-        item.slNo.toString(),
-        item.productDescription,
-        item.quantity.toString(),
-        `£${item.avgPrice.toFixed(2)}`,
-        `£${item.total.toFixed(2)}`
-      ]),
+      body: [
+        ...purchaseData.map((item: PurchaseItem) => [
+          item.slNo.toString(),
+          item.productDescription,
+          item.quantity.toString(),
+          `£${item.avgPrice.toFixed(2)}`,
+          `£${item.total.toFixed(2)}`
+        ]),
+        // Add totals row
+        ['', `${purchaseData.length} Items`, totalQuantity.toString(), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
+      ],
       startY: yPosition,
       styles: {
         fontSize: 8,
@@ -415,6 +439,13 @@ export default function ProductPurchaseReport() {
         2: { cellWidth: 25 },
         3: { cellWidth: 30 },
         4: { cellWidth: 30 }
+      },
+      didParseCell: function(data) {
+        // Make the last row (totals) bold
+        if (data.row.index === purchaseData.length) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [240, 240, 240];
+        }
       }
     });
     
@@ -740,7 +771,7 @@ export default function ProductPurchaseReport() {
                     <TableCell></TableCell>
                     <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
                     <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
-                    <TableCell className="text-center font-bold"></TableCell>
+                    <TableCell className="text-center font-bold">£{averagePrice.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totalAmount.toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
@@ -748,7 +779,9 @@ export default function ProductPurchaseReport() {
               {/* Summary below table, styled for print and screen */}
               <div className="summary-print flex flex-wrap items-center justify-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2 text-center">
                 <div>Date Range: {filters.fromDate || '-'} to {filters.toDate || '-'}</div>
+                <div>Total Products: {purchaseData.length}</div>
                 <div>Total Quantity: {totalQuantity}</div>
+                <div>Avg Price: £{averagePrice.toFixed(2)}</div>
                 <div>Total Amount: £{totalAmount.toFixed(2)}</div>
               </div>
             </div>

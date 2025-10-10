@@ -1464,6 +1464,25 @@ export default function DailyBookSales() {
           </CardContent>
         </Card>
 
+        {/* Total Sales Card */}
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-2xl font-bold text-blue-800 text-center">
+              TOTAL SALES
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-center">
+              <div className="text-5xl font-bold text-blue-900 mb-2">
+                £{totalAmount.toFixed(2)}
+              </div>
+              <div className="text-lg text-blue-700">
+                Current Day Invoices (All Payment Methods)
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Split Payment Dialog */}
         <Dialog open={splitPaymentDialog.isOpen} onOpenChange={(open) => {
           if (!open) {

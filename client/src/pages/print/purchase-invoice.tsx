@@ -259,7 +259,7 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
           <div style={{ fontWeight: "bold", fontSize: 26, color: '#1a237e', marginBottom: 4 }}>
             P.INVOICE
           </div>
-          <div style={{ fontWeight: 400, fontSize: 16, marginTop: 8 }}>Date: {invoice?.date ? new Date(invoice.date).toLocaleDateString() : "-"}</div>
+          <div style={{ fontWeight: 400, fontSize: 16, marginTop: 8 }}>Date: {invoice?.date ? new Date(invoice.date).toLocaleDateString() : new Date().toLocaleDateString()}</div>
           <div style={{ fontWeight: 400, fontSize: 16 }}>Invoice No: {invoice?.id ?? "-"}</div>
           <div style={{ fontWeight: 400, fontSize: 16 }}>Our Ref No: {invoice?.refNumber ?? "-"}</div>
         </div>

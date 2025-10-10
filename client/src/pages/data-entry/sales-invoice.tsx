@@ -137,6 +137,8 @@ const SalesInvoice = () => {
   const [applyPorterage, setApplyPorterage] = useState(true); // Track if porterage should be applied to this invoice
   const [isEditingPorterage, setIsEditingPorterage] = useState(false);
   const [customPorterage, setCustomPorterage] = useState<string>(porterageDetails.porterageCharge);
+  const [porterageType, setPorterageType] = useState<'per_unit' | 'fixed'>('per_unit'); // New: porterage calculation type
+  const [fixedPorterageAmount, setFixedPorterageAmount] = useState<string>('0.00'); // New: fixed porterage amount
   const [invoiceDataLoaded, setInvoiceDataLoaded] = useState(false);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
   const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
@@ -327,17 +329,35 @@ const SalesInvoice = () => {
           setApplyPorterage(hasPorterage);
 
           if (hasPorterage) {
-            // Calculate the per-unit porterage charge from saved total porterage and total quantity
             const totalQuantity = (data.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
+            
+            // Try to determine if this was a fixed or per-unit porterage
+            // If porterage amount doesn't divide evenly by quantity, it's likely fixed
             const perUnitPorterage = totalQuantity > 0 ? (data.porterage / totalQuantity) : 0;
-
-            setPorterageDetails({
-              withPorterage: true,
-              porterageCharge: perUnitPorterage.toFixed(4) // Use more precision to preserve custom rates
-            });
+            const isLikelyFixed = totalQuantity > 0 && (data.porterage % totalQuantity !== 0 || totalQuantity === 1);
+            
+            if (isLikelyFixed) {
+              // Treat as fixed porterage
+              setPorterageType('fixed');
+              setFixedPorterageAmount(data.porterage.toFixed(2));
+              setPorterageDetails({
+                withPorterage: true,
+                porterageCharge: '0.00' // Reset per-unit charge
+              });
+            } else {
+              // Treat as per-unit porterage
+              setPorterageType('per_unit');
+              setPorterageDetails({
+                withPorterage: true,
+                porterageCharge: perUnitPorterage.toFixed(4)
+              });
+              setFixedPorterageAmount('0.00'); // Reset fixed amount
+            }
           } else {
             // If no porterage or porterage is 0, ensure it's disabled
             setApplyPorterage(false);
+            setPorterageType('per_unit');
+            setFixedPorterageAmount('0.00');
           }
 
           // Set tax details based on loaded invoice data
@@ -865,11 +885,19 @@ const SalesInvoice = () => {
     if (currentSale) {
       // Recalculate totals with updated items
       const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
-      const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-      const newPorterage = (porterageDetails.withPorterage && applyPorterage)
-        ? parseFloat(porterageDetails.porterageCharge) * newTotalQuantity
-        : 0;
       const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
+      
+      // Calculate porterage based on type
+      let newPorterage = 0;
+      if (porterageDetails.withPorterage && applyPorterage) {
+        if (porterageType === 'fixed') {
+          newPorterage = parseFloat(fixedPorterageAmount) || 0;
+        } else {
+          const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+          newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
+        }
+      }
+      
       const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
 
       const updatedSalePayload: BackendSalePayload = {
@@ -1060,13 +1088,18 @@ const SalesInvoice = () => {
     const vatRate = taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0;
     const vatAmount = (subtotal * vatRate) / 100;
 
-    // Calculate total quantity of all items
-    const totalQuantity = saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-
-    // Calculate porterage as (base porterage) * (total quantity)
-    const porterage = (porterageDetails.withPorterage && applyPorterage)
-      ? parseFloat(porterageDetails.porterageCharge) * totalQuantity
-      : 0;
+    // Calculate porterage based on type
+    let porterage = 0;
+    if (porterageDetails.withPorterage && applyPorterage) {
+      if (porterageType === 'fixed') {
+        // Fixed amount regardless of quantity
+        porterage = parseFloat(fixedPorterageAmount) || 0;
+      } else {
+        // Per unit calculation (original behavior)
+        const totalQuantity = saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+        porterage = parseFloat(porterageDetails.porterageCharge) * totalQuantity;
+      }
+    }
 
     const totalAmount = subtotal + vatAmount + porterage;
     return { subtotal, vatAmount, porterage, totalAmount };
@@ -1835,6 +1868,9 @@ const SalesInvoice = () => {
             porterageCharge: settings.porterageCharge ? String(settings.porterageCharge) : '0.00',
           });
           setApplyPorterage(true);
+          // Default to per_unit for new invoices
+          setPorterageType('per_unit');
+          setFixedPorterageAmount('0.00');
         }
       }
 
@@ -2447,6 +2483,53 @@ const SalesInvoice = () => {
                             // Save changes
                             const updatedItems = saleItems.map((it, i) => i === index ? { ...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt } : it);
                             setSaleItems(updatedItems);
+                            
+                            // Update backend if invoice is already saved
+                            if (currentSale) {
+                              const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+                              const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
+                              
+                              // Calculate porterage based on type
+                              let newPorterage = 0;
+                              if (porterageDetails.withPorterage && applyPorterage) {
+                                if (porterageType === 'fixed') {
+                                  newPorterage = parseFloat(fixedPorterageAmount) || 0;
+                                } else {
+                                  const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                                  newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
+                                }
+                              }
+                              
+                              const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
+
+                              const updatedSalePayload: BackendSalePayload = {
+                                invoice_number: currentSale.invoiceNumber,
+                                customer_id: currentSale.customerId,
+                                customer_type: currentSale.customerType,
+                                payment_status: currentSale.paymentStatus,
+                                subtotal: newSubtotal,
+                                porterage: newPorterage,
+                                vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
+                                vat_amount: newVatAmount,
+                                total_amount: newTotalAmount,
+                                vehicle_details: currentSale.vehicleDetails,
+                                gate_number: currentSale.gateNumber,
+                                notes: currentSale.notes,
+                                status: currentSale.status,
+                                date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined,
+                                items: updatedItems.map(item => ({
+                                  product_id: item.productId,
+                                  non_product_id: item.nonProductId,
+                                  quantity: item.quantity,
+                                  unit_price: item.unitPrice,
+                                  total_price: item.totalPrice,
+                                  notes: item.notes,
+                                  created_at: item.createdAt,
+                                })),
+                              };
+                              updateSaleMutation.mutate(updatedSalePayload);
+                            }
+                            
                             setEditingIndex(null);
                             setEditItem(null);
                           }}>Save</Button>
@@ -2477,9 +2560,15 @@ const SalesInvoice = () => {
                               // Recalculate totals with updated items
                               const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
                               const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-                              const newPorterage = (porterageDetails.withPorterage && applyPorterage)
-                                ? parseFloat(porterageDetails.porterageCharge) * newTotalQuantity
-                                : 0;
+                              // Calculate porterage based on type
+                              let newPorterage = 0;
+                              if (porterageDetails.withPorterage && applyPorterage) {
+                                if (porterageType === 'fixed') {
+                                  newPorterage = parseFloat(fixedPorterageAmount) || 0;
+                                } else {
+                                  newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
+                                }
+                              }
                               const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
                               const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
 
@@ -2864,58 +2953,117 @@ const SalesInvoice = () => {
             <CardContent className="p-4">
               <div className="space-y-2 text-sm">
                 {porterageDetails.withPorterage && applyPorterage && (
-                  <div className="space-y-1">
+                  <div className="space-y-2">
+                    {/* Porterage Type Selection */}
+                    <div className="flex items-center gap-4 text-xs">
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="radio"
+                          name="porterageType"
+                          checked={porterageType === 'per_unit'}
+                          onChange={() => setPorterageType('per_unit')}
+                          disabled={isReadOnly}
+                        />
+                        <span>Per Unit</span>
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="radio"
+                          name="porterageType"
+                          checked={porterageType === 'fixed'}
+                          onChange={() => setPorterageType('fixed')}
+                          disabled={isReadOnly}
+                        />
+                        <span>Fixed Amount</span>
+                      </label>
+                    </div>
+
+                    {/* Porterage Display and Controls */}
                     <div className="flex justify-between items-center">
-                      <span>Porterage ({formatQuantity(saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0))} × £{parseFloat(porterageDetails.porterageCharge).toFixed(2)}):</span>
+                      <span>
+                        {porterageType === 'per_unit' 
+                          ? `Porterage (${formatQuantity(saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0))} × £${parseFloat(porterageDetails.porterageCharge).toFixed(2)}):`
+                          : `Porterage (Fixed):`
+                        }
+                      </span>
                       <div className="flex items-center gap-2">
                         {isEditingPorterage ? (
                           <>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={customPorterage}
-                              onChange={e => setCustomPorterage(e.target.value)}
-                              className="border rounded px-2 py-1 w-20 text-right"
-                              onBlur={() => {
-                                setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
-                                setIsEditingPorterage(false);
-                              }}
-                              autoFocus
-                            />
+                            {porterageType === 'per_unit' ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={customPorterage}
+                                onChange={e => setCustomPorterage(e.target.value)}
+                                className="border rounded px-2 py-1 w-20 text-right"
+                                placeholder="Per unit"
+                                disabled={isReadOnly}
+                                autoFocus
+                              />
+                            ) : (
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={fixedPorterageAmount}
+                                onChange={e => setFixedPorterageAmount(e.target.value)}
+                                className="border rounded px-2 py-1 w-20 text-right"
+                                placeholder="Fixed amount"
+                                disabled={isReadOnly}
+                                autoFocus
+                              />
+                            )}
                             <button
                               className="text-green-600 hover:text-green-800 text-sm"
                               onClick={() => {
-                                setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
+                                if (porterageType === 'per_unit') {
+                                  setPorterageDetails(prev => ({ ...prev, porterageCharge: customPorterage }));
+                                }
                                 setIsEditingPorterage(false);
                               }}
                               title="Save porterage"
+                              disabled={isReadOnly}
                             >
                               ✓
+                            </button>
+                            <button
+                              className="text-gray-500 hover:text-gray-700 text-sm"
+                              onClick={() => {
+                                setIsEditingPorterage(false);
+                                // Reset values
+                                setCustomPorterage(porterageDetails.porterageCharge);
+                              }}
+                              title="Cancel"
+                            >
+                              ✕
                             </button>
                           </>
                         ) : (
                           <>
                             <span>£{porterage.toFixed(2)}</span>
-                            <button
-                              onClick={() => {
-                                setCustomPorterage(porterageDetails.porterageCharge);
-                                setIsEditingPorterage(true);
-                              }}
-                              className="text-blue-500 hover:text-blue-700 text-sm"
-                              title="Edit porterage"
-                            >
-                              ✎
-                            </button>
-                            <button
-                              onClick={() => {
-                                setApplyPorterage(false);
-                                toast({ title: "Porterage Removed", description: "Porterage has been removed from this invoice." });
-                              }}
-                              className="text-red-500 hover:text-red-700 text-sm"
-                              title="Remove porterage"
-                            >
-                              ✕
-                            </button>
+                            {!isReadOnly && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setCustomPorterage(porterageDetails.porterageCharge);
+                                    setIsEditingPorterage(true);
+                                  }}
+                                  className="text-blue-500 hover:text-blue-700 text-sm"
+                                  title="Edit porterage"
+                                >
+                                  ✎
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setApplyPorterage(false);
+                                    toast({ title: "Porterage Removed", description: "Porterage has been removed from this invoice." });
+                                  }}
+                                  className="text-red-500 hover:text-red-700 text-sm"
+                                  title="Remove porterage"
+                                >
+                                  ✕
+                                </button>
+                              </>
+                            )}
                           </>
                         )}
                       </div>

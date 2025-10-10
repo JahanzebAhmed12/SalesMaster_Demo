@@ -18,6 +18,7 @@ import { Customer, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatQuantity } from "@/lib/utils";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 // Simplified schema for return form
 const returnSchema = z.object({
@@ -69,6 +70,9 @@ export default function ReturnFromCustomer() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   
+  // Get business date
+  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
+  
   // State management
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [searchFromDate, setSearchFromDate] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -79,7 +83,7 @@ export default function ReturnFromCustomer() {
   const form = useForm<ReturnFormData>({
     resolver: zodResolver(returnSchema),
     defaultValues: {
-      date: format(new Date(), "yyyy-MM-dd"),
+      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
       customerId: 0,
       productId: 0,
       productType: "regular",
@@ -180,7 +184,7 @@ export default function ReturnFromCustomer() {
     onSuccess: () => {
       refetchReturns();
       form.reset({
-        date: format(new Date(), "yyyy-MM-dd"),
+        date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
         customerId: parseInt(selectedCustomerId),
         productId: 0,
         productType: selectedProductType,
@@ -441,11 +445,13 @@ export default function ReturnFromCustomer() {
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
-                    {customers.map((customer: Customer) => (
-                      <SelectItem key={customer.id} value={customer.id.toString()}>
-                        {customer.customer_name}
-                      </SelectItem>
-                    ))}
+                    {customers
+                      .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
+                      .map((customer: Customer) => (
+                        <SelectItem key={customer.id} value={customer.id.toString()}>
+                          {customer.customer_name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -481,7 +487,20 @@ export default function ReturnFromCustomer() {
             </CardHeader>
             <CardContent>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label>Date:</Label>
+                    <Input
+                      type="date"
+                      {...form.register("date")}
+                    />
+                    {form.formState.errors.date && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {form.formState.errors.date.message}
+                      </p>
+                    )}
+                  </div>
+                  
                   <div>
                     <Label>Product Type:</Label>
                     <Select
@@ -512,11 +531,13 @@ export default function ReturnFromCustomer() {
                         <SelectValue placeholder="Select product" />
                       </SelectTrigger>
                       <SelectContent>
-                        {filteredProducts.map((product: RegularProduct | NonProduct) => (
-                          <SelectItem key={product.id} value={product.id.toString()}>
-                            {product.description}
-                          </SelectItem>
-                        ))}
+                        {filteredProducts
+                          .sort((a, b) => a.description.localeCompare(b.description))
+                          .map((product: RegularProduct | NonProduct) => (
+                            <SelectItem key={product.id} value={product.id.toString()}>
+                              {product.description}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -605,7 +626,7 @@ export default function ReturnFromCustomer() {
                     type="button"
                     variant="outline"
                     onClick={() => form.reset({
-                      date: format(new Date(), "yyyy-MM-dd"),
+                      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
                       customerId: parseInt(selectedCustomerId),
                       productId: 0,
                       productType: selectedProductType,

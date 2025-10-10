@@ -563,28 +563,30 @@ export default function Dumps() {
                       <Save className="h-4 w-4 mr-2" />Add Dump
                     </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Add Dump Entry</DialogTitle>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid gap-6 py-6">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                         <div>
                           <Label>Supplier</Label>
                           <Select 
                             value={newDump.supplierId} 
                             onValueChange={(value) => setNewDump({...newDump, supplierId: value})}
                           >
-                            <SelectTrigger className="w-full min-w-[90px] sm:min-w-[110px] md:min-w-[120px] h-8">
+                            <SelectTrigger className="w-full h-10">
                               <SelectValue placeholder="Select Supplier" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="none">No Supplier</SelectItem>
-                              {suppliers.map((supplier: Supplier) => (
-                                <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                                  {supplier.supplier_name}
-                                </SelectItem>
-                              ))}
+                              {suppliers
+                                .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name))
+                                .map((supplier: Supplier) => (
+                                  <SelectItem key={supplier.id} value={supplier.id.toString()}>
+                                    {supplier.supplier_name}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -594,7 +596,7 @@ export default function Dumps() {
                             value={newDump.productType} 
                             onValueChange={(value: 'regular' | 'non') => setNewDump({...newDump, productType: value, productId: ""})}
                           >
-                            <SelectTrigger className="w-full min-w-[80px] h-8">
+                            <SelectTrigger className="w-full h-10">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -609,15 +611,17 @@ export default function Dumps() {
                             value={newDump.productId} 
                             onValueChange={(value) => setNewDump({...newDump, productId: value})}
                           >
-                            <SelectTrigger className="w-full min-w-[150px] h-8">
+                            <SelectTrigger className="w-full h-10">
                               <SelectValue placeholder="Select Product" />
                             </SelectTrigger>
                             <SelectContent>
-                              {filteredProducts.map((product: any) => (
-                                <SelectItem key={product.id} value={product.id.toString()}>
-                                  {product.description}
-                                </SelectItem>
-                              ))}
+                              {filteredProducts
+                                .sort((a, b) => a.description.localeCompare(b.description))
+                                .map((product: any) => (
+                                  <SelectItem key={product.id} value={product.id.toString()}>
+                                    {product.description}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                         </div>
@@ -627,7 +631,7 @@ export default function Dumps() {
                             placeholder="Description"
                             value={newDump.description}
                             onChange={(e) => setNewDump({...newDump, description: e.target.value})}
-                            className="w-full min-w-[150px] h-8"
+                            className="w-full h-10"
                           />
                         </div>
                         <div>
@@ -636,7 +640,7 @@ export default function Dumps() {
                             placeholder="Remarks"
                             value={newDump.remarks}
                             onChange={(e) => setNewDump({...newDump, remarks: e.target.value})}
-                            className="w-full min-w-[120px] h-8"
+                            className="w-full h-10"
                           />
                         </div>
                         <div>
@@ -645,7 +649,7 @@ export default function Dumps() {
                             type="number"
                             value={newDump.quantity}
                             onChange={(e) => setNewDump({...newDump, quantity: parseFloat(e.target.value) || 0})}
-                            className="w-full min-w-[80px] text-center h-8"
+                            className="w-full text-center h-10"
                             min="0"
                             step="0.001"
                           />
@@ -656,7 +660,7 @@ export default function Dumps() {
                             type="number"
                             value={newDump.unitPrice}
                             onChange={(e) => setNewDump({...newDump, unitPrice: parseFloat(e.target.value) || 0})}
-                            className="w-full min-w-[100px] text-center h-8"
+                            className="w-full text-center h-10"
                             min="0"
                             step="0.01"
                           />
@@ -665,7 +669,7 @@ export default function Dumps() {
                           <Label>Total Value</Label>
                           <Input
                             value={`£${(newDump.quantity * newDump.unitPrice).toFixed(2)}`}
-                            className="w-full min-w-[100px] text-center h-8 bg-gray-100"
+                            className="w-full text-center h-10 bg-gray-100"
                             readOnly
                           />
                         </div>

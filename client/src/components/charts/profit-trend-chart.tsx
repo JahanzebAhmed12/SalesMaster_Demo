@@ -21,9 +21,9 @@ export default function ProfitTrendChart({ data, showProfit = true }: ProfitTren
       <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="name" />
-        <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+        <YAxis tickFormatter={(value) => `£${value.toLocaleString()}`} />
         <Tooltip 
-          formatter={(value: number) => [`$${value.toLocaleString()}`, 'Profit']}
+          formatter={(value: number) => [`£${value.toLocaleString()}`, 'Profit']}
           labelStyle={{ color: '#374151' }}
         />
         <Line 

@@ -68,7 +68,7 @@ function A5InvoiceTemplate({ data, showOutstandingBalance, invoiceFooter }: Invo
             Invoice No: {data.sale?.invoice_number || data.sale?.invoiceNumber || "-"}
           </div>
           <div style={{ fontWeight: "bold", fontSize: 20, letterSpacing: 1 }}>INVOICE</div>
-          <div style={{ fontWeight: 400, fontSize: 12, marginTop: 4 }}>Date: {data.sale?.date ? new Date(data.sale.date).toLocaleString() : "-"}</div>
+          <div style={{ fontWeight: 400, fontSize: 12, marginTop: 4 }}>Date: {data.sale?.date ? new Date(data.sale.date).toLocaleDateString() : new Date().toLocaleDateString()}</div>
         </div>
       </div>
       <hr style={{ margin: "12px 0" }} />

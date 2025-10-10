@@ -91,7 +91,6 @@ export default function InvoicePrintPage() {
   const showCashPaid = query.get('showCashPaid') === '1';
   const showBankPaid = query.get('showBankPaid') === '1';
   const backdate = query.get('backdate');
-  const todayStr = new Date().toLocaleDateString();
   const [showOutstandingBalance, setShowOutstandingBalance] = useState<boolean>(true);
   const [invoiceFooter, setInvoiceFooter] = useState<string>("");
 
@@ -162,7 +161,7 @@ export default function InvoicePrintPage() {
 
         {/* Invoice Details - Right Side */}
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontWeight: 400, fontSize: 16 }}>Date: {todayStr}</div>
+          <div style={{ fontWeight: 400, fontSize: 16 }}>Date: {data.sale?.date ? new Date(data.sale.date).toLocaleDateString() : new Date().toLocaleDateString()}</div>
           <div style={{ fontWeight: "bold", fontSize: 18, color: '#1a237e', marginTop: 4 }}>
             Invoice No: {data.sale?.invoice_number || data.sale?.invoiceNumber || "-"}
           </div>

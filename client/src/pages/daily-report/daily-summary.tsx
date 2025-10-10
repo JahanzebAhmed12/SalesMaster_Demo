@@ -575,14 +575,14 @@ export default function DailySummary() {
     yPosition += 5;
 
     const totalsData = [
-      ['Total Cash Sales', `�${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `�${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `�${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
-      ['Account Paid Cash(Backdate)', `�${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `�${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `�${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `-�${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `-�${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
+      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
+      ['Account Paid Cash(Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
+      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
+      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
+      ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
     ];
 
     autoTable(doc, {
@@ -599,7 +599,7 @@ export default function DailySummary() {
     yPosition = (doc as any).lastAutoTable.finalY + 10;
 
     autoTable(doc, {
-      body: [['Total Banking', `�${summaryData.totals.banking_total.toFixed(2)}`]],
+      body: [['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]],
       startY: yPosition,
       styles: {
         fontSize: 14,
@@ -803,7 +803,7 @@ export default function DailySummary() {
     });
   };
 
-  // Generate PDF blob for email
+  // Generate PDF blob for email (complete daily summary)
   const generatePDFBlob = () => {
     if (!selectedDate || !summaryData) {
       return null;
@@ -812,36 +812,15 @@ export default function DailySummary() {
     const doc = new jsPDF();
     let yPosition = 20;
 
-    // Add company details header
-    if (companyDetails) {
-      doc.setFontSize(16);
-      doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-
-      doc.setFontSize(10);
-      if (companyDetails.email) {
-        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      if (companyDetails.bankDetails) {
-        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      yPosition += 5;
-    }
-
     // Add report title
-    doc.setFontSize(14);
-    doc.text('DAILY SUMMARY REPORT', 105, yPosition, { align: 'center' });
-    yPosition += 8;
-    doc.setFontSize(10);
-    doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+    doc.setFontSize(16);
+    doc.text('Daily Summary Report', 14, yPosition);
     yPosition += 15;
 
-    // Daily Sales Summary (always included)
-    doc.setFontSize(12);
-    doc.text('Daily Sales Summary', 14, yPosition);
-    yPosition += 5;
+    // Daily Sales Summary
+    doc.setFontSize(14);
+    doc.text(`Daily Sales Summary - ${format(selectedDate, "dd/MM/yyyy")}`, 14, yPosition);
+    yPosition += 10;
 
     autoTable(doc, {
       head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
@@ -860,12 +839,18 @@ export default function DailySummary() {
       ],
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+      didParseCell: function(data) {
+        if (data.row.index === summaryData.sales_summary.length) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = [240, 240, 240];
+        }
+      }
     });
 
     yPosition = (doc as any).lastAutoTable.finalY + 15;
 
-    // Customer Payments (only if has data)
+    // Customer Payments (if has data)
     if (summaryData.customer_payments && summaryData.customer_payments.length > 0) {
       doc.setFontSize(12);
       doc.text('Customer Payments (Backdate)', 14, yPosition);
@@ -883,24 +868,93 @@ export default function DailySummary() {
             payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-',
             payment.total_amount.toFixed(2)
           ]),
-          ['TOTAL', '',
-            summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2),
-            summaryData.totals.customer_payments_total.toFixed(2)
-          ]
+          ['TOTAL', '', summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2), summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2), summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2), summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2), summaryData.totals.customer_payments_total.toFixed(2)]
         ],
         startY: yPosition,
         styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
       });
 
       yPosition = (doc as any).lastAutoTable.finalY + 15;
     }
 
-    // Add other sections (supplier payments, expenses, banking, totals) similar to handleGenerateCleanPDF
-    // For brevity, I'll add the key sections
+    // Supplier Payments (if has data)
+    if (summaryData.supplier_payments && summaryData.supplier_payments.length > 0) {
+      doc.setFontSize(12);
+      doc.text('Supplier Payments', 14, yPosition);
+      yPosition += 5;
+
+      autoTable(doc, {
+        head: [['Supplier Name', 'Supplier Invoice No', 'Supplier Invoice Date', 'Amount', 'Payment Mode']],
+        body: [
+          ...summaryData.supplier_payments.map(payment => [
+            payment.supplier_name,
+            payment.supplier_invoice_number || '-',
+            payment.supplier_invoice_date ? format(new Date(payment.supplier_invoice_date), "dd/MM/yyyy") : '-',
+            payment.amount.toFixed(2),
+            payment.payment_mode
+          ]),
+          ['TOTAL', '', '', summaryData.totals.supplier_payments_total.toFixed(2), '']
+        ],
+        startY: yPosition,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+      });
+
+      yPosition = (doc as any).lastAutoTable.finalY + 15;
+    }
+
+    // Expense Entries (if has data)
+    if (summaryData.expense_entries && summaryData.expense_entries.length > 0) {
+      doc.setFontSize(12);
+      doc.text('Expense Entries', 14, yPosition);
+      yPosition += 5;
+
+      autoTable(doc, {
+        head: [['Supplier Invoice No', 'Supplier Name', 'Expense Name', 'Amount', 'Payment Mode']],
+        body: [
+          ...summaryData.expense_entries.map(expense => [
+            expense.invoice_number || '-',
+            expense.supplier_name,
+            expense.expense_name,
+            expense.amount.toFixed(2),
+            expense.payment_mode
+          ]),
+          ['TOTAL', '', '', summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2), '']
+        ],
+        startY: yPosition,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+      });
+
+      yPosition = (doc as any).lastAutoTable.finalY + 15;
+    }
+
+    // Banking Records (if has data)
+    if (summaryData.banking_records && summaryData.banking_records.length > 0) {
+      doc.setFontSize(12);
+      doc.text('Banking Records', 14, yPosition);
+      yPosition += 5;
+
+      autoTable(doc, {
+        head: [['Date', 'Remarks', 'Payment Type', 'Amount', 'Details']],
+        body: [
+          ...summaryData.banking_records.map(record => [
+            record.date ? format(new Date(record.date), "dd/MM/yyyy") : "N/A",
+            record.remarks,
+            record.payment_type,
+            record.amount.toFixed(2),
+            record.bag_details.length > 0 ? record.bag_details.map(bag => `Bag: ${bag.bag_number}`).join(', ') : `${record.paying_number ? `Pay In: ${record.paying_number}` : ''}${record.cheque_number ? ` | Cheque: ${record.cheque_number}` : ''}`
+          ]),
+          ['TOTAL', '', '', summaryData.totals.banking_total.toFixed(2), '']
+        ],
+        startY: yPosition,
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+      });
+
+      yPosition = (doc as any).lastAutoTable.finalY + 15;
+    }
 
     // Daily Summary Totals
     doc.setFontSize(12);
@@ -908,14 +962,14 @@ export default function DailySummary() {
     yPosition += 5;
 
     const totalsData = [
-      ['Total Cash Sales', `�${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `�${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `�${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
-      ['Account Paid Cash(Backdate)', `�${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `�${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `�${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `-�${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `-�${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
+      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
+      ['Account Paid Cash(Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
+      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
+      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
+      ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
     ];
 
     autoTable(doc, {
@@ -932,14 +986,14 @@ export default function DailySummary() {
     yPosition = (doc as any).lastAutoTable.finalY + 10;
 
     autoTable(doc, {
-      body: [['Total Banking', `�${summaryData.totals.banking_total.toFixed(2)}`]],
+      body: [['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]],
       startY: yPosition,
       styles: {
         fontSize: 14,
         cellPadding: 5,
         fontStyle: 'bold',
-        fillColor: [173, 216, 230], // Light blue background
-        textColor: [0, 0, 0] // Black text
+        fillColor: [173, 216, 230],
+        textColor: [0, 0, 0]
       },
       columnStyles: {
         0: { fontStyle: 'bold', fontSize: 14 },
@@ -947,36 +1001,89 @@ export default function DailySummary() {
       }
     });
 
-    // Product Purchase Full View (only if has data) - NEW PAGE
+    // Stock Check (if has data) - NEW PAGE
+    if (stockData && stockData.length > 0) {
+      doc.addPage();
+      yPosition = 20;
+
+      doc.setFontSize(14);
+      doc.text(`Stock Check - ${format(selectedDate, "dd/MM/yyyy")}`, 14, yPosition);
+      yPosition += 10;
+
+      // Filter stock data to only include items with non-zero values
+      const filteredStockData = stockData.filter((item: StockItem) =>
+        item.os !== 0 ||
+        item.ns !== 0 ||
+        item.sales !== 0 ||
+        item.crtn !== 0 ||
+        item.dmps !== 0 ||
+        item.srtn !== 0 ||
+        item.stock !== 0 ||
+        item.clStock !== 0
+      );
+
+      const stockTotals = {
+        os: filteredStockData.reduce((sum, item) => sum + item.os, 0),
+        ns: filteredStockData.reduce((sum, item) => sum + item.ns, 0),
+        sales: filteredStockData.reduce((sum, item) => sum + item.sales, 0),
+        crtn: filteredStockData.reduce((sum, item) => sum + item.crtn, 0),
+        dmps: filteredStockData.reduce((sum, item) => sum + item.dmps, 0),
+        srtn: filteredStockData.reduce((sum, item) => sum + item.srtn, 0),
+        stock: filteredStockData.reduce((sum, item) => sum + item.stock, 0),
+        clStock: filteredStockData.reduce((sum, item) => sum + item.clStock, 0)
+      };
+
+      autoTable(doc, {
+        head: [['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result']],
+        body: [
+          ...filteredStockData.map((item: StockItem) => [
+            item.slNo,
+            item.productDescription,
+            formatQuantity(item.os),
+            formatQuantity(item.ns),
+            formatQuantity(item.sales),
+            formatQuantity(item.crtn),
+            formatQuantity(item.dmps),
+            formatQuantity(item.srtn),
+            formatQuantity(item.stock),
+            formatQuantity(item.clStock),
+            item.result
+          ]),
+          ['TOTAL', '', formatQuantity(stockTotals.os), formatQuantity(stockTotals.ns), formatQuantity(stockTotals.sales), formatQuantity(stockTotals.crtn), formatQuantity(stockTotals.dmps), formatQuantity(stockTotals.srtn), formatQuantity(stockTotals.stock), formatQuantity(stockTotals.clStock), '']
+        ],
+        startY: yPosition,
+        styles: { fontSize: 7, cellPadding: 1 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 15 },
+          1: { cellWidth: 35 },
+          2: { cellWidth: 15 },
+          3: { cellWidth: 15 },
+          4: { cellWidth: 15 },
+          5: { cellWidth: 15 },
+          6: { cellWidth: 15 },
+          7: { cellWidth: 15 },
+          8: { cellWidth: 15 },
+          9: { cellWidth: 15 },
+          10: { cellWidth: 15 }
+        },
+        didParseCell: function(data) {
+          if (data.row.index === filteredStockData.length) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [240, 240, 240];
+          }
+        }
+      });
+    }
+
+    // Product Purchase Full View (if has data) - NEW PAGE
     if (productPurchaseData && productPurchaseData.length > 0) {
       doc.addPage();
       yPosition = 20;
 
-      // Add company details header
-      if (companyDetails) {
-        doc.setFontSize(16);
-        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-        yPosition += 8;
-
-        doc.setFontSize(10);
-        if (companyDetails.email) {
-          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        if (companyDetails.bankDetails) {
-          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        yPosition += 5;
-
-      }
-
       doc.setFontSize(14);
-      doc.text('PRODUCT PURCHASE FULL VIEW', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-      doc.setFontSize(10);
-      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-      yPosition += 15;
+      doc.text(`Product Purchase Full View - ${format(selectedDate, "dd/MM/yyyy")}`, 14, yPosition);
+      yPosition += 10;
 
       // Process data for grouped display
       const processedData: any[] = [];
@@ -1009,7 +1116,7 @@ export default function DailySummary() {
         body: processedData,
         startY: yPosition,
         styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 35 },
@@ -1035,11 +1142,16 @@ export default function DailySummary() {
       });
     }
 
-    // Add footer text "stand 100" on bottom right
+    // Add footer text "stand 100" on bottom right of each page
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(8);
-    doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
+    const totalPages = doc.getNumberOfPages();
+    
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
+    }
 
     return doc.output('blob');
   };
@@ -1099,7 +1211,7 @@ export default function DailySummary() {
           const emailData = {
             to: emailList,
             subject: `Daily Summary Report - ${format(selectedDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: �${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: �${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: �${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
             attachment: {
               filename: `daily-summary-${format(selectedDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -1355,6 +1467,25 @@ export default function DailySummary() {
                 </CardContent>
               </Card>
 
+              {/* Total Sales Summary Card */}
+              <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-2xl font-bold text-green-800 text-center">
+                    TOTAL SALES SUMMARY
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-5xl font-bold text-green-900 mb-2">
+                      £{(summaryData.totals.cash_sales + summaryData.totals.card_sales + (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.cheque_sales || 0) + summaryData.totals.account_sales).toFixed(2)}
+                    </div>
+                    <div className="text-lg text-green-700">
+                      Daily Sales (All Payment Methods)
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Customer Payments */}
               <Card className={summaryData.customer_payments && summaryData.customer_payments.length === 0 ? "print:hidden" : ""}>
                 <CardHeader>
@@ -1528,11 +1659,11 @@ export default function DailySummary() {
                   <div className="space-y-3 text-lg">
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Card Sales:</span>
-                      <span className="font-bold">�{summaryData.totals.card_sales.toFixed(2)}</span>
+                      <span className="font-bold">£{summaryData.totals.card_sales.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Account Paid Card(Backdate):</span>
-                      <span className="font-bold">�{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
+                      <span className="font-bold">£{summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1547,7 +1678,7 @@ export default function DailySummary() {
                   <div className="space-y-3 text-lg">
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Bank Transfer Sales:</span>
-                      <span className="font-bold">�{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
+                      <span className="font-bold">£{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
                     </div>
                     {/* <div className="flex justify-between items-center py-2 border-b">
                     <span className="font-medium">Customer Bank Transfer Payments:</span>
@@ -1570,31 +1701,31 @@ export default function DailySummary() {
                   <div className="space-y-3 text-lg">
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Cash Sales:</span>
-                      <span className="font-bold">�{summaryData.totals.cash_sales.toFixed(2)}</span>
+                      <span className="font-bold">£{summaryData.totals.cash_sales.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Total Cheque:</span>
-                      <span className="font-bold">�{(summaryData.totals.cheque_sales || 0).toFixed(2)}</span>
+                      <span className="font-bold">£{(summaryData.totals.cheque_sales || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Account Paid Cash(Backdate):</span>
-                      <span className="font-bold">�{(summaryData.totals.customer_cash_payments || 0).toFixed(2)}</span>
+                      <span className="font-bold">£{(summaryData.totals.customer_cash_payments || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b">
                       <span className="font-medium">Till/Float(C/F):</span>
-                      <span className="font-bold">�{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
+                      <span className="font-bold">£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b text-red-600">
                       <span className="font-medium">Total Supplier Payment (Paid Out):</span>
-                      <span className="font-bold">-�{(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}</span>
+                      <span className="font-bold">-£{(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b text-red-600">
                       <span className="font-medium">Total Expense (Paid Out):</span>
-                      <span className="font-bold">-�{(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}</span>
+                      <span className="font-bold">-£{(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-t-2 border-gray-400 bg-blue-50 total-banking-print">
                       <span className="font-bold text-xl">Total Banking:</span>
-                      <span className="font-bold text-xl text-blue-600">�{summaryData.totals.banking_total.toFixed(2)}</span>
+                      <span className="font-bold text-xl text-blue-600">£{summaryData.totals.banking_total.toFixed(2)}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1784,7 +1915,7 @@ export default function DailySummary() {
                                   <TableCell className="border text-right">{row.product}</TableCell>
                                   <TableCell className="border text-right">{formatQuantity(row.quantity)}</TableCell>
                                   <TableCell className="border"></TableCell>
-                                  <TableCell className="border text-right">�{Number(row.total).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
                               );
                             } else {
@@ -1807,8 +1938,8 @@ export default function DailySummary() {
                                     </span>
                                   </TableCell>
                                   <TableCell className="border text-right">{formatQuantity(row.quantity)}</TableCell>
-                                  <TableCell className="border text-right">�{Number(row.unitPrice).toFixed(2)}</TableCell>
-                                  <TableCell className="border text-right">�{Number(row.total).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
                               );
                             }

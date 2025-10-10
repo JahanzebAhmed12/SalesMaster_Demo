@@ -20,9 +20,9 @@ export default function SalesPurchaseChart({ data }: SalesPurchaseChartProps) {
       <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="name" />
-        <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+        <YAxis tickFormatter={(value) => `£${value.toLocaleString()}`} />
         <Tooltip 
-          formatter={(value: number) => [`$${value.toLocaleString()}`, '']}
+          formatter={(value: number) => [`£${value.toLocaleString()}`, '']}
           labelStyle={{ color: '#374151' }}
         />
         <Legend />

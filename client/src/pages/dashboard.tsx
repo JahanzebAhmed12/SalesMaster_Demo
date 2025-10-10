@@ -791,7 +791,7 @@ export default function Dashboard() {
                 <div>
                   <p className="text-gray-500 text-sm font-medium">Today's Sales</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    ${stats?.todaySales?.toLocaleString() || '0'}
+                    £{stats?.todaySales?.toLocaleString() || '0'}
                   </p>
                   <p className="text-green-600 text-sm mt-1">
                     <TrendingUp className="inline w-4 h-4 mr-1" />
@@ -811,7 +811,7 @@ export default function Dashboard() {
                 <div>
                   <p className="text-gray-500 text-sm font-medium">Total Purchases</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    ${stats?.totalPurchases?.toLocaleString() || '0'}
+                    £{stats?.totalPurchases?.toLocaleString() || '0'}
                   </p>
                   <p className="text-orange-600 text-sm mt-1">
                     <TrendingDown className="inline w-4 h-4 mr-1" />
@@ -950,7 +950,7 @@ export default function Dashboard() {
                     <TableCell>Sale</TableCell>
                     <TableCell>{transaction.customerName}</TableCell>
                     <TableCell className="font-medium text-green-600">
-                      +${parseFloat(transaction.amount).toLocaleString()}
+                      +£{parseFloat(transaction.amount).toLocaleString()}
                     </TableCell>
                     <TableCell className="text-gray-500">
                       {new Date(transaction.date).toLocaleDateString()}
