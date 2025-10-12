@@ -1467,24 +1467,7 @@ export default function DailySummary() {
                 </CardContent>
               </Card>
 
-              {/* Total Sales Summary Card */}
-              <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-2xl font-bold text-green-800 text-center">
-                    TOTAL SALES SUMMARY
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center">
-                    <div className="text-5xl font-bold text-green-900 mb-2">
-                      £{(summaryData.totals.cash_sales + summaryData.totals.card_sales + (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.cheque_sales || 0) + summaryData.totals.account_sales).toFixed(2)}
-                    </div>
-                    <div className="text-lg text-green-700">
-                      Daily Sales (All Payment Methods)
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+
 
               {/* Customer Payments */}
               <Card className={summaryData.customer_payments && summaryData.customer_payments.length === 0 ? "print:hidden" : ""}>
@@ -1574,15 +1557,24 @@ export default function DailySummary() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {summaryData.supplier_payments.map((payment, index) => (
-                          <TableRow key={index}>
-                            <TableCell className="border">{payment.supplier_name}</TableCell>
-                            <TableCell className="border">{payment.supplier_invoice_number || '-'}</TableCell>
-                            <TableCell className="border">{payment.supplier_invoice_date ? format(new Date(payment.supplier_invoice_date), "dd/MM/yyyy") : '-'}</TableCell>
-                            <TableCell className="border text-right">{payment.amount.toFixed(2)}</TableCell>
-                            <TableCell className="border capitalize">{payment.payment_mode}</TableCell>
-                          </TableRow>
-                        ))}
+                        {summaryData.supplier_payments.map((payment, index) => {
+                          // Check if this is a different supplier from the previous row
+                          const isDifferentSupplier = index > 0 && 
+                            summaryData.supplier_payments[index - 1].supplier_name !== payment.supplier_name;
+                          
+                          return (
+                            <TableRow 
+                              key={index} 
+                              className={isDifferentSupplier ? "border-t-4 border-black" : ""}
+                            >
+                              <TableCell className="border">{payment.supplier_name}</TableCell>
+                              <TableCell className="border">{payment.supplier_invoice_number || '-'}</TableCell>
+                              <TableCell className="border">{payment.supplier_invoice_date ? format(new Date(payment.supplier_invoice_date), "dd/MM/yyyy") : '-'}</TableCell>
+                              <TableCell className="border text-right">{payment.amount.toFixed(2)}</TableCell>
+                              <TableCell className="border capitalize">{payment.payment_mode}</TableCell>
+                            </TableRow>
+                          );
+                        })}
                         {summaryData.supplier_payments.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
@@ -1646,6 +1638,25 @@ export default function DailySummary() {
                         )}
                       </TableBody>
                     </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Total Sales Summary Card */}
+              <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg font-bold text-green-800 text-center">
+                    TOTAL SALES SUMMARY
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-green-900 mb-1">
+                      £{(summaryData.totals.cash_sales + summaryData.totals.card_sales + (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.cheque_sales || 0) + summaryData.totals.account_sales).toFixed(2)}
+                    </div>
+                    <div className="text-sm text-green-700">
+                      Daily Sales (All Payment Methods)
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1901,29 +1912,29 @@ export default function DailySummary() {
                             if (row.isHeader) {
                               return (
                                 <TableRow key={idx} className="bg-gray-50 font-semibold border-t-2 border-gray-200">
-                                  <TableCell className="border">{row.date}</TableCell>
-                                  <TableCell className="border">{row.supplier}</TableCell>
-                                  <TableCell className="border">{row.invNo}</TableCell>
-                                  <TableCell className="border" colSpan={3}></TableCell>
-                                  <TableCell className="border"></TableCell>
+                                  <TableCell className="border py-1">{row.date}</TableCell>
+                                  <TableCell className="border py-1">{row.supplier}</TableCell>
+                                  <TableCell className="border py-1">{row.invNo}</TableCell>
+                                  <TableCell className="border py-1" colSpan={3}></TableCell>
+                                  <TableCell className="border py-1"></TableCell>
                                 </TableRow>
                               );
                             } else if (row.isTotal) {
                               return (
                                 <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
-                                  <TableCell className="border" colSpan={3}></TableCell>
-                                  <TableCell className="border text-right">{row.product}</TableCell>
-                                  <TableCell className="border text-right">{formatQuantity(row.quantity)}</TableCell>
-                                  <TableCell className="border"></TableCell>
-                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                                  <TableCell className="border py-1" colSpan={3}></TableCell>
+                                  <TableCell className="border text-right py-1">{row.product}</TableCell>
+                                  <TableCell className="border text-right py-1">{formatQuantity(row.quantity)}</TableCell>
+                                  <TableCell className="border py-1"></TableCell>
+                                  <TableCell className="border text-right py-1">£{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
                               );
                             } else {
                               return (
                                 <TableRow key={idx} className="bg-white">
-                                  <TableCell className="border"></TableCell>
-                                  <TableCell className="border"></TableCell>
-                                  <TableCell className="border">
+                                  <TableCell className="border py-1"></TableCell>
+                                  <TableCell className="border py-1"></TableCell>
+                                  <TableCell className="border py-1">
                                     <Button
                                       variant="link"
                                       className="p-0 text-blue-600 underline"
@@ -1932,14 +1943,14 @@ export default function DailySummary() {
                                       {row.invNo}
                                     </Button>
                                   </TableCell>
-                                  <TableCell className="border">
+                                  <TableCell className="border py-1">
                                     <span className="text-blue-600 cursor-pointer hover:text-blue-800 transition-colors">
                                       {row.product}
                                     </span>
                                   </TableCell>
-                                  <TableCell className="border text-right">{formatQuantity(row.quantity)}</TableCell>
-                                  <TableCell className="border text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>
-                                  <TableCell className="border text-right">£{Number(row.total).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right py-1">{formatQuantity(row.quantity)}</TableCell>
+                                  <TableCell className="border text-right py-1">£{Number(row.unitPrice).toFixed(2)}</TableCell>
+                                  <TableCell className="border text-right py-1">£{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
                               );
                             }

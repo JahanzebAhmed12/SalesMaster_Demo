@@ -52,10 +52,18 @@ export default function OnAccSupplier() {
   const queryClient = useQueryClient();
 
   // Fetch suppliers
-  const { data: suppliers = [], isLoading: loadingSuppliers } = useQuery<Supplier[]>({
+  const { data: suppliersData = [], isLoading: loadingSuppliers } = useQuery<Supplier[]>({
     queryKey: ["suppliers"],
     queryFn: () => apiRequest("GET", "/api/suppliers"),
   });
+
+  // Sort suppliers alphabetically by name
+  const suppliers = useMemo(() => {
+    if (!suppliersData) return [];
+    return [...suppliersData].sort((a, b) => 
+      a.supplier_name.localeCompare(b.supplier_name, undefined, { sensitivity: 'base' })
+    );
+  }, [suppliersData]);
 
   // Get selected supplier object
   const selectedSupplierObj = useMemo(() => suppliers.find(s => s.id.toString() === selectedSupplier), [suppliers, selectedSupplier]);

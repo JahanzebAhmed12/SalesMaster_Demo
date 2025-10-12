@@ -56,7 +56,10 @@ export default function CustomerPayment() {
   const [invoicePaymentModes, setInvoicePaymentModes] = useState<Map<number, string>>(new Map());
   const [invoicePaymentConfigs, setInvoicePaymentConfigs] = useState<Map<number, any>>(new Map());
 
-  const [paymentDate, setPaymentDate] = useState<Date | undefined>();
+  const [paymentDate, setPaymentDate] = useState<Date | undefined>(() => {
+    // Don't initialize with any date initially, let the useEffect handle it
+    return undefined;
+  });
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
 
@@ -129,10 +132,10 @@ export default function CustomerPayment() {
 
   // Set initial payment date to business date
   useEffect(() => {
-    if (businessDate && !paymentDate) {
+    if (businessDate) {
       setPaymentDate(businessDate);
     }
-  }, [businessDate, paymentDate]);
+  }, [businessDate]);
 
   // Reset email field when customer changes
   useEffect(() => {
@@ -720,23 +723,54 @@ export default function CustomerPayment() {
       });
     }
 
-    // Handle on-account payment with remaining amounts
+    // Handle on-account payment with automatic application to unpaid invoices
     if (onAccountAmount > 0) {
       let remainingOnAccount = onAccountAmount;
 
-      for (const payment of remainingPayments) {
-        if (payment.amount <= 0 || remainingOnAccount <= 0) continue;
+      // First, get all unpaid invoices for this customer (excluding already selected ones)
+      const unselectedUnpaidInvoices = displayedInvoices
+        .filter(inv => !selectedInvoiceIds.has(inv.id) && inv.balance > 0)
+        .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime()); // Oldest first
 
-        const onAccountPayment = Math.min(payment.amount, remainingOnAccount);
-        if (onAccountPayment > 0) {
+      // Apply on-account credit to unpaid invoices automatically
+      for (const unpaidInv of unselectedUnpaidInvoices) {
+        if (remainingOnAccount <= 0) break;
+
+        const invoiceBalance = unpaidInv.balance;
+        const paymentForThisInvoice = Math.min(remainingOnAccount, invoiceBalance);
+
+        if (paymentForThisInvoice > 0) {
+          // Find the best payment mode to use (prefer modes with remaining amounts)
+          const availablePaymentMode = remainingPayments.find(p => p.amount > 0)?.mode || 'cash';
+
           paymentDistribution.push({
-            amount: Number(onAccountPayment.toFixed(2)),
-            isOnAccount: true,
-            paymentMode: payment.mode
+            invoiceId: unpaidInv.id,
+            invoiceNumber: unpaidInv.invoiceNumber,
+            amount: Number(paymentForThisInvoice.toFixed(2)),
+            isOnAccount: true, // Mark as on-account application
+            paymentMode: availablePaymentMode
           });
 
-          payment.amount = Number((payment.amount - onAccountPayment).toFixed(2));
-          remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
+          remainingOnAccount = Number((remainingOnAccount - paymentForThisInvoice).toFixed(2));
+        }
+      }
+
+      // Any remaining on-account amount stays as pure on-account credit
+      if (remainingOnAccount > 0) {
+        for (const payment of remainingPayments) {
+          if (payment.amount <= 0 || remainingOnAccount <= 0) continue;
+
+          const onAccountPayment = Math.min(payment.amount, remainingOnAccount);
+          if (onAccountPayment > 0) {
+            paymentDistribution.push({
+              amount: Number(onAccountPayment.toFixed(2)),
+              isOnAccount: true,
+              paymentMode: payment.mode
+            });
+
+            payment.amount = Number((payment.amount - onAccountPayment).toFixed(2));
+            remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
+          }
         }
       }
     }
@@ -744,21 +778,31 @@ export default function CustomerPayment() {
     // Calculate net total for payment distribution (positive amounts minus negative amounts)
     const totalDistributionAmount = paymentDistribution.reduce((sum, payment) => sum + payment.amount, 0);
     
+    // Get all invoice IDs that will be affected (selected + auto-applied)
+    const allAffectedInvoiceIds = new Set([
+      ...Array.from(selectedInvoiceIds),
+      ...paymentDistribution
+        .filter(p => p.invoiceId && p.isOnAccount)
+        .map(p => p.invoiceId!)
+    ]);
+    
     // Build payment payload with explicit distribution
     const paymentPayload = {
       customerId: parseInt(selectedCustomerId),
-      amount: totalDistributionAmount + onAccountAmount, // Net amount (should equal user's payment)
+      amount: receivedAmount, // Use the actual payment amount entered by user
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: remarks || "", // Only use manual remarks, no auto-generated ones
       splitPayment: getSplitPaymentNumbers(), // Use user's actual split payment amounts
-      invoiceIds: Array.from(selectedInvoiceIds),
+      invoiceIds: Array.from(allAffectedInvoiceIds), // Include all affected invoices
       onAccountAmount: onAccountAmount,
       paymentSource: 'customer_payment',
-      paymentDistribution: paymentDistribution, // Send explicit distribution with negative amounts for credits
+      paymentDistribution: paymentDistribution, // Send explicit distribution with negative amounts for credits and auto-applications
       invoices: [] // Keep for backward compatibility
     };
 
     console.log('Payment payload:', JSON.stringify(paymentPayload, null, 2));
+    console.log('Payment distribution details:', paymentDistribution);
+    console.log('All affected invoice IDs:', Array.from(allAffectedInvoiceIds));
 
     if (isEditMode && editingPayment) {
       const editPayload = {
@@ -1240,6 +1284,7 @@ export default function CustomerPayment() {
             <div className="mb-3">
               <h3 className="text-lg font-semibold text-gray-900">Customer Payment</h3>
               <p className="text-xs text-gray-600">Select invoices to pay and/or add on-account credit</p>
+              <p className="text-xs text-blue-600 mt-1">💡 On-account credits automatically apply to oldest unpaid invoices to minimize outstanding balance</p>
             </div>
 
             {/* Compact Form Layout */}
@@ -1328,15 +1373,46 @@ export default function CustomerPayment() {
                       const positiveCount = selectedInvoices.filter(inv => inv.balance > 0).length;
                       const creditCount = selectedInvoices.filter(inv => inv.balance < 0).length;
                       
-                      if (positiveCount > 0 && creditCount > 0) {
-                        return `${positiveCount} invoice${positiveCount !== 1 ? 's' : ''} (£${positiveTotal.toFixed(2)}) - ${creditCount} credit${creditCount !== 1 ? 's' : ''} (£${creditTotal.toFixed(2)}) + £${onAccountAmount.toFixed(2)} on-account`;
-                      } else if (positiveCount > 0) {
-                        return `${positiveCount} invoice${positiveCount !== 1 ? 's' : ''} + £${onAccountAmount.toFixed(2)} on-account`;
-                      } else if (creditCount > 0) {
-                        return `${creditCount} credit${creditCount !== 1 ? 's' : ''} + £${onAccountAmount.toFixed(2)} on-account`;
-                      } else {
-                        return `£${onAccountAmount.toFixed(2)} on-account`;
+                      // Calculate auto-applications
+                      let autoPayTotal = 0;
+                      let autoPayCount = 0;
+                      if (onAccountAmount > 0) {
+                        const unselectedUnpaidInvoices = displayedInvoices
+                          .filter(inv => !selectedInvoiceIds.has(inv.id) && inv.balance > 0)
+                          .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+                        
+                        let remainingCredit = onAccountAmount;
+                        for (const unpaidInv of unselectedUnpaidInvoices) {
+                          if (remainingCredit <= 0) break;
+                          const paymentAmount = Math.min(remainingCredit, unpaidInv.balance);
+                          autoPayTotal += paymentAmount;
+                          if (paymentAmount >= unpaidInv.balance) {
+                            autoPayCount++;
+                          }
+                          remainingCredit -= paymentAmount;
+                        }
                       }
+                      
+                      const remainingOnAccount = onAccountAmount - autoPayTotal;
+                      
+                      let description = '';
+                      if (positiveCount > 0) {
+                        description += `${positiveCount} invoice${positiveCount !== 1 ? 's' : ''} (£${positiveTotal.toFixed(2)})`;
+                      }
+                      if (creditCount > 0) {
+                        if (description) description += ' - ';
+                        description += `${creditCount} credit${creditCount !== 1 ? 's' : ''} (£${creditTotal.toFixed(2)})`;
+                      }
+                      if (autoPayCount > 0) {
+                        if (description) description += ' + ';
+                        description += `${autoPayCount} auto-pay (£${autoPayTotal.toFixed(2)})`;
+                      }
+                      if (remainingOnAccount > 0) {
+                        if (description) description += ' + ';
+                        description += `£${remainingOnAccount.toFixed(2)} on-account`;
+                      }
+                      
+                      return description || `£${onAccountAmount.toFixed(2)} on-account`;
                     })()}
                   </div>
                 </div>
@@ -1550,9 +1626,40 @@ export default function CustomerPayment() {
                         ) : (
                           <span className="text-green-600 text-sm font-medium">Payment Applied</span>
                         )
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
+                      ) : (() => {
+                        // Check if this invoice will be auto-paid by on-account credit
+                        if (invoice.balance > 0 && onAccountAmount > 0) {
+                          // Get unselected unpaid invoices sorted by date (oldest first)
+                          const unselectedUnpaidInvoices = displayedInvoices
+                            .filter(inv => !selectedInvoiceIds.has(inv.id) && inv.balance > 0)
+                            .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+                          
+                          let remainingCredit = onAccountAmount;
+                          let willBeAutoPaid = false;
+                          
+                          for (const unpaidInv of unselectedUnpaidInvoices) {
+                            if (remainingCredit <= 0) break;
+                            
+                            if (unpaidInv.id === invoice.id) {
+                              const paymentAmount = Math.min(remainingCredit, unpaidInv.balance);
+                              if (paymentAmount >= unpaidInv.balance) {
+                                willBeAutoPaid = true;
+                              } else if (paymentAmount > 0) {
+                                return <span className="text-orange-600 text-sm font-medium">Partial Auto-Pay</span>;
+                              }
+                              break;
+                            }
+                            
+                            remainingCredit -= Math.min(remainingCredit, unpaidInv.balance);
+                          }
+                          
+                          if (willBeAutoPaid) {
+                            return <span className="text-blue-600 text-sm font-medium">Auto-Pay (On-Account)</span>;
+                          }
+                        }
+                        
+                        return <span className="text-gray-400">-</span>;
+                      })()}
                     </TableCell>
                     <TableCell className="text-right">£{invoice.runningBal.toFixed(2)}</TableCell>
                   </TableRow>
@@ -1606,17 +1713,58 @@ export default function CustomerPayment() {
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium">Selected Payment:</span>
+                    <span className="font-medium">Total Payment Impact:</span>
                     <div className="text-lg font-bold text-green-600">
                       £{(() => {
+                        // Calculate selected invoices payment
                         const selectedInvoices = displayedInvoices.filter(inv => selectedInvoiceIds.has(inv.id));
                         const positiveTotal = selectedInvoices.filter(inv => inv.balance > 0).reduce((sum, inv) => sum + inv.balance, 0);
                         const creditTotal = selectedInvoices.filter(inv => inv.balance < 0).reduce((sum, inv) => sum + Math.abs(inv.balance), 0);
-                        return Math.max(0, positiveTotal - creditTotal).toFixed(2);
+                        const selectedPayment = Math.max(0, positiveTotal - creditTotal);
+                        
+                        // Calculate auto-payment from on-account
+                        let autoPayment = 0;
+                        if (onAccountAmount > 0) {
+                          const unselectedUnpaidInvoices = displayedInvoices
+                            .filter(inv => !selectedInvoiceIds.has(inv.id) && inv.balance > 0)
+                            .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+                          
+                          let remainingCredit = onAccountAmount;
+                          for (const unpaidInv of unselectedUnpaidInvoices) {
+                            if (remainingCredit <= 0) break;
+                            const paymentAmount = Math.min(remainingCredit, unpaidInv.balance);
+                            autoPayment += paymentAmount;
+                            remainingCredit -= paymentAmount;
+                          }
+                        }
+                        
+                        return (selectedPayment + autoPayment).toFixed(2);
                       })()}
                     </div>
                     <div className="text-xs text-gray-500">
-                      {selectedInvoiceIds.size} selected
+                      {(() => {
+                        const selectedCount = selectedInvoiceIds.size;
+                        let autoPayCount = 0;
+                        
+                        if (onAccountAmount > 0) {
+                          const unselectedUnpaidInvoices = displayedInvoices
+                            .filter(inv => !selectedInvoiceIds.has(inv.id) && inv.balance > 0)
+                            .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+                          
+                          let remainingCredit = onAccountAmount;
+                          for (const unpaidInv of unselectedUnpaidInvoices) {
+                            if (remainingCredit <= 0) break;
+                            const paymentAmount = Math.min(remainingCredit, unpaidInv.balance);
+                            if (paymentAmount >= unpaidInv.balance) {
+                              autoPayCount++;
+                            }
+                            remainingCredit -= paymentAmount;
+                          }
+                        }
+                        
+                        const totalAffected = selectedCount + autoPayCount;
+                        return `${selectedCount} selected${autoPayCount > 0 ? ` + ${autoPayCount} auto-pay` : ''} = ${totalAffected} total`;
+                      })()}
                     </div>
                   </div>
                 </div>

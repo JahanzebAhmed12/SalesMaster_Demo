@@ -2,6 +2,9 @@ from flask_cors import CORS
 from datetime import datetime, timedelta, time
 import os
 from dotenv import load_dotenv
+from flask import make_response
+import re
+import html
 from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
@@ -91,8 +94,9 @@ mail = init_mail(app)
 def check_database_health():
     """Check if database is healthy and accessible"""
     try:
-        # Test database connection
-        db.session.execute(db.text("SELECT 1"))
+        # Test database connection using SQLAlchemy ORM
+        from sqlalchemy import text
+        db.session.execute(text("SELECT 1"))
         db.session.commit()
         return True
     except Exception as e:
@@ -110,12 +114,13 @@ with app.app_context():
     # Run migration for closing_stock table
     try:
         # Check if manual_entry column exists
-        result = db.session.execute(db.text("PRAGMA table_info(closing_stock)"))
+        from sqlalchemy import text
+        result = db.session.execute(text("PRAGMA table_info(closing_stock)"))
         columns = [row[1] for row in result.fetchall()]
         
         if 'manual_entry' not in columns:
             print("Adding manual_entry column to closing_stock table...")
-            db.session.execute(db.text("""
+            db.session.execute(text("""
                 ALTER TABLE closing_stock 
                 ADD COLUMN manual_entry BOOLEAN NOT NULL DEFAULT 1
             """))
@@ -128,12 +133,13 @@ with app.app_context():
     # Run migration for supplier_payment table
     try:
         # Check if supplier_invoice_date column exists
-        result = db.session.execute(db.text("PRAGMA table_info(supplier_payment)"))
+        from sqlalchemy import text
+        result = db.session.execute(text("PRAGMA table_info(supplier_payment)"))
         columns = [row[1] for row in result.fetchall()]
         
         if 'supplier_invoice_date' not in columns:
             print("Adding supplier_invoice_date column to supplier_payment table...")
-            db.session.execute(db.text("""
+            db.session.execute(text("""
                 ALTER TABLE supplier_payment 
                 ADD COLUMN supplier_invoice_date DATE
             """))
@@ -146,12 +152,13 @@ with app.app_context():
     # Run migration for payment table to add payment_source column
     try:
         # Check if payment_source column exists
-        result = db.session.execute(db.text("PRAGMA table_info(payment)"))
+        from sqlalchemy import text
+        result = db.session.execute(text("PRAGMA table_info(payment)"))
         columns = [row[1] for row in result.fetchall()]
         
         if 'payment_source' not in columns:
             print("Adding payment_source column to payment table...")
-            db.session.execute(db.text("""
+            db.session.execute(text("""
                 ALTER TABLE payment 
                 ADD COLUMN payment_source VARCHAR(50) DEFAULT 'customer_payment'
             """))
@@ -164,9 +171,82 @@ with app.app_context():
     create_admin_user()  # Create admin user if it doesn't exist
 
 # Configure Flask-JWT-Extended
-app.config["JWT_SECRET_KEY"] = "super-secret-key"
+app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY', 'super-secret-key')  # Use environment variable
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 jwt = JWTManager(app)
+
+# Security Headers Middleware
+@app.after_request
+def add_security_headers(response):
+    """Add security headers to all responses"""
+    # Content Security Policy - restrictive but functional for this app
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    
+    # Prevent clickjacking
+    response.headers['X-Frame-Options'] = 'DENY'
+    
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    # Enable XSS protection
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    # Referrer policy
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    
+    # Permissions policy (formerly Feature Policy)
+    response.headers['Permissions-Policy'] = (
+        "geolocation=(), "
+        "microphone=(), "
+        "camera=(), "
+        "payment=(), "
+        "usb=(), "
+        "magnetometer=(), "
+        "gyroscope=(), "
+        "speaker=()"
+    )
+    
+    # HTTPS enforcement (only in production)
+    if not app.debug:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
+    return response
+
+# Input Sanitization Helper Functions
+def sanitize_input(text):
+    """Sanitize user input to prevent XSS attacks"""
+    if not isinstance(text, str):
+        return text
+    # HTML escape the input
+    sanitized = html.escape(text)
+    # Remove potentially dangerous characters
+    sanitized = re.sub(r'[<>"\']', '', sanitized)
+    return sanitized.strip()
+
+def validate_email(email):
+    """Validate email format"""
+    if not email:
+        return False
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
+
+def validate_phone(phone):
+    """Validate phone number format"""
+    if not phone:
+        return True  # Phone is optional
+    # Allow digits, spaces, hyphens, parentheses, and plus sign
+    pattern = r'^[\d\s\-\(\)\+]+$'
+    return re.match(pattern, phone) is not None
 
 # Configure user identity loader
 @jwt.user_identity_loader
@@ -525,8 +605,9 @@ def set_business_date(new_date, is_manual=True):
 def health_check():
     """Health check endpoint to test database connectivity"""
     try:
-        # Test database connection
-        db.session.execute(db.text("SELECT 1"))
+        # Test database connection using SQLAlchemy ORM
+        from sqlalchemy import text
+        db.session.execute(text("SELECT 1"))
         db.session.commit()
         return jsonify({"status": "healthy", "database": "connected"}), 200
     except Exception as e:
@@ -660,10 +741,11 @@ def create_sale():
                 db.session.rollback()
                 return jsonify({"error": "You do not have permission to create sales for today."}), 403
             
-            # Generate next invoice number with proper locking
-            # Use a separate query to avoid conflicts
-            max_invoice_result = db.session.execute(
-                db.text("SELECT MAX(CAST(invoice_number AS INTEGER)) FROM sale")
+            # Generate next invoice number with proper locking using ORM
+            # Use SQLAlchemy func for safer query
+            from sqlalchemy import func, cast, Integer
+            max_invoice_result = db.session.query(
+                func.max(cast(Sale.invoice_number, Integer))
             ).scalar()
             max_invoice = max_invoice_result or 0
             next_invoice = str(int(max_invoice) + 1)
@@ -13407,20 +13489,54 @@ def create_customer_bulk_payment():
                 payment_amount = float(payment_item.get('amount', 0))
                 
                 if payment_item.get('isOnAccount', False):
-                    # On-account payment - always create payment record
-                    payment = Payment(
-                        customer_id=customer_id,
-                        sale_id=None,  # No specific invoice
-                        amount=payment_amount,
-                        payment_mode=payment_item.get('paymentMode', 'cash'),
-                        payment_date=payment_date_obj,
-                        batch_id=batch_id,
-                        payment_type='on-account',
-                        payment_source='customer_payment',
-                        remarks=remarks
-                    )
-                    db.session.add(payment)
-                    payments_created.append(payment)
+                    # On-account payment
+                    if payment_item.get('invoiceId'):
+                        # On-account payment applied to specific invoice - treat as direct payment
+                        payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=payment_item.get('invoiceId'),
+                            amount=payment_amount,
+                            payment_mode=payment_item.get('paymentMode', 'cash'),
+                            payment_date=payment_date_obj,
+                            batch_id=batch_id,
+                            payment_type='on-account',  # Keep as on-account for tracking
+                            payment_source='customer_payment',
+                            remarks=remarks
+                        )
+                        db.session.add(payment)
+                        payments_created.append(payment)
+                        
+                        # Update sale payment status (same logic as direct payments)
+                        sale = Sale.query.get(payment_item.get('invoiceId'))
+                        if sale:
+                            current_paid = float(sale.paid_amount or 0)
+                            new_paid = current_paid + payment_amount
+                            
+                            if new_paid >= float(sale.total_amount):
+                                sale.payment_status = "paid"
+                                sale.paid_amount = sale.total_amount
+                                sale.status = "finalized"
+                                sale.customer_type = payment_item.get('paymentMode', 'cash')
+                            else:
+                                sale.payment_status = "partial"
+                                sale.paid_amount = new_paid
+                            
+                            db.session.add(sale)
+                    else:
+                        # Pure on-account payment (no specific invoice)
+                        payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=None,  # No specific invoice
+                            amount=payment_amount,
+                            payment_mode=payment_item.get('paymentMode', 'cash'),
+                            payment_date=payment_date_obj,
+                            batch_id=batch_id,
+                            payment_type='on-account',
+                            payment_source='customer_payment',
+                            remarks=remarks
+                        )
+                        db.session.add(payment)
+                        payments_created.append(payment)
                     
                 elif payment_amount > 0:
                     # Positive invoice payment - create payment record

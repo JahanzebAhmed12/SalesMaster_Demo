@@ -64,10 +64,18 @@ export default function OnAccCustomer() {
   const [invoiceQuery, setInvoiceQuery] = useState("");
 
   // Fetch customers
-  const { data: customers = [], isLoading: loadingCustomers } = useQuery<Customer[]>({
+  const { data: customersData = [], isLoading: loadingCustomers } = useQuery<Customer[]>({
     queryKey: ["customers"],
     queryFn: () => apiRequest("GET", "/api/customers"),
   });
+
+  // Sort customers alphabetically by name
+  const customers = useMemo(() => {
+    if (!customersData) return [];
+    return [...customersData].sort((a, b) => 
+      a.customer_name.localeCompare(b.customer_name, undefined, { sensitivity: 'base' })
+    );
+  }, [customersData]);
 
   // Get selected customer object
   const selectedCustomerObj = useMemo(() => customers.find(c => c.id.toString() === selectedCustomer), [customers, selectedCustomer]);

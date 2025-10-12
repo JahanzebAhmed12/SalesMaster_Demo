@@ -141,7 +141,7 @@ export default function ReturnToSupplier() {
       setInvoiceFromDate(format(subDays(today, 30), "yyyy-MM-dd"));
       setInvoiceToDate(format(today, "yyyy-MM-dd"));
     }
-  }, []);
+  }, [businessDate]);
 
   // Form
   const form = useForm<SupplierReturnFormData>({
@@ -157,6 +157,13 @@ export default function ReturnToSupplier() {
     }
   });
 
+  // Update form date when business date changes
+  useEffect(() => {
+    if (businessDate) {
+      form.setValue('date', format(new Date(businessDate), 'yyyy-MM-dd'));
+    }
+  }, [businessDate, form]);
+
   // Queries
   const { data: supplierReturns = [], isLoading } = useQuery({
     queryKey: ['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }],
@@ -169,15 +176,36 @@ export default function ReturnToSupplier() {
     })
   });
 
-  const { data: suppliers = [] } = useQuery({
+  const { data: suppliersData = [] } = useQuery({
     queryKey: ['suppliers'],
     queryFn: fetchSuppliers
   });
 
-  const { data: products = { regularProducts: [], nonProducts: [] } } = useQuery({
+  const { data: productsData = { regularProducts: [], nonProducts: [] } } = useQuery({
     queryKey: ['products'],
     queryFn: fetchProducts
   });
+
+  // Sort suppliers alphabetically by name
+  const suppliers = useMemo(() => {
+    if (!suppliersData) return [];
+    return [...suppliersData].sort((a, b) => 
+      a.supplier_name.localeCompare(b.supplier_name, undefined, { sensitivity: 'base' })
+    );
+  }, [suppliersData]);
+
+  // Sort products alphabetically by description
+  const products = useMemo(() => {
+    if (!productsData) return { regularProducts: [], nonProducts: [] };
+    return {
+      regularProducts: [...productsData.regularProducts].sort((a, b) => 
+        a.description.localeCompare(b.description, undefined, { sensitivity: 'base' })
+      ),
+      nonProducts: [...productsData.nonProducts].sort((a, b) => 
+        a.description.localeCompare(b.description, undefined, { sensitivity: 'base' })
+      )
+    };
+  }, [productsData]);
 
   const { data: purchaseInvoices = [] } = useQuery({
     queryKey: ['purchase-invoices', form.watch('supplierId'), invoiceFromDate, invoiceToDate],

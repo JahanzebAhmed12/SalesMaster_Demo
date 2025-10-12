@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import type { Customer } from "@shared/schema";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -35,14 +36,27 @@ interface PaymentHistoryData {
 
 export default function CustomerPaymentHistory() {
   const [, navigate] = useLocation();
+  const { currentDate: businessDate } = useBusinessDate();
   const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
-  const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
-  const [toDate, setToDate] = useState<Date | undefined>(new Date());
+  const [fromDate, setFromDate] = useState<Date | undefined>(() => {
+    return businessDate ? new Date(businessDate) : new Date();
+  });
+  const [toDate, setToDate] = useState<Date | undefined>(() => {
+    return businessDate ? new Date(businessDate) : new Date();
+  });
   const [selectedFilter, setSelectedFilter] = useState<string>("All");
   const [selectedPaymentType, setSelectedPaymentType] = useState<string>("All");
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   const { toast } = useToast();
+
+  // Update dates when business date changes
+  useEffect(() => {
+    if (businessDate) {
+      setFromDate(new Date(businessDate));
+      setToDate(new Date(businessDate));
+    }
+  }, [businessDate]);
 
   // Parse URL parameters on component mount
   useEffect(() => {

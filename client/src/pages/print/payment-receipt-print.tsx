@@ -196,6 +196,11 @@ const PaymentReceiptPrint = () => {
               Payment covers {payments.length} invoice{payments.length > 1 ? 's' : ''}
             </div>
           )}
+          {payments?.[0]?.remarks && (
+            <div style={{ marginTop: 8, fontSize: 12, fontWeight: "bold", color: "#333" }}>
+              Remarks: {payments[0].remarks}
+            </div>
+          )}
         </div>
         <div style={{ flex: 1, border: "1px solid #888", borderLeft: "none", fontSize: 15 }}>
           <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
@@ -227,6 +232,11 @@ const PaymentReceiptPrint = () => {
         <div>Payment Time: {paymentDate ? new Date(paymentDate).toLocaleString() : "-"}</div>
         <div>Current Time: {new Date().toLocaleString()}</div>
         <div>Payment ID: {paymentId}</div>
+        {payments?.[0]?.remarks && (
+          <div style={{ marginTop: 4, fontWeight: "bold" }}>
+            Remarks: {payments[0].remarks}
+          </div>
+        )}
       </div>
       
       <button

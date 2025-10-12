@@ -21,7 +21,7 @@ export default function SalesPurchaseChart({ data }: SalesPurchaseChartProps) {
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="name" />
         <YAxis tickFormatter={(value) => `£${value.toLocaleString()}`} />
-        <Tooltip 
+        <Tooltip
           formatter={(value: number) => [`£${value.toLocaleString()}`, '']}
           labelStyle={{ color: '#374151' }}
         />

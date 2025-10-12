@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePaymentsMutations } from "@/hooks/usePaymentsMutations";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import type { Supplier, SupplierPayment, InsertSupplierPayment } from "@shared/schema";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -31,16 +32,26 @@ export default function SupplierPayment() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { supplierPayment } = usePaymentsMutations();
+  const { currentDate: businessDate } = useBusinessDate();
   
   const [selectedSupplier, setSelectedSupplier] = useState<string>("");
   const [paymentMode, setPaymentMode] = useState<string>("CASH");
-  const [paymentDate, setPaymentDate] = useState<Date>(new Date());
+  const [paymentDate, setPaymentDate] = useState<Date>(() => {
+    return businessDate ? new Date(businessDate) : new Date();
+  });
   const [amountPaid, setAmountPaid] = useState<string>("0");
   const [remarks, setRemarks] = useState<string>("");
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState<string>("");
   const [supplierInvoiceDate, setSupplierInvoiceDate] = useState<Date | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
+
+  // Update payment date when business date changes
+  useEffect(() => {
+    if (businessDate) {
+      setPaymentDate(new Date(businessDate));
+    }
+  }, [businessDate]);
 
   // Fetch suppliers
   const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
@@ -315,10 +326,16 @@ export default function SupplierPayment() {
                       mode="single"
                       selected={paymentDate}
                       onSelect={(date) => date && setPaymentDate(date)}
+                      defaultMonth={businessDate}
                       initialFocus
                     />
                   </PopoverContent>
                 </Popover>
+                {businessDate && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Business: {format(businessDate, "dd/MM/yyyy")}
+                  </div>
+                )}
               </div>
 
               <div>

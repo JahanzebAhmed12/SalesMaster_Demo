@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import type { Supplier } from "@shared/schema";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -35,19 +36,38 @@ interface SupplierPaymentHistoryData {
 
 export default function SupPaymentHistory() {
   const { toast } = useToast();
+  const { currentDate: businessDate } = useBusinessDate();
   const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
-  const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
-  const [toDate, setToDate] = useState<Date | undefined>(new Date());
+  const [fromDate, setFromDate] = useState<Date | undefined>(() => {
+    return businessDate ? new Date(businessDate) : new Date();
+  });
+  const [toDate, setToDate] = useState<Date | undefined>(() => {
+    return businessDate ? new Date(businessDate) : new Date();
+  });
   const [paymentMode, setPaymentMode] = useState<string>("All");
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
 
   const [filters, setFilters] = useState({
     supplierId: "",
-    fromDate: format(new Date(), "yyyy-MM-dd"),
-    toDate: format(new Date(), "yyyy-MM-dd"),
+    fromDate: businessDate ? format(businessDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+    toDate: businessDate ? format(businessDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
     paymentMode: "All",
   });
+
+  // Update dates when business date changes
+  useEffect(() => {
+    if (businessDate) {
+      const businessDateFormatted = format(businessDate, "yyyy-MM-dd");
+      setFromDate(new Date(businessDate));
+      setToDate(new Date(businessDate));
+      setFilters(prev => ({
+        ...prev,
+        fromDate: businessDateFormatted,
+        toDate: businessDateFormatted
+      }));
+    }
+  }, [businessDate]);
 
   // Fetch suppliers
   const { data: suppliers = [], isLoading: suppliersLoading } = useQuery<Supplier[]>({

@@ -527,6 +527,21 @@ export default function DotMatrixPaymentPrintPage() {
                 £{totalAmount.toFixed(2)}
               </div>
 
+              {/* Remarks - positioned below totals if available */}
+              {processedPayments?.[0]?.remarks && (
+                <div style={{
+                  position: 'absolute',
+                  top: '197mm',
+                  left: '1mm',
+                  width: '120mm',
+                  fontFamily: 'monospace',
+                  fontSize: '10pt',
+                  fontWeight: 'bold'
+                }}>
+                  Remarks: {processedPayments[0].remarks}
+                </div>
+              )}
+
               {/* <div style={{
                 position: 'absolute',
                 ...FIELD_POSITIONS.totals.vat,
