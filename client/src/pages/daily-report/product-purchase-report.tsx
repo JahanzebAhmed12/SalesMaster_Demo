@@ -12,7 +12,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, ShoppingBag, FileText, Download, Copy, Printer, Search, Mail } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
@@ -233,7 +233,7 @@ export default function ProductPurchaseReport() {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${item.slNo}</td>`);
         printWindow.document.write(`<td>${item.productDescription}</td>`);
-        printWindow.document.write(`<td>${item.quantity}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
         printWindow.document.write(`<td>£${item.avgPrice.toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${item.total.toFixed(2)}</td>`);
         printWindow.document.write('</tr>');
@@ -242,7 +242,7 @@ export default function ProductPurchaseReport() {
       printWindow.document.write('<tr class="totals">');
       printWindow.document.write('<td></td>');
       printWindow.document.write(`<td><strong>${purchaseData.length} Items</strong></td>`);
-      printWindow.document.write(`<td><strong>${totalQuantity}</strong></td>`);
+      printWindow.document.write(`<td><strong>${formatQuantity(totalQuantity)}</strong></td>`);
       printWindow.document.write(`<td><strong>£${averagePrice.toFixed(2)}</strong></td>`);
       printWindow.document.write(`<td><strong>£${totalAmount.toFixed(2)}</strong></td>`);
       printWindow.document.write('</tr>');
@@ -258,7 +258,7 @@ export default function ProductPurchaseReport() {
     const ws = XLSX.utils.json_to_sheet(purchaseData.map((item: PurchaseItem) => ({
       'Sl.No': item.slNo,
       'Product Description': item.productDescription,
-      'Quantity': item.quantity,
+      'Quantity': formatQuantity(item.quantity),
       'AVG Price': item.avgPrice,
       'Total': item.total
     })));
@@ -322,12 +322,12 @@ export default function ProductPurchaseReport() {
         ...purchaseData.map((item: PurchaseItem) => [
           item.slNo,
           item.productDescription,
-          item.quantity,
+          formatQuantity(item.quantity),
           `£${item.avgPrice.toFixed(2)}`,
           `£${item.total.toFixed(2)}`
         ]),
         // Add totals row
-        ['', `${purchaseData.length} Items`, totalQuantity, `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
+        ['', `${purchaseData.length} Items`, formatQuantity(totalQuantity), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
       ],
       startY: yPosition,
       styles: {
@@ -358,7 +358,7 @@ export default function ProductPurchaseReport() {
     const rows = purchaseData.map((item: PurchaseItem) => [
       item.slNo,
       item.productDescription,
-      item.quantity,
+      formatQuantity(item.quantity),
       item.avgPrice,
       item.total
     ]);
@@ -421,12 +421,12 @@ export default function ProductPurchaseReport() {
         ...purchaseData.map((item: PurchaseItem) => [
           item.slNo.toString(),
           item.productDescription,
-          item.quantity.toString(),
+          formatQuantity(item.quantity),
           `£${item.avgPrice.toFixed(2)}`,
           `£${item.total.toFixed(2)}`
         ]),
         // Add totals row
-        ['', `${purchaseData.length} Items`, totalQuantity.toString(), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
+        ['', `${purchaseData.length} Items`, formatQuantity(totalQuantity), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
       ],
       startY: yPosition,
       styles: {
@@ -491,7 +491,7 @@ export default function ProductPurchaseReport() {
           const emailData = {
             to: emailList,
             subject: `Product Purchase Report - ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}`,
-            body: `Dear Recipient,\n\nPlease find attached the Product Purchase Report for the period from ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}.\n\nThis report contains detailed purchase information including:\n- Product descriptions and quantities purchased\n- Average purchase prices\n- Total purchase amounts per product\n- Overall purchase summary\n\nReport Summary:\n- Total Products: ${purchaseData.length}\n- Total Quantity: ${totalQuantity}\n- Total Purchase Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}\n- Filter Applied: ${showAll}\n\nBest regards,\n${companyDetails?.name || 'Purchase Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Product Purchase Report for the period from ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}.\n\nThis report contains detailed purchase information including:\n- Product descriptions and quantities purchased\n- Average purchase prices\n- Total purchase amounts per product\n- Overall purchase summary\n\nReport Summary:\n- Total Products: ${purchaseData.length}\n- Total Quantity: ${formatQuantity(totalQuantity)}\n- Total Purchase Amount: £${totalAmount.toFixed(2)}\n- Date Range: ${filters.fromDate || 'N/A'} to ${filters.toDate || 'N/A'}\n- Filter Applied: ${showAll}\n\nBest regards,\n${companyDetails?.name || 'Purchase Team'}`,
             attachment: {
               filename: `product-purchase-report-${filters.fromDate || 'unknown'}-to-${filters.toDate || 'unknown'}.pdf`,
               content: base64PDF,
@@ -759,7 +759,7 @@ export default function ProductPurchaseReport() {
                             {item.productDescription}
                           </button>
                         </TableCell>
-                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.quantity)}</TableCell>
                         <TableCell className="text-center">£{item.avgPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.total.toFixed(2)}</TableCell>
                       </TableRow>
@@ -770,7 +770,7 @@ export default function ProductPurchaseReport() {
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
                     <TableCell className="font-bold">{purchaseData.length} Items</TableCell>
-                    <TableCell className="text-center font-bold">{totalQuantity}</TableCell>
+                    <TableCell className="text-center font-bold">{formatQuantity(totalQuantity)}</TableCell>
                     <TableCell className="text-center font-bold">£{averagePrice.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totalAmount.toFixed(2)}</TableCell>
                   </TableRow>
@@ -780,7 +780,7 @@ export default function ProductPurchaseReport() {
               <div className="summary-print flex flex-wrap items-center justify-center gap-x-8 gap-y-2 mt-6 p-4 bg-gray-50 rounded-lg border print:mt-6 print:p-4 print:bg-white print:border print:rounded-lg print:flex-row print:items-center print:gap-x-8 print:gap-y-2 text-center">
                 <div>Date Range: {filters.fromDate || '-'} to {filters.toDate || '-'}</div>
                 <div>Total Products: {purchaseData.length}</div>
-                <div>Total Quantity: {totalQuantity}</div>
+                <div>Total Quantity: {formatQuantity(totalQuantity)}</div>
                 <div>Avg Price: £{averagePrice.toFixed(2)}</div>
                 <div>Total Amount: £{totalAmount.toFixed(2)}</div>
               </div>

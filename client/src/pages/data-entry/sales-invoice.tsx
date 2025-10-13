@@ -330,12 +330,12 @@ const SalesInvoice = () => {
 
           if (hasPorterage) {
             const totalQuantity = (data.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-            
+
             // Try to determine if this was a fixed or per-unit porterage
             // If porterage amount doesn't divide evenly by quantity, it's likely fixed
             const perUnitPorterage = totalQuantity > 0 ? (data.porterage / totalQuantity) : 0;
             const isLikelyFixed = totalQuantity > 0 && (data.porterage % totalQuantity !== 0 || totalQuantity === 1);
-            
+
             if (isLikelyFixed) {
               // Treat as fixed porterage
               setPorterageType('fixed');
@@ -886,7 +886,7 @@ const SalesInvoice = () => {
       // Recalculate totals with updated items
       const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
       const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
-      
+
       // Calculate porterage based on type
       let newPorterage = 0;
       if (porterageDetails.withPorterage && applyPorterage) {
@@ -897,7 +897,7 @@ const SalesInvoice = () => {
           newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
         }
       }
-      
+
       const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
 
       const updatedSalePayload: BackendSalePayload = {
@@ -2483,12 +2483,12 @@ const SalesInvoice = () => {
                             // Save changes
                             const updatedItems = saleItems.map((it, i) => i === index ? { ...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt } : it);
                             setSaleItems(updatedItems);
-                            
+
                             // Update backend if invoice is already saved
                             if (currentSale) {
                               const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
                               const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
-                              
+
                               // Calculate porterage based on type
                               let newPorterage = 0;
                               if (porterageDetails.withPorterage && applyPorterage) {
@@ -2499,7 +2499,7 @@ const SalesInvoice = () => {
                                   newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
                                 }
                               }
-                              
+
                               const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
 
                               const updatedSalePayload: BackendSalePayload = {
@@ -2529,7 +2529,7 @@ const SalesInvoice = () => {
                               };
                               updateSaleMutation.mutate(updatedSalePayload);
                             }
-                            
+
                             setEditingIndex(null);
                             setEditItem(null);
                           }}>Save</Button>
@@ -2981,7 +2981,7 @@ const SalesInvoice = () => {
                     {/* Porterage Display and Controls */}
                     <div className="flex justify-between items-center">
                       <span>
-                        {porterageType === 'per_unit' 
+                        {porterageType === 'per_unit'
                           ? `Porterage (${formatQuantity(saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0))} × £${parseFloat(porterageDetails.porterageCharge).toFixed(2)}):`
                           : `Porterage (Fixed):`
                         }

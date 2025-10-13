@@ -6361,7 +6361,7 @@ def product_purchase_report():
             'id': row.product_id,  # Use actual product_id instead of serial number
             'slNo': idx,
             'productDescription': row.product_description,
-            'quantity': int(row.quantity) if row.quantity else 0,
+            'quantity': float(row.quantity) if row.quantity else 0,
             'avgPrice': float(row.avg_price) if row.avg_price else 0,
             'total': float(row.total) if row.total else 0
         })
@@ -9073,7 +9073,7 @@ def purchase_history_report():
             'invoiceNo': str(row.invoice_no),
             'deliveryNo': row.delivery_no or '',
             'productName': row.product_name,
-            'quantity': int(row.quantity) if row.quantity else 0,
+            'quantity': float(row.quantity) if row.quantity else 0,
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
             'totalAmount': float(row.item_total) if row.item_total else 0,
             'paymentStatus': row.invoice_payment_status.capitalize() if row.invoice_payment_status else '',
@@ -9143,7 +9143,7 @@ def product_history_report():
             'date': row.date.strftime('%Y-%m-%d') if row.date else '',
             'supplierName': row.supplier_name,
             'product': row.product_name,
-            'quantity': int(row.quantity) if row.quantity else 0,
+            'quantity': float(row.quantity) if row.quantity else 0,
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
             'total': float(row.total_price) if row.total_price else 0,
             'purchaseId': row.purchase_id
@@ -9221,7 +9221,7 @@ def product_history_report():
             'invoiceNo': row.invoice_number,
             'customerName': row.customer_name,
             'product': row.regular_product_desc or row.non_product_desc or '',
-            'quantity': int(row.quantity) if row.quantity else 0,
+            'quantity': float(row.quantity) if row.quantity else 0,
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
             'total': float(row.total_price) if row.total_price else 0
         }
@@ -12216,12 +12216,17 @@ def all_customer_history():
             Sale.status == 'finalized'  # Only finalized sales
         )
         
+        # Apply date filters using proper date range (include full day)
         if from_dt:
-            account_sales_query = account_sales_query.filter(Sale.date >= from_dt)
-            cash_sales_query = cash_sales_query.filter(Sale.date >= from_dt)
+            # Start of the from_date (00:00:00)
+            start_of_day = datetime.combine(from_dt.date(), datetime.min.time())
+            account_sales_query = account_sales_query.filter(Sale.date >= start_of_day)
+            cash_sales_query = cash_sales_query.filter(Sale.date >= start_of_day)
         if to_dt:
-            account_sales_query = account_sales_query.filter(Sale.date <= to_dt)
-            cash_sales_query = cash_sales_query.filter(Sale.date <= to_dt)
+            # End of the to_date (23:59:59.999999)
+            end_of_day = datetime.combine(to_dt.date(), datetime.max.time())
+            account_sales_query = account_sales_query.filter(Sale.date <= end_of_day)
+            cash_sales_query = cash_sales_query.filter(Sale.date <= end_of_day)
         
         account_invoice = sum(float(s.total_amount) for s in account_sales_query.all())
         cash_invoice = sum(float(s.total_amount) for s in cash_sales_query.all())
@@ -12404,11 +12409,12 @@ def customer_aging_report():
         sl_no = 1
 
         for customer in customers:
-            # --- Get all confirmed sales up to as_of_dt ---
+            # --- Get all confirmed sales up to as_of_dt (end of day) ---
+            end_of_day = datetime.combine(as_of_dt.date(), datetime.max.time())
             sales = Sale.query.filter(
                 Sale.customer_id == customer.id,
                 Sale.status == 'finalized',
-                Sale.date <= as_of_dt
+                Sale.date <= end_of_day
             ).all()
 
             # --- Prepare buckets ---
@@ -13756,7 +13762,7 @@ def eec_report():
             'commodity': commodity,
             'cCode': product_code,
             'weight': float(unit_weight) if unit_weight else 0,
-            'quantity': int(item.quantity) if item.quantity else 0,
+            'quantity': float(item.quantity) if item.quantity else 0,
             'uPrice': float(item.unit_price) if item.unit_price else 0,
             'amount': float(item.total_price) if item.total_price else 0,
             'supplier': supplier.supplier_name if supplier else '',

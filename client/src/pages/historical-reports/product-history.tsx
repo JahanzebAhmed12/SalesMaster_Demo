@@ -199,7 +199,7 @@ export default function ProductHistory() {
       ['FROM SUPPLIER'],
       ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...purchases.map((row: any, idx: number) => [
-        idx + 1, row.date, row.supplierName, row.product, row.quantity, row.unitPrice, row.total
+        idx + 1, row.date, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
@@ -207,7 +207,7 @@ export default function ProductHistory() {
       ['SUPPLIER RETURNS'],
       ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...supplierReturns.map((row: any, idx: number) => [
-        idx + 1, row.date, row.invoice, row.supplierName, row.product, row.quantity, row.unitPrice, row.total
+        idx + 1, row.date, row.invoice, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
@@ -215,7 +215,7 @@ export default function ProductHistory() {
       ['SALES'],
       ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...sales.map((row: any, idx: number) => [
-        idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.quantity, row.unitPrice, row.total
+        idx + 1, row.date, row.invoiceNo, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
@@ -223,7 +223,7 @@ export default function ProductHistory() {
       ['CUSTOMER RETURNS'],
       ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...customerReturns.map((row: any, idx: number) => [
-        idx + 1, row.date, row.invoice, row.customerName, row.product, row.quantity, row.unitPrice, row.total
+        idx + 1, row.date, row.invoice, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
@@ -283,13 +283,13 @@ export default function ProductHistory() {
           if (table.title === 'DUMPS') {
             return [idx + 1, row.date, row.product, row.totalQty];
           } else if (table.title === 'FROM SUPPLIER') {
-            return [idx + 1, row.date, row.supplierName, row.product, row.quantity, row.unitPrice, row.total];
+            return [idx + 1, row.date, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
           } else if (table.title === 'SUPPLIER RETURNS') {
-            return [idx + 1, row.date, row.invoice, row.supplierName, row.product, row.quantity, row.unitPrice, row.total];
+            return [idx + 1, row.date, row.invoice, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
           } else if (table.title === 'SALES') {
-            return [idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.quantity, row.unitPrice, row.total];
+            return [idx + 1, row.date, row.invoiceNo, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
           } else { // Customer Returns
-            return [idx + 1, row.date, row.invoice, row.customerName, row.product, row.quantity, row.unitPrice, row.total];
+            return [idx + 1, row.date, row.invoice, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
           }
         });
         
@@ -357,7 +357,7 @@ export default function ProductHistory() {
       text += 'FROM SUPPLIER\n';
       text += 'Sl.No\tDate\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
       purchases.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.supplierName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
@@ -366,7 +366,7 @@ export default function ProductHistory() {
       text += 'SUPPLIER RETURNS\n';
       text += 'Sl.No\tDate\tInvoice#\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
       supplierReturns.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.supplierName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
@@ -375,7 +375,7 @@ export default function ProductHistory() {
       text += 'SALES\n';
       text += 'Sl.No\tDate\tInvoice\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
       sales.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.invoiceNo}\t${row.customerName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.invoiceNo}\t${row.customerName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
@@ -384,7 +384,7 @@ export default function ProductHistory() {
       text += 'CUSTOMER RETURNS\n';
       text += 'Sl.No\tDate\tInvoice#\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
       customerReturns.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.customerName}\t${row.product}\t${row.quantity}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.customerName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
@@ -465,7 +465,7 @@ export default function ProductHistory() {
                 printWindow.document.write(`<td>${row.customerName || row.invoiceNo}</td>`);
               }
               printWindow.document.write(`<td>${row.product}</td>`);
-              printWindow.document.write(`<td>${row.quantity}</td>`);
+              printWindow.document.write(`<td>${formatQuantity(row.quantity)}</td>`);
               printWindow.document.write(`<td>${row.unitPrice}</td>`);
               printWindow.document.write(`<td>${row.total}</td>`);
             }

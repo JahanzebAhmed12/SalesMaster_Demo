@@ -10,9 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, ShoppingCart, FileText, Download, Copy, Printer, Search } from "lucide-react";
+import { CalendarIcon, ShoppingCart, FileText, Download, Copy, Printer, Search, ChevronUp, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -70,6 +70,8 @@ export default function PurchaseHistory() {
   const [paymentFilter, setPaymentFilter] = useState<string>("All Payments");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [trigger, setTrigger] = useState(0);
+  const [sortField, setSortField] = useState<string>("");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
   // Fetch suppliers for dropdown
   const { data: suppliers, isLoading: loadingSuppliers } = useQuery({
@@ -226,7 +228,7 @@ export default function PurchaseHistory() {
             <td>${purchase.supplierName}</td>
             <td>${purchase.invoiceNo}</td>
             <td>${purchase.productName}</td>
-            <td class="text-center">${purchase.quantity}</td>
+            <td class="text-center">${formatQuantity(purchase.quantity)}</td>
             <td class="text-right">£${purchase.unitPrice.toFixed(2)}</td>
             <td class="text-right">£${purchase.totalAmount.toFixed(2)}</td>
             <td>${purchase.paymentStatus}</td>
@@ -238,7 +240,7 @@ export default function PurchaseHistory() {
       printWindow.document.write(`
           <tr class="total-row">
             <td colspan="5" class="text-right"><strong>TOTALS:</strong></td>
-            <td class="text-center">${totals.totalQuantity}</td>
+            <td class="text-center">${formatQuantity(totals.totalQuantity)}</td>
             <td></td>
             <td class="text-right">£${totals.totalAmount.toFixed(2)}</td>
             <td></td>
@@ -311,7 +313,7 @@ export default function PurchaseHistory() {
         purchase.supplierName || '',
         purchase.invoiceNo || '',
         purchase.productName || '',
-        purchase.quantity || 0,
+        formatQuantity(purchase.quantity) || 0,
         parseFloat(purchase.unitPrice?.toString() || '0').toFixed(2),
         parseFloat(purchase.totalAmount?.toString() || '0').toFixed(2),
         purchase.paymentStatus || ''
@@ -321,7 +323,7 @@ export default function PurchaseHistory() {
     // Add totals row
     dataArray.push([
       '', '', '', '', '',
-      totals.totalQuantity || 0,
+      formatQuantity(totals.totalQuantity) || 0,
       '',
       parseFloat(totals.totalAmount?.toString() || '0').toFixed(2),
       ''
@@ -455,7 +457,7 @@ export default function PurchaseHistory() {
       purchase.supplierName,
       purchase.invoiceNo,
       purchase.productName,
-      purchase.quantity.toString(),
+      formatQuantity(purchase.quantity),
       `£${parseFloat(purchase.unitPrice?.toString() || '0').toFixed(2)}`,
       `£${parseFloat(purchase.totalAmount?.toString() || '0').toFixed(2)}`,
       purchase.paymentStatus
@@ -519,7 +521,7 @@ export default function PurchaseHistory() {
     const finalY = (doc as any).lastAutoTable.finalY || 60;
     
     doc.autoTable({
-      head: [['', '', '', '', 'TOTALS', totals.totalQuantity.toString(), '', `£${parseFloat(totals.totalAmount?.toString() || '0').toFixed(2)}`, '']],
+      head: [['', '', '', '', 'TOTALS', formatQuantity(totals.totalQuantity), '', `£${parseFloat(totals.totalAmount?.toString() || '0').toFixed(2)}`, '']],
       body: [],
       startY: finalY + 5,
       styles: {
@@ -557,7 +559,7 @@ export default function PurchaseHistory() {
       purchase.supplierName,
       purchase.invoiceNo,
       purchase.productName,
-      purchase.quantity,
+      formatQuantity(purchase.quantity),
       purchase.unitPrice,
       purchase.totalAmount,
       purchase.paymentStatus
@@ -738,7 +740,7 @@ export default function PurchaseHistory() {
                       <TableCell>{purchase.supplierName}</TableCell>
                       <TableCell>{purchase.invoiceNo}</TableCell>
                       <TableCell>{purchase.productName}</TableCell>
-                      <TableCell className="text-center">{purchase.quantity}</TableCell>
+                      <TableCell className="text-center">{formatQuantity(purchase.quantity)}</TableCell>
                       <TableCell className="text-center">£{purchase.unitPrice.toFixed(2)}</TableCell>
                       <TableCell className="text-center font-medium">£{purchase.totalAmount.toFixed(2)}</TableCell>
                       <TableCell className="text-center">
@@ -762,7 +764,7 @@ export default function PurchaseHistory() {
                     <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
-                    <TableCell className="text-center font-bold">{totals.totalQuantity}</TableCell>
+                    <TableCell className="text-center font-bold">{formatQuantity(totals.totalQuantity)}</TableCell>
                     <TableCell className="text-center font-bold">-</TableCell>
                     <TableCell className="text-center font-bold">£{totals.totalAmount.toFixed(2)}</TableCell>
                     <TableCell></TableCell>
@@ -786,7 +788,7 @@ export default function PurchaseHistory() {
               </div>
               <div className="bg-teal-50 p-4 rounded-lg border">
                 <div className="text-sm text-gray-600">Total Items</div>
-                <div className="text-2xl font-bold text-teal-600">{totals.totalQuantity}</div>
+                <div className="text-2xl font-bold text-teal-600">{formatQuantity(totals.totalQuantity)}</div>
               </div>
             </div>
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">

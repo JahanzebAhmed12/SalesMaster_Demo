@@ -258,6 +258,16 @@ export default function AllCustomerHistory() {
     fetchCustomerHistory();
   }, [customerFilter, currencyFilter]);
 
+  // Auto-refresh when page gains focus (user returns from creating an invoice)
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchCustomerHistory(pagination.currentPage);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [pagination.currentPage]);
+
   // Export handlers
   const handlePrint = () => {
     const printWindow = window.open('', '', 'height=600,width=900');
@@ -617,14 +627,22 @@ export default function AllCustomerHistory() {
                   </Popover>
                 </div>
               </div>
-              <div className="mt-4 md:mt-0">
+              <div className="mt-4 md:mt-0 flex gap-2">
                 <Button 
-                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  className="bg-blue-500 hover:bg-blue-600"
                   onClick={handleSearch}
                   disabled={loading}
                 >
                   {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Search
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => fetchCustomerHistory(1)}
+                  disabled={loading}
+                  title="Refresh data"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Refresh"}
                 </Button>
               </div>
             </div>

@@ -6,7 +6,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Printer } from "lucide-react";
 import { format, subWeeks } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import * as XLSX from 'xlsx';
@@ -110,7 +110,7 @@ export default function EecReport() {
         printWindow.document.write(`<td>${item.commodity}</td>`);
         printWindow.document.write(`<td>${item.cCode}</td>`);
         printWindow.document.write(`<td>${item.weight}</td>`);
-        printWindow.document.write(`<td>${item.quantity}</td>`);
+        printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
         printWindow.document.write(`<td>£${Number(item.uPrice).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(item.amount).toFixed(2)}</td>`);
         printWindow.document.write(`<td>${item.supplier}</td>`);
@@ -121,7 +121,7 @@ export default function EecReport() {
       printWindow.document.write('<tr style="font-weight:bold;background-color:#f9f9f9;">');
       printWindow.document.write('<td colspan="4" style="text-align:right;">Total:</td>');
       printWindow.document.write(`<td>${totals.weight.toLocaleString()}</td>`);
-      printWindow.document.write(`<td>${totals.quantity.toLocaleString()}</td>`);
+      printWindow.document.write(`<td>${formatQuantity(totals.quantity)}</td>`);
       printWindow.document.write('<td></td>');
       printWindow.document.write(`<td>£${totals.amount.toFixed(2)}</td>`);
       printWindow.document.write('<td colspan="2"></td>');
@@ -162,7 +162,7 @@ export default function EecReport() {
       item.commodity,
       item.cCode,
       item.weight,
-      item.quantity,
+      formatQuantity(item.quantity),
       Number(item.uPrice).toFixed(2),
       Number(item.amount).toFixed(2),
       item.supplier,
@@ -173,7 +173,7 @@ export default function EecReport() {
     dataRows.push([
       '', '', '', '',
       totals.weight,
-      totals.quantity,
+      formatQuantity(totals.quantity),
       '',
       totals.amount.toFixed(2),
       '', ''
@@ -261,7 +261,7 @@ export default function EecReport() {
       item.commodity,
       item.cCode,
       item.weight,
-      item.quantity,
+      formatQuantity(item.quantity),
       `£${Number(item.uPrice).toFixed(2)}`,
       `£${Number(item.amount).toFixed(2)}`,
       item.supplier,
@@ -286,7 +286,7 @@ export default function EecReport() {
         [
           { content: 'Total:', colSpan: 4, styles: { fontStyle: 'bold', halign: 'right' } },
           { content: totals.weight.toLocaleString(), styles: { fontStyle: 'bold' } },
-          { content: totals.quantity.toLocaleString(), styles: { fontStyle: 'bold' } },
+          { content: formatQuantity(totals.quantity), styles: { fontStyle: 'bold' } },
           '',
           { content: `£${totals.amount.toFixed(2)}`, styles: { fontStyle: 'bold' } },
           { content: '', colSpan: 2 }
@@ -341,7 +341,7 @@ export default function EecReport() {
       item.commodity,
       item.cCode,
       item.weight,
-      item.quantity,
+      formatQuantity(item.quantity),
       Number(item.uPrice).toFixed(2),
       Number(item.amount).toFixed(2),
       item.supplier,
@@ -352,7 +352,7 @@ export default function EecReport() {
     text += '\n' + [
       '', '', '', '',
       totals.weight,
-      totals.quantity,
+      formatQuantity(totals.quantity),
       '',
       totals.amount.toFixed(2),
       '', ''
@@ -496,7 +496,7 @@ export default function EecReport() {
                         <TableCell className="text-center">{item.commodity}</TableCell>
                         <TableCell className="text-center">{item.cCode}</TableCell>
                         <TableCell className="text-center">{item.weight}</TableCell>
-                        <TableCell className="text-center">{item.quantity}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(item.quantity)}</TableCell>
                         <TableCell className="text-center">£{Number(item.uPrice).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{Number(item.amount).toFixed(2)}</TableCell>
                         <TableCell className="text-center">{item.supplier}</TableCell>
@@ -507,7 +507,7 @@ export default function EecReport() {
                 <TableRow className="bg-blue-100 font-semibold">
                   <TableCell className="text-center" colSpan={4}>Total:</TableCell>
                   <TableCell className="text-center">{totals.weight.toLocaleString()}</TableCell>
-                  <TableCell className="text-center">{totals.quantity.toLocaleString()}</TableCell>
+                  <TableCell className="text-center">{formatQuantity(totals.quantity)}</TableCell>
                   <TableCell></TableCell>
                   <TableCell className="text-center">£{totals.amount.toFixed(2)}</TableCell>
                   <TableCell></TableCell>
