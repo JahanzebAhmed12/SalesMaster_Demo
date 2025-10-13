@@ -1971,7 +1971,7 @@ const SalesInvoice = () => {
         // Update the state as well
         setHeldInvoices(held);
 
-        console.log('✅ Auto-held invoice with', invoiceData.saleItems.length, 'items');
+        console.log(' Auto-held invoice with', invoiceData.saleItems.length, 'items');
         console.log('📊 Total held invoices now:', held.length);
 
         // Clear current draft after successful hold

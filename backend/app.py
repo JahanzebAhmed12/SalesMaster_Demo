@@ -5451,18 +5451,18 @@ def customer_history():
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
-    # Get all transactions for this customer in the date range from customer payment page only
+    # Get all transactions for this customer in the date range
     history = []
     running_balance = 0
     sl_no = 1
     
-    # 1. Get all sales with any payments (from any source)
-    sales_with_payments = Sale.query.filter(
+    # 1. Get ALL sales (both paid and unpaid)
+    all_sales = Sale.query.filter(
         Sale.customer_id == customer_id,
         Sale.date >= from_dt,
         Sale.date < to_dt,
         Sale.status == 'finalized'
-    ).join(Payment, Sale.id == Payment.sale_id).distinct().order_by(Sale.date.asc()).all()
+    ).order_by(Sale.date.asc()).all()
     
     # 2. Get all on-account payments (from any source)
     on_account_payments = Payment.query.filter(
@@ -5475,38 +5475,44 @@ def customer_history():
     # Combine and sort all transactions by date
     all_transactions = []
     
-    # Add sales transactions
-    for sale in sales_with_payments:
+    # Add ALL sales transactions (both paid and unpaid)
+    for sale in all_sales:
+        # Get all payments for this sale
         sale_payments = Payment.query.filter(
             Payment.sale_id == sale.id
         ).all()
         
-        if sale_payments:
-            # Sum up payments by mode for this specific invoice from all sources
-            cash_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cash')
-            card_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank')
-            bank_transfer_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank_transfer')
-            cheque_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cheque')
-            
-            # Show the actual payment allocation - cash payments go to cash_inv, others to account_inv
-            account_inv = card_payments + bank_transfer_payments + cheque_payments
-            cash_inv = cash_payments
-            
-            # Calculate total paid from all sources
-            paid = sum(float(p.amount) for p in sale_payments if p.amount > 0)
-            
-            # Calculate balance
-            balance = float(sale.total_amount) - paid
-            
-            all_transactions.append({
-                'date': sale.date,
-                'type': 'sale',
-                'invoiceNo': sale.invoice_number,
-                'accountInv': account_inv,
-                'cashInv': cash_inv,
-                'paid': paid,
-                'balance': balance
-            })
+        # Calculate payments by mode
+        cash_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cash')
+        card_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank')
+        bank_transfer_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'bank_transfer')
+        cheque_payments = sum(float(p.amount) for p in sale_payments if p.payment_mode == 'cheque')
+        
+        # Calculate total paid from all sources
+        total_paid = sum(float(p.amount) for p in sale_payments if p.amount > 0)
+        
+        # Determine how to display the invoice based on original payment mode
+        if sale.payment_mode == 'account':
+            # Account invoices show in account column
+            account_inv = float(sale.total_amount)
+            cash_inv = 0
+        else:
+            # Cash invoices show in cash column
+            account_inv = 0
+            cash_inv = float(sale.total_amount)
+        
+        # Calculate balance (remaining amount owed)
+        balance = float(sale.total_amount) - total_paid
+        
+        all_transactions.append({
+            'date': sale.date,
+            'type': 'sale',
+            'invoiceNo': sale.invoice_number,
+            'accountInv': account_inv,
+            'cashInv': cash_inv,
+            'paid': total_paid,
+            'balance': balance if sale.payment_mode == 'account' else 0  # Only account sales have running balance
+        })
     
     # Add on-account payment transactions
     for payment in on_account_payments:
@@ -5528,7 +5534,7 @@ def customer_history():
     if filter_type != "All":
         filtered_transactions = []
         for transaction in all_transactions:
-            if filter_type == "Account" and transaction['accountInv'] > 0:
+            if filter_type == "Account" and (transaction['accountInv'] > 0 or transaction['type'] == 'on_account_payment'):
                 filtered_transactions.append(transaction)
             elif filter_type == "Cash" and transaction['cashInv'] > 0:
                 filtered_transactions.append(transaction)
@@ -6489,7 +6495,7 @@ def compare_with_purchase():
             )
         )
         purchase_result = purchase_query.first()
-        total_quantity = int(sales_result.total_quantity) if sales_result.total_quantity else 0
+        total_quantity = float(sales_result.total_quantity) if sales_result.total_quantity else 0
         avg_sale_today = float(sales_result.avg_sale_price) if sales_result.avg_sale_price else 0
         avg_purchase_today = float(purchase_result.avg_purchase_price) if purchase_result.avg_purchase_price else 0
         avg_outstanding_stock = float(purchase_result.avg_purchase_price) if purchase_result.avg_purchase_price else 0

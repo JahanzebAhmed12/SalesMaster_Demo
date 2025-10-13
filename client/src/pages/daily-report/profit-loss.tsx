@@ -37,25 +37,25 @@ export default function ProfitLoss() {
   // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
-  
+
   // Track if dates were manually changed
   const fromDateManuallyChanged = useRef(false);
   const toDateManuallyChanged = useRef(false);
-  
+
   // Get business date with formatting utilities
-  const { 
-    businessDate, 
-    isLoading: isLoadingBusinessDate, 
-    formatForApi 
+  const {
+    businessDate,
+    isLoading: isLoadingBusinessDate,
+    formatForApi
   } = useBusinessDate();
-  
+
   const [searchTerm, setSearchTerm] = useState("");
   const [trigger, setTrigger] = useState(0); // for manual search
   const tableRef = useRef<HTMLDivElement>(null);
   const [showProfit, setShowProfit] = useState(true);
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
-  
+
   // Update dates when business date changes, but only if not manually changed
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
@@ -65,7 +65,7 @@ export default function ProfitLoss() {
           console.error('Invalid business date:', businessDate);
           return;
         }
-        
+
         // Only update fromDate if it hasn't been manually changed
         if (!fromDateManuallyChanged.current) {
           setFromDate(businessDateObj);
@@ -129,13 +129,90 @@ export default function ProfitLoss() {
   // Export handlers
   const handlePrint = () => {
     if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
+
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Profit/Loss Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('.company-header{text-align:center;margin-bottom:30px;}');
+      printWindow.document.write('.company-name{font-size:18px;font-weight:bold;margin-bottom:5px;}');
+      printWindow.document.write('.report-title{font-size:16px;font-weight:bold;margin-bottom:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-bottom:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;text-align:center;}');
+      printWindow.document.write('.text-center{text-align:center;}');
+      printWindow.document.write('.font-bold{font-weight:bold;}');
+      printWindow.document.write('.bg-gray-50{background-color:#f9f9f9;}');
+      printWindow.document.write('.text-red-600{color:#dc2626;}');
+      printWindow.document.write('.bg-orange-50{background-color:#fff7ed;}');
+      printWindow.document.write('.summary{background-color:#f9f9f9;padding:15px;border:1px solid #ccc;margin-top:20px;}');
+      printWindow.document.write('.summary-row{display:flex;justify-content:space-between;margin-bottom:8px;}');
+      printWindow.document.write('.summary-label{font-weight:bold;}');
+      printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
+
+      // Add company header
+      printWindow.document.write('<div class="company-header">');
+      printWindow.document.write(`<div class="company-name">${companyDetails?.companyName || 'TROPIFRUIT UK LTD'}</div>`);
+      printWindow.document.write('<div class="report-title">Profit/Loss Report</div>');
+      printWindow.document.write('</div>');
+
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th><th>Product Description</th><th>Total Quantity</th><th>AVG Purchase</th><th>AVG Sales</th>');
+      if (showProfit) printWindow.document.write('<th>AVG Profit</th>');
+      printWindow.document.write('<th>TOT Purchase</th><th>TOT Sales</th>');
+      if (showProfit) printWindow.document.write('<th>TOT Profit</th><th>PERCENT Profit %</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+
+      profitData.forEach((item: any) => {
+        const rowClass = item.isLoss ? ' style="background-color:#fff7ed;"' : '';
+        const textClass = item.isLoss ? ' style="color:#dc2626;"' : '';
+        printWindow.document.write(`<tr${rowClass}>`);
+        printWindow.document.write(`<td class="text-center">${item.slNo}</td>`);
+        printWindow.document.write(`<td>${item.productDescription}</td>`);
+        printWindow.document.write(`<td class="text-center">${formatQuantity(item.totalQuantity)}</td>`);
+        printWindow.document.write(`<td class="text-center">£${Number(item.avgPurchase).toFixed(2)}</td>`);
+        printWindow.document.write(`<td class="text-center">£${Number(item.avgSales).toFixed(2)}</td>`);
+        if (showProfit) printWindow.document.write(`<td class="text-center"${textClass}>£${Number(item.avgProfit).toFixed(2)}</td>`);
+        printWindow.document.write(`<td class="text-center">£${Number(item.totPurchase).toFixed(2)}</td>`);
+        printWindow.document.write(`<td class="text-center">£${Number(item.totSales).toFixed(2)}</td>`);
+        if (showProfit) {
+          printWindow.document.write(`<td class="text-center"${textClass}>£${Number(item.totProfit).toFixed(2)}</td>`);
+          printWindow.document.write(`<td class="text-center"${textClass}>${Number(item.percentProfit).toFixed(2)}%</td>`);
+        }
+        printWindow.document.write('</tr>');
+      });
+
+      // Add totals row
+      printWindow.document.write('<tr style="background-color:#f9f9f9;border-top:2px solid #666;">');
+      printWindow.document.write('<td></td><td class="font-bold">TOTAL</td>');
+      printWindow.document.write(`<td class="text-center font-bold">${formatQuantity(totals.totalQuantity)}</td>`);
+      printWindow.document.write('<td></td><td></td>');
+      if (showProfit) printWindow.document.write('<td></td>');
+      printWindow.document.write(`<td class="text-center font-bold">£${Number(totals.totPurchase).toFixed(2)}</td>`);
+      printWindow.document.write(`<td class="text-center font-bold">£${Number(totals.totSales).toFixed(2)}</td>`);
+      if (showProfit) {
+        printWindow.document.write(`<td class="text-center font-bold">£${Number(totals.totProfit).toFixed(2)}</td>`);
+        printWindow.document.write(`<td class="text-center font-bold">${Number(overallProfitPercent).toFixed(2)}%</td>`);
+      }
+      printWindow.document.write('</tr>');
+      printWindow.document.write('</tbody></table>');
+
+      // Add summary
+      printWindow.document.write('<div class="summary">');
+      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Date Range:</span><span>${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}</span></div>`);
+      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Quantity:</span><span>${formatQuantity(totals.totalQuantity)}</span></div>`);
+      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Purchase:</span><span>£${Number(totals.totPurchase).toFixed(2)}</span></div>`);
+      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Sales:</span><span>£${Number(totals.totSales).toFixed(2)}</span></div>`);
+      if (showProfit) {
+        printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Profit:</span><span>£${Number(totals.totProfit).toFixed(2)}</span></div>`);
+        printWindow.document.write(`<div class="summary-row"><span class="summary-label">Percent Profit:</span><span>${Number(overallProfitPercent).toFixed(2)}%</span></div>`);
+      }
+      printWindow.document.write('</div>');
+
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -145,18 +222,28 @@ export default function ProfitLoss() {
 
   const handleExcel = () => {
     if (!profitData) return;
-    const ws = XLSX.utils.json_to_sheet(profitData.map((item: ProfitLossItem) => ({
-      'Sl No': item.slNo,
-      'Product Description': item.productDescription,
-      'Total Qty': formatQuantity(item.totalQuantity),
-      'Avg Purchase': item.avgPurchase,
-      'Avg Sales': item.avgSales,
-      'Avg Profit': item.avgProfit,
-      'Total Purchase': item.totPurchase,
-      'Total Sales': item.totSales,
-      'Total Profit': item.totProfit,
-      'Profit %': item.percentProfit
-    })));
+
+    const excelData = profitData.map((item: ProfitLossItem) => {
+      const row: any = {
+        'Sl No': item.slNo,
+        'Product Description': item.productDescription,
+        'Total Qty': formatQuantity(item.totalQuantity),
+        'Avg Purchase': Number(item.avgPurchase).toFixed(2),
+        'Avg Sales': Number(item.avgSales).toFixed(2),
+        'Total Purchase': Number(item.totPurchase).toFixed(2),
+        'Total Sales': Number(item.totSales).toFixed(2)
+      };
+
+      if (showProfit) {
+        row['Avg Profit'] = Number(item.avgProfit).toFixed(2);
+        row['Total Profit'] = Number(item.totProfit).toFixed(2);
+        row['Profit %'] = Number(item.percentProfit).toFixed(2);
+      }
+
+      return row;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(excelData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Profit Loss');
     XLSX.writeFile(wb, 'profit-loss-report.xlsx');
@@ -164,119 +251,29 @@ export default function ProfitLoss() {
 
   const handlePDF = () => {
     if (!profitData) return;
-    const doc = new jsPDF();
-    // Add company name at the top
-    const companyName = companyDetails?.companyName || 'Company Name';
-    doc.setFontSize(16);
-    doc.text(companyName, 14, 12);
-    doc.setFontSize(14);
-    doc.text('Profit/Loss Report', 14, 22);
-    autoTable(doc, {
-      head: [[
-        'Sl No',
-        'Product Description',
-        'Total Qty',
-        'Avg Purchase',
-        'Avg Sales',
-        'Avg Profit',
-        'Total Purchase',
-        'Total Sales',
-        'Total Profit',
-        'Profit %'
-      ]],
-      body: profitData.map((item: ProfitLossItem) => [
-        item.slNo,
-        item.productDescription,
-        formatQuantity(item.totalQuantity),
-        item.avgPurchase,
-        item.avgSales,
-        item.avgProfit,
-        item.totPurchase,
-        item.totSales,
-        item.totProfit,
-        item.percentProfit
-      ]),
-      startY: 32
+
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
     });
-    // Add summary at the bottom
-    const finalY = (doc as any).lastAutoTable.finalY || 32;
-    doc.setDrawColor(200);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(12, finalY + 6, 185, showProfit ? 24 : 16, 'F');
-    doc.setTextColor(40);
-    // Left column
-    doc.setFont('helvetica', 'bold');
-    doc.text('Date Range:', 16, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 50, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Total Quantity:', 16, finalY + 20);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`${formatQuantity(totals.totalQuantity)}`, 50, finalY + 20);
-    if (showProfit) {
-      doc.setFont('helvetica', 'bold');
-      doc.text('Total Profit:', 16, finalY + 26);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`£${Number(totals.totProfit).toFixed(2)}`, 50, finalY + 26);
-    }
-    // Right column (move Total Purchase to second row)
-    doc.setFont('helvetica', 'bold');
-    doc.text('Total Sales:', 115, finalY + 14);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`£${Number(totals.totSales).toFixed(2)}`, 160, finalY + 14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Total Purchase:', 115, finalY + 20);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`£${Number(totals.totPurchase).toFixed(2)}`, 160, finalY + 20);
-    if (showProfit) {
-      doc.setFont('helvetica', 'bold');
-      doc.text('Percent Profit:', 115, finalY + 26);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`${Number(overallProfitPercent).toFixed(2)} %`, 160, finalY + 26);
-    }
-    doc.setTextColor(0);
-    doc.setFont('helvetica', 'normal');
-    doc.save('profit-loss-report.pdf');
-  };
 
-  const handleCopy = () => {
-    if (!profitData) return;
-    let text = 'Sl No\tProduct Description\tTotal Qty\tAvg Purchase\tAvg Sales\tAvg Profit\tTotal Purchase\tTotal Sales\tTotal Profit\tProfit %\n';
-    text += profitData.map((item: ProfitLossItem) => [
-      item.slNo,
-      item.productDescription,
-      formatQuantity(item.totalQuantity),
-      item.avgPurchase,
-      item.avgSales,
-      item.avgProfit,
-      item.totPurchase,
-      item.totSales,
-      item.totProfit,
-      item.percentProfit
-    ].join('\t')).join('\n');
-    navigator.clipboard.writeText(text);
-  };
-
-  // Generate PDF blob for email
-  const generatePDFBlob = () => {
-    const doc = new jsPDF();
-    
     // Add company header if available
     if (companyDetails) {
       doc.setFontSize(16);
-      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.text(companyDetails.companyName || 'Company Name', 105, 15, { align: 'center' });
       doc.setFontSize(10);
-      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
-      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
-      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+      if (companyDetails.address1) doc.text(companyDetails.address1, 105, 22, { align: 'center' });
+      if (companyDetails.telephone) doc.text(`Phone: ${companyDetails.telephone}`, 105, 27, { align: 'center' });
+      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 105, 32, { align: 'center' });
     }
-    
+
     // Add title
     doc.setFontSize(14);
-    doc.text('Profit/Loss Report', 14, companyDetails ? 42 : 15);
+    doc.text('Profit/Loss Report', 105, companyDetails ? 42 : 15, { align: 'center' });
     doc.setFontSize(10);
-    doc.text(`Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 14, companyDetails ? 48 : 21);
-    
+    doc.text(`Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 105, companyDetails ? 48 : 21, { align: 'center' });
+
     // Prepare table headers and body based on showProfit setting
     const headers = ['Sl No', 'Product Description', 'Total Qty', 'Avg Purchase', 'Avg Sales'];
     if (showProfit) {
@@ -286,7 +283,7 @@ export default function ProfitLoss() {
     if (showProfit) {
       headers.push('Total Profit', 'Profit %');
     }
-    
+
     const body = profitData.map((item: ProfitLossItem) => {
       const row = [
         item.slNo.toString(),
@@ -304,7 +301,7 @@ export default function ProfitLoss() {
       }
       return row;
     });
-    
+
     // Add table
     autoTable(doc, {
       head: [headers],
@@ -323,7 +320,7 @@ export default function ProfitLoss() {
         fillColor: [245, 245, 245],
       },
     });
-    
+
     // Add summary at the bottom
     const finalY = (doc as any).lastAutoTable.finalY || (companyDetails ? 52 : 25);
     doc.setDrawColor(200);
@@ -341,7 +338,140 @@ export default function ProfitLoss() {
     }
     doc.setTextColor(0);
     doc.setFont('helvetica', 'normal');
-    
+
+    doc.save('profit-loss-report.pdf');
+  };
+
+  const handleCopy = async () => {
+    if (!profitData) return;
+
+    // Build header based on showProfit setting
+    let headers = ['Sl No', 'Product Description', 'Total Qty', 'Avg Purchase', 'Avg Sales'];
+    if (showProfit) headers.push('Avg Profit');
+    headers.push('Total Purchase', 'Total Sales');
+    if (showProfit) headers.push('Total Profit', 'Profit %');
+
+    let text = headers.join('\t') + '\n';
+
+    text += profitData.map((item: ProfitLossItem) => {
+      const row = [
+        item.slNo,
+        item.productDescription,
+        formatQuantity(item.totalQuantity),
+        Number(item.avgPurchase).toFixed(2),
+        Number(item.avgSales).toFixed(2)
+      ];
+
+      if (showProfit) row.push(Number(item.avgProfit).toFixed(2));
+      row.push(Number(item.totPurchase).toFixed(2), Number(item.totSales).toFixed(2));
+      if (showProfit) {
+        row.push(Number(item.totProfit).toFixed(2), Number(item.percentProfit).toFixed(2));
+      }
+
+      return row.join('\t');
+    }).join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      // Optional: Show a brief success message
+      console.log('Data copied to clipboard');
+    } catch (err) {
+      console.error('Failed to copy data to clipboard:', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
+  };
+
+  // Generate PDF blob for email
+  const generatePDFBlob = () => {
+    const doc = new jsPDF();
+
+    // Add company header if available
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.setFontSize(10);
+      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
+      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
+      if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
+    }
+
+    // Add title
+    doc.setFontSize(14);
+    doc.text('Profit/Loss Report', 14, companyDetails ? 42 : 15);
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 14, companyDetails ? 48 : 21);
+
+    // Prepare table headers and body based on showProfit setting
+    const headers = ['Sl No', 'Product Description', 'Total Qty', 'Avg Purchase', 'Avg Sales'];
+    if (showProfit) {
+      headers.push('Avg Profit');
+    }
+    headers.push('Total Purchase', 'Total Sales');
+    if (showProfit) {
+      headers.push('Total Profit', 'Profit %');
+    }
+
+    const body = profitData.map((item: ProfitLossItem) => {
+      const row = [
+        item.slNo.toString(),
+        item.productDescription,
+        formatQuantity(item.totalQuantity),
+        `£${Number(item.avgPurchase).toFixed(2)}`,
+        `£${Number(item.avgSales).toFixed(2)}`
+      ];
+      if (showProfit) {
+        row.push(`£${Number(item.avgProfit).toFixed(2)}`);
+      }
+      row.push(`£${Number(item.totPurchase).toFixed(2)}`, `£${Number(item.totSales).toFixed(2)}`);
+      if (showProfit) {
+        row.push(`£${Number(item.totProfit).toFixed(2)}`, `${Number(item.percentProfit).toFixed(2)}%`);
+      }
+      return row;
+    });
+
+    // Add table
+    autoTable(doc, {
+      head: [headers],
+      body: body,
+      startY: companyDetails ? 52 : 25,
+      styles: {
+        fontSize: 7,
+        cellPadding: 1,
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+    });
+
+    // Add summary at the bottom
+    const finalY = (doc as any).lastAutoTable.finalY || (companyDetails ? 52 : 25);
+    doc.setDrawColor(200);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(12, finalY + 6, 185, showProfit ? 24 : 16, 'F');
+    doc.setTextColor(40);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Summary - Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 16, finalY + 14);
+    doc.setFont('helvetica', 'normal');
+    let summaryLine1 = `Total Quantity: ${formatQuantity(totals.totalQuantity)} | Total Purchase: £${Number(totals.totPurchase).toFixed(2)} | Total Sales: £${Number(totals.totSales).toFixed(2)}`;
+    doc.text(summaryLine1, 16, finalY + 20);
+    if (showProfit) {
+      let summaryLine2 = `Total Profit: £${Number(totals.totProfit).toFixed(2)} | Percent Profit: ${Number(overallProfitPercent).toFixed(2)}%`;
+      doc.text(summaryLine2, 16, finalY + 26);
+    }
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
+
     return doc.output('blob');
   };
 
@@ -356,7 +486,7 @@ export default function ProfitLoss() {
     const emailList = emails.split(',').map(email => email.trim()).filter(email => email);
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const invalidEmails = emailList.filter(email => !emailRegex.test(email));
-    
+
     if (invalidEmails.length > 0) {
       alert(`Invalid email addresses: ${invalidEmails.join(', ')}`);
       return;
@@ -368,18 +498,18 @@ export default function ProfitLoss() {
     }
 
     setIsEmailSending(true);
-    
+
     try {
       // Generate PDF blob
       const pdfBlob = generatePDFBlob();
-      
+
       // Convert blob to base64
       const reader = new FileReader();
       reader.onloadend = async () => {
         try {
           const base64data = reader.result as string;
           const base64PDF = base64data.split(',')[1]; // Remove data:application/pdf;base64, prefix
-          
+
           // Send email with PDF attachment
           const emailData = {
             to: emailList,
@@ -391,23 +521,23 @@ export default function ProfitLoss() {
               contentType: 'application/pdf'
             }
           };
-          
+
           const response = await apiRequest('POST', '/api/send-email', emailData);
-          
+
           if (response.message) {
-            alert(`✅ ${response.message}`);
+            alert(` ${response.message}`);
             if (response.warnings) {
-              alert(`⚠️ Warning: ${response.warnings}`);
+              alert(`Warning: ${response.warnings}`);
             }
           } else {
-            alert(`📧 Profit/Loss report sent successfully to ${emailList.length} email(s)`);
+            alert(`Profit/Loss report sent successfully to ${emailList.length} email(s)`);
           }
-          
+
           setEmails(''); // Clear email field after successful send
-          
+
         } catch (emailError) {
           console.error('Error sending email:', emailError);
-          
+
           // Handle specific error messages
           let errorMessage = 'Failed to send email. Please try again.';
           if (emailError && typeof emailError === 'object' && 'error' in emailError) {
@@ -415,21 +545,21 @@ export default function ProfitLoss() {
           } else if (emailError && typeof emailError === 'string') {
             errorMessage = `Email Error: ${emailError}`;
           }
-          
+
           alert(`❌ ${errorMessage}`);
         } finally {
           // Always reset the sending state
           setIsEmailSending(false);
         }
       };
-      
+
       reader.onerror = () => {
         alert('❌ Failed to process PDF file. Please try again.');
         setIsEmailSending(false);
       };
-      
+
       reader.readAsDataURL(pdfBlob);
-      
+
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert('❌ Failed to generate PDF. Please try again.');
@@ -532,7 +662,7 @@ export default function ProfitLoss() {
               <Button size="sm" variant="outline" onClick={handleExcel}>Excel</Button>
               <Button size="sm" variant="outline" onClick={handlePDF}>PDF</Button>
               <Button size="sm" variant="outline" onClick={handleCopy}>Copy</Button>
-              
+
               {/* Email Section - next to Copy button */}
               <div className="flex items-center gap-2 ml-2">
                 <input
@@ -543,9 +673,9 @@ export default function ProfitLoss() {
                   className="w-48 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-transparent"
                   disabled={isEmailSending}
                 />
-                <Button 
-                  variant="outline" 
-                  onClick={handleEmailPDF} 
+                <Button
+                  variant="outline"
+                  onClick={handleEmailPDF}
                   className="flex items-center gap-1"
                   disabled={isEmailSending}
                   size="sm"
@@ -559,8 +689,9 @@ export default function ProfitLoss() {
           <CardContent className="p-0">
             <div className="overflow-x-auto" ref={tableRef}>
               {/* Company name heading for print */}
-              <div className="text-xl font-bold text-center mb-2 print:block hidden">
-                {companyDetails?.companyName || 'Company Name'}
+              <div className="text-xl font-bold text-center mb-6 print:block hidden">
+                {companyDetails?.companyName || 'TROPIFRUIT UK LTD'}
+                <div className="text-lg mt-2">Profit/Loss Report</div>
               </div>
               {isLoading ? (
                 <div className="text-center py-8">Loading...</div>
@@ -624,11 +755,11 @@ export default function ProfitLoss() {
                 <div className="flex items-center font-semibold mr-2">Total Sales:</div>
                 <div className="mr-6">£{Number(totals.totSales).toFixed(2)}</div>
                 {showProfit && <><div className="flex items-center font-semibold mr-2">Total Profit:</div>
-                <div className="mr-6">£{Number(totals.totProfit).toFixed(2)}</div>
-                <div className="flex items-center font-semibold mr-2">Percent Profit:</div>
-                <div>{Number(overallProfitPercent).toFixed(2)} %</div></>}
+                  <div className="mr-6">£{Number(totals.totProfit).toFixed(2)}</div>
+                  <div className="flex items-center font-semibold mr-2">Percent Profit:</div>
+                  <div>{Number(overallProfitPercent).toFixed(2)} %</div></>}
               </div>
-              <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
+              <div className="flex justify-between items-center mt-4 text-sm text-gray-600 print:hidden">
                 <div>Showing {profitData.length} entries</div>
                 <div className="flex items-center gap-4">
                   <div className="flex gap-2">

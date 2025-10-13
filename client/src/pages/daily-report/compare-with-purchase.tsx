@@ -65,7 +65,7 @@ export default function CompareWithPurchasePage() {
     if (compareData && compareData.length > 0) {
       const tableData = compareData.map(item => [
         item.productDescription,
-        item.totalQuantity.toString(),
+        item.totalQuantity.toFixed(2),
         `£${item.avgSaleToday.toFixed(2)}`,
         `£${item.avgPurchaseToday.toFixed(2)}`,
         `£${item.avgOutstandingStock.toFixed(2)}`,
@@ -93,11 +93,11 @@ export default function CompareWithPurchasePage() {
       ['Product Description', 'Total Quantity', 'Avg Sale(Today)', 'Avg Purchase(Today)', 'Avg Outstanding Stock', 'Avg Purchase Price', 'Status'],
       ...compareData.map(item => [
         item.productDescription,
-        item.totalQuantity,
-        item.avgSaleToday,
-        item.avgPurchaseToday,
-        item.avgOutstandingStock,
-        item.avgPurchasePrice,
+        item.totalQuantity.toFixed(2),
+        item.avgSaleToday.toFixed(2),
+        item.avgPurchaseToday.toFixed(2),
+        item.avgOutstandingStock.toFixed(2),
+        item.avgPurchasePrice.toFixed(2),
         item.status
       ])
     ];
@@ -113,8 +113,7 @@ export default function CompareWithPurchasePage() {
 
   return (
     <PageLayout title="Compare with Purchase" breadcrumb="Daily Report > Compare with Purchase">
-      <div className="ml-0 sm:ml-64 px-2 sm:px-8 pt-4">
-        <div className="space-y-6">
+      <div className="space-y-6">
           {/* Header Section */}
           <Card>
             <CardHeader className="pb-4">
@@ -202,7 +201,7 @@ export default function CompareWithPurchasePage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto w-full px-0 sm:px-2" id="compare-with-purchase-table">
+              <div className="overflow-x-auto" id="compare-with-purchase-table">
                 <Table className="min-w-[900px] w-full">
                   <TableHeader>
                     <TableRow>
@@ -234,7 +233,7 @@ export default function CompareWithPurchasePage() {
                         <TableRow key={item.productId}>
                           <TableCell>{index + 1}</TableCell>
                           <TableCell className="font-medium">{item.productDescription}</TableCell>
-                          <TableCell className="text-center">{item.totalQuantity}</TableCell>
+                          <TableCell className="text-center">{item.totalQuantity.toFixed(2)}</TableCell>
                           <TableCell className="text-center">£{item.avgSaleToday.toFixed(2)}</TableCell>
                           <TableCell className="text-center">
                             {item.avgPurchaseToday > 0 ? `£${item.avgPurchaseToday.toFixed(2)}` : '-'}
@@ -266,7 +265,7 @@ export default function CompareWithPurchasePage() {
                         <TableCell></TableCell>
                         <TableCell className="font-bold">TOTAL</TableCell>
                         <TableCell className="text-center font-bold">
-                          {compareData.reduce((sum, item) => sum + item.totalQuantity, 0)}
+                          {compareData.reduce((sum, item) => sum + item.totalQuantity, 0).toFixed(2)}
                         </TableCell>
                         <TableCell></TableCell>
                         <TableCell></TableCell>
@@ -281,7 +280,6 @@ export default function CompareWithPurchasePage() {
             </CardContent>
           </Card>
         </div>
-      </div>
     </PageLayout>
   );
 } 

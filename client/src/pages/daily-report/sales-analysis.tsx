@@ -112,13 +112,69 @@ export default function SalesAnalysis() {
 
   const handlePrint = () => {
     if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
+    
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
+      printWindow.document.write('<html><head><title>Sales Analysis Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('.company-header{text-align:center;margin-bottom:30px;}');
+      printWindow.document.write('.company-name{font-size:18px;font-weight:bold;margin-bottom:5px;}');
+      printWindow.document.write('.company-address{font-size:12px;margin-bottom:2px;}');
+      printWindow.document.write('.company-contact{font-size:12px;margin-bottom:2px;}');
+      printWindow.document.write('.report-title{font-size:16px;font-weight:bold;margin-bottom:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-bottom:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.text-right{text-align:right;}');
+      printWindow.document.write('.font-semibold{font-weight:600;}');
+      printWindow.document.write('.bg-gray-100{background-color:#f5f5f5;}');
+      printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(printContents);
+      
+      // Add company header
+      printWindow.document.write('<div class="company-header">');
+      printWindow.document.write(`<div class="company-name">${companyDetails?.companyName || 'Company Name'}</div>`);
+      if (companyDetails?.address1) {
+        printWindow.document.write(`<div class="company-address">${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
+      }
+      if (companyDetails?.telephone) {
+        printWindow.document.write(`<div class="company-contact">Phone: ${companyDetails.telephone}</div>`);
+      }
+      if (companyDetails?.email) {
+        printWindow.document.write(`<div class="company-contact">Email: ${companyDetails.email}</div>`);
+      }
+      printWindow.document.write('<div class="report-title">Sales Analysis Report</div>');
+      printWindow.document.write(`<div class="company-contact">Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}</div>`);
+      printWindow.document.write('</div>');
+      
+      // Add table
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>Sl.No</th><th>Date</th><th>Purchase</th><th>Account Sales</th><th>Cash Sales</th><th>Total Sales</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+      
+      salesRows.forEach((row: SalesData) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${row.slNo}</td>`);
+        printWindow.document.write(`<td>${row.date}</td>`);
+        printWindow.document.write(`<td class="text-right">£${typeof row.purchase === 'number' ? row.purchase.toFixed(2) : (row.purchase || '0.00')}</td>`);
+        printWindow.document.write(`<td class="text-right">£${typeof row.accountSales === 'number' ? row.accountSales.toFixed(2) : (row.accountSales || '0.00')}</td>`);
+        printWindow.document.write(`<td class="text-right">£${typeof row.cashSales === 'number' ? row.cashSales.toFixed(2) : (row.cashSales || '0.00')}</td>`);
+        printWindow.document.write(`<td class="text-right">£${typeof row.totalSales === 'number' ? row.totalSales.toFixed(2) : (row.totalSales || '0.00')}</td>`);
+        printWindow.document.write('</tr>');
+      });
+      
+      // Add totals row
+      printWindow.document.write('<tr class="bg-gray-100 font-semibold">');
+      printWindow.document.write('<td></td><td>Total:</td>');
+      printWindow.document.write(`<td class="text-right">£${typeof totals.totalPurchase === 'number' ? totals.totalPurchase.toFixed(2) : (totals.totalPurchase || '0.00')}</td>`);
+      printWindow.document.write(`<td class="text-right">£${typeof totals.totalAccount === 'number' ? totals.totalAccount.toFixed(2) : (totals.totalAccount || '0.00')}</td>`);
+      printWindow.document.write(`<td class="text-right">£${typeof totals.totalCash === 'number' ? totals.totalCash.toFixed(2) : (totals.totalCash || '0.00')}</td>`);
+      printWindow.document.write(`<td class="text-right">£${typeof totals.totalSales === 'number' ? totals.totalSales.toFixed(2) : (totals.totalSales || '0.00')}</td>`);
+      printWindow.document.write('</tr>');
+      
+      printWindow.document.write('</tbody></table>');
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -128,25 +184,130 @@ export default function SalesAnalysis() {
 
   const handleExcel = () => {
     if (!data?.sales) return;
-    const ws = XLSX.utils.json_to_sheet(data.sales.map((row: SalesData) => ({
-      'Sl.No': row.slNo,
-      'Date': row.date,
-      'Purchase': row.purchase,
-      'Account Sales': row.accountSales,
-      'Cash Sales': row.cashSales,
-      'Total Sales': row.totalSales
-    })));
-    // Add totals row
-    XLSX.utils.sheet_add_aoa(ws, [[null, 'Total:', data.summary.totalPurchase, data.summary.totalAccount, data.summary.totalCash, data.summary.totalSales]], { origin: -1 });
+    
     const wb = XLSX.utils.book_new();
+    
+    // Prepare the data for the main sheet
+    const dataArray = [
+      ['Sales Analysis Report'],
+      [''],
+      ['Company:', companyDetails?.companyName || 'Company Name'],
+      ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
+      ['Phone:', companyDetails?.telephone || ''],
+      ['Email:', companyDetails?.email || ''],
+      [''],
+      ['Date Range:', `${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`],
+      [''],
+      ['Sl.No', 'Date', 'Purchase', 'Account Sales', 'Cash Sales', 'Total Sales'] // Header row
+    ];
+
+    // Add data rows with proper formatting
+    data.sales.forEach((row: SalesData) => {
+      dataArray.push([
+        row.slNo,
+        row.date,
+        typeof row.purchase === 'number' ? row.purchase.toFixed(2) : (row.purchase || '0.00'),
+        typeof row.accountSales === 'number' ? row.accountSales.toFixed(2) : (row.accountSales || '0.00'),
+        typeof row.cashSales === 'number' ? row.cashSales.toFixed(2) : (row.cashSales || '0.00'),
+        typeof row.totalSales === 'number' ? row.totalSales.toFixed(2) : (row.totalSales || '0.00')
+      ]);
+    });
+
+    // Add totals row
+    dataArray.push([
+      '',
+      'Total:',
+      typeof data.summary.totalPurchase === 'number' ? data.summary.totalPurchase.toFixed(2) : (data.summary.totalPurchase || '0.00'),
+      typeof data.summary.totalAccount === 'number' ? data.summary.totalAccount.toFixed(2) : (data.summary.totalAccount || '0.00'),
+      typeof data.summary.totalCash === 'number' ? data.summary.totalCash.toFixed(2) : (data.summary.totalCash || '0.00'),
+      typeof data.summary.totalSales === 'number' ? data.summary.totalSales.toFixed(2) : (data.summary.totalSales || '0.00')
+    ]);
+
+    // Create worksheet from array data
+    const ws = XLSX.utils.aoa_to_sheet(dataArray);
+    
+    // Set column widths
+    const colWidths = [
+      { wch: 8 },  // Sl.No
+      { wch: 12 }, // Date
+      { wch: 15 }, // Purchase
+      { wch: 15 }, // Account Sales
+      { wch: 12 }, // Cash Sales
+      { wch: 15 }  // Total Sales
+    ];
+    ws['!cols'] = colWidths;
+    
+    // Add the worksheet to the workbook
     XLSX.utils.book_append_sheet(wb, ws, 'Sales Analysis');
-    XLSX.writeFile(wb, 'sales-analysis.xlsx');
+    
+    // Generate the Excel file
+    XLSX.writeFile(wb, `sales-analysis-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.xlsx`);
   };
 
   const handlePDF = () => {
     if (!data?.sales) return;
-    const doc = new jsPDF();
-    doc.text('Sales Analysis', 14, 14);
+    
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    let currentY = 15;
+
+    // Add company header if available
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || 'Company Name', 105, currentY, { align: 'center' });
+      currentY += 7;
+      
+      doc.setFontSize(10);
+      if (companyDetails.address1) {
+        const address = `${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`;
+        doc.text(address, 105, currentY, { align: 'center' });
+        currentY += 5;
+      }
+      if (companyDetails.telephone) {
+        doc.text(`Phone: ${companyDetails.telephone}`, 105, currentY, { align: 'center' });
+        currentY += 5;
+      }
+      if (companyDetails.email) {
+        doc.text(`Email: ${companyDetails.email}`, 105, currentY, { align: 'center' });
+        currentY += 5;
+      }
+      currentY += 5; // Extra spacing
+    }
+
+    // Add title
+    doc.setFontSize(14);
+    doc.text('Sales Analysis Report', 105, currentY, { align: 'center' });
+    currentY += 7;
+    
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`, 105, currentY, { align: 'center' });
+    currentY += 10;
+
+    // Prepare table data with proper formatting
+    const tableData = data.sales.map((row: SalesData) => [
+      row.slNo.toString(),
+      row.date,
+      `£${typeof row.purchase === 'number' ? row.purchase.toFixed(2) : (row.purchase || '0.00')}`,
+      `£${typeof row.accountSales === 'number' ? row.accountSales.toFixed(2) : (row.accountSales || '0.00')}`,
+      `£${typeof row.cashSales === 'number' ? row.cashSales.toFixed(2) : (row.cashSales || '0.00')}`,
+      `£${typeof row.totalSales === 'number' ? row.totalSales.toFixed(2) : (row.totalSales || '0.00')}`
+    ]);
+
+    // Add totals row
+    tableData.push([
+      '',
+      'Total:',
+      `£${typeof data.summary.totalPurchase === 'number' ? data.summary.totalPurchase.toFixed(2) : (data.summary.totalPurchase || '0.00')}`,
+      `£${typeof data.summary.totalAccount === 'number' ? data.summary.totalAccount.toFixed(2) : (data.summary.totalAccount || '0.00')}`,
+      `£${typeof data.summary.totalCash === 'number' ? data.summary.totalCash.toFixed(2) : (data.summary.totalCash || '0.00')}`,
+      `£${typeof data.summary.totalSales === 'number' ? data.summary.totalSales.toFixed(2) : (data.summary.totalSales || '0.00')}`
+    ]);
+
+    // Add table
     autoTable(doc, {
       head: [[
         'Sl.No',
@@ -156,35 +317,75 @@ export default function SalesAnalysis() {
         'Cash Sales',
         'Total Sales'
       ]],
-      body: [
-        ...data.sales.map((row: SalesData) => [
-          row.slNo,
-          row.date,
-          row.purchase,
-          row.accountSales,
-          row.cashSales,
-          row.totalSales
-        ]),
-        [null, 'Total:', data.summary.totalPurchase, data.summary.totalAccount, data.summary.totalCash, data.summary.totalSales]
-      ],
-      startY: 24
+      body: tableData,
+      startY: currentY,
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+      },
+      headStyles: {
+        fillColor: [66, 139, 202],
+        textColor: 255,
+        fontStyle: 'bold',
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+      columnStyles: {
+        0: { halign: 'center' },
+        1: { halign: 'center' },
+        2: { halign: 'right' },
+        3: { halign: 'right' },
+        4: { halign: 'right' },
+        5: { halign: 'right' }
+      },
+      // Style the last row (totals) differently
+      didParseCell: function (data) {
+        if (data.row.index === tableData.length - 1) {
+          data.cell.styles.fillColor = [220, 220, 220];
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
     });
-    doc.save('sales-analysis.pdf');
+
+    doc.save(`sales-analysis-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`);
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!data?.sales) return;
-    let text = 'Sl.No\tDate\tPurchase\tAccount Sales\tCash Sales\tTotal Sales\n';
+    
+    let text = 'Sales Analysis Report\n';
+    text += `Company: ${companyDetails?.companyName || 'Company Name'}\n`;
+    text += `Address: ${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}\n`;
+    if (companyDetails?.telephone) text += `Phone: ${companyDetails.telephone}\n`;
+    if (companyDetails?.email) text += `Email: ${companyDetails.email}\n`;
+    text += `Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}\n\n`;
+    
+    text += 'Sl.No\tDate\tPurchase\tAccount Sales\tCash Sales\tTotal Sales\n';
     text += data.sales.map((row: SalesData) => [
       row.slNo,
       row.date,
-      row.purchase,
-      row.accountSales,
-      row.cashSales,
-      row.totalSales
+      typeof row.purchase === 'number' ? row.purchase.toFixed(2) : (row.purchase || '0.00'),
+      typeof row.accountSales === 'number' ? row.accountSales.toFixed(2) : (row.accountSales || '0.00'),
+      typeof row.cashSales === 'number' ? row.cashSales.toFixed(2) : (row.cashSales || '0.00'),
+      typeof row.totalSales === 'number' ? row.totalSales.toFixed(2) : (row.totalSales || '0.00')
     ].join('\t')).join('\n');
-    text += `\n\tTotal:\t${data.summary.totalPurchase}\t${data.summary.totalAccount}\t${data.summary.totalCash}\t${data.summary.totalSales}`;
-    navigator.clipboard.writeText(text);
+    
+    text += `\n\tTotal:\t${typeof data.summary.totalPurchase === 'number' ? data.summary.totalPurchase.toFixed(2) : (data.summary.totalPurchase || '0.00')}\t${typeof data.summary.totalAccount === 'number' ? data.summary.totalAccount.toFixed(2) : (data.summary.totalAccount || '0.00')}\t${typeof data.summary.totalCash === 'number' ? data.summary.totalCash.toFixed(2) : (data.summary.totalCash || '0.00')}\t${typeof data.summary.totalSales === 'number' ? data.summary.totalSales.toFixed(2) : (data.summary.totalSales || '0.00')}`;
+    
+    try {
+      await navigator.clipboard.writeText(text);
+      console.log('Data copied to clipboard');
+    } catch (err) {
+      console.error('Failed to copy data to clipboard:', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+    }
   };
 
   const salesRows = data?.sales || [];
@@ -273,26 +474,26 @@ export default function SalesAnalysis() {
                     <tr key={index} className="border-b hover:bg-gray-50">
                       <td className="p-3 border-r">{row.slNo}</td>
                       <td className="p-3 border-r">{row.date}</td>
-                      <td className="p-3 border-r text-right">{typeof row.purchase === 'number' ? row.purchase.toLocaleString() : row.purchase || ''}</td>
-                      <td className="p-3 border-r text-right">{typeof row.accountSales === 'number' ? row.accountSales.toLocaleString() : row.accountSales || ''}</td>
-                      <td className="p-3 border-r text-right">{typeof row.cashSales === 'number' ? row.cashSales.toLocaleString() : row.cashSales || ''}</td>
-                      <td className="p-3 text-right">{typeof row.totalSales === 'number' ? row.totalSales.toLocaleString() : row.totalSales || ''}</td>
+                      <td className="p-3 border-r text-right">£{typeof row.purchase === 'number' ? row.purchase.toFixed(2) : (row.purchase || '0.00')}</td>
+                      <td className="p-3 border-r text-right">£{typeof row.accountSales === 'number' ? row.accountSales.toFixed(2) : (row.accountSales || '0.00')}</td>
+                      <td className="p-3 border-r text-right">£{typeof row.cashSales === 'number' ? row.cashSales.toFixed(2) : (row.cashSales || '0.00')}</td>
+                      <td className="p-3 text-right">£{typeof row.totalSales === 'number' ? row.totalSales.toFixed(2) : (row.totalSales || '0.00')}</td>
                     </tr>
                   ))}
                   <tr className="border-b bg-gray-100 font-semibold">
                     <td className="p-3 border-r"></td>
                     <td className="p-3 border-r">Total:</td>
-                    <td className="p-3 border-r text-right">{typeof totals.totalPurchase === 'number' ? totals.totalPurchase.toLocaleString() : totals.totalPurchase || ''}</td>
-                    <td className="p-3 border-r text-right">{typeof totals.totalAccount === 'number' ? totals.totalAccount.toLocaleString() : totals.totalAccount || ''}</td>
-                    <td className="p-3 border-r text-right">{typeof totals.totalCash === 'number' ? totals.totalCash.toLocaleString() : totals.totalCash || ''}</td>
-                    <td className="p-3 text-right">{typeof totals.totalSales === 'number' ? totals.totalSales.toLocaleString() : totals.totalSales || ''}</td>
+                    <td className="p-3 border-r text-right">£{typeof totals.totalPurchase === 'number' ? totals.totalPurchase.toFixed(2) : (totals.totalPurchase || '0.00')}</td>
+                    <td className="p-3 border-r text-right">£{typeof totals.totalAccount === 'number' ? totals.totalAccount.toFixed(2) : (totals.totalAccount || '0.00')}</td>
+                    <td className="p-3 border-r text-right">£{typeof totals.totalCash === 'number' ? totals.totalCash.toFixed(2) : (totals.totalCash || '0.00')}</td>
+                    <td className="p-3 text-right">£{typeof totals.totalSales === 'number' ? totals.totalSales.toFixed(2) : (totals.totalSales || '0.00')}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
             
-            <div className="p-3 border-t text-sm text-gray-500 flex justify-between items-center">
-              <span>Showing 1 to 1 of 1 entries</span>
+            <div className="p-3 border-t text-sm text-gray-500 flex justify-between items-center print:hidden">
+              <span>Showing {salesRows.length} entries</span>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" disabled>Previous</Button>
                 <Button variant="outline" size="sm" className="bg-blue-600 text-white">1</Button>

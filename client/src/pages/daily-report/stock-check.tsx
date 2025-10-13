@@ -575,7 +575,7 @@ export default function StockCheck() {
           if (response.message) {
             toast({
               title: "Email Sent Successfully",
-              description: `✅ ${response.message}`,
+              description: ` ${response.message}`,
             });
             if (response.warnings) {
               toast({

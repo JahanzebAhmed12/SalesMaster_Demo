@@ -239,7 +239,7 @@ export default function ProductPurchaseFullView() {
           const response = await apiRequest('POST', '/api/send-email', emailData);
           
           if (response.message) {
-            alert(`✅ ${response.message}`);
+            alert(` ${response.message}`);
             if (response.warnings) {
               alert(`⚠️ Warning: ${response.warnings}`);
             }

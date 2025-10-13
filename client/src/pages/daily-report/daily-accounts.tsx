@@ -33,16 +33,141 @@ export default function DailyAccounts() {
 
   const printRef = useRef<HTMLDivElement>(null);
 
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   const handlePrint = () => {
-    if (!printRef.current) return;
-    const printContents = printRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>body{font-family:sans-serif;}table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}h1{text-align:center;}</style>');
+      printWindow.document.write('<html><head><title>Daily Accounts Report</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('.company-header{text-align:center;margin-bottom:30px;}');
+      printWindow.document.write('.company-name{font-size:18px;font-weight:bold;margin-bottom:5px;}');
+      printWindow.document.write('.company-address{font-size:12px;margin-bottom:2px;}');
+      printWindow.document.write('.company-contact{font-size:12px;margin-bottom:2px;}');
+      printWindow.document.write('.report-title{font-size:16px;font-weight:bold;margin-bottom:20px;}');
+      printWindow.document.write('.date-range{font-size:12px;margin-bottom:20px;}');
+      printWindow.document.write('.section{margin-bottom:20px;}');
+      printWindow.document.write('.section-title{font-size:14px;font-weight:bold;color:#2563eb;margin-bottom:10px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-bottom:10px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:11px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.text-right{text-align:right;}');
+      printWindow.document.write('.font-semibold{font-weight:600;}');
+      printWindow.document.write('.total-row{background-color:#f5f5f5;font-weight:600;}');
+      printWindow.document.write('.balance-summary{background-color:#fef3c7;padding:10px;border:1px solid #d97706;margin-top:20px;}');
+      printWindow.document.write('.two-column{display:flex;gap:20px;}');
+      printWindow.document.write('.column{flex:1;}');
+      printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write(`<h1>Daily Accounts</h1>`);
-      printWindow.document.write(printContents);
+      
+      // Add company header
+      printWindow.document.write('<div class="company-header">');
+      printWindow.document.write(`<div class="company-name">${companyDetails?.companyName || 'Company Name'}</div>`);
+      if (companyDetails?.address1) {
+        printWindow.document.write(`<div class="company-address">${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
+      }
+      if (companyDetails?.telephone) {
+        printWindow.document.write(`<div class="company-contact">Phone: ${companyDetails.telephone}</div>`);
+      }
+      if (companyDetails?.email) {
+        printWindow.document.write(`<div class="company-contact">Email: ${companyDetails.email}</div>`);
+      }
+      printWindow.document.write('<div class="report-title">Daily Accounts Report</div>');
+      printWindow.document.write(`<div class="date-range">Date Range: ${fromDate} to ${toDate}</div>`);
+      printWindow.document.write('</div>');
+      
+      printWindow.document.write('<div class="two-column">');
+      
+      // Left Column
+      printWindow.document.write('<div class="column">');
+      
+      // Receivables Cash
+      printWindow.document.write('<div class="section">');
+      printWindow.document.write('<div class="section-title">Receivables Cash</div>');
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr><th>Item</th><th class="text-right">Amount</th></tr></thead><tbody>');
+      receivablesCash.forEach((item: any) => {
+        printWindow.document.write(`<tr><td>${item.item}</td><td class="text-right">£${Number(item.amount).toFixed(2)}</td></tr>`);
+      });
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</div>');
+      
+      // Receivables Others
+      printWindow.document.write('<div class="section">');
+      printWindow.document.write('<div class="section-title">Receivables Others</div>');
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr><th>Item</th><th class="text-right">Amount</th></tr></thead><tbody>');
+      receivablesOthers.forEach((item: any) => {
+        printWindow.document.write(`<tr><td>${item.item}</td><td class="text-right">£${Number(item.amount).toFixed(2)}</td></tr>`);
+      });
+      printWindow.document.write(`<tr class="total-row"><td class="font-semibold">TOTAL</td><td class="text-right font-semibold">£${Number(totalReceivablesOthers).toFixed(2)}</td></tr>`);
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</div>');
+      
+      // Banking
+      printWindow.document.write('<div class="section">');
+      printWindow.document.write('<div class="section-title">Banking</div>');
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr><th>Item</th><th class="text-right">Amount</th></tr></thead><tbody>');
+      banking.forEach((item: any) => {
+        printWindow.document.write(`<tr><td>${item.item}</td><td class="text-right">£${Number(item.amount).toFixed(2)}</td></tr>`);
+      });
+      printWindow.document.write(`<tr class="total-row"><td class="font-semibold">SUB TOTAL</td><td class="text-right font-semibold">£${Number(totalBanking).toFixed(2)}</td></tr>`);
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</div>');
+      
+      printWindow.document.write('</div>'); // End left column
+      
+      // Right Column
+      printWindow.document.write('<div class="column">');
+      
+      // Payables Cash
+      printWindow.document.write('<div class="section">');
+      printWindow.document.write('<div class="section-title">Payables Cash</div>');
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr><th>Item</th><th class="text-right">Amount</th></tr></thead><tbody>');
+      payablesCash.forEach((item: any) => {
+        printWindow.document.write(`<tr><td>${item.item}</td><td class="text-right">£${Number(item.amount).toFixed(2)}</td></tr>`);
+      });
+      printWindow.document.write(`<tr class="total-row"><td class="font-semibold">TOTAL</td><td class="text-right font-semibold">£${Number(totalPayablesCash).toFixed(2)}</td></tr>`);
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</div>');
+      
+      // Payables Others
+      printWindow.document.write('<div class="section">');
+      printWindow.document.write('<div class="section-title">Payables Others</div>');
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr><th>Item</th><th class="text-right">Amount</th></tr></thead><tbody>');
+      payablesOthers.forEach((item: any) => {
+        printWindow.document.write(`<tr><td>${item.item}</td><td class="text-right">£${Number(item.amount).toFixed(2)}</td></tr>`);
+      });
+      printWindow.document.write(`<tr class="total-row"><td class="font-semibold">TOTAL</td><td class="text-right font-semibold">£${Number(totalPayablesOthers).toFixed(2)}</td></tr>`);
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</div>');
+      
+      // C/F
+      printWindow.document.write('<div class="section">');
+      printWindow.document.write('<div class="section-title">C/F</div>');
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr><th>Item</th><th class="text-right">Amount</th></tr></thead><tbody>');
+      printWindow.document.write(`<tr class="total-row"><td class="font-semibold">C/F Total</td><td class="text-right font-semibold">£${Number(cfTotal).toFixed(2)}</td></tr>`);
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write('</div>');
+      
+      printWindow.document.write('</div>'); // End right column
+      printWindow.document.write('</div>'); // End two-column
+      
+      // Balance Summary
+      printWindow.document.write('<div class="balance-summary">');
+      printWindow.document.write(`<div><strong>Actual Balance:</strong> £${Number(actualBalance).toFixed(2)}</div>`);
+      printWindow.document.write(`<div style="color:#dc2626;"><strong>(Short £${Number(shortfall).toFixed(2)})</strong></div>`);
+      printWindow.document.write('</div>');
+      
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -51,10 +176,47 @@ export default function DailyAccounts() {
   };
 
   const handlePDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text('Daily Accounts', 14, 16);
-    let y = 26;
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    let currentY = 15;
+
+    // Add company header if available
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || 'Company Name', 105, currentY, { align: 'center' });
+      currentY += 7;
+      
+      doc.setFontSize(10);
+      if (companyDetails.address1) {
+        const address = `${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`;
+        doc.text(address, 105, currentY, { align: 'center' });
+        currentY += 5;
+      }
+      if (companyDetails.telephone) {
+        doc.text(`Phone: ${companyDetails.telephone}`, 105, currentY, { align: 'center' });
+        currentY += 5;
+      }
+      if (companyDetails.email) {
+        doc.text(`Email: ${companyDetails.email}`, 105, currentY, { align: 'center' });
+        currentY += 5;
+      }
+      currentY += 5; // Extra spacing
+    }
+
+    // Add title
+    doc.setFontSize(14);
+    doc.text('Daily Accounts Report', 105, currentY, { align: 'center' });
+    currentY += 7;
+    
+    doc.setFontSize(10);
+    doc.text(`Date Range: ${fromDate} to ${toDate}`, 105, currentY, { align: 'center' });
+    currentY += 10;
+
+    let y = currentY;
     // Receivables Cash
     doc.setFontSize(12);
     doc.text('Receivables Cash', 14, y);
@@ -62,7 +224,7 @@ export default function DailyAccounts() {
     autoTable(doc, {
       startY: y,
       head: [['Item', 'Amount']],
-      body: receivablesCash.map((item: any) => [item.item, Number(item.amount).toFixed(2)]),
+      body: receivablesCash.map((item: any) => [item.item, `£${Number(item.amount).toFixed(2)}`]),
       theme: 'grid',
       styles: { fontSize: 10 },
     });
@@ -73,7 +235,7 @@ export default function DailyAccounts() {
     autoTable(doc, {
       startY: y,
       head: [['Item', 'Amount']],
-      body: receivablesOthers.map((item: any) => [item.item, Number(item.amount).toFixed(2)]),
+      body: receivablesOthers.map((item: any) => [item.item, `£${Number(item.amount).toFixed(2)}`]),
       theme: 'grid',
       styles: { fontSize: 10 },
     });
@@ -84,7 +246,7 @@ export default function DailyAccounts() {
     autoTable(doc, {
       startY: y,
       head: [['Item', 'Amount']],
-      body: banking.map((item: any) => [item.item, Number(item.amount).toFixed(2)]),
+      body: banking.map((item: any) => [item.item, `£${Number(item.amount).toFixed(2)}`]),
       theme: 'grid',
       styles: { fontSize: 10 },
     });
@@ -95,7 +257,7 @@ export default function DailyAccounts() {
     autoTable(doc, {
       startY: y,
       head: [['Item', 'Amount']],
-      body: payablesCash.map((item: any) => [item.item, Number(item.amount).toFixed(2)]),
+      body: payablesCash.map((item: any) => [item.item, `£${Number(item.amount).toFixed(2)}`]),
       theme: 'grid',
       styles: { fontSize: 10 },
     });
@@ -106,7 +268,7 @@ export default function DailyAccounts() {
     autoTable(doc, {
       startY: y,
       head: [['Item', 'Amount']],
-      body: payablesOthers.map((item: any) => [item.item, Number(item.amount).toFixed(2)]),
+      body: payablesOthers.map((item: any) => [item.item, `£${Number(item.amount).toFixed(2)}`]),
       theme: 'grid',
       styles: { fontSize: 10 },
     });
@@ -117,16 +279,16 @@ export default function DailyAccounts() {
     autoTable(doc, {
       startY: y,
       head: [['C/F Total', '']],
-      body: [[Number(cfTotal).toFixed(2), '']],
+      body: [[`£${Number(cfTotal).toFixed(2)}`, '']],
       theme: 'grid',
       styles: { fontSize: 10 },
     });
     y = (doc as any).lastAutoTable.finalY + 6;
     // Balance Summary
-    doc.text('Actual Balance: ' + Number(actualBalance).toFixed(2), 14, y);
+    doc.text('Actual Balance: £' + Number(actualBalance).toFixed(2), 14, y);
     y += 6;
-    doc.text('Shortfall: ' + Number(shortfall).toFixed(2), 14, y);
-    doc.save('daily-accounts.pdf');
+    doc.text('Shortfall: £' + Number(shortfall).toFixed(2), 14, y);
+    doc.save(`daily-accounts-${fromDate}-to-${toDate}.pdf`);
   };
 
   const { data, isLoading, isError } = useQuery({
@@ -160,7 +322,7 @@ export default function DailyAccounts() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Daily Accounts</h1>
         <div className="text-sm text-gray-500">
-          TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...
+          {companyDetails?.companyName || 'Company Name'}, {companyDetails?.address1 || ''}{companyDetails?.address2 ? `, ${companyDetails.address2}` : ''}
         </div>
       </div>
       <div className="mb-6">
