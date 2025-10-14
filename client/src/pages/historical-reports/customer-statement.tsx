@@ -540,7 +540,7 @@ export default function CustomerStatement() {
         textColor: [0, 0, 0]
       },
       headStyles: {
-        fillColor: [41, 128, 185],
+        fillColor: [66, 139, 202],
         textColor: 255,
         fontStyle: 'bold',
         lineWidth: 0.1,
@@ -633,94 +633,100 @@ export default function CustomerStatement() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-              <div>
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingCustomers ? (
-                      <SelectItem value="loading" disabled>Loading...</SelectItem>
-                    ) : (
-                      customers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.customer_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
-                <Label>From:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
+            <div className="space-y-4">
+              {/* First row - Form controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Customer</Label>
+                  <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isLoadingCustomers ? (
+                        <SelectItem value="loading" disabled>Loading...</SelectItem>
+                      ) : (
+                        customers.map((customer) => (
+                          <SelectItem key={customer.id} value={customer.id.toString()}>
+                            {customer.customer_name}
+                          </SelectItem>
+                        ))
                       )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? formatDateForDisplay(fromDate, "yyyyMMdd") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={handleFromDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">From:</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !fromDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {fromDate ? formatDateForDisplay(fromDate, "dd/MM/yyyy") : "Pick date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={fromDate}
+                        onSelect={handleFromDateChange}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">To:</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !toDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {toDate ? formatDateForDisplay(toDate, "dd/MM/yyyy") : "Pick date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={toDate}
+                        onSelect={handleToDateChange}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Type</Label>
+                  <Select value={statementType} onValueChange={setStatementType}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Full Statement">Full Statement</SelectItem>
+                      <SelectItem value="Outstanding Only">Outstanding Only</SelectItem>
+                      <SelectItem value="Paid Only">Paid Only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
-              <div>
-                <Label>To:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? formatDateForDisplay(toDate, "yyyyMMdd") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={handleToDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              
-              <div>
-                <Select value={statementType} onValueChange={setStatementType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Full Statement">Full Statement</SelectItem>
-                    <SelectItem value="Outstanding Only">Outstanding Only</SelectItem>
-                    <SelectItem value="Paid Only">Paid Only</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              <div>
+              {/* Second row - Action buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <Button
-                  className="bg-blue-500 hover:bg-blue-600 w-full"
+                  className="bg-blue-500 hover:bg-blue-600 flex-1 sm:flex-none sm:min-w-[120px]"
                   disabled={!selectedCustomer || loading}
                   onClick={async () => {
                     setLoading(true);
@@ -738,21 +744,33 @@ export default function CustomerStatement() {
                 >
                   {loading ? "Loading..." : "Generate"}
                 </Button>
-              </div>
-              
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handleSendStatement}>
-                  <Mail size={16} />
-                  Email
-                </Button>
-                <Button 
-                  className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
-                  disabled={!selectedCustomer || statementData.length === 0}
-                  onClick={handlePrint}
-                >
-                  <Printer size={16} />
-                  Print
-                </Button>
+                
+                <div className="flex gap-2 flex-wrap">
+                  <Button 
+                    className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 flex-1 sm:flex-none" 
+                    onClick={handleSendStatement}
+                    disabled={!selectedCustomer || statementData.length === 0}
+                  >
+                    <Mail size={16} />
+                    <span className="hidden sm:inline">Email</span>
+                  </Button>
+                  <Button 
+                    className="bg-red-600 hover:bg-red-700 flex items-center gap-2 flex-1 sm:flex-none"
+                    disabled={!selectedCustomer || statementData.length === 0}
+                    onClick={handlePDF}
+                  >
+                    <FileText size={16} />
+                    <span className="hidden sm:inline">PDF</span>
+                  </Button>
+                  <Button 
+                    className="bg-gray-600 hover:bg-gray-700 flex items-center gap-2 flex-1 sm:flex-none"
+                    disabled={!selectedCustomer || statementData.length === 0}
+                    onClick={handlePrint}
+                  >
+                    <Printer size={16} />
+                    <span className="hidden sm:inline">Print</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>

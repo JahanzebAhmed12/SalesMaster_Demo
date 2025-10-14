@@ -5491,8 +5491,8 @@ def customer_history():
         # Calculate total paid from all sources
         total_paid = sum(float(p.amount) for p in sale_payments if p.amount > 0)
         
-        # Determine how to display the invoice based on original payment mode
-        if sale.payment_mode == 'account':
+        # Determine how to display the invoice based on customer type
+        if sale.customer_type == 'account':
             # Account invoices show in account column
             account_inv = float(sale.total_amount)
             cash_inv = 0
@@ -5511,7 +5511,7 @@ def customer_history():
             'accountInv': account_inv,
             'cashInv': cash_inv,
             'paid': total_paid,
-            'balance': balance if sale.payment_mode == 'account' else 0  # Only account sales have running balance
+            'balance': balance if sale.customer_type == 'account' else 0  # Only account sales have running balance
         })
     
     # Add on-account payment transactions
@@ -12822,7 +12822,7 @@ def send_customer_statement_email_api():
                     'date': sale.date.strftime('%d/%m/%Y'),
                     'invoiceNo': sale.invoice_number,
                     'description': f'Credit Invoice #{sale.invoice_number}',
-                    'creditInv': float(sale.total_amount),
+                    'accountInv': float(sale.total_amount),
                     'cashInv': 0,
                     'paid': 0,
                     'creditAdj': 0,
@@ -12840,7 +12840,7 @@ def send_customer_statement_email_api():
                 'date': payment.payment_date.strftime('%d/%m/%Y'),
                 'invoiceNo': f'PAY-{payment.id}',
                 'description': f'Payment - {payment.payment_mode}',
-                'creditInv': 0,
+                'accountInv': 0,
                 'cashInv': 0,
                 'paid': float(payment.amount),
                 'creditAdj': 0,
@@ -12930,14 +12930,29 @@ def send_customer_history_email_api():
         
         # Add sales
         for sale in sales:
-            if sale.customer_type == 'credit':
+            if sale.customer_type == 'account':
                 running_balance += float(sale.total_amount)
                 history_data.append({
                     'slNo': sl_no,
                     'date': sale.date.strftime('%d/%m/%Y'),
                     'invoiceNo': sale.invoice_number,
-                    'creditInv': float(sale.total_amount),
+                    'accountInv': float(sale.total_amount),
                     'cashInv': 0,
+                    'paid': 0,
+                    'creditAdj': 0,
+                    'discountAdj': 0,
+                    'balance': float(sale.total_amount),
+                    'runningBalance': running_balance
+                })
+                sl_no += 1
+            elif sale.customer_type == 'cash':
+                running_balance += float(sale.total_amount)
+                history_data.append({
+                    'slNo': sl_no,
+                    'date': sale.date.strftime('%d/%m/%Y'),
+                    'invoiceNo': sale.invoice_number,
+                    'accountInv': 0,
+                    'cashInv': float(sale.total_amount),
                     'paid': 0,
                     'creditAdj': 0,
                     'discountAdj': 0,
@@ -12953,7 +12968,7 @@ def send_customer_history_email_api():
                 'slNo': sl_no,
                 'date': payment.payment_date.strftime('%d/%m/%Y'),
                 'invoiceNo': f'PAY-{payment.id}',
-                'creditInv': 0,
+                'accountInv': 0,
                 'cashInv': 0,
                 'paid': float(payment.amount),
                 'creditAdj': 0,

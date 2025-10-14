@@ -759,6 +759,9 @@ export default function MonthlyReports() {
           title: "Email Sent Successfully",
           description: `${reportType === 'summary' ? 'Summary' : 'Detailed'} report has been sent to ${emailAddress}`,
         });
+        
+        // Reset email field after successful send
+        setEmailAddress("");
       };
       
       reader.readAsDataURL(pdfBlob);

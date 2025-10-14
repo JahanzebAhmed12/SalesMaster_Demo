@@ -166,7 +166,11 @@ export default function Expenses() {
         body: tableData,
         startY: 45,
         styles: { fontSize: 10 },
-        headStyles: { fillColor: [240, 240, 240] },
+        headStyles: {
+          fillColor: [66, 139, 202],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
         columnStyles: {
           0: { cellWidth: 20 },
           1: { cellWidth: 40 },
