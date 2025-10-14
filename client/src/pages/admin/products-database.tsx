@@ -341,7 +341,11 @@ export default function Products() {
         body: tableData,
         startY: 45,
         styles: { fontSize: 8 },
-        headStyles: { fillColor: [240, 240, 240] },
+        headStyles: {
+          fillColor: [66, 139, 202],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
         columnStyles: {
           0: { cellWidth: 15 },
           1: { cellWidth: 25 },

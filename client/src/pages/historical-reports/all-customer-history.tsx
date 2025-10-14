@@ -253,9 +253,9 @@ export default function AllCustomerHistory() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Initial load
+  // Load data when filters change (but not dates)
   useEffect(() => {
-    fetchCustomerHistory();
+    fetchCustomerHistory(1);
   }, [customerFilter, currencyFilter]);
 
   // Auto-refresh when page gains focus (user returns from creating an invoice)
@@ -574,10 +574,11 @@ export default function AllCustomerHistory() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col items-start gap-4 md:flex-row md:items-end md:gap-8">
-              <div className="flex gap-4">
+            <div className="space-y-4">
+              {/* First row - Date controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                 <div>
-                  <Label>From:</Label>
+                  <Label className="text-sm font-medium mb-2 block">From:</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -588,7 +589,7 @@ export default function AllCustomerHistory() {
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {fromDate ? formatDateForDisplay(fromDate, "yyyyMMdd") : "Pick date"}
+                        {fromDate ? formatDateForDisplay(fromDate, "dd/MM/yyyy") : "Pick date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -601,8 +602,9 @@ export default function AllCustomerHistory() {
                     </PopoverContent>
                   </Popover>
                 </div>
+                
                 <div>
-                  <Label>To:</Label>
+                  <Label className="text-sm font-medium mb-2 block">To:</Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -613,7 +615,7 @@ export default function AllCustomerHistory() {
                         )}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
-                        {toDate ? formatDateForDisplay(toDate, "yyyyMMdd") : "Pick date"}
+                        {toDate ? formatDateForDisplay(toDate, "dd/MM/yyyy") : "Pick date"}
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
@@ -626,63 +628,73 @@ export default function AllCustomerHistory() {
                     </PopoverContent>
                   </Popover>
                 </div>
+                
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Customer Filter</Label>
+                  <Select value={customerFilter} onValueChange={setCustomerFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All Customer">All Customer</SelectItem>
+                      <SelectItem value="Exclude Bad Debt" className="bg-cyan-500 text-white">Exclude Bad Debt</SelectItem>
+                      <SelectItem value="Show Bad Debt">Show Bad Debt</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Currency</Label>
+                  <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Currency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Currencies</SelectItem>
+                      {availableCurrencies.map((currency) => (
+                        <SelectItem key={currency} value={currency}>
+                          {currency}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="mt-4 md:mt-0 flex gap-2">
-                <Button 
-                  className="bg-blue-500 hover:bg-blue-600"
-                  onClick={handleSearch}
-                  disabled={loading}
-                >
-                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Search
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => fetchCustomerHistory(1)}
-                  disabled={loading}
-                  title="Refresh data"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Refresh"}
-                </Button>
-              </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-              <div>
-                <Select value={customerFilter} onValueChange={setCustomerFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All Customer">All Customer</SelectItem>
-                    <SelectItem value="Exclude Bad Debt" className="bg-cyan-500 text-white">Exclude Bad Debt</SelectItem>
-                    <SelectItem value="Show Bad Debt">Show Bad Debt</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select Currency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Currencies</SelectItem>
-                    {availableCurrencies.map((currency) => (
-                      <SelectItem key={currency} value={currency}>
-                        {currency}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-2">
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2" onClick={handlePrint}>
-                  <Printer size={16} />
-                  Print
-                </Button>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2">
-                  Weekly statement
-                </Button>
+              
+              {/* Second row - Search and Action buttons */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2">
+                <div className="flex gap-2 flex-wrap">
+                  <Button 
+                    className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2"
+                    onClick={handleSearch}
+                    disabled={loading}
+                  >
+                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Search
+                  </Button>
+                  <Button 
+                    className="bg-gray-500 hover:bg-gray-600 flex items-center gap-2 flex-1 sm:flex-none" 
+                    onClick={handlePrint}
+                    disabled={loading || customerData.length === 0}
+                  >
+                    <Printer size={16} />
+                    <span className="hidden sm:inline">Print</span>
+                  </Button>
+                  <Button 
+                    className="bg-green-600 hover:bg-green-700 flex items-center gap-2 flex-1 sm:flex-none"
+                    disabled={loading || customerData.length === 0}
+                  >
+                    <FileText size={16} />
+                    <span className="hidden sm:inline">Weekly Statement</span>
+                  </Button>
+                </div>
+                
+                {loading && (
+                  <div className="flex items-center gap-2 text-blue-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="text-sm">Loading data...</span>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>

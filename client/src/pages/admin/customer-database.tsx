@@ -12,6 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Helper function to format multiple emails for display
 const formatEmails = (emailString: string) => {
@@ -107,153 +110,204 @@ export default function Customers() {
     setLocation(`/admin/customer-database-edit/${id}`);
   };
 
-  const handleExport = (format: string) => {
-    if (format === "excel" && customers) {
-      const csvContent = [
-        ["Customer Code", "Customer Name", "City", "Country", "Currency", "Running Balance", "Email", "Telephone", "Status"].join(","),
-        ...customers.map((c) =>
-          [
-            c.customer_code,
-            `"${c.customer_name}"`,
-            c.customer_city || "",
-            c.customer_country || "",
-            c.customer_currency,
-            c.runningBalance || 0,
-            c.email ? c.email.replace(/,/g, ';') : "",
-            c.telephone || "",
-            c.is_active === "yes" ? "Active" : "Inactive",
-          ].join(","),
-        ),
-      ].join("\n");
+  const handleExport = async (format: string) => {
+    if (format === "all") {
+      toast({
+        title: "Info",
+        description: "All customers are already displayed in the table."
+      });
+      return;
+    }
 
-      const blob = new Blob([csvContent], { type: "text/csv" });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "customers.csv";
-      link.click();
-      window.URL.revokeObjectURL(url);
-    } else if (format === "pdf" && customers) {
-      const htmlContent = `
-        <html>
-          <head>
-            <title>Customer Database</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
-              h1 { color: #333; }
-            </style>
-          </head>
-          <body>
-            <h1>Customer Database</h1>
-            <table>
-              <thead>
-                <tr>
-                  <th>Customer Code</th>
-                  <th>Customer Name</th>
-                  <th>City</th>
-                  <th>Country</th>
-                  <th>Currency</th>
-                  <th>Running Balance</th>
-                  <th>Email</th>
-                  <th>Telephone</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${customers
-                  .map(
-                    (c) => `
-                  <tr>
-                    <td>${c.customer_code}</td>
-                    <td>${c.customer_name}</td>
-                    <td>${c.customer_city || "-"}</td>
-                    <td>${c.customer_country || "-"}</td>
-                    <td>${c.customer_currency}</td>
-                    <td>£${(c.runningBalance || 0).toFixed(2)}</td>
-                    <td>${c.email || "-"}</td>
-                    <td>${c.telephone || "-"}</td>
-                    <td>${c.is_active === "yes" ? "Active" : "Inactive"}</td>
-                  </tr>
-                `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-          </body>
-        </html>
-      `;
+    if (filteredCustomers.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Data",
+        description: "No customers found to export."
+      });
+      return;
+    }
 
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-        printWindow.print();
+    try {
+      const exportData = filteredCustomers.map((customer, index) => ({
+        'Sl.No': index + 1,
+        'Customer Code': customer.customer_code,
+        'Customer Name': customer.customer_name,
+        'City': customer.customer_city || '',
+        'Country': customer.customer_country || '',
+        'Currency': customer.customer_currency,
+        'Running Balance': `£${(customer.runningBalance || 0).toFixed(2)}`,
+        'Email': customer.email || '',
+        'Telephone': customer.telephone || '',
+        'Status': customer.is_active === "yes" ? "Active" : "Inactive"
+      }));
+
+      switch (format) {
+        case "excel":
+          await handleExcelExport(exportData);
+          break;
+        case "pdf":
+          await handlePDFExport(exportData);
+          break;
+        case "print":
+          handlePrint();
+          break;
+        default:
+          console.log(`Unknown format: ${format}`);
       }
-    } else if (format === "print" && customers) {
-      const htmlContent = `
-        <html>
-          <head>
-            <title>Customer Database</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
-              h1 { color: #333; }
-              @media print {
-                body { margin: 0; }
-              }
-            </style>
-          </head>
-          <body>
-            <h1>Customer Database</h1>
-            <table>
-              <thead>
-                <tr>
-                  <th>Customer Code</th>
-                  <th>Customer Name</th>
-                  <th>City</th>
-                  <th>Country</th>
-                  <th>Currency</th>
-                  <th>Running Balance</th>
-                  <th>Email</th>
-                  <th>Telephone</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${customers
-                  .map(
-                    (c) => `
-                  <tr>
-                    <td>${c.customer_code}</td>
-                    <td>${c.customer_name}</td>
-                    <td>${c.customer_city || "-"}</td>
-                    <td>${c.customer_country || "-"}</td>
-                    <td>${c.customer_currency}</td>
-                    <td>£${(c.runningBalance || 0).toFixed(2)}</td>
-                    <td>${c.email || "-"}</td>
-                    <td>${c.telephone || "-"}</td>
-                    <td>${c.is_active === "yes" ? "Active" : "Inactive"}</td>
-                  </tr>
-                `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-          </body>
-        </html>
-      `;
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "An unexpected error occurred during export."
+      });
+    }
+  };
 
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
-        printWindow.print();
-      }
+  const handleExcelExport = async (data: any[]) => {
+    try {
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(data);
+
+      const colWidths = Object.keys(data[0] || {}).map(key => ({
+        wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length))
+      }));
+      ws['!cols'] = colWidths;
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+      
+      const fileName = `Customer_Database_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      
+      toast({
+        title: "Success",
+        description: "Customer data exported to Excel successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to Excel. Please try again."
+      });
+    }
+  };
+
+  const handlePDFExport = async (data: any[]) => {
+    try {
+      const doc = new jsPDF('l', 'mm', 'a4');
+      
+      doc.setFontSize(16);
+      doc.text('Customer Database', 14, 15);
+      
+      doc.setFontSize(10);
+      doc.text('TROPIFRUIT UK LTD', 14, 25);
+      doc.text('3 Dolphin Way, Purfleet, RM19 1NZ', 14, 30);
+      doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 14, 35);
+
+      const tableData = data.map(row => [
+        row['Sl.No'],
+        row['Customer Code'],
+        row['Customer Name'],
+        row['City'],
+        row['Country'],
+        row['Currency'],
+        row['Running Balance'],
+        row['Email'],
+        row['Telephone'],
+        row['Status']
+      ]);
+
+      autoTable(doc, {
+        head: [['#', 'Code', 'Name', 'City', 'Country', 'Currency', 'Balance', 'Email', 'Phone', 'Status']],
+        body: tableData,
+        startY: 45,
+        styles: { fontSize: 8 },
+        headStyles: {
+          fillColor: [66, 139, 202],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        columnStyles: {
+          0: { cellWidth: 15 },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 40 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 25 },
+          5: { cellWidth: 20 },
+          6: { cellWidth: 25 },
+          7: { cellWidth: 40 },
+          8: { cellWidth: 30 },
+          9: { cellWidth: 20 }
+        }
+      });
+
+      const fileName = `Customer_Database_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+      
+      toast({
+        title: "Success",
+        description: "Customer data exported to PDF successfully."
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: "Failed to export to PDF. Please try again."
+      });
+    }
+  };
+
+  const handlePrint = () => {
+    const printWindow = window.open('', '', 'height=600,width=900');
+    if (printWindow) {
+      printWindow.document.write('<html><head><title>Customer Database</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
+      printWindow.document.write('.company-info{margin-bottom:15px;}');
+      printWindow.document.write('@media print { body { margin: 0; } }');
+      printWindow.document.write('</style>');
+      printWindow.document.write('</head><body>');
+
+      printWindow.document.write('<div class="header">');
+      printWindow.document.write('<h2>Customer Database</h2>');
+      printWindow.document.write('</div>');
+
+      printWindow.document.write('<div class="company-info">');
+      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
+      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
+      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
+      printWindow.document.write('</div>');
+
+      printWindow.document.write('<table>');
+      printWindow.document.write('<thead><tr>');
+      printWindow.document.write('<th>#</th><th>Code</th><th>Name</th><th>City</th><th>Country</th><th>Currency</th><th>Balance</th><th>Email</th><th>Phone</th><th>Status</th>');
+      printWindow.document.write('</tr></thead><tbody>');
+
+      filteredCustomers.forEach((customer, index) => {
+        printWindow.document.write('<tr>');
+        printWindow.document.write(`<td>${index + 1}</td>`);
+        printWindow.document.write(`<td>${customer.customer_code}</td>`);
+        printWindow.document.write(`<td>${customer.customer_name}</td>`);
+        printWindow.document.write(`<td>${customer.customer_city || '-'}</td>`);
+        printWindow.document.write(`<td>${customer.customer_country || '-'}</td>`);
+        printWindow.document.write(`<td>${customer.customer_currency}</td>`);
+        printWindow.document.write(`<td>£${(customer.runningBalance || 0).toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${customer.email || '-'}</td>`);
+        printWindow.document.write(`<td>${customer.telephone || '-'}</td>`);
+        printWindow.document.write(`<td>${customer.is_active === "yes" ? "Active" : "Inactive"}</td>`);
+        printWindow.document.write('</tr>');
+      });
+
+      printWindow.document.write('</tbody></table>');
+      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Customers: ${filteredCustomers.length}</div>`);
+      printWindow.document.write('</body></html>');
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 500);
     }
   };
 
@@ -306,15 +360,34 @@ export default function Customers() {
           <>
             <div className="flex gap-2 mb-4">
               <Button variant="outline" size="sm" onClick={() => handleExport("all")}>
-                Show all rows
+                <Eye className="h-4 w-4 mr-1" />
+                Show All
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport("excel")}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleExport("excel")}
+                className="text-green-600 hover:text-green-700"
+              >
+                <Download className="h-4 w-4 mr-1" />
                 Excel
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport("pdf")}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleExport("pdf")}
+                className="text-red-600 hover:text-red-700"
+              >
+                <FileText className="h-4 w-4 mr-1" />
                 PDF
               </Button>
-              <Button variant="outline" size="sm" onClick={() => handleExport("print")}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => handleExport("print")}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                <Printer className="h-4 w-4 mr-1" />
                 Print
               </Button>
               <div className="ml-auto">

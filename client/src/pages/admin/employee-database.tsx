@@ -17,7 +17,20 @@ import autoTable from 'jspdf-autotable';
 
 // Helper to get the correct API URL
 const getApiUrl = (endpoint: string) => {
-  const API_BASE_URL = "http://localhost:5000";
+  // Use the same base URL as the current page, but for API calls
+  const protocol = window.location.protocol;
+  const hostname = window.location.hostname;
+  const port = window.location.port;
+  
+  // In development, use localhost:5000, in production use the same host
+  let API_BASE_URL;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    API_BASE_URL = "http://localhost:5000";
+  } else {
+    // Production - use the same protocol and host as the frontend
+    API_BASE_URL = `${protocol}//${hostname}${port ? ':' + port : ''}`;
+  }
+  
   return `${API_BASE_URL}${endpoint}`;
 };
 
@@ -368,7 +381,11 @@ export default function EmployeeDatabase() {
         body: tableData,
         startY: 45,
         styles: { fontSize: 8 },
-        headStyles: { fillColor: [240, 240, 240] },
+        headStyles: {
+          fillColor: [66, 139, 202],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
         columnStyles: {
           0: { cellWidth: 15 },
           1: { cellWidth: 40 },
