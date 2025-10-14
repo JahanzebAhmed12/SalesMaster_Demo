@@ -7217,15 +7217,18 @@ def get_opening_stock(product_id, product_type, from_date):
         return 0
 
 def get_new_stock(product_id, product_type, from_date, to_date):
-    """Get new stock (purchases) between dates, accounting for purchase reversals"""
+    """Get new stock (purchases) between dates - filter by purchase invoice date, not movement creation date"""
     try:
-        # Get all purchase-related movements (including updates)
-        movements = StockMovement.query.filter(
+        # Join with PurchaseInvoice table to filter by actual invoice date instead of movement creation date
+        movements = db.session.query(StockMovement).join(
+            PurchaseInvoice, StockMovement.reference_id == PurchaseInvoice.id
+        ).filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
-            StockMovement.created_at >= from_date,
-            StockMovement.created_at <= to_date
+            StockMovement.reference_type == 'purchase',
+            PurchaseInvoice.date >= from_date,
+            PurchaseInvoice.date <= to_date
         ).all()
         
         print(f"[DEBUG] get_new_stock for product {product_id} ({product_type}) from {from_date} to {to_date}: found {len(movements)} movements")
@@ -7249,17 +7252,23 @@ def get_new_stock(product_id, product_type, from_date, to_date):
         return 0
 
 def get_sales_quantity(product_id, product_type, from_date, to_date):
-    """Get sales quantity between dates"""
+    """Get sales quantity between dates - filter by invoice date, not movement creation date"""
     try:
-        movements = StockMovement.query.filter(
+        # Join with Sale table to filter by actual invoice date instead of movement creation date
+        movements = db.session.query(StockMovement).join(
+            Sale, StockMovement.reference_id == Sale.id
+        ).filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.movement_type == 'sale',
-            StockMovement.created_at >= from_date,
-            StockMovement.created_at <= to_date
+            StockMovement.reference_type == 'sale',
+            Sale.date >= from_date,
+            Sale.date <= to_date,
+            Sale.status == 'finalized'  # Only count finalized sales
         ).all()
         
         total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
+        print(f"[DEBUG] Sales quantity for product {product_id} ({product_type}): {total} from {len(movements)} movements")
         return total
     except Exception as e:
         print(f"[ERROR] Error getting sales quantity: {e}")
@@ -7268,14 +7277,18 @@ def get_sales_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
-    """Get customer returns between dates"""
+    """Get customer returns between dates - filter by return date, not movement creation date"""
     try:
-        movements = StockMovement.query.filter(
+        # Join with CustomerReturn table to filter by actual return date
+        movements = db.session.query(StockMovement).join(
+            CustomerReturn, StockMovement.reference_id == CustomerReturn.id
+        ).filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.movement_type == 'customer_return',
-            StockMovement.created_at >= from_date,
-            StockMovement.created_at <= to_date
+            StockMovement.reference_type == 'customer_return',
+            CustomerReturn.date >= from_date.date(),
+            CustomerReturn.date <= to_date.date()
         ).all()
         
         total = sum(movement.quantity for movement in movements if movement.quantity > 0)
@@ -7287,15 +7300,18 @@ def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_dumps_quantity(product_id, product_type, from_date, to_date):
-    """Get dumps/wastage between dates"""
+    """Get dumps/wastage between dates - filter by dump date, not movement creation date"""
     try:
-        
-        movements = StockMovement.query.filter(
+        # Join with DumpEntry table to filter by actual dump date
+        movements = db.session.query(StockMovement).join(
+            DumpEntry, StockMovement.reference_id == DumpEntry.id
+        ).filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.movement_type == 'dump',
-            StockMovement.created_at >= from_date,
-            StockMovement.created_at <= to_date
+            StockMovement.reference_type == 'dump',
+            DumpEntry.date >= from_date.date(),
+            DumpEntry.date <= to_date.date()
         ).all()
         
         total = sum(abs(movement.quantity) for movement in movements if movement.quantity < 0)
@@ -7307,15 +7323,18 @@ def get_dumps_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
-    """Get supplier returns between dates"""
+    """Get supplier returns between dates - filter by return date, not movement creation date"""
     try:
-        
-        movements = StockMovement.query.filter(
+        # Join with SupplierReturn table to filter by actual return date
+        movements = db.session.query(StockMovement).join(
+            SupplierReturn, StockMovement.reference_id == SupplierReturn.id
+        ).filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.movement_type == 'supplier_return',
-            StockMovement.created_at >= from_date,
-            StockMovement.created_at <= to_date
+            StockMovement.reference_type == 'supplier_return',
+            SupplierReturn.date >= from_date.date(),
+            SupplierReturn.date <= to_date.date()
         ).all()
         
         # Supplier returns are stored as negative quantities (stock reduction)
