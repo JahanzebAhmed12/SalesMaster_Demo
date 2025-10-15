@@ -881,53 +881,21 @@ const SalesInvoice = () => {
     const updatedItems = [...saleItems, newItem];
     setSaleItems(updatedItems);
 
-    // Only update backend if invoice is already saved
-    if (currentSale) {
-      // Recalculate totals with updated items
-      const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
-      const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
-
-      // Calculate porterage based on type
-      let newPorterage = 0;
-      if (porterageDetails.withPorterage && applyPorterage) {
-        if (porterageType === 'fixed') {
-          newPorterage = parseFloat(fixedPorterageAmount) || 0;
-        } else {
-          const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-          newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
-        }
-      }
-
-      const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
-
-      const updatedSalePayload: BackendSalePayload = {
-        invoice_number: currentSale.invoiceNumber,
-        customer_id: currentSale.customerId,
-        customer_type: currentSale.customerType,
-        payment_status: currentSale.paymentStatus,
-        subtotal: newSubtotal,
-        porterage: newPorterage,
-        vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
-        vat_amount: newVatAmount,
-        total_amount: newTotalAmount,
-        vehicle_details: currentSale.vehicleDetails,
-        gate_number: currentSale.gateNumber,
-        notes: currentSale.notes,
-        status: currentSale.status,
-        date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
-        items: updatedItems.map(item => ({
-          product_id: item.productId,
-          non_product_id: item.nonProductId,
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-          total_price: item.totalPrice,
-          notes: item.notes,
-          created_at: item.createdAt,
-        })),
-      };
-      updateSaleMutation.mutate(updatedSalePayload);
+    // Save draft items to localStorage for new invoices
+    if (!currentSale) {
+      localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
     }
+
+    // Note: Backend update will happen when user clicks "Update Ticket" button for existing invoices
     // For new invoices, stock will be reduced when the invoice is saved
+    // This prevents automatic double updates
+
+    if (currentSale) {
+      toast({
+        title: "Item Added",
+        description: "Item added to invoice. Remember to click 'Update Ticket' to save changes to the database.",
+      });
+    }
     setSelectedProductId("");
     setItemQuantity("");
     setItemUnitPrice("");
@@ -2480,58 +2448,28 @@ const SalesInvoice = () => {
                         </TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" onClick={() => {
-                            // Save changes
+                            // Save changes locally only - don't auto-update backend
                             const updatedItems = saleItems.map((it, i) => i === index ? { ...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt } : it);
                             setSaleItems(updatedItems);
 
-                            // Update backend if invoice is already saved
-                            if (currentSale) {
-                              const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
-                              const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
-
-                              // Calculate porterage based on type
-                              let newPorterage = 0;
-                              if (porterageDetails.withPorterage && applyPorterage) {
-                                if (porterageType === 'fixed') {
-                                  newPorterage = parseFloat(fixedPorterageAmount) || 0;
-                                } else {
-                                  const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-                                  newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
-                                }
-                              }
-
-                              const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
-
-                              const updatedSalePayload: BackendSalePayload = {
-                                invoice_number: currentSale.invoiceNumber,
-                                customer_id: currentSale.customerId,
-                                customer_type: currentSale.customerType,
-                                payment_status: currentSale.paymentStatus,
-                                subtotal: newSubtotal,
-                                porterage: newPorterage,
-                                vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
-                                vat_amount: newVatAmount,
-                                total_amount: newTotalAmount,
-                                vehicle_details: currentSale.vehicleDetails,
-                                gate_number: currentSale.gateNumber,
-                                notes: currentSale.notes,
-                                status: currentSale.status,
-                                date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined,
-                                items: updatedItems.map(item => ({
-                                  product_id: item.productId,
-                                  non_product_id: item.nonProductId,
-                                  quantity: item.quantity,
-                                  unit_price: item.unitPrice,
-                                  total_price: item.totalPrice,
-                                  notes: item.notes,
-                                  created_at: item.createdAt,
-                                })),
-                              };
-                              updateSaleMutation.mutate(updatedSalePayload);
+                            // Save draft items to localStorage for new invoices
+                            if (!currentSale) {
+                              localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
                             }
+
+                            // Note: Backend update will happen when user clicks "Update Ticket" button
+                            // This prevents automatic double updates
 
                             setEditingIndex(null);
                             setEditItem(null);
+
+                            // Show a message to remind user to save
+                            if (currentSale) {
+                              toast({
+                                title: "Item Updated",
+                                description: "Remember to click 'Update Ticket' to save changes to the database.",
+                              });
+                            }
                           }}>Save</Button>
                           <Button size="sm" variant="outline" onClick={() => {
                             setEditingIndex(null);
@@ -2556,53 +2494,24 @@ const SalesInvoice = () => {
                           }}>Edit</Button>
                           <Button size="sm" variant="destructive" disabled={isReadOnly} onClick={() => {
                             const updatedItems = saleItems.filter((_, i) => i !== index);
-                            if (currentSale) {
-                              // Recalculate totals with updated items
-                              const newSubtotal = updatedItems.reduce((sum, item) => sum + item.totalPrice, 0);
-                              const newTotalQuantity = updatedItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-                              // Calculate porterage based on type
-                              let newPorterage = 0;
-                              if (porterageDetails.withPorterage && applyPorterage) {
-                                if (porterageType === 'fixed') {
-                                  newPorterage = parseFloat(fixedPorterageAmount) || 0;
-                                } else {
-                                  newPorterage = parseFloat(porterageDetails.porterageCharge) * newTotalQuantity;
-                                }
-                              }
-                              const newVatAmount = taxDetails.withTax ? (newSubtotal * parseFloat(taxDetails.taxPercentage)) / 100 : 0;
-                              const newTotalAmount = newSubtotal + newVatAmount + newPorterage;
+                            setSaleItems(updatedItems);
 
-                              const updatedSalePayload: BackendSalePayload = {
-                                invoice_number: currentSale.invoiceNumber,
-                                customer_id: currentSale.customerId,
-                                customer_type: currentSale.customerType,
-                                payment_status: currentSale.paymentStatus,
-                                subtotal: newSubtotal,
-                                porterage: newPorterage,
-                                vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
-                                vat_amount: newVatAmount,
-                                total_amount: newTotalAmount,
-                                vehicle_details: currentSale.vehicleDetails,
-                                gate_number: currentSale.gateNumber,
-                                notes: currentSale.notes,
-                                status: currentSale.status,
-                                date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
-                                items: updatedItems.map(item => ({
-                                  product_id: item.productId,
-                                  non_product_id: item.nonProductId,
-                                  quantity: item.quantity,
-                                  unit_price: item.unitPrice,
-                                  total_price: item.totalPrice,
-                                  notes: item.notes,
-                                  created_at: item.createdAt,
-                                })),
-                              };
-                              updateSaleMutation.mutate(updatedSalePayload);
-                              setSaleItems(updatedItems);
-                            } else {
-                              setSaleItems(updatedItems);
+                            // Save draft items to localStorage for new invoices
+                            if (!currentSale) {
+                              localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
                             }
-                            toast({ title: "Item Removed", description: "Sale item has been removed." });
+
+                            // Note: Backend update will happen when user clicks "Update Ticket" button
+                            // This prevents automatic double updates
+
+                            if (currentSale) {
+                              toast({
+                                title: "Item Removed",
+                                description: "Item removed. Remember to click 'Update Ticket' to save changes to the database."
+                              });
+                            } else {
+                              toast({ title: "Item Removed", description: "Sale item has been removed." });
+                            }
                           }}>
                             Remove
                           </Button>

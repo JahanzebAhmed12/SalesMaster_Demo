@@ -709,8 +709,8 @@ class StockMovement(db.Model):
     quantity = db.Column(db.Numeric(10, 3), nullable=False)  # Positive for additions, negative for reductions
     reference_id = db.Column(db.Integer)  # ID of the related sale, purchase, or adjustment
     reference_type = db.Column(db.String(20))  # 'sale', 'purchase', 'adjustment'
-    previous_stock = db.Column(db.Integer, nullable=False)
-    new_stock = db.Column(db.Integer, nullable=False)
+    previous_stock = db.Column(db.Numeric(10, 3), nullable=False)
+    new_stock = db.Column(db.Numeric(10, 3), nullable=False)
     remarks = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
