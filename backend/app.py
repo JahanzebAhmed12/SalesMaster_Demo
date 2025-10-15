@@ -627,10 +627,8 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             new_stock = previous_stock + quantity_change_float
             
             # Allow negative stock for sales (overselling) but warn for regular products
-            # Sale adjustments should always be allowed since they're correcting existing sales
-            if movement_type == 'sale_adjustment':
-                print(f"[DEBUG] Sale adjustment - bypassing stock validation")
-            elif new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation', 'dump', 'dump_cancellation', 'purchase', 'purchase_reversal']:
+            # Only prevent negative stock for non-sale movements (except adjustments, cancellations, dumps, and purchases)
+            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation', 'dump', 'dump_cancellation', 'purchase', 'purchase_reversal']:
                 print(f"[DEBUG] Stock validation FAILED - blocking negative stock for movement_type={movement_type}")
                 raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
             else:
@@ -1445,82 +1443,141 @@ def update_sale(id):
                         else:
                             return jsonify({"error": f"Stock restoration failed: {result}"}), 400
         elif old_status == 'finalized' and new_status == 'finalized':
-            # For finalized invoices being updated, handle quantity changes only
+            # For finalized invoices being updated, update existing stock movements instead of creating new ones
             print(f"[DEBUG] Processing finalized invoice update. Quantity changes: {quantity_changes}")
             
-            # First, remove all existing sale_adjustment movements for this sale to avoid accumulation
-            existing_adjustments = StockMovement.query.filter(
-                StockMovement.reference_id == sale.id,
-                StockMovement.reference_type == 'sale',
-                StockMovement.movement_type == 'sale_adjustment'
-            ).all()
-            
-            # Reverse the effect of existing adjustments before deleting them
-            for adj in existing_adjustments:
-                product_id = adj.product_id
-                product_type = adj.product_type
-                
-                if product_type == 'regular':
-                    product = RegularProduct.query.get(product_id)
-                else:
-                    product = NonProduct.query.get(product_id)
-                
-                if product:
-                    # Reverse the adjustment effect
-                    current_stock = safe_float(product.current_stock)
-                    product.current_stock = current_stock - safe_float(adj.quantity)
-                    print(f"[DEBUG] Reversed existing adjustment for product {product_id}: {safe_float(adj.quantity)}")
-                
-                db.session.delete(adj)
-            
-            # Now create new adjustments based on current quantity changes
+            # Update existing stock movements and adjust stock accordingly
             for key, quantity_change in quantity_changes.items():
                 product_id, non_product_id = key
                 print(f"[DEBUG] Processing change for product {key}: quantity_change={quantity_change}")
+                
                 if quantity_change != 0:  # Only process actual changes
-                    if product_id:
-                        # Regular product - adjust stock based on quantity change
-                        print(f"[DEBUG] Calling update_product_stock for product {product_id}, quantity_change={-safe_float(quantity_change)}")
+                    actual_product_id = product_id if product_id else non_product_id
+                    product_type = 'regular' if product_id else 'non'
+                    
+                    # Find existing stock movement for this product and sale
+                    existing_movement = StockMovement.query.filter(
+                        StockMovement.reference_id == sale.id,
+                        StockMovement.reference_type == 'sale',
+                        StockMovement.product_id == actual_product_id,
+                        StockMovement.product_type == product_type,
+                        StockMovement.movement_type == 'sale'
+                    ).first()
+                    
+                    if existing_movement:
+                        # Update existing movement
+                        old_quantity = safe_float(existing_movement.quantity)
+                        new_quantity = -safe_float(new_items_detailed[key])  # Negative for sales
+                        quantity_diff = new_quantity - old_quantity
+                        
+                        print(f"[DEBUG] Updating existing movement: old_qty={old_quantity}, new_qty={new_quantity}, diff={quantity_diff}")
+                        
+                        # Update the movement quantity
+                        existing_movement.quantity = new_quantity
+                        existing_movement.remarks = f"Sale invoice updated: {sale.invoice_number}"
+                        
+                        # Update product stock by the difference
+                        if product_type == 'regular':
+                            product = RegularProduct.query.get(actual_product_id)
+                        else:
+                            product = NonProduct.query.get(actual_product_id)
+                        
+                        if product:
+                            old_stock = safe_float(product.current_stock)
+                            new_stock = old_stock + quantity_diff  # Add the difference
+                            product.current_stock = new_stock
+                            existing_movement.previous_stock = float(old_stock)
+                            existing_movement.new_stock = float(new_stock)
+                            
+                            print(f"[DEBUG] Updated product {actual_product_id} stock: {old_stock} -> {new_stock} (diff: {quantity_diff})")
+                    else:
+                        # Create new movement if none exists (shouldn't happen for finalized sales, but safety check)
+                        print(f"[DEBUG] No existing movement found, creating new one for product {actual_product_id}")
                         success, result = update_product_stock(
-                            product_id=product_id,
-                            product_type='regular',
+                            product_id=actual_product_id,
+                            product_type=product_type,
                             quantity_change=-safe_float(quantity_change),  # Negative because it's a sale
-                            movement_type='sale_adjustment',
+                            movement_type='sale',
                             reference_id=sale.id,
                             reference_type='sale',
-                            remarks=f"Sale quantity adjusted: {sale.invoice_number} (total change: {quantity_change})",
+                            remarks=f"Sale invoice updated: {sale.invoice_number}",
                             user_id=user_id,
                             movement_date=sale.date
                         )
-                        print(f"[DEBUG] update_product_stock result: success={success}, result={result}")
                         if not success:
                             if 'Insufficient stock' in result:
-                                stock_warnings.append(f"Insufficient stock for product ID {product_id}: {result}")
+                                stock_warnings.append(f"Insufficient stock for product ID {actual_product_id}: {result}")
                             else:
                                 return jsonify({"error": f"Stock update failed: {result}"}), 400
-                    elif non_product_id:
-                        # Non-product - adjust stock based on quantity change
-                        print(f"[DEBUG] Calling update_product_stock for non-product {non_product_id}, quantity_change={-safe_float(quantity_change)}")
-                        success, result = update_product_stock(
-                            product_id=non_product_id,
-                            product_type='non',
-                            quantity_change=-safe_float(quantity_change),  # Negative because it's a sale
-                            movement_type='sale_adjustment',
-                            reference_id=sale.id,
-                            reference_type='sale',
-                            remarks=f"Sale quantity adjusted: {sale.invoice_number} (total change: {quantity_change})",
-                            user_id=user_id,
-                            movement_date=sale.date
-                        )
-                        print(f"[DEBUG] update_product_stock result: success={success}, result={result}")
-                        if not success:
-                            if 'Insufficient stock' in result:
-                                stock_warnings.append(f"Insufficient stock for non-product ID {non_product_id}: {result}")
-                            else:
-                                return jsonify({"error": f"Stock update failed: {result}"}), 400
+            
+            # Handle products that were completely removed from the invoice
+            for key in old_items_detailed.keys():
+                if key not in new_items_detailed:
+                    # Product was removed, restore its stock
+                    product_id, non_product_id = key
+                    actual_product_id = product_id if product_id else non_product_id
+                    product_type = 'regular' if product_id else 'non'
+                    old_quantity = old_items_detailed[key]
+                    
+                    print(f"[DEBUG] Product {key} removed from invoice, restoring stock: {old_quantity}")
+                    
+                    # Find and remove the existing stock movement
+                    existing_movement = StockMovement.query.filter(
+                        StockMovement.reference_id == sale.id,
+                        StockMovement.reference_type == 'sale',
+                        StockMovement.product_id == actual_product_id,
+                        StockMovement.product_type == product_type,
+                        StockMovement.movement_type == 'sale'
+                    ).first()
+                    
+                    if existing_movement:
+                        # Restore stock by reversing the movement
+                        if product_type == 'regular':
+                            product = RegularProduct.query.get(actual_product_id)
+                        else:
+                            product = NonProduct.query.get(actual_product_id)
+                        
+                        if product:
+                            # Restore stock (add back the quantity that was sold)
+                            restored_quantity = abs(safe_float(existing_movement.quantity))
+                            old_stock = safe_float(product.current_stock)
+                            new_stock = old_stock + restored_quantity
+                            product.current_stock = new_stock
+                            
+                            print(f"[DEBUG] Restored stock for removed product {actual_product_id}: {old_stock} -> {new_stock}")
+                        
+                        # Remove the stock movement
+                        db.session.delete(existing_movement)
+            
+            # Handle new products that were added to the invoice
+            for key in new_items_detailed.keys():
+                if key not in old_items_detailed:
+                    # New product added, create stock movement
+                    product_id, non_product_id = key
+                    actual_product_id = product_id if product_id else non_product_id
+                    product_type = 'regular' if product_id else 'non'
+                    new_quantity = new_items_detailed[key]
+                    
+                    print(f"[DEBUG] New product {key} added to invoice, creating stock movement: {new_quantity}")
+                    
+                    success, result = update_product_stock(
+                        product_id=actual_product_id,
+                        product_type=product_type,
+                        quantity_change=-safe_float(new_quantity),  # Negative because it's a sale
+                        movement_type='sale',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"New product added to sale invoice: {sale.invoice_number}",
+                        user_id=user_id,
+                        movement_date=sale.date
+                    )
+                    if not success:
+                        if 'Insufficient stock' in result:
+                            stock_warnings.append(f"Insufficient stock for new product ID {actual_product_id}: {result}")
+                        else:
+                            return jsonify({"error": f"Stock update failed: {result}"}), 400
         
-        # Clean up any duplicate stock movements for this sale before committing
-        cleanup_sale_stock_movements(sale.id)
+        # No need for cleanup since we're updating existing movements instead of creating duplicates
         
         db.session.commit()
         # Mail invoice if requested

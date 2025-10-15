@@ -70,6 +70,12 @@ export default function ProductPurchaseHistoryPage() {
     }
   }, []);
 
+  // Fetch company details
+  const { data: companyDetails } = useQuery<any>({
+    queryKey: ['/api/company-details'],
+    queryFn: () => apiRequest('GET', '/api/company-details'),
+  });
+
   const { data: purchases = [], isLoading } = useQuery<any[]>({
     queryKey: ["product-purchase-history", productId, fromDate, toDate],
     queryFn: async () => {
@@ -88,11 +94,41 @@ export default function ProductPurchaseHistoryPage() {
     if (!printContents) return;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
-      printWindow.document.write('<html><head><title>Print</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}@media print{body{margin:0;}}</style>');
+      printWindow.document.write('<html><head><title>Product Purchase History</title>');
+      printWindow.document.write('<style>');
+      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
+      printWindow.document.write('.company-header{text-align:center;margin-bottom:30px;}');
+      printWindow.document.write('.company-name{font-size:18px;font-weight:bold;margin-bottom:5px;}');
+      printWindow.document.write('.company-address{font-size:12px;margin-bottom:2px;}');
+      printWindow.document.write('.company-contact{font-size:12px;margin-bottom:2px;}');
+      printWindow.document.write('.report-title{font-size:16px;font-weight:bold;margin-bottom:10px;}');
+      printWindow.document.write('.report-details{font-size:12px;margin-bottom:20px;}');
+      printWindow.document.write('table{width:100%;border-collapse:collapse;}');
+      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
+      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
+      printWindow.document.write('.text-right{text-align:right;}');
+      printWindow.document.write('</style>');
       printWindow.document.write('</head><body>');
-      printWindow.document.write('<div style="font-size:20px;font-weight:bold;text-align:center;margin-bottom:8px;">TROPIFRUIT UK LTD</div>');
-      printWindow.document.write('<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Product Purchase History</div>');
+      
+      // Add company header
+      printWindow.document.write('<div class="company-header">');
+      printWindow.document.write(`<div class="company-name">${companyDetails?.companyName || 'Company Name'}</div>`);
+      if (companyDetails?.address1) {
+        printWindow.document.write(`<div class="company-address">${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
+      }
+      if (companyDetails?.telephone) {
+        printWindow.document.write(`<div class="company-contact">Phone: ${companyDetails.telephone}</div>`);
+      }
+      if (companyDetails?.email) {
+        printWindow.document.write(`<div class="company-contact">Email: ${companyDetails.email}</div>`);
+      }
+      printWindow.document.write('<div class="report-title">Product Purchase History</div>');
+      if (productName) {
+        printWindow.document.write(`<div class="report-details">Product: ${productName}</div>`);
+      }
+      printWindow.document.write(`<div class="report-details">Date Range: ${fromDate ? format(fromDate, 'dd/MM/yyyy') : ''} to ${toDate ? format(toDate, 'dd/MM/yyyy') : ''}</div>`);
+      printWindow.document.write('</div>');
+      
       printWindow.document.write(printContents);
       printWindow.document.write('</body></html>');
       printWindow.document.close();
@@ -257,97 +293,124 @@ export default function ProductPurchaseHistoryPage() {
 
   return (
     <PageLayout title="Product Purchase History" breadcrumb="Product Purchase History">
-      <div className="pl-0 md:pl-64 pt-6 pr-4">
-        <h1 className="text-2xl font-bold mb-4">Product Purchase History</h1>
-        <Card className="mx-auto max-w-7xl">
-          <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <CardTitle className="text-xl font-bold">
-              Product Purchase History
-              {productName && <span className="text-sm font-normal text-gray-600 block mt-1">Product: {productName}</span>}
-            </CardTitle>
-            <div className="flex gap-2 flex-wrap">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {fromDate ? format(fromDate, "PPP") : "From Date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="p-0">
-                  <Calendar mode="single" selected={fromDate} onSelect={setFromDate} initialFocus />
-                </PopoverContent>
-              </Popover>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {toDate ? format(toDate, "PPP") : "To Date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="p-0">
-                  <Calendar mode="single" selected={toDate} onSelect={setToDate} initialFocus />
-                </PopoverContent>
-              </Popover>
-              <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" /> Print</Button>
-              <Button variant="outline" onClick={handlePDF}><FileText className="mr-2 h-4 w-4" /> PDF</Button>
-              <Button variant="outline" onClick={handleExcel}><Download className="mr-2 h-4 w-4" /> Excel</Button>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col space-y-4">
+              <CardTitle className="text-xl font-bold">
+                Product Purchase History
+                {productName && <span className="text-sm font-normal text-gray-600 block mt-1">Product: {productName}</span>}
+              </CardTitle>
               
-              {/* Email Section */}
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Enter emails (comma separated)"
-                  value={emails}
-                  onChange={(e) => setEmails(e.target.value)}
-                  className="w-64"
-                  disabled={isEmailSending}
-                />
-                <Button 
-                  variant="outline" 
-                  onClick={handleEmailPDF} 
-                  className="flex items-center gap-2"
-                  disabled={isEmailSending}
-                >
-                  <Mail className="h-4 w-4" />
-                  <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
-                </Button>
+              {/* Date Controls */}
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full sm:w-[160px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {fromDate ? format(fromDate, "PPP") : "From Date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="p-0">
+                      <Calendar mode="single" selected={fromDate} onSelect={setFromDate} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full sm:w-[160px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {toDate ? format(toDate, "PPP") : "To Date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="p-0">
+                      <Calendar mode="single" selected={toDate} onSelect={setToDate} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              
+              {/* Export Controls */}
+              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={handlePrint}>
+                    <Printer className="mr-2 h-4 w-4" /> Print
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handlePDF}>
+                    <FileText className="mr-2 h-4 w-4" /> PDF
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleExcel}>
+                    <Download className="mr-2 h-4 w-4" /> Excel
+                  </Button>
+                </div>
+                
+                {/* Email Section */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full lg:w-auto">
+                  <Input
+                    placeholder="Enter emails (comma separated)"
+                    value={emails}
+                    onChange={(e) => setEmails(e.target.value)}
+                    className="w-full sm:w-64"
+                    disabled={isEmailSending}
+                  />
+                  <Button 
+                    variant="outline" 
+                    onClick={handleEmailPDF} 
+                    className="flex items-center gap-2 w-full sm:w-auto"
+                    disabled={isEmailSending}
+                    size="sm"
+                  >
+                    <Mail className="h-4 w-4" />
+                    <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="overflow-x-auto p-0">
-            <div className="min-w-full">
-              <table id="product-purchase-history-table" className="min-w-full border border-gray-200 rounded-lg text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="border-b px-4 py-2 text-left">Invoice No</th>
-                    <th className="border-b px-4 py-2 text-left">Date</th>
-                    <th className="border-b px-4 py-2 text-left">Supplier Name</th>
-                    <th className="border-b px-4 py-2 text-left">Product</th>
-                    <th className="border-b px-4 py-2 text-right">Quantity</th>
-                    <th className="border-b px-4 py-2 text-right">Unit Price</th>
-                    <th className="border-b px-4 py-2 text-right">Total</th>
+          
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table id="product-purchase-history-table" className="w-full border-collapse border border-gray-200 text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="border border-gray-200 px-3 py-2 text-left font-medium">Invoice No</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left font-medium">Date</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left font-medium">Supplier Name</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left font-medium">Product</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right font-medium">Quantity</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right font-medium">Unit Price</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right font-medium">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan={7} className="text-center py-8">Loading...</td></tr>
+                    <tr>
+                      <td colSpan={7} className="border border-gray-200 px-3 py-8 text-center text-gray-500">
+                        Loading...
+                      </td>
+                    </tr>
                   ) : purchases.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-8">No data found</td></tr>
+                    <tr>
+                      <td colSpan={7} className="border border-gray-200 px-3 py-8 text-center text-gray-500">
+                        No data found
+                      </td>
+                    </tr>
                   ) : (
                     purchases.map((row: any, idx: number) => (
                       <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="border-b px-4 py-2">
+                        <td className="border border-gray-200 px-3 py-2">
                           <Button
                             variant="link"
-                            className="p-0 text-blue-600 underline"
+                            className="p-0 h-auto text-blue-600 underline text-sm"
                             onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invoiceNo}&edit=true`, '_self')}
                           >
                             {row.invoiceNo}
                           </Button>
                         </td>
-                        <td className="border-b px-4 py-2">{row.date}</td>
-                        <td className="border-b px-4 py-2">{row.supplierName}</td>
+                        <td className="border border-gray-200 px-3 py-2">{row.date}</td>
+                        <td className="border border-gray-200 px-3 py-2">{row.supplierName}</td>
                         <td 
-                          className={`border-b px-4 py-2 ${productId ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors' : ''}`}
+                          className={`border border-gray-200 px-3 py-2 ${productId ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors' : ''}`}
                           onClick={() => productId && handleProductClick(row)}
                           title={productId ? "Click to view detailed product purchase history" : ""}
                         >
@@ -355,9 +418,9 @@ export default function ProductPurchaseHistoryPage() {
                             {row.productDescription}
                           </span>
                         </td>
-                        <td className="border-b px-4 py-2 text-right">{row.quantity}</td>
-                        <td className="border-b px-4 py-2 text-right">£{Number(row.unitPrice).toFixed(2)}</td>
-                        <td className="border-b px-4 py-2 text-right font-semibold">£{Number(row.total).toFixed(2)}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right">{row.quantity}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right">£{Number(row.unitPrice).toFixed(2)}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right font-semibold">£{Number(row.total).toFixed(2)}</td>
                       </tr>
                     ))
                   )}
