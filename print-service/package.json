@@ -1,0 +1,19 @@
+{
+  "name": "pc-print-service",
+  "version": "1.0.0",
+  "description": "Standalone PC Print Service for Mobile Print Proxy",
+  "main": "pc-print-service.js",
+  "scripts": {
+    "start": "node pc-print-service.js",
+    "test": "node test-service.js"
+  },
+  "dependencies": {
+    "node-fetch": "2.7.0",
+    "puppeteer": "19.11.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "author": "Print Service",
+  "license": "MIT"
+}

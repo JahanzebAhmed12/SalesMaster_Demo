@@ -5,7 +5,9 @@ from dotenv import load_dotenv
 from flask import make_response
 import re
 import html
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue
+
+
 from schemas import (
     SaleSchema, PurchaseSchema, RegularProductSchema, NonProductSchema, CustomerSchema, SupplierSchema,
     SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema, HolidayRequestSchema, EquipmentSchema
@@ -217,7 +219,121 @@ with app.app_context():
         print(f"Migration warning for stock_movement: {str(e)}")
         db.session.rollback()
     
+    # Create print_queue table if it doesn't exist
+    try:
+        db.session.execute(db.text("SELECT 1 FROM print_queue LIMIT 1"))
+    except Exception:
+        print("Creating print_queue table...")
+        db.create_all()
+        print("Successfully created print_queue table")
+    
     create_admin_user()  # Create admin user if it doesn't exist
+
+# Print Queue API Routes for Mobile Print Proxy
+@app.route('/api/print-queue/add', methods=['POST'])
+@jwt_required()
+def add_print_job():
+    """Add a print job to the queue - Only for mobile devices"""
+    data = request.get_json()
+    user_id = get_jwt_identity()
+    
+    try:
+        # Check if request is from mobile device
+        user_agent = request.headers.get('User-Agent', '').lower()
+        is_mobile = any(mobile in user_agent for mobile in ['mobile', 'android', 'iphone', 'ipad'])
+        
+        if not is_mobile:
+            # For desktop, return error - they should use direct printing
+            return jsonify({
+                'error': 'Print proxy is only available for mobile devices. Please use direct printing on desktop.'
+            }), 400
+        
+        job_id = str(uuid.uuid4())
+        
+        # Create print job
+        print_job = PrintQueue(
+            id=job_id,
+            invoice_number=data.get('invoice_number'),
+            print_type=data.get('print_type', 'dot_matrix'),
+            print_data=json.dumps(data.get('print_data')),
+            created_by=user_id,
+            device_type='mobile'
+        )
+        
+        db.session.add(print_job)
+        db.session.commit()
+        
+        return jsonify({
+            'job_id': job_id,
+            'status': 'queued',
+            'message': 'Print job added to queue successfully'
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to add print job: {str(e)}'}), 500
+
+@app.route('/api/print-queue/pending', methods=['GET'])
+def get_pending_print_jobs():
+    """Get pending print jobs for PC Print Service"""
+    try:
+        # Only return jobs that are pending and from mobile devices
+        jobs = PrintQueue.query.filter(
+            PrintQueue.status == 'pending',
+            PrintQueue.device_type == 'mobile'
+        ).order_by(PrintQueue.created_at.asc()).all()
+        
+        return jsonify([{
+            'id': job.id,
+            'invoice_number': job.invoice_number,
+            'print_type': job.print_type,
+            'print_data': json.loads(job.print_data),
+            'created_at': job.created_at.isoformat()
+        } for job in jobs]), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get pending jobs: {str(e)}'}), 500
+
+@app.route('/api/print-queue/<job_id>/status', methods=['POST'])
+def update_print_job_status(job_id):
+    """Update print job status"""
+    data = request.get_json()
+    
+    try:
+        job = PrintQueue.query.get(job_id)
+        if not job:
+            return jsonify({'error': 'Print job not found'}), 404
+        
+        job.status = data.get('status')
+        job.error_message = data.get('error_message')
+        
+        if job.status in ['completed', 'failed']:
+            job.completed_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({'success': True}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to update job status: {str(e)}'}), 500
+
+@app.route('/api/print-queue/<job_id>/status', methods=['GET'])
+def get_print_job_status(job_id):
+    """Get print job status for mobile to check"""
+    try:
+        job = PrintQueue.query.get(job_id)
+        if not job:
+            return jsonify({'error': 'Print job not found'}), 404
+        
+        return jsonify({
+            'status': job.status,
+            'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+            'error_message': job.error_message
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get job status: {str(e)}'}), 500
 
 # Configure Flask-JWT-Extended
 app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY', 'super-secret-key')  # Use environment variable
@@ -15088,6 +15204,144 @@ def get_employee_entitlements():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ===== MOBILE PRINT PROXY ENDPOINTS =====
+
+@app.route('/api/print-queue/add', methods=['POST'])
+@jwt_required()
+def add_print_job():
+    """Add a print job to the queue (mobile only)"""
+    try:
+        data = request.get_json()
+        user_id = get_jwt_identity()
+        
+        # Validate required fields
+        if not data.get('invoice_number'):
+            return jsonify({'error': 'Invoice number is required'}), 400
+        
+        if not data.get('print_data'):
+            return jsonify({'error': 'Print data is required'}), 400
+        
+        # Create print job
+        job = PrintQueue(
+            invoice_number=data['invoice_number'],
+            print_type=data.get('print_type', 'dot_matrix'),
+            print_data=json.dumps(data['print_data']),
+            created_by=user_id,
+            status='pending'
+        )
+        
+        db.session.add(job)
+        db.session.commit()
+        
+        return jsonify({
+            'job_id': job.id,
+            'status': 'queued',
+            'message': f'Print job for invoice {data["invoice_number"]} queued successfully'
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to queue print job: {str(e)}'}), 500
+
+@app.route('/api/print-queue/pending', methods=['GET'])
+def get_pending_jobs():
+    """Get pending print jobs (for PC print service)"""
+    try:
+        jobs = PrintQueue.query.filter_by(status='pending').order_by(PrintQueue.created_at.asc()).all()
+        
+        job_list = []
+        for job in jobs:
+            job_list.append({
+                'id': job.id,
+                'invoice_number': job.invoice_number,
+                'print_type': job.print_type,
+                'print_data': json.loads(job.print_data),
+                'created_at': job.created_at.isoformat()
+            })
+        
+        return jsonify(job_list), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get pending jobs: {str(e)}'}), 500
+
+@app.route('/api/print-queue/<job_id>/status', methods=['POST'])
+def update_job_status(job_id):
+    """Update print job status (for PC print service)"""
+    try:
+        data = request.get_json()
+        status = data.get('status')
+        error_message = data.get('error_message')
+        
+        if status not in ['pending', 'printing', 'completed', 'failed']:
+            return jsonify({'error': 'Invalid status'}), 400
+        
+        job = PrintQueue.query.get(job_id)
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        job.status = status
+        if error_message:
+            job.error_message = error_message
+        
+        if status in ['completed', 'failed']:
+            job.completed_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({'success': True, 'status': status}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to update job status: {str(e)}'}), 500
+
+@app.route('/api/print-queue/<job_id>/status', methods=['GET'])
+@jwt_required()
+def get_job_status(job_id):
+    """Get print job status (for mobile to check)"""
+    try:
+        job = PrintQueue.query.get(job_id)
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        return jsonify({
+            'id': job.id,
+            'invoice_number': job.invoice_number,
+            'status': job.status,
+            'created_at': job.created_at.isoformat(),
+            'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+            'error_message': job.error_message
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get job status: {str(e)}'}), 500
+
+@app.route('/api/print-queue/history', methods=['GET'])
+@jwt_required()
+def get_print_history():
+    """Get print job history (for admin/debugging)"""
+    try:
+        user_id = get_jwt_identity()
+        
+        # Get recent jobs (last 50)
+        jobs = PrintQueue.query.order_by(PrintQueue.created_at.desc()).limit(50).all()
+        
+        job_list = []
+        for job in jobs:
+            job_list.append({
+                'id': job.id,
+                'invoice_number': job.invoice_number,
+                'print_type': job.print_type,
+                'status': job.status,
+                'created_at': job.created_at.isoformat(),
+                'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+                'error_message': job.error_message
+            })
+        
+        return jsonify(job_list), 200
+        
+    except Exception as e:
+        return jsonify({'error': f'Failed to get print history: {str(e)}'}), 500
 
 if __name__ == '__main__':
     with app.app_context():

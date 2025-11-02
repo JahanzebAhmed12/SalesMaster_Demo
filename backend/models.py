@@ -1326,3 +1326,35 @@ class Equipment(db.Model):
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
+
+class PrintQueue(db.Model):
+    """Print Queue Model for Mobile Print Proxy - Only for mobile devices"""
+    __tablename__ = 'print_queue'
+    
+    id = db.Column(db.String(36), primary_key=True)
+    invoice_number = db.Column(db.String(50), nullable=False)
+    print_type = db.Column(db.String(20), default='dot_matrix')
+    status = db.Column(db.String(20), default='pending')  # pending, printing, completed, failed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    print_data = db.Column(db.Text, nullable=False)  # JSON string
+    error_message = db.Column(db.Text, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    device_type = db.Column(db.String(20), default='mobile')  # mobile, desktop
+    
+    # Relationships
+    user = db.relationship('User', backref='print_jobs', foreign_keys=[created_by])
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'invoiceNumber': self.invoice_number,
+            'printType': self.print_type,
+            'status': self.status,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'completedAt': self.completed_at.isoformat() if self.completed_at else None,
+            'printData': self.print_data,
+            'errorMessage': self.error_message,
+            'createdBy': self.created_by,
+            'deviceType': self.device_type
+        }

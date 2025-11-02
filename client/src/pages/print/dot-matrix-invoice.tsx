@@ -113,65 +113,108 @@ export default function DotMatrixInvoicePrintPage() {
     fetchInvoice();
   }, [invoiceNumber]);
 
+  // Mobile print proxy handler
+  const handleMobilePrint = async () => {
+    try {
+      console.log('📱 Sending print job to office printer...');
+      
+      const response = await apiRequest('POST', '/api/print-queue/add', {
+        invoice_number: invoiceNumber,
+        print_type: 'dot_matrix',
+        print_data: {
+          sale: sale,
+          items: items,
+          customer: customer
+        }
+      });
+      
+      alert(`✅ Print job sent to office printer!\nJob ID: ${response.job_id}\n\nYour invoice will be printed shortly.`);
+      
+      // Optional: Poll for completion status
+      if (response.job_id) {
+        setTimeout(() => checkPrintStatus(response.job_id), 10000);
+      }
+      
+    } catch (error) {
+      console.error('❌ Print job failed:', error);
+      alert('❌ Failed to send print job to office printer.\nPlease try again or contact support.');
+    }
+  };
+
+  // Optional: Check print status
+  const checkPrintStatus = async (jobId: string) => {
+    try {
+      const response = await apiRequest('GET', `/api/print-queue/${jobId}/status`);
+      if (response.status === 'completed') {
+        alert('✅ Invoice printed successfully at office printer!');
+      } else if (response.status === 'failed') {
+        alert(`❌ Print job failed: ${response.error_message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.log('Could not check print status');
+    }
+  };
+
   const handlePrint = async () => {
     console.log('Print button clicked');
 
-    // Set viewport for mobile printing to prevent scaling
+    // Mobile devices use print proxy, desktop uses direct print
     if (isMobile) {
-      // Add or update viewport meta tag for printing
-      let viewport = document.querySelector('meta[name="viewport"]');
-      const originalViewport = viewport?.getAttribute('content') || '';
-      
-      if (viewport) {
-        viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
-      } else {
-        viewport = document.createElement('meta');
-        viewport.setAttribute('name', 'viewport');
-        viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
-        document.head.appendChild(viewport);
-      }
+      console.log('📱 Mobile detected - using print proxy...');
+      await handleMobilePrint();
+      return;
+    }
 
-      // Add print-specific styles for mobile
-      const printStyle = document.createElement('style');
-      printStyle.id = 'mobile-print-fix';
-      printStyle.textContent = `
-        @media print {
-          html, body {
-            zoom: 1 !important;
-            transform: scale(1) !important;
-            -webkit-transform: scale(1) !important;
-            -webkit-text-size-adjust: none !important;
-            -ms-text-size-adjust: none !important;
-            text-size-adjust: none !important;
-          }
-        }
-      `;
-      document.head.appendChild(printStyle);
-
-      // Print after a short delay to ensure styles are applied
-      setTimeout(() => {
-        console.log('Using mobile-optimized browser print...');
-        setIsServerPDF(false);
-        window.print();
-        
-        // Restore original viewport after printing
-        setTimeout(() => {
-          if (originalViewport) {
-            viewport?.setAttribute('content', originalViewport);
-          }
-          // Remove the temporary print style
-          const tempStyle = document.getElementById('mobile-print-fix');
-          if (tempStyle) {
-            tempStyle.remove();
-          }
-        }, 1000);
-      }, 100);
+    // Desktop - use normal browser print with enhanced CSS
+    console.log('🖥️ Desktop detected - using direct browser print...');
+    
+    // Set viewport for better printing
+    let viewport = document.querySelector('meta[name="viewport"]');
+    const originalViewport = viewport?.getAttribute('content') || '';
+    
+    if (viewport) {
+      viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
     } else {
-      // Desktop - use normal browser print
-      console.log('Using desktop browser print...');
+      viewport = document.createElement('meta');
+      viewport.setAttribute('name', 'viewport');
+      viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
+      document.head.appendChild(viewport);
+    }
+
+    // Add print-specific styles
+    const printStyle = document.createElement('style');
+    printStyle.id = 'desktop-print-fix';
+    printStyle.textContent = `
+      @media print {
+        html, body {
+          zoom: 1 !important;
+          transform: scale(1) !important;
+          -webkit-transform: scale(1) !important;
+          -webkit-text-size-adjust: none !important;
+          -ms-text-size-adjust: none !important;
+          text-size-adjust: none !important;
+        }
+      }
+    `;
+    document.head.appendChild(printStyle);
+
+    // Print after a short delay to ensure styles are applied
+    setTimeout(() => {
       setIsServerPDF(false);
       window.print();
-    }
+      
+      // Restore original viewport after printing
+      setTimeout(() => {
+        if (originalViewport) {
+          viewport?.setAttribute('content', originalViewport);
+        }
+        // Remove the temporary print style
+        const tempStyle = document.getElementById('desktop-print-fix');
+        if (tempStyle) {
+          tempStyle.remove();
+        }
+      }, 1000);
+    }, 100);
   };
 
   const handleServerPDF = async () => {
@@ -627,7 +670,7 @@ export default function DotMatrixInvoicePrintPage() {
             onClick={handlePrint}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {isMobile ? 'Mobile Print (Fixed)' : 'Browser Print'}
+            {isMobile ? '📱 Send to Office Printer' : '🖥️ Direct Print'}
           </button>
           <button
             onClick={handleServerPDF}
