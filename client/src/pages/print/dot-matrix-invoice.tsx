@@ -116,10 +116,62 @@ export default function DotMatrixInvoicePrintPage() {
   const handlePrint = async () => {
     console.log('Print button clicked');
 
-    // Always use browser print for "Print Invoice" button
-    console.log('Using browser print...');
-    setIsServerPDF(false); // Ensure normal browser print
-    window.print();
+    // Set viewport for mobile printing to prevent scaling
+    if (isMobile) {
+      // Add or update viewport meta tag for printing
+      let viewport = document.querySelector('meta[name="viewport"]');
+      const originalViewport = viewport?.getAttribute('content') || '';
+      
+      if (viewport) {
+        viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
+      } else {
+        viewport = document.createElement('meta');
+        viewport.setAttribute('name', 'viewport');
+        viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
+        document.head.appendChild(viewport);
+      }
+
+      // Add print-specific styles for mobile
+      const printStyle = document.createElement('style');
+      printStyle.id = 'mobile-print-fix';
+      printStyle.textContent = `
+        @media print {
+          html, body {
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
+            -webkit-text-size-adjust: none !important;
+            -ms-text-size-adjust: none !important;
+            text-size-adjust: none !important;
+          }
+        }
+      `;
+      document.head.appendChild(printStyle);
+
+      // Print after a short delay to ensure styles are applied
+      setTimeout(() => {
+        console.log('Using mobile-optimized browser print...');
+        setIsServerPDF(false);
+        window.print();
+        
+        // Restore original viewport after printing
+        setTimeout(() => {
+          if (originalViewport) {
+            viewport?.setAttribute('content', originalViewport);
+          }
+          // Remove the temporary print style
+          const tempStyle = document.getElementById('mobile-print-fix');
+          if (tempStyle) {
+            tempStyle.remove();
+          }
+        }, 1000);
+      }, 100);
+    } else {
+      // Desktop - use normal browser print
+      console.log('Using desktop browser print...');
+      setIsServerPDF(false);
+      window.print();
+    }
   };
 
   const handleServerPDF = async () => {
@@ -311,6 +363,11 @@ export default function DotMatrixInvoicePrintPage() {
   return (
     <div className="min-h-screen">
       <style>{`
+        /* Force exact dimensions and prevent scaling */
+        * {
+          box-sizing: border-box !important;
+        }
+        
         /* PC Print Styles - Optimized for dot matrix printing */
         @media print and (min-device-width: 769px) {
           @page { 
@@ -329,10 +386,16 @@ export default function DotMatrixInvoicePrintPage() {
             print-color-adjust: exact;
             overflow: visible !important;
             font-family: "Courier New", "Courier", monospace !important;
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
           }
           .print-content {
             margin: 0 !important;
             padding: 0 !important;
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
           }
           .dot-matrix-print { 
             background: white !important; 
@@ -349,6 +412,9 @@ export default function DotMatrixInvoicePrintPage() {
             position: relative !important;
             display: block !important;
             font-family: "Courier New", "Courier", monospace !important;
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
@@ -357,35 +423,73 @@ export default function DotMatrixInvoicePrintPage() {
             font-family: "Courier New", "Courier", monospace !important;
             color: black !important;
             background: transparent !important;
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
           }
         }
         
-        /* Mobile PDF Styles - Changed font size to 10pt */
-        @media print and (max-device-width: 768px), 
-               screen and (max-device-width: 768px) {
+        /* Mobile Print Styles - ANTI-SCALING FIXES */
+        @media print and (max-device-width: 768px) {
           @page { 
             size: 186mm 200mm; 
-            margin: 0;
-            padding: 0;
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          html, body { 
+          html {
             margin: 0 !important; 
             padding: 0 !important;
             width: 186mm !important;
             height: auto !important;
             min-height: unset !important;
             max-height: unset !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
             overflow: visible !important;
+            font-family: "Courier New", "Courier", monospace !important;
+            /* CRITICAL: Prevent mobile scaling */
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
+            -webkit-text-size-adjust: 100% !important;
+            -ms-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
+          }
+          body { 
+            margin: 0 !important; 
+            padding: 0 !important;
+            width: 186mm !important;
+            height: auto !important;
+            min-height: unset !important;
+            max-height: unset !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            overflow: visible !important;
+            font-family: "Courier New", "Courier", monospace !important;
+            /* CRITICAL: Prevent mobile scaling */
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
+            -webkit-text-size-adjust: 100% !important;
+            -ms-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
           }
           .print-content {
             margin: 0 !important;
             padding: 0 !important;
+            width: 186mm !important;
+            /* CRITICAL: Prevent mobile scaling */
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
+            -webkit-text-size-adjust: 100% !important;
+            -ms-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
           }
           .dot-matrix-print { 
-            background: none !important; 
+            background: white !important; 
             box-shadow: none !important;
+            border: none !important;
             margin: 0 !important;
             padding: 0mm !important;
             width: 186mm !important;
@@ -396,23 +500,67 @@ export default function DotMatrixInvoicePrintPage() {
             overflow: hidden !important;
             position: relative !important;
             display: block !important;
+            font-family: "Courier New", "Courier", monospace !important;
+            /* CRITICAL: Prevent mobile scaling */
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
+            -webkit-text-size-adjust: 100% !important;
+            -ms-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
           }
+          .field-text {
+            font-family: "Courier New", "Courier", monospace !important;
+            color: black !important;
+            background: transparent !important;
+            /* CRITICAL: Prevent mobile scaling */
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
+            -webkit-text-size-adjust: 100% !important;
+            -ms-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
+          }
         }
         
-        /* Server PDF specific styles - Changed font size to 10pt */
+        /* Mobile Screen Styles - for preview */
+        @media screen and (max-device-width: 768px) {
+          html, body {
+            -webkit-text-size-adjust: 100% !important;
+            -ms-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
+          }
+          .dot-matrix-print {
+            border: 1px solid #ddd;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            /* Prevent scaling in preview too */
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
+          }
+        }
+        
+        /* Server PDF specific styles */
         .server-pdf-mode .dot-matrix-print {
           width: 186mm !important;
           height: 200mm !important;
           padding: 0mm !important;
           font-size: 10pt !important;
+          zoom: 1 !important;
+          transform: scale(1) !important;
+          -webkit-transform: scale(1) !important;
         }
         
         .server-pdf-mode .field-text {
           font-size: 10pt !important;
           line-height: 1 !important;
+          zoom: 1 !important;
+          transform: scale(1) !important;
+          -webkit-transform: scale(1) !important;
         }
         
         /* Common print styles */
@@ -422,10 +570,17 @@ export default function DotMatrixInvoicePrintPage() {
             height: auto !important;
             margin: 0 !important;
             padding: 0 !important;
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
           }
           * {
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            zoom: 1 !important;
+            -webkit-text-size-adjust: 100% !important;
+            -ms-text-size-adjust: 100% !important;
+            text-size-adjust: 100% !important;
           }
           .print\\:hidden {
             display: none !important;
@@ -447,6 +602,9 @@ export default function DotMatrixInvoicePrintPage() {
             position: relative !important;
             margin: 0 !important;
             padding: 0 !important;
+            zoom: 1 !important;
+            transform: scale(1) !important;
+            -webkit-transform: scale(1) !important;
           }
         }
         
@@ -469,7 +627,7 @@ export default function DotMatrixInvoicePrintPage() {
             onClick={handlePrint}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            Browser Print
+            {isMobile ? 'Mobile Print (Fixed)' : 'Browser Print'}
           </button>
           <button
             onClick={handleServerPDF}
@@ -477,12 +635,71 @@ export default function DotMatrixInvoicePrintPage() {
           >
             {isMobile ? 'Generate PDF & Print' : 'Server PDF Print'}
           </button>
+          {isMobile && (
+            <button
+              onClick={() => {
+                // Create a standalone HTML file for mobile download
+                const htmlContent = `
+                  <!DOCTYPE html>
+                  <html>
+                  <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
+                    <title>Invoice ${invoiceNumber}</title>
+                    <style>
+                      @page { size: 186mm 200mm; margin: 0; }
+                      * { 
+                        box-sizing: border-box; 
+                        zoom: 1 !important;
+                        transform: scale(1) !important;
+                        -webkit-transform: scale(1) !important;
+                        -webkit-text-size-adjust: 100% !important;
+                      }
+                      html, body { 
+                        margin: 0; padding: 0; 
+                        width: 186mm; height: 200mm;
+                        font-family: "Courier New", monospace;
+                        zoom: 1 !important;
+                      }
+                      .dot-matrix-print { 
+                        position: relative; width: 186mm; height: 200mm; 
+                        margin: 0; padding: 0; overflow: hidden;
+                        zoom: 1 !important;
+                      }
+                      .field-text { 
+                        position: absolute; 
+                        font-family: "Courier New", monospace; 
+                        font-size: 10pt; line-height: 1;
+                        zoom: 1 !important;
+                      }
+                    </style>
+                  </head>
+                  <body>
+                    ${document.querySelector('.dot-matrix-print')?.outerHTML || ''}
+                  </body>
+                  </html>
+                `;
+                
+                const blob = new Blob([htmlContent], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `invoice-${invoiceNumber}.html`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                alert('HTML file downloaded. Open it in your browser and print with custom size 186mm x 200mm');
+              }}
+              className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              Download HTML
+            </button>
+          )}
           <button
             onClick={() => {
-              // Force download mode
-              const originalHandler = handleServerPDF;
               handleServerPDF().catch(() => {
-                // If server PDF fails, create a simple download of the current page
                 console.log('Server PDF failed, creating browser-based download...');
                 const printWindow = window.open('', '_blank');
                 if (printWindow) {

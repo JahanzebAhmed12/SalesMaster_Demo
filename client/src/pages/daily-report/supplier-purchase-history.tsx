@@ -91,66 +91,90 @@ export default function SupplierPurchaseHistoryPage() {
 
   return (
     <PageLayout title="Supplier Purchase History" breadcrumb="Supplier Purchase History">
-      <div className="pl-0 md:pl-64 pt-6 pr-4">
-        <h1 className="text-2xl font-bold mb-4">Supplier Purchase History</h1>
-        <Card className="mx-auto max-w-7xl">
-          <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <CardTitle className="text-xl font-bold">Supplier Purchase History</CardTitle>
-            <div className="flex gap-2 flex-wrap">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {fromDate ? format(fromDate, "PPP") : "From Date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="p-0">
-                  <Calendar mode="single" selected={fromDate} onSelect={setFromDate} initialFocus />
-                </PopoverContent>
-              </Popover>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-[160px] justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {toDate ? format(toDate, "PPP") : "To Date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="p-0">
-                  <Calendar mode="single" selected={toDate} onSelect={setToDate} initialFocus />
-                </PopoverContent>
-              </Popover>
-              <Button variant="outline" onClick={handlePrint}><Printer className="mr-2 h-4 w-4" /> Print</Button>
-              <Button variant="outline" onClick={handlePDF}><FileText className="mr-2 h-4 w-4" /> PDF</Button>
-              <Button variant="outline" onClick={handleExcel}><Download className="mr-2 h-4 w-4" /> Excel</Button>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-col space-y-4">
+              <CardTitle className="text-xl font-bold">Supplier Purchase History</CardTitle>
+              
+              {/* Date Controls */}
+              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full sm:w-[160px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {fromDate ? format(fromDate, "PPP") : "From Date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="p-0">
+                      <Calendar mode="single" selected={fromDate} onSelect={setFromDate} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full sm:w-[160px] justify-start text-left font-normal">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {toDate ? format(toDate, "PPP") : "To Date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="p-0">
+                      <Calendar mode="single" selected={toDate} onSelect={setToDate} initialFocus />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              
+              {/* Export Controls */}
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={handlePrint}>
+                  <Printer className="mr-2 h-4 w-4" /> Print
+                </Button>
+                <Button variant="outline" size="sm" onClick={handlePDF}>
+                  <FileText className="mr-2 h-4 w-4" /> PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExcel}>
+                  <Download className="mr-2 h-4 w-4" /> Excel
+                </Button>
+              </div>
             </div>
           </CardHeader>
-          <CardContent className="overflow-x-auto p-0">
-            <div className="min-w-full">
-              <table id="supplier-purchase-history-table" className="min-w-full border border-gray-200 rounded-lg text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="border-b px-4 py-2 text-left">Invoice No</th>
-                    <th className="border-b px-4 py-2 text-left">Date</th>
-                    <th className="border-b px-4 py-2 text-left">Product</th>
-                    <th className="border-b px-4 py-2 text-right">Quantity</th>
-                    <th className="border-b px-4 py-2 text-right">Unit Price</th>
-                    <th className="border-b px-4 py-2 text-right">Total</th>
+          
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table id="supplier-purchase-history-table" className="w-full border-collapse border border-gray-200 text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="border border-gray-200 px-3 py-2 text-left font-medium">Invoice No</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left font-medium">Date</th>
+                    <th className="border border-gray-200 px-3 py-2 text-left font-medium">Product</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right font-medium">Quantity</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right font-medium">Unit Price</th>
+                    <th className="border border-gray-200 px-3 py-2 text-right font-medium">Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    <tr><td colSpan={6} className="text-center py-8">Loading...</td></tr>
+                    <tr>
+                      <td colSpan={6} className="border border-gray-200 px-3 py-8 text-center text-gray-500">
+                        Loading...
+                      </td>
+                    </tr>
                   ) : purchases.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-8">No data found</td></tr>
+                    <tr>
+                      <td colSpan={6} className="border border-gray-200 px-3 py-8 text-center text-gray-500">
+                        No data found
+                      </td>
+                    </tr>
                   ) : (
                     purchases.map((row: any, idx: number) => (
                       <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="border-b px-4 py-2">{row.invoiceNo}</td>
-                        <td className="border-b px-4 py-2">{row.date}</td>
-                        <td className="border-b px-4 py-2">{row.productDescription}</td>
-                        <td className="border-b px-4 py-2 text-right">{row.quantity}</td>
-                        <td className="border-b px-4 py-2 text-right">£{Number(row.unitPrice).toFixed(2)}</td>
-                        <td className="border-b px-4 py-2 text-right font-semibold">£{Number(row.total).toFixed(2)}</td>
+                        <td className="border border-gray-200 px-3 py-2">{row.invoiceNo}</td>
+                        <td className="border border-gray-200 px-3 py-2">{row.date}</td>
+                        <td className="border border-gray-200 px-3 py-2">{row.productDescription}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right">{row.quantity}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right">£{Number(row.unitPrice).toFixed(2)}</td>
+                        <td className="border border-gray-200 px-3 py-2 text-right font-semibold">£{Number(row.total).toFixed(2)}</td>
                       </tr>
                     ))
                   )}

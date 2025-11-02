@@ -194,7 +194,7 @@ export default function DailyBookPurchase() {
 
   const SortableHeader = ({ label, sortKey }: { label: string; sortKey: string }) => (
     <div 
-      className="flex items-center cursor-pointer hover:text-primary"
+      className="flex items-center justify-center cursor-pointer hover:text-primary"
       onClick={() => requestSort(sortKey)}
     >
       {label}
@@ -531,7 +531,9 @@ export default function DailyBookPurchase() {
                     <TableHead>Date</TableHead>
                     <TableHead>Supplier</TableHead>
                     <TableHead className="text-center">
-                      <SortableHeader label="Inv.No" sortKey="invNo" />
+                      <div className="flex justify-center">
+                        <SortableHeader label="Inv.No" sortKey="invNo" />
+                      </div>
                     </TableHead>
                     <TableHead className="text-center">Invoice Amt</TableHead>
                   </TableRow>
@@ -565,17 +567,19 @@ export default function DailyBookPurchase() {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
-                            {(!isPastDate(item.date) || canEditBackdate) ? (
-                              <Button
-                                variant="link"
-                                className="p-0 text-blue-600 underline"
-                                onClick={() => navigate(`/data-entry/purchase-invoice?purchaseId=${item.invNo}&edit=true`)}
-                              >
-                                {item.invNo}
-                              </Button>
-                            ) : (
-                              <span className="text-gray-500">{item.invNo}</span>
-                            )}
+                            <div className="flex justify-center">
+                              {(!isPastDate(item.date) || canEditBackdate) ? (
+                                <Button
+                                  variant="link"
+                                  className="p-0 text-blue-600 underline"
+                                  onClick={() => navigate(`/data-entry/purchase-invoice?purchaseId=${item.invNo}&edit=true`)}
+                                >
+                                  {item.invNo}
+                                </Button>
+                              ) : (
+                                <span className="text-gray-500">{item.invNo}</span>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="text-center">£{item.invoiceAmt.toFixed(2)}</TableCell>
                         </TableRow>
