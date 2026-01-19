@@ -1,24 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
-// Dashboard page content without layout wrapper
-import SalesPurchaseChart from "@/components/charts/sales-purchase-chart";
-import ProfitTrendChart from "@/components/charts/profit-trend-chart";
-import { DollarSign, ShoppingCart, Percent, Package, TrendingUp, TrendingDown, AlertTriangle, Calendar, User, Settings } from "lucide-react";
+import { TrendingUp, AlertTriangle, Calendar, User, Settings } from "lucide-react";
 import React from "react";
 import { useAuth } from "@/lib/auth";
 import { useBusinessDate } from "@/hooks/useBusinessDate";
 
 export default function Dashboard() {
-  const [range, setRange] = React.useState("7days");
-  const [profitRange, setProfitRange] = React.useState("month");
-  const [showProfit, setShowProfit] = React.useState(true);
   const { user } = useAuth();
   const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
 
@@ -31,16 +22,6 @@ export default function Dashboard() {
   const [documentsPerPage, setDocumentsPerPage] = React.useState(5);
   const [equipmentPage, setEquipmentPage] = React.useState(1);
   const [equipmentPerPage, setEquipmentPerPage] = React.useState(5);
-
-  const { data: stats, isLoading: statsLoading } = useQuery({
-    queryKey: ["/api/dashboard/stats"],
-    queryFn: () => apiRequest("GET", "/api/dashboard/stats")
-  });
-
-  const { data: chartData, isLoading: chartLoading } = useQuery({
-    queryKey: ["/api/dashboard/charts", range, profitRange],
-    queryFn: () => apiRequest("GET", `/api/dashboard/charts?range=${range}&profitRange=${profitRange}`)
-  });
 
   // Fetch all employee documents
   const { data: allEmployees, isLoading: employeesLoading } = useQuery({
@@ -333,21 +314,11 @@ export default function Dashboard() {
     [processedEquipment, equipmentPage, equipmentPerPage]
   );
 
-  React.useEffect(() => {
-    const getApiUrl = (endpoint: string) => {
-      return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
-    };
-    
-    fetch(getApiUrl("/api/settings"))
-      .then(res => res.json())
-      .then(settings => setShowProfit(settings.showProfit !== false));
-  }, []);
-
-  if (statsLoading || chartLoading) {
+  if (employeesLoading || allDocsLoading || equipmentLoading || holidayLoading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-32 w-full" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-32" />
           ))}
@@ -371,303 +342,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 1. Employees Currently on Holiday */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <User className="text-green-600 h-5 w-5" />
-              <CardTitle>Employees Currently on Holiday</CardTitle>
-              <Badge variant="secondary" className="bg-green-100 text-green-800">
-                {employeesOnHoliday.length} {employeesOnHoliday.length === 1 ? 'Employee' : 'Employees'}
-              </Badge>
-              {!isLoadingBusinessDate && (
-                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span>As of: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {holidayLoading || isLoadingBusinessDate ? (
-                <div className="flex justify-center items-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
-                  <span className="ml-2 text-gray-500">Loading holiday information...</span>
-                </div>
-              ) : paginatedHolidayEmployees.data.length > 0 ? (
-                <>
-                  {paginatedHolidayEmployees.data.map((request: any) => (
-                    <div 
-                      key={request.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-green-50 border-green-200"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-full bg-green-100">
-                          <User className="h-4 w-4 text-green-600" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{request.employeeName}</p>
-                          <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
-                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
-                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                            <span>On Holiday</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
-                          <Calendar className="h-4 w-4" />
-                          <span>
-                            {new Date(request.lastDateAtWork).toLocaleDateString()} - {new Date(request.returnDateToWork).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium text-green-600">
-                          {request.daysUntilReturn === 0 
-                            ? 'Returns today' 
-                            : request.daysUntilReturn === 1 
-                              ? 'Returns tomorrow'
-                              : `Returns in ${request.daysUntilReturn} days`
-                          }
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {request.totalDaysRequested} days total
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                  {paginatedHolidayEmployees.totalPages > 1 && (
-                    <div className="mt-4">
-                      <Pagination
-                        currentPage={holidayCurrentPage}
-                        totalPages={paginatedHolidayEmployees.totalPages}
-                        totalItems={paginatedHolidayEmployees.totalItems}
-                        itemsPerPage={holidayItemsPerPage}
-                        onPageChange={setHolidayCurrentPage}
-                        onItemsPerPageChange={(newSize) => {
-                          setHolidayItemsPerPage(newSize);
-                          setHolidayCurrentPage(1);
-                        }}
-                        itemsPerPageOptions={[5, 10, 15, 20]}
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-8">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <User className="h-6 w-6 text-gray-400" />
-                  </div>
-                  <p className="text-gray-500 font-medium">No employees currently on holiday</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Based on business date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 2. Holiday Requests Overview */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="text-blue-600 h-5 w-5" />
-              <CardTitle>Holiday Requests</CardTitle>
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                {allGrantedRequests.length} Granted
-              </Badge>
-              {!isLoadingBusinessDate && (
-                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                  <span>Using Business Date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
-                </div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {holidayLoading ? (
-                <div className="flex justify-center items-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                  <span className="ml-2 text-gray-500">Loading holiday requests...</span>
-                </div>
-              ) : paginatedHolidayRequests.data.length > 0 ? (
-                <>
-                  {paginatedHolidayRequests.data.map((request: any) => {
-                    const lastWorkDate = new Date(request.lastDateAtWork);
-                    const returnDate = new Date(request.returnDateToWork);
-                    const today = businessDate ? new Date(businessDate) : new Date();
-                    today.setHours(0, 0, 0, 0);
-                    
-                    // Determine status relative to business date
-                    let statusColor = 'bg-gray-50 border-gray-200';
-                    let statusText = 'Scheduled';
-                    
-                    if (today > lastWorkDate && today < returnDate) {
-                      statusColor = 'bg-green-50 border-green-200';
-                      statusText = 'Currently on Holiday';
-                    } else if (today >= returnDate) {
-                      statusColor = 'bg-blue-50 border-blue-200';
-                      statusText = 'Completed';
-                    } else if (today <= lastWorkDate) {
-                      statusColor = 'bg-yellow-50 border-yellow-200';
-                      statusText = 'Upcoming';
-                    }
-                    
-                    return (
-                      <div key={request.id} className={`p-3 rounded-lg border ${statusColor}`}>
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium text-gray-900">{request.employeeName}</p>
-                            <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
-                          </div>
-                          <div className="text-right">
-                            <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
-                              <Calendar className="h-4 w-4" />
-                              <span>
-                                {lastWorkDate.toLocaleDateString()} - {returnDate.toLocaleDateString()}
-                              </span>
-                            </div>
-                            <p className="text-xs font-medium text-gray-700">
-                              {statusText} • {request.totalDaysRequested} days
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {paginatedHolidayRequests.totalPages > 1 && (
-                    <div className="mt-4">
-                      <Pagination
-                        currentPage={holidayRequestsPage}
-                        totalPages={paginatedHolidayRequests.totalPages}
-                        totalItems={paginatedHolidayRequests.totalItems}
-                        itemsPerPage={holidayRequestsPerPage}
-                        onPageChange={setHolidayRequestsPage}
-                        onItemsPerPageChange={(newSize) => {
-                          setHolidayRequestsPerPage(newSize);
-                          setHolidayRequestsPage(1);
-                        }}
-                        itemsPerPageOptions={[5, 10, 15, 20]}
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-center text-gray-500 py-4">No granted holiday requests found</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 3. Employee Documents Section */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <User className="text-blue-600 h-5 w-5" />
-              <CardTitle>Employee Documents</CardTitle>
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-                {processedDocs.length} {processedDocs.length === 1 ? 'Document' : 'Documents'}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {allDocsLoading ? (
-                <div className="flex justify-center items-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                  <span className="ml-2 text-gray-500">Loading documents...</span>
-                </div>
-              ) : paginatedDocuments.data.length > 0 ? (
-                <>
-                  {paginatedDocuments.data.map((doc: any) => (
-                    <div 
-                      key={doc.id}
-                      className={`flex items-center justify-between p-3 rounded-lg border ${
-                        doc.status === 'expired' || doc.status === 'warning' 
-                          ? 'bg-red-50 border-red-200' 
-                          : doc.status === 'expiring'
-                            ? 'bg-yellow-50 border-yellow-200'
-                            : 'bg-green-50 border-green-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-full ${
-                          doc.status === 'expired' || doc.status === 'warning' 
-                            ? 'bg-red-100' 
-                            : doc.status === 'expiring'
-                              ? 'bg-yellow-100'
-                              : 'bg-green-100'
-                        }`}>
-                          {doc.status === 'expired' ? (
-                            <AlertTriangle className="h-4 w-4 text-red-600" />
-                          ) : (
-                            <User className={`h-4 w-4 ${
-                              doc.status === 'warning' 
-                                ? 'text-red-600' 
-                                : doc.status === 'expiring'
-                                  ? 'text-yellow-600'
-                                  : 'text-green-600'
-                            }`} />
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">{doc.employeeName || 'Unknown Employee'}</p>
-                          <p className="text-sm text-gray-600">{doc.documentName || 'Unnamed Document'}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-1 text-sm text-gray-600">
-                          <Calendar className="h-4 w-4" />
-                          <span>{doc.endDate ? new Date(doc.endDate).toLocaleDateString() : 'No expiry'}</span>
-                        </div>
-                        {doc.endDate && (
-                          <p className={`text-sm font-medium ${
-                            doc.status === 'expired' || doc.status === 'warning' 
-                              ? 'text-red-600' 
-                              : doc.status === 'expiring'
-                                ? 'text-yellow-600'
-                                : 'text-green-600'
-                          }`}>
-                            {doc.daysUntilExpiry === 0 
-                              ? 'Expires today' 
-                              : doc.daysUntilExpiry === 1 
-                                ? 'Expires tomorrow'
-                                : doc.daysUntilExpiry < 0
-                                  ? 'Expired'
-                                  : `Expires in ${doc.daysUntilExpiry} days`
-                            }
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {paginatedDocuments.totalPages > 1 && (
-                    <div className="mt-4">
-                      <Pagination
-                        currentPage={documentsPage}
-                        totalPages={paginatedDocuments.totalPages}
-                        totalItems={paginatedDocuments.totalItems}
-                        itemsPerPage={documentsPerPage}
-                        onPageChange={setDocumentsPage}
-                        onItemsPerPageChange={(newSize) => {
-                          setDocumentsPerPage(newSize);
-                          setDocumentsPage(1);
-                        }}
-                        itemsPerPageOptions={[5, 10, 15, 20]}
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <p className="text-center text-gray-500 py-4">No documents with expiry dates found</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 4. Equipment Section */}
+        {/* 1. Equipment Section */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
@@ -783,193 +458,489 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-500 text-sm font-medium">Today's Sales</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    £{stats?.todaySales?.toLocaleString() || '0'}
-                  </p>
-                  <p className="text-green-600 text-sm mt-1">
-                    <TrendingUp className="inline w-4 h-4 mr-1" />
-                    +12.5% from yesterday
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-500 text-sm font-medium">Total Purchases</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    £{stats?.totalPurchases?.toLocaleString() || '0'}
-                  </p>
-                  <p className="text-orange-600 text-sm mt-1">
-                    <TrendingDown className="inline w-4 h-4 mr-1" />
-                    -3.2% from yesterday
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <ShoppingCart className="text-orange-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {showProfit && (
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-500 text-sm font-medium">Profit Margin</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {typeof stats?.profitMargin === "number"
-                        ? stats.profitMargin.toFixed(1)
-                        : "0"
-                      }%
-                    </p>
-                    <p className="text-green-600 text-sm mt-1">
-                      <TrendingUp className="inline w-4 h-4 mr-1" />
-                      +1.8% from last week
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Percent className="text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-gray-500 text-sm font-medium">Stock Items</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {stats?.stockItems?.toLocaleString() || '0'}
-                  </p>
-                  <p className="text-gray-500 text-sm mt-1">
-                    No change
-                  </p>
-                </div>
-                <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <Package className="text-gray-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Charts Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Sales vs Purchases</CardTitle>
-                <Select value={range} onValueChange={val => setRange(val)}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7days">Last 7 days</SelectItem>
-                    <SelectItem value="30days">Last 30 days</SelectItem>
-                    <SelectItem value="3months">Last 3 months</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {chartData?.salesPurchase && (
-                <SalesPurchaseChart data={chartData.salesPurchase} />
-              )}
-            </CardContent>
-          </Card>
-
-          {showProfit && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Profit Trend</CardTitle>
-                  <Select value={profitRange} onValueChange={val => setProfitRange(val)}>
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="month">This Month</SelectItem>
-                      <SelectItem value="lastmonth">Last Month</SelectItem>
-                      <SelectItem value="quarter">This Quarter</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {chartData?.profitTrend && (
-                  <ProfitTrendChart data={chartData.profitTrend} showProfit={showProfit} />
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Recent Transactions */}
+        {/* 2. Employees Currently on Holiday */}
         <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Recent Transactions</CardTitle>
-              <a href="#" className="text-primary hover:text-blue-700 text-sm font-medium">
-                View All
-              </a>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <User className="text-green-600 h-5 w-5" />
+              <CardTitle>Employees Currently on Holiday</CardTitle>
+              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                {employeesOnHoliday.length} {employeesOnHoliday.length === 1 ? 'Employee' : 'Employees'}
+              </Badge>
+              {!isLoadingBusinessDate && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span>As of: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Customer/Supplier</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stats?.recentTransactions?.slice(0, 5).map((transaction: any, index: number) => (
-                  <TableRow key={transaction.id || index}>
-                    <TableCell className="font-medium">#{transaction.id}</TableCell>
-                    <TableCell>Sale</TableCell>
-                    <TableCell>{transaction.customerName}</TableCell>
-                    <TableCell className="font-medium text-green-600">
-                      +£{parseFloat(transaction.amount).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-gray-500">
-                      {new Date(transaction.date).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="default" className="bg-green-100 text-green-800">
-                        {transaction.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                )) || (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-                      No transactions found
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <div className="space-y-3">
+              {holidayLoading || isLoadingBusinessDate ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-gray-500">Loading holiday information...</span>
+                </div>
+              ) : paginatedHolidayEmployees.data.length > 0 ? (
+                <>
+                  {paginatedHolidayEmployees.data.map((request: any) => (
+                    <div 
+                      key={request.id}
+                      className="flex items-center justify-between p-3 rounded-lg border bg-green-50 border-green-200"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-full bg-green-100">
+                          <User className="h-4 w-4 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{request.employeeName}</p>
+                          <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                            <span>On Holiday</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>
+                            {new Date(request.lastDateAtWork).toLocaleDateString()} - {new Date(request.returnDateToWork).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-green-600">
+                          {request.daysUntilReturn === 0 
+                            ? 'Returns today' 
+                            : request.daysUntilReturn === 1 
+                              ? 'Returns tomorrow'
+                              : `Returns in ${request.daysUntilReturn} days`
+                          }
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {request.totalDaysRequested} days total
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {paginatedHolidayEmployees.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={holidayCurrentPage}
+                        totalPages={paginatedHolidayEmployees.totalPages}
+                        totalItems={paginatedHolidayEmployees.totalItems}
+                        itemsPerPage={holidayItemsPerPage}
+                        onPageChange={setHolidayCurrentPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setHolidayItemsPerPage(newSize);
+                          setHolidayCurrentPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <User className="h-6 w-6 text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 font-medium">No employees currently on holiday</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Based on business date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 2. Employees Currently on Holiday */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <User className="text-green-600 h-5 w-5" />
+              <CardTitle>Employees Currently on Holiday</CardTitle>
+              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                {employeesOnHoliday.length} {employeesOnHoliday.length === 1 ? 'Employee' : 'Employees'}
+              </Badge>
+              {!isLoadingBusinessDate && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span>As of: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {holidayLoading || isLoadingBusinessDate ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                  <span className="ml-2 text-gray-500">Loading holiday information...</span>
+                </div>
+              ) : paginatedHolidayEmployees.data.length > 0 ? (
+                <>
+                  {paginatedHolidayEmployees.data.map((request: any) => (
+                    <div 
+                      key={request.id}
+                      className="flex items-center justify-between p-3 rounded-lg border bg-green-50 border-green-200"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-full bg-green-100">
+                          <User className="h-4 w-4 text-green-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{request.employeeName}</p>
+                          <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+                            <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
+                            <span>On Holiday</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                          <Calendar className="h-4 w-4" />
+                          <span>
+                            {new Date(request.lastDateAtWork).toLocaleDateString()} - {new Date(request.returnDateToWork).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-green-600">
+                          {request.daysUntilReturn === 0 
+                            ? 'Returns today' 
+                            : request.daysUntilReturn === 1 
+                              ? 'Returns tomorrow'
+                              : `Returns in ${request.daysUntilReturn} days`
+                          }
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {request.totalDaysRequested} days total
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                  {paginatedHolidayEmployees.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={holidayCurrentPage}
+                        totalPages={paginatedHolidayEmployees.totalPages}
+                        totalItems={paginatedHolidayEmployees.totalItems}
+                        itemsPerPage={holidayItemsPerPage}
+                        onPageChange={setHolidayCurrentPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setHolidayItemsPerPage(newSize);
+                          setHolidayCurrentPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <User className="h-6 w-6 text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 font-medium">No employees currently on holiday</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Based on business date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Holiday Requests Overview */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-blue-600 h-5 w-5" />
+              <CardTitle>Holiday Requests</CardTitle>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {allGrantedRequests.length} Granted
+              </Badge>
+              {!isLoadingBusinessDate && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                  <span>Using Business Date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {holidayLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">Loading holiday requests...</span>
+                </div>
+              ) : paginatedHolidayRequests.data.length > 0 ? (
+                <>
+                  {paginatedHolidayRequests.data.map((request: any) => {
+                    const lastWorkDate = new Date(request.lastDateAtWork);
+                    const returnDate = new Date(request.returnDateToWork);
+                    const today = businessDate ? new Date(businessDate) : new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    // Determine status relative to business date
+                    let statusColor = 'bg-gray-50 border-gray-200';
+                    let statusText = 'Scheduled';
+                    
+                    if (today > lastWorkDate && today < returnDate) {
+                      statusColor = 'bg-green-50 border-green-200';
+                      statusText = 'Currently on Holiday';
+                    } else if (today >= returnDate) {
+                      statusColor = 'bg-blue-50 border-blue-200';
+                      statusText = 'Completed';
+                    } else if (today <= lastWorkDate) {
+                      statusColor = 'bg-yellow-50 border-yellow-200';
+                      statusText = 'Upcoming';
+                    }
+                    
+                    return (
+                      <div key={request.id} className={`p-3 rounded-lg border ${statusColor}`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">{request.employeeName}</p>
+                            <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                              <Calendar className="h-4 w-4" />
+                              <span>
+                                {lastWorkDate.toLocaleDateString()} - {returnDate.toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-xs font-medium text-gray-700">
+                              {statusText} • {request.totalDaysRequested} days
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {paginatedHolidayRequests.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={holidayRequestsPage}
+                        totalPages={paginatedHolidayRequests.totalPages}
+                        totalItems={paginatedHolidayRequests.totalItems}
+                        itemsPerPage={holidayRequestsPerPage}
+                        onPageChange={setHolidayRequestsPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setHolidayRequestsPerPage(newSize);
+                          setHolidayRequestsPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-center text-gray-500 py-4">No granted holiday requests found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 3. Holiday Requests Overview */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="text-blue-600 h-5 w-5" />
+              <CardTitle>Holiday Requests</CardTitle>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {allGrantedRequests.length} Granted
+              </Badge>
+              {!isLoadingBusinessDate && (
+                <div className="ml-auto flex items-center gap-2 text-xs text-gray-500">
+                  <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                  <span>Using Business Date: {businessDate ? businessDate.toLocaleDateString() : 'Loading...'}</span>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {holidayLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">Loading holiday requests...</span>
+                </div>
+              ) : paginatedHolidayRequests.data.length > 0 ? (
+                <>
+                  {paginatedHolidayRequests.data.map((request: any) => {
+                    const lastWorkDate = new Date(request.lastDateAtWork);
+                    const returnDate = new Date(request.returnDateToWork);
+                    const today = businessDate ? new Date(businessDate) : new Date();
+                    today.setHours(0, 0, 0, 0);
+                    
+                    // Determine status relative to business date
+                    let statusColor = 'bg-gray-50 border-gray-200';
+                    let statusText = 'Scheduled';
+                    
+                    if (today > lastWorkDate && today < returnDate) {
+                      statusColor = 'bg-green-50 border-green-200';
+                      statusText = 'Currently on Holiday';
+                    } else if (today >= returnDate) {
+                      statusColor = 'bg-blue-50 border-blue-200';
+                      statusText = 'Completed';
+                    } else if (today <= lastWorkDate) {
+                      statusColor = 'bg-yellow-50 border-yellow-200';
+                      statusText = 'Upcoming';
+                    }
+                    
+                    return (
+                      <div key={request.id} className={`p-3 rounded-lg border ${statusColor}`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">{request.employeeName}</p>
+                            <p className="text-sm text-gray-600">{request.jobTitle || 'Employee'}</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-1 text-sm text-gray-600 mb-1">
+                              <Calendar className="h-4 w-4" />
+                              <span>
+                                {lastWorkDate.toLocaleDateString()} - {returnDate.toLocaleDateString()}
+                              </span>
+                            </div>
+                            <p className="text-xs font-medium text-gray-700">
+                              {statusText} • {request.totalDaysRequested} days
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {paginatedHolidayRequests.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={holidayRequestsPage}
+                        totalPages={paginatedHolidayRequests.totalPages}
+                        totalItems={paginatedHolidayRequests.totalItems}
+                        itemsPerPage={holidayRequestsPerPage}
+                        onPageChange={setHolidayRequestsPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setHolidayRequestsPerPage(newSize);
+                          setHolidayRequestsPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-center text-gray-500 py-4">No granted holiday requests found</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 4. Employee Documents Section */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <User className="text-blue-600 h-5 w-5" />
+              <CardTitle>Employee Documents</CardTitle>
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {processedDocs.length} {processedDocs.length === 1 ? 'Document' : 'Documents'}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {allDocsLoading ? (
+                <div className="flex justify-center items-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-500">Loading documents...</span>
+                </div>
+              ) : paginatedDocuments.data.length > 0 ? (
+                <>
+                  {paginatedDocuments.data.map((doc: any) => (
+                    <div 
+                      key={doc.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                        doc.status === 'expired' || doc.status === 'warning' 
+                          ? 'bg-red-50 border-red-200' 
+                          : doc.status === 'expiring'
+                            ? 'bg-yellow-50 border-yellow-200'
+                            : 'bg-green-50 border-green-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-full ${
+                          doc.status === 'expired' || doc.status === 'warning' 
+                            ? 'bg-red-100' 
+                            : doc.status === 'expiring'
+                              ? 'bg-yellow-100'
+                              : 'bg-green-100'
+                        }`}>
+                          {doc.status === 'expired' ? (
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                          ) : (
+                            <User className={`h-4 w-4 ${
+                              doc.status === 'warning' 
+                                ? 'text-red-600' 
+                                : doc.status === 'expiring'
+                                  ? 'text-yellow-600'
+                                  : 'text-green-600'
+                            }`} />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{doc.employeeName || 'Unknown Employee'}</p>
+                          <p className="text-sm text-gray-600">{doc.documentName || 'Unnamed Document'}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <Calendar className="h-4 w-4" />
+                          <span>{doc.endDate ? new Date(doc.endDate).toLocaleDateString() : 'No expiry'}</span>
+                        </div>
+                        {doc.endDate && (
+                          <p className={`text-sm font-medium ${
+                            doc.status === 'expired' || doc.status === 'warning' 
+                              ? 'text-red-600' 
+                              : doc.status === 'expiring'
+                                ? 'text-yellow-600'
+                                : 'text-green-600'
+                          }`}>
+                            {doc.daysUntilExpiry === 0 
+                              ? 'Expires today' 
+                              : doc.daysUntilExpiry === 1 
+                                ? 'Expires tomorrow'
+                                : doc.daysUntilExpiry < 0
+                                  ? 'Expired'
+                                  : `Expires in ${doc.daysUntilExpiry} days`
+                            }
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {paginatedDocuments.totalPages > 1 && (
+                    <div className="mt-4">
+                      <Pagination
+                        currentPage={documentsPage}
+                        totalPages={paginatedDocuments.totalPages}
+                        totalItems={paginatedDocuments.totalItems}
+                        itemsPerPage={documentsPerPage}
+                        onPageChange={setDocumentsPage}
+                        onItemsPerPageChange={(newSize) => {
+                          setDocumentsPerPage(newSize);
+                          setDocumentsPage(1);
+                        }}
+                        itemsPerPageOptions={[5, 10, 15, 20]}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-center text-gray-500 py-4">No documents with expiry dates found</p>
+              )}
+            </div>
           </CardContent>
         </Card>
     </div>

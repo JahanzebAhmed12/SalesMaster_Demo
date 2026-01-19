@@ -11083,7 +11083,8 @@ def daily_summary_report():
         Customer.customer_name,
         Sale.total_amount,
         Sale.payment_status,
-        Sale.customer_type
+        Sale.customer_type,
+        Sale.gate_number
     ).join(
         Customer, Sale.customer_id == Customer.id
     ).filter(
@@ -11202,7 +11203,9 @@ def daily_summary_report():
             'account_sales': account_amount,
             'account_paid_cash': 0,  # Will be calculated separately
             'account_paid_cheque': 0,  # Will be calculated separately
-            'account_credits': account_credits
+            'account_credits': account_credits,
+            'customer_type': sale.customer_type,
+            'gate_number': sale.gate_number
         })
     
     # Add customer returns as separate entries
@@ -11225,7 +11228,9 @@ def daily_summary_report():
                 'account_sales': 0,
                 'account_paid_cash': 0,
                 'account_paid_cheque': 0,
-                'account_credits': customer_return_total
+                'account_credits': customer_return_total,
+                'customer_type': None,
+                'gate_number': None
             })
             processed_returns.add(return_item.customer_id)
     
@@ -11285,7 +11290,9 @@ def daily_summary_report():
                     'account_sales': 0,
                     'account_paid_cash': 0,
                     'account_paid_cheque': 0,
-                    'account_credits': customer_neg_total
+                    'account_credits': customer_neg_total,
+                    'customer_type': None,
+                    'gate_number': None
                 })
             
             processed_neg_payments.add(neg_payment.customer_id)

@@ -41,8 +41,12 @@ const publicApiRequest = async <T = any>(method: string, endpoint: string): Prom
 function PackingListTemplate({ data }: { data: PackingListData }) {
   if (!data) return null;
   const { company, customer, sale, packingItems: items } = data;
+  
   const totalItems = items.length;
   const totalBoxes = items.reduce((sum, item) => sum + (item.qty || 0), 0);
+  
+  // Get gate number from various possible field names
+  const gateNumber = sale?.gate_number || sale?.gateNumber || customer?.gate_number || customer?.gateNumber || customer?.others;
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
       {/* Header: Logo and Company Info */}
@@ -60,6 +64,11 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
         <div style={{ fontWeight: "bold", marginBottom: 4 }}>Customer :</div>
         <div style={{ border: "1px solid #888", padding: 8, minWidth: 200, fontWeight: "bold", fontSize: 18 }}>{customer?.customer_name || customer?.customerName || "CUSTOMER"}</div>
         {customer?.address && <div style={{ fontSize: 16, marginTop: 2 }}>{customer.address}</div>}
+        {gateNumber && (
+          <div style={{ fontSize: 16, marginTop: 2, fontWeight: "bold" }}>
+            Gate No: {gateNumber}
+          </div>
+        )}
         {customer?.vat_number && <div style={{ fontSize: 14 }}>VAT No: {customer.vat_number}</div>}
       </div>
       {/* Packing List Table */}
@@ -83,10 +92,9 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
           </tr>
         </tbody>
       </table>
-      {/* Footer: Invoice Time and Current Time */}
-      <div style={{ marginTop: 24, fontSize: 16, color: "#444", display: "flex", justifyContent: "flex-end", flexDirection: "column", alignItems: "flex-end" }}>
-        <div>Invoice Time: {sale?.date ? new Date(sale.date).toLocaleString() : "-"}</div>
-        <div>Current Time: {new Date().toLocaleString()}</div>
+      {/* Footer */}
+      <div style={{ marginTop: 24 }}>
+        {/* Footer content removed as requested */}
       </div>
       <button
         onClick={() => window.print()}

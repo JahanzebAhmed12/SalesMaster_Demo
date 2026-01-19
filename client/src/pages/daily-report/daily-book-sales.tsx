@@ -51,7 +51,51 @@ interface SalesEntry {
   isPaidViaCustomerPayment?: boolean;
   isFullyPaid?: boolean;
   totalPaid?: number;
+  customerType?: string; // Add this to help identify cash customers
 }
+
+// Helper function to determine display name for cash customers
+const getDisplayCustomerName = (sale: SalesEntry): string => {
+  // Check if this is a cash customer by customer type (most reliable)
+  const isCashCustomer = sale.customerType === 'cash';
+  
+  // Fallback: Check if customer name matches common cash sale patterns
+  const cashSalePatterns = [
+    'cash sale',
+    'cash sales', 
+    'cash customer',
+    'walk-in customer',
+    'walk in customer',
+    'cash',
+    'walk-in',
+    'walkin'
+  ];
+  
+  const customerNameLower = (sale.customerName || '').toLowerCase().trim();
+  const isCashByName = cashSalePatterns.includes(customerNameLower);
+  
+  // If it's a cash customer (by type or name) and has a gate number, show gate number
+  if ((isCashCustomer || isCashByName) && sale.gateNumber && sale.gateNumber.trim()) {
+    return `${sale.gateNumber.trim()}`;
+  }
+  
+  // Otherwise, show the customer name as usual
+  return sale.customerName || 'Unknown Customer';
+};
+
+// Helper function to check if we should show gate number in parentheses
+const shouldShowGateInParentheses = (sale: SalesEntry): boolean => {
+  const isCashCustomer = sale.customerType === 'cash';
+  const cashSalePatterns = [
+    'cash sale', 'cash sales', 'cash customer', 'walk-in customer', 
+    'walk in customer', 'cash', 'walk-in', 'walkin'
+  ];
+  const customerNameLower = (sale.customerName || '').toLowerCase().trim();
+  const isCashByName = cashSalePatterns.includes(customerNameLower);
+  
+  // Don't show in parentheses if we're already showing it as the main name
+  return Boolean(sale.gateNumber && !((isCashCustomer || isCashByName) && sale.gateNumber.trim()));
+};
 
 export default function DailyBookSales() {
   // Get business date with formatting utilities
@@ -407,7 +451,7 @@ export default function DailyBookSales() {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${formatDateForDisplay(sale.date)}</td>`);
         printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
-        printWindow.document.write(`<td>${sale.customerName}</td>`);
+        printWindow.document.write(`<td>${getDisplayCustomerName(sale)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>£${Number(sale.bank ?? 0).toFixed(2)}</td>`);
@@ -432,7 +476,7 @@ export default function DailyBookSales() {
       'Sl.No': item.slNo,
       'Date': item.date,
       'Invoice No': item.invoiceNo,
-      'Customer Name': item.customerName,
+      'Customer Name': getDisplayCustomerName(item),
       'Account': item.amount,
       'Cash': item.cash,
       'Card Payment': item.bank || 0,
@@ -498,7 +542,7 @@ export default function DailyBookSales() {
         return [
           format(saleDate, "MM/dd/yy"),
           item.invoiceNo,
-          item.customerName,
+          getDisplayCustomerName(item),
           `£${Number(item.amount ?? 0).toFixed(2)}`,
           `£${Number(item.cash ?? 0).toFixed(2)}`,
           `£${Number(item.bank ?? 0).toFixed(2)}`,
@@ -541,7 +585,7 @@ export default function DailyBookSales() {
       item.slNo,
       item.date,
       item.invoiceNo,
-      item.customerName,
+      getDisplayCustomerName(item),
       item.amount,
       item.cash,
       item.bank || 0,
@@ -1256,8 +1300,9 @@ export default function DailyBookSales() {
                             <DropdownMenuTrigger asChild>
                               <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
                                 <span>
-                                  {sale.customerName || 'Unknown Customer'}
-                                  {sale.gateNumber && (
+                                  {getDisplayCustomerName(sale)}
+                                  {/* Only show gate number in parentheses if we're NOT already showing it as the main name */}
+                                  {shouldShowGateInParentheses(sale) && (
                                     <span className="text-xs text-gray-500 font-normal ml-2">
                                       ({sale.gateNumber})
                                     </span>
@@ -1296,8 +1341,8 @@ export default function DailyBookSales() {
                               <DropdownMenuItem className="text-sm py-2" onClick={() => sendInvoiceEmail(sale)}>
                                 <Mail className="mr-2 h-4 w-4" /> Email
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => sendWhatsApp(sale)}>
-                                <MessageCircle className="mr-2 h-4 w-4" /> WhatsApp
+                              <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/packing-list/${sale.invoiceNo}`, '_blank')}>
+                                <Package className="mr-2 h-4 w-4" /> Picking List
                               </DropdownMenuItem>
                               <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'cash')}>
                                 <Banknote className="mr-2 h-4 w-4" /> Pay (Cash)
@@ -1464,24 +1509,7 @@ export default function DailyBookSales() {
           </CardContent>
         </Card>
 
-        {/* Total Sales Card */}
-        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-2xl font-bold text-blue-800 text-center">
-              TOTAL SALES
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center">
-              <div className="text-5xl font-bold text-blue-900 mb-2">
-                £{totalAmount.toFixed(2)}
-              </div>
-              <div className="text-lg text-blue-700">
-                Current Day Invoices (All Payment Methods)
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+
 
         {/* Split Payment Dialog */}
         <Dialog open={splitPaymentDialog.isOpen} onOpenChange={(open) => {
@@ -1499,7 +1527,7 @@ export default function DailyBookSales() {
               <div className="space-y-4">
                 <div className="text-sm text-gray-600">
                   <p><strong>Invoice:</strong> {splitPaymentDialog.sale.invoiceNo}</p>
-                  <p><strong>Customer:</strong> {splitPaymentDialog.sale.customerName}</p>
+                  <p><strong>Customer:</strong> {getDisplayCustomerName(splitPaymentDialog.sale)}</p>
                   <p><strong>Total Amount:</strong> £{((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0)).toFixed(2)}</p>
                 </div>
 

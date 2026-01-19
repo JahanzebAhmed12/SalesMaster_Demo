@@ -293,14 +293,26 @@ const SalesInvoice = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const heldInvoiceIdFromUrl = params.get('heldInvoiceId');
-    if (!heldInvoiceIdFromUrl) {
+    const invoiceNumber = params.get("invoiceNumber");
+    const customerIdFromUrl = params.get('customerId');
+    
+    // Only restore draft if we're not loading an existing invoice and not resuming a held invoice
+    if (!heldInvoiceIdFromUrl && !invoiceNumber) {
       const draft = localStorage.getItem('currentInvoiceDraft');
       if (draft) {
         try {
           const items = JSON.parse(draft);
           if (Array.isArray(items) && items.length > 0) {
-            setSaleItems(items);
-            console.log('Restored draft saleItems:', items);
+            // Only restore if we have URL parameters indicating we're continuing work
+            // or if the user explicitly wants to continue (we could add a confirmation here)
+            if (customerIdFromUrl) {
+              setSaleItems(items);
+              console.log('Restored draft saleItems:', items);
+            } else {
+              // Clear the draft if we're starting completely fresh
+              localStorage.removeItem('currentInvoiceDraft');
+              console.log('Cleared stale draft for fresh invoice');
+            }
           }
         } catch (e) {
           // ignore
@@ -423,8 +435,8 @@ const SalesInvoice = () => {
       const term = productSearch.toLowerCase();
       list = list.filter(
         (p: any) =>
-          p.productCode?.toLowerCase().includes(term) ||
-          p.description?.toLowerCase().includes(term)
+          p.productCode?.toLowerCase().startsWith(term) ||
+          p.description?.toLowerCase().startsWith(term)
       );
     }
     setProductOptions(list);
@@ -492,14 +504,15 @@ const SalesInvoice = () => {
   // Keyboard navigation for product dropdown with auto-focus to quantity
   const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!showProductDropdown || productOptions.length === 0) {
-      // If no dropdown is showing and user presses Enter, move to notes
+      // If no dropdown is showing and user presses Enter, move to notes if available, otherwise quantity
       if (e.key === "Enter" && selectedProductId) {
         e.preventDefault();
-        if (editingIndex !== null) {
+        // Check if notes column is visible
+        const showNotesColumn = editingIndex !== null || saleItems.some(item => item.notes);
+        if (showNotesColumn) {
           notesInputRef.current?.focus();
-        }
-        else {
-          quantityInputRef.current?.focus()
+        } else {
+          quantityInputRef.current?.focus();
         }
         return;
       }
@@ -519,12 +532,12 @@ const SalesInvoice = () => {
         setSelectedProductId(p.id.toString());
         setProductSearch(`${p.productCode} - ${p.description}`);
         setShowProductDropdown(false);
-        // Auto-focus to notes input if input otherwise quanitty
+        // Auto-focus to notes input if available, otherwise quantity
         setTimeout(() => {
-          if (editingIndex !== null) {
+          const showNotesColumn = editingIndex !== null || saleItems.some(item => item.notes);
+          if (showNotesColumn) {
             notesInputRef.current?.focus();
-          }
-          else {
+          } else {
             quantityInputRef.current?.focus();
           }
         }, 100);
@@ -1087,6 +1100,10 @@ const SalesInvoice = () => {
       setNotes("");
       setStatus("draft");
       setApplyPorterage(true); // Reset porterage application
+      
+      // Clear the draft from localStorage to prevent it from being restored
+      localStorage.removeItem('currentInvoiceDraft');
+      
       setLocation("/data-entry/sales-entry");
     }
   };
@@ -2130,11 +2147,11 @@ const SalesInvoice = () => {
       )}
       <div className="p-6">
         {/* Header Section */}
-        <div className="bg-white p-6 rounded-lg shadow-sm mb-6">
-          <div className="flex justify-between items-start mb-6">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h1 className="text-2xl font-bold text-gray-900">INVOICE</h1>
+        <div className="bg-white p-4 lg:p-6 rounded-lg shadow-sm mb-6">
+          <div className="flex flex-col lg:flex-row justify-between items-start mb-6 gap-4">
+            <div className="w-full lg:w-auto">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+                <h1 className="text-xl lg:text-2xl font-bold text-gray-900">INVOICE</h1>
                 {currentSale && !isReadOnly && canEditInvoice && (
                   <div className="relative">
                     {isEditingDate ? (
@@ -2147,7 +2164,7 @@ const SalesInvoice = () => {
                               setEditableDate(parseISO(e.target.value));
                             }
                           }}
-                          className="w-40 text-sm h-8"
+                          className="w-32 lg:w-40 text-sm h-8"
                         />
                         <Button
                           size="sm"
@@ -2210,7 +2227,7 @@ const SalesInvoice = () => {
                 )}
               </div>
               <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                   <span>Date: {currentSale?.date ? format(parseISO(currentSale.date), 'PP') : new Date().toLocaleString('en-GB', {
                     day: '2-digit',
                     month: '2-digit',
@@ -2230,35 +2247,35 @@ const SalesInvoice = () => {
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      <Button size="sm" variant="outline" className="ml-2">
+                      <Button size="sm" variant="outline" className="text-xs">
                         Print {invoicePrintFormat === 'DOTMATRIX' ? 'Dot Matrix' : invoicePrintFormat === 'A5' ? 'A5' : 'A4'}
                       </Button>
                     </a>
                   )}
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
                   <span>Invoice: {currentSale?.invoiceNumber || 'Draft'}</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <span>Customer type: {customerType}</span>
-                  <Badge className="bg-green-600 text-white">{paymentStatus}</Badge>
+                  <Badge className="bg-green-600 text-white w-fit">{paymentStatus}</Badge>
                 </div>
-                <div className="flex items-center">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <span>Customer Name: </span>
-                  <span className="font-semibold ml-1">{customerName}</span>
+                  <span className="font-semibold">{customerName}</span>
                   <button
                     type="button"
-                    className={`ml-2 flex items-center ${isReadOnly ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:underline'}`}
+                    className={`flex items-center w-fit ${isReadOnly ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:underline'}`}
                     onClick={() => !isReadOnly && setIsEditCustomerOpen(true)}
                     title={isReadOnly ? "Cannot edit in read-only mode" : "Edit Customer"}
                     disabled={isReadOnly}
                   >
-                    <Pencil size={16} className="mr-1" />
+                    <Pencil size={14} className="mr-1" />
                     Edit
                   </button>
                 </div>
                 <Dialog open={isEditCustomerOpen} onOpenChange={setIsEditCustomerOpen}>
-                  <DialogContent>
+                  <DialogContent className="w-[95vw] max-w-md">
                     <DialogTitle>Select Customer</DialogTitle>
                     <div className="relative">
                       <input
@@ -2301,7 +2318,7 @@ const SalesInvoice = () => {
                                 onMouseEnter={() => setHighlightedIndex(idx)}
                               >
                                 <span className="font-mono text-xs text-gray-600">{c.customer_code}</span>
-                                <span className="ml-2">{c.customer_name}</span>
+                                <span className="ml-2 text-sm">{c.customer_name}</span>
                               </div>
                             ))
                           )}
@@ -2311,37 +2328,40 @@ const SalesInvoice = () => {
                   </DialogContent>
                 </Dialog>
                 {(currentSale?.vehicleDetails || vehicleDetails) && (
-                  <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                     <span>Vehicle Details: </span>
                     <span className="font-semibold">{currentSale?.vehicleDetails || vehicleDetails}</span>
                   </div>
                 )}
                 {(currentSale?.gateNumber || gateNumber) && (
-                  <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
                     <span>Gate Number: </span>
                     <span className="font-semibold">{currentSale?.gateNumber || gateNumber}</span>
                     {isGateNumberFromCustomer && !currentSale && (
-                      <span className="text-xs text-gray-500 ml-2">(from customer)</span>
+                      <span className="text-xs text-gray-500">(from customer)</span>
                     )}
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex flex-col items-end">
-              <div className="text-right text-sm text-gray-600 mb-2">
-                <div>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...</div>
+            <div className="flex flex-col items-start lg:items-end w-full lg:w-auto">
+              <div className="text-left lg:text-right text-sm text-gray-600 mb-2">
+                <div className="text-xs lg:text-sm">TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ...</div>
               </div>
-              <div className="flex gap-2">
-                <Button onClick={handleHoldInvoice} variant="outline" size="sm" disabled={isReadOnly}>Hold Invoice</Button>
-
-                <Button variant="destructive" size="sm" onClick={handleCloseInvoice} disabled={isReadOnly}>Cancel Ticket</Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                <Button onClick={handleHoldInvoice} variant="outline" size="sm" disabled={isReadOnly} className="w-full sm:w-auto">
+                  Hold Invoice
+                </Button>
+                <Button variant="destructive" size="sm" onClick={handleCloseInvoice} disabled={isReadOnly} className="w-full sm:w-auto">
+                  Cancel Ticket
+                </Button>
               </div>
             </div>
           </div>
 
           {/* Product Type Selection */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <input
@@ -2366,19 +2386,17 @@ const SalesInvoice = () => {
                 <label htmlFor="non_product" className="text-sm">Non-Products</label>
               </div>
             </div>
-
-            {/* Keyboard shortcuts help */}
-
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handlePdfDownload}
                 disabled={!currentSale && saleItems.length === 0}
+                className="text-xs"
               >
                 Pdf
               </Button>
@@ -2387,25 +2405,250 @@ const SalesInvoice = () => {
                 size="sm"
                 onClick={handleExcelDownload}
                 disabled={!currentSale && saleItems.length === 0}
+                className="text-xs"
               >
                 Excel
               </Button>
-              <Button variant="outline" size="sm" onClick={handleShowOutstanding}>Cust_Outstanding</Button>
-              <Button variant="outline" size="sm" onClick={handleCustomerHistory}>Customer History</Button>
+              <Button variant="outline" size="sm" onClick={handleShowOutstanding} className="text-xs">
+                Cust_Outstanding
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleCustomerHistory} className="text-xs">
+                Customer History
+              </Button>
             </div>
-            {/* Removed More, Payment details, Options, and Search bar as requested */}
           </div>
         </div>
 
         {/* Products Table */}
         <Card>
           <CardContent className="p-0">
-            <div className="relative w-full overflow-visible">
+            {/* Mobile/Tablet View */}
+            <div className="block lg:hidden">
+              {/* Product Input Section for Mobile */}
+              <div className="p-4 border-b bg-gray-50">
+                <h3 className="text-sm font-medium mb-3">Add Product</h3>
+                
+                {/* Product Search */}
+                <div className="relative mb-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Product</label>
+                  <Input
+                    ref={productInputRef}
+                    placeholder={`Search ${selectedProductType === 'regular' ? 'regular' : 'non'} products...`}
+                    value={productSearch}
+                    disabled={isReadOnly}
+                    onChange={e => {
+                      setProductSearch(e.target.value);
+                      setShowProductDropdown(true);
+                      setSelectedProductId("");
+                    }}
+                    onFocus={() => setShowProductDropdown(!!productSearch)}
+                    onBlur={handleProductBlur}
+                    onKeyDown={handleProductKeyDown}
+                    autoComplete="off"
+                    className="w-full"
+                  />
+                  {showProductDropdown && productOptions.length > 0 && (
+                    <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                      {productOptions.map((p, idx) => (
+                        <div
+                          key={p.id}
+                          className={`p-3 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
+                          onMouseDown={() => {
+                            setSelectedProductId(p.id.toString());
+                            setProductSearch(`${p.productCode} - ${p.description}`);
+                            setShowProductDropdown(false);
+                            setTimeout(() => {
+                              const showNotesColumn = editingIndex !== null || saleItems.some(item => item.notes);
+                              if (showNotesColumn) {
+                                notesInputRef.current?.focus();
+                              } else {
+                                quantityInputRef.current?.focus();
+                              }
+                            }, 100);
+                          }}
+                          onMouseEnter={() => setHighlightedProduct(idx)}
+                        >
+                          <div className="flex flex-col">
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
+                              {(() => {
+                                const stock = getCurrentStock(p.id, (p as RegularProduct & { productType: 'regular' | 'non' }).productType);
+                                return (
+                                  <span className={`text-xs ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-500'}`}>
+                                    Stock: {stock}
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                            <span className="text-sm text-gray-900">{p.description}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Show current stock below input if a product is selected */}
+                  {selectedProductId && (() => {
+                    const stock = getCurrentStock(Number(selectedProductId), selectedProductType);
+                    return (
+                      <div className={`text-xs mt-1 ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-600'}`}>
+                        Current Stock: {stock}
+                        {stock < 0 && <span className="ml-2 text-red-500">(Negative Stock!)</span>}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Notes Input (if needed) */}
+                {(editingIndex !== null || saleItems.some(item => item.notes)) && (
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Notes (optional)</label>
+                    <Input
+                      ref={notesInputRef}
+                      placeholder="Notes (optional)"
+                      value={itemNotes}
+                      disabled={isReadOnly}
+                      onChange={(e) => setItemNotes(e.target.value)}
+                      onKeyDown={handleNotesKeyDown}
+                      className="w-full"
+                    />
+                  </div>
+                )}
+
+                {/* Quantity and Price Row */}
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
+                    <Input
+                      ref={quantityInputRef}
+                      type="text"
+                      placeholder="Qty"
+                      value={itemQuantity}
+                      disabled={isReadOnly}
+                      onChange={(e) => setItemQuantity(e.target.value)}
+                      onKeyDown={handleQuantityKeyDown}
+                      onKeyPress={(e) => {
+                        if (!/[0-9.\-]/.test(e.key) &&
+                          e.key !== 'Backspace' &&
+                          e.key !== 'Delete' &&
+                          !e.key.startsWith('Arrow')) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Unit Price</label>
+                    <Input
+                      ref={priceInputRef}
+                      type="number"
+                      step="0.01"
+                      placeholder="Price"
+                      value={itemUnitPrice}
+                      disabled={isReadOnly}
+                      onChange={(e) => setItemUnitPrice(e.target.value)}
+                      onKeyDown={handlePriceKeyDown}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+
+                {/* Total and Add Button */}
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">
+                    Total: £{(Number(itemQuantity || 0) * Number(itemUnitPrice || 0)).toFixed(2)}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700"
+                    disabled={isReadOnly}
+                    onClick={handleAddItem}
+                  >
+                    Add Item
+                  </Button>
+                </div>
+              </div>
+
+              {/* Mobile Items List */}
+              <div className="divide-y">
+                {saleItems.map((item, index) => (
+                  <div key={index} className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-sm">{item.productName}</h4>
+                        {item.notes && (
+                          <p className="text-xs text-gray-600 mt-1">{item.notes}</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium">£{item.totalPrice.toFixed(2)}</div>
+                        <div className="text-xs text-gray-500">
+                          {formatQuantity(item.quantity)} × £{item.unitPrice.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <div>
+                        Added by: {item.addedBy || "-"}
+                        {item.createdAt && (
+                          <span className="ml-2">
+                            {new Date(item.createdAt).toLocaleTimeString()}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          disabled={isReadOnly} 
+                          onClick={() => {
+                            setEditingIndex(index);
+                            setEditItem(item);
+                          }}
+                          className="text-xs px-2 py-1 h-6"
+                        >
+                          Edit
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="destructive" 
+                          disabled={isReadOnly} 
+                          onClick={() => {
+                            const updatedItems = saleItems.filter((_, i) => i !== index);
+                            setSaleItems(updatedItems);
+                            if (!currentSale) {
+                              localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
+                            }
+                            if (currentSale) {
+                              toast({
+                                title: "Item Removed",
+                                description: "Item removed. Remember to click 'Update Ticket' to save changes to the database."
+                              });
+                            } else {
+                              toast({ title: "Item Removed", description: "Sale item has been removed." });
+                            }
+                          }}
+                          className="text-xs px-2 py-1 h-6"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Desktop View */}
+            <div className="hidden lg:block relative w-full overflow-visible">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
-                    {editingIndex !== null && <TableHead className="text-center">Notes</TableHead>}
+                    {/* Only show Notes column if editing or if any item has notes */}
+                    {(editingIndex !== null || saleItems.some(item => item.notes)) && (
+                      <TableHead className="text-center">Notes</TableHead>
+                    )}
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">Unit price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
@@ -2420,14 +2663,17 @@ const SalesInvoice = () => {
                     editingIndex === index ? (
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
-                        <TableCell className="text-center">
-                          <Input
-                            className="text-center"
-                            placeholder="Notes"
-                            value={editItem?.notes ?? item.notes ?? ""}
-                            onChange={e => setEditItem({ ...item, notes: e.target.value, createdAt: item.createdAt })}
-                          />
-                        </TableCell>
+                        {/* Only show Notes cell when editing or when notes exist */}
+                        {(editingIndex !== null || saleItems.some(item => item.notes)) && (
+                          <TableCell className="text-center">
+                            <Input
+                              className="text-center"
+                              placeholder="Notes"
+                              value={editItem?.notes ?? item.notes ?? ""}
+                              onChange={e => setEditItem({ ...item, notes: e.target.value, createdAt: item.createdAt })}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell className="text-center">
                           <Input
                             type="number"
@@ -2484,6 +2730,12 @@ const SalesInvoice = () => {
                     ) : (
                       <TableRow key={index}>
                         <TableCell>{item.productName}</TableCell>
+                        {/* Only show Notes cell when editing or when notes exist */}
+                        {(editingIndex !== null || saleItems.some(item => item.notes)) && (
+                          <TableCell className="text-center text-sm text-gray-600">
+                            {item.notes || "-"}
+                          </TableCell>
+                        )}
                         <TableCell className="text-center">{formatQuantity(item.quantity)}</TableCell>
                         <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
@@ -2552,9 +2804,14 @@ const SalesInvoice = () => {
                                   setSelectedProductId(p.id.toString());
                                   setProductSearch(`${p.productCode} - ${p.description}`);
                                   setShowProductDropdown(false);
-                                  // Auto-focus to quantity input after product selection
+                                  // Auto-focus to notes input if available, otherwise quantity
                                   setTimeout(() => {
-                                    editingIndex !== null ? notesInputRef.current?.focus() : quantityInputRef.current?.focus();
+                                    const showNotesColumn = editingIndex !== null || saleItems.some(item => item.notes);
+                                    if (showNotesColumn) {
+                                      notesInputRef.current?.focus();
+                                    } else {
+                                      quantityInputRef.current?.focus();
+                                    }
                                   }, 100);
                                 }}
                                 onMouseEnter={() => setHighlightedProduct(idx)}
@@ -2585,7 +2842,8 @@ const SalesInvoice = () => {
                         })()}
                       </div>
                     </TableCell>
-                    {editingIndex !== null && (
+                    {/* Only show Notes input when editing or when notes exist */}
+                    {(editingIndex !== null || saleItems.some(item => item.notes)) && (
                       <TableCell>
                         <Input
                           ref={notesInputRef}
@@ -2595,7 +2853,6 @@ const SalesInvoice = () => {
                           disabled={isReadOnly}
                           onChange={(e) => setItemNotes(e.target.value)}
                           onKeyDown={handleNotesKeyDown}
-                          style={{ minWidth: 120 }}
                         />
                       </TableCell>
                     )}

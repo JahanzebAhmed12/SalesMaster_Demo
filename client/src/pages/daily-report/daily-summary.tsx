@@ -105,6 +105,8 @@ interface DailySummaryData {
     account_paid_cash: number;
     account_paid_cheque: number;
     account_credits: number;
+    customer_type?: string; // Add customer type for cash customer detection
+    gate_number?: string; // Add gate number field
   }>;
   customer_payments: Array<{
     customer_name: string;
@@ -171,6 +173,39 @@ interface DailySummaryData {
     bank_transfer_payments: number;
   };
 }
+
+// Helper function to determine display name for cash customers (same logic as Daily Book Sales)
+const getDisplayCustomerName = (sale: {
+  customer_name: string;
+  customer_type?: string;
+  gate_number?: string;
+}): string => {
+  // Check if this is a cash customer by customer type (most reliable)
+  const isCashCustomer = sale.customer_type === 'cash';
+  
+  // Fallback: Check if customer name matches common cash sale patterns
+  const cashSalePatterns = [
+    'cash sale',
+    'cash sales', 
+    'cash customer',
+    'walk-in customer',
+    'walk in customer',
+    'cash',
+    'walk-in',
+    'walkin'
+  ];
+  
+  const customerNameLower = (sale.customer_name || '').toLowerCase().trim();
+  const isCashByName = cashSalePatterns.includes(customerNameLower);
+  
+  // If it's a cash customer (by type or name) and has a gate number, show gate number
+  if ((isCashCustomer || isCashByName) && sale.gate_number && sale.gate_number.trim()) {
+    return `${sale.gate_number.trim()}`;
+  }
+  
+  // Otherwise, show the customer name as usual
+  return sale.customer_name || 'Unknown Customer';
+};
 
 function PrintButton() {
   const handlePrint = () => {
@@ -434,7 +469,7 @@ export default function DailySummary() {
       head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
       body: [
         ...summaryData.sales_summary.map(sale => [
-          sale.customer_name,
+          getDisplayCustomerName(sale),
           sale.invoice_no || '-',
           sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
           sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
@@ -826,7 +861,7 @@ export default function DailySummary() {
       head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
       body: [
         ...summaryData.sales_summary.map(sale => [
-          sale.customer_name,
+          getDisplayCustomerName(sale),
           sale.invoice_no || '-',
           sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
           sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
@@ -1417,9 +1452,9 @@ export default function DailySummary() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {summaryData.sales_summary.map((sale, index) => (
+                        {summaryData?.sales_summary.map((sale, index) => (
                           <TableRow key={index}>
-                            <TableCell className="border">{sale.customer_name}</TableCell>
+                            <TableCell className="border">{getDisplayCustomerName(sale)}</TableCell>
                             <TableCell className="border">{sale.invoice_no || '-'}</TableCell>
                             <TableCell className="border text-right">
                               {sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-'}
