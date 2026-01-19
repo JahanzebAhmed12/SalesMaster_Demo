@@ -6,13 +6,17 @@ const puppeteer = require('puppeteer');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const PrintHelper = require('./print-helper');
 
 class PCPrintService {
   constructor() {
     // IMPORTANT: Replace with your actual VPS URL
     this.vpsUrl = 'https://tropifruituk.net'; // Replace with your VPS URL
-    this.pollInterval = 5000; // Check every 5 seconds
-    this.printerName = 'Microsoft Print to PDF'; // Replace with actual printer name
+    this.pollInterval = 10000; // Check every 5 seconds
+    this.printerName = 'EPSON LQ-350 ESC/P2'; // Replace with actual printer name
+    this.customPaperSize = 'DOT MATRIX (18.6x20)'; // Your custom paper size name
+    // this.printerName = 'Microsoft Print to PDF'; // Replace with actual printer name
+    // this.customPaperSize = 'A4'; // Your custom paper size name
     this.isProcessing = false;
     this.tempDir = path.join(__dirname, 'temp');
     this.startTime = new Date();
@@ -109,7 +113,7 @@ class PCPrintService {
 
       // Use Puppeteer to generate PDF
       const browser = await puppeteer.launch({
-        headless: true,
+        headless: "new",
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
       });
 
@@ -120,23 +124,56 @@ class PCPrintService {
         timeout: 30000
       });
 
+      // Generate PDF and save it first
       const pdfPath = path.join(this.tempDir, `invoice_${job.id}.pdf`);
+      
+      console.log('📄 PDF Generation Settings:');
+      console.log('   Width: 186mm (7.32 inches)');
+      console.log('   Height: 200mm (7.87 inches)');
+      console.log('   Margins: 0mm');
+      console.log('   Format: Custom dot matrix size');
+      
       await page.pdf({
         path: pdfPath,
-        width: '186mm',
-        height: '200mm',
+        width: '186mm',    // 18.6cm width for dot matrix
+        height: '200mm',   // 20cm height for dot matrix
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
         printBackground: true,
-        preferCSSPageSize: true
+        preferCSSPageSize: true,
+        format: undefined  // Use custom dimensions
       });
 
       await browser.close();
 
-      // Print the PDF to dot matrix printer
-      await this.printPDF(pdfPath);
+      // Verify PDF was created successfully
+      if (!fs.existsSync(pdfPath)) {
+        throw new Error('PDF generation failed - file not created');
+      }
 
-      // Clean up temporary files
-      this.cleanupTempFiles(tempHtmlPath, pdfPath);
+      const pdfStats = fs.statSync(pdfPath);
+      console.log(`✅ PDF generated successfully: ${pdfPath}`);
+      console.log(`📊 PDF file size: ${(pdfStats.size / 1024).toFixed(2)} KB`);
+      console.log('');
+
+      // Now print the saved PDF file
+      console.log('🖨️  Now printing the saved PDF file...');
+      console.log('⏳ Waiting 2 seconds before printing (you can inspect the PDF if needed)...');
+      
+      // Small delay to allow PDF inspection if needed
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Check if printing should be skipped (for testing)
+      if (process.env.SKIP_PRINTING === 'true') {
+        console.log('⏭️  Skipping print (SKIP_PRINTING=true) - PDF ready for manual testing');
+      } else {
+        await this.printPDF(pdfPath);
+      }
+
+      // Don't clean up immediately - keep PDF for inspection
+      // this.cleanupTempFiles(tempHtmlPath, pdfPath);
+      console.log(`📁 Files preserved for inspection:`);
+      console.log(`   HTML: ${tempHtmlPath}`);
+      console.log(`   PDF: ${pdfPath}`);
 
       // Update status to 'completed'
       await this.updateJobStatus(job.id, 'completed');
@@ -154,22 +191,34 @@ class PCPrintService {
   }
 
   async printPDF(pdfPath) {
-    return new Promise((resolve, reject) => {
-      // Windows command to print PDF to default printer
-      const printCommand = `powershell -Command "Start-Process -FilePath '${pdfPath}' -Verb Print -WindowStyle Hidden"`;
-
+    try {
       console.log('🖨️  Sending PDF to printer...');
-
-      exec(printCommand, (error) => {
-        if (error) {
-          reject(new Error(`Print command failed: ${error.message}`));
-        } else {
-          console.log('📄 PDF sent to printer successfully');
-          // Wait for print job to complete
-          setTimeout(resolve, 3000);
-        }
-      });
-    });
+      console.log(`📄 Using printer: ${this.printerName}`);
+      console.log(`📄 Using custom paper size: ${this.customPaperSize}`);
+      
+      // Check printer status first
+      const printerStatus = await PrintHelper.checkPrinterStatus(this.printerName);
+      
+      if (!printerStatus.available) {
+        console.log('❌ Printer not available:', printerStatus.error);
+        console.log('📋 Available printers:');
+        const availablePrinters = await PrintHelper.listAvailablePrinters();
+        console.log(availablePrinters);
+        throw new Error(`Printer "${this.printerName}" not available: ${printerStatus.error}`);
+      }
+      
+      console.log('✅ Printer is available and ready');
+      console.log('📋 Printer status:', printerStatus.status);
+      
+      // Use the print helper to queue the job
+      await PrintHelper.printToQueue(pdfPath, this.printerName);
+      
+      console.log('✅ PDF successfully queued to Windows print spooler');
+      
+    } catch (error) {
+      console.error('❌ Print operation failed:', error.message);
+      throw error;
+    }
   }
 
   cleanupTempFiles(...filePaths) {
@@ -223,6 +272,12 @@ class PCPrintService {
             size: 186mm 200mm; 
             margin: 0; 
           }
+          @media print {
+            @page {
+              size: 186mm 200mm;
+              margin: 0;
+            }
+          }
           * { 
             box-sizing: border-box; 
             margin: 0; 
@@ -236,6 +291,8 @@ class PCPrintService {
             height: 200mm; 
             font-family: "Courier New", monospace; 
             overflow: hidden;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
           }
           .dot-matrix-print { 
             position: relative; 

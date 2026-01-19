@@ -9,3 +9,4 @@ vite.config.ts.*
 *.pyc
 _pycache_
 *.db
+*.html
