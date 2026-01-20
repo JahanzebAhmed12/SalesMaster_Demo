@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
+import { useFormActivityTracker } from "@/hooks/useFormActivityTracker";
 
 const EmployeeDatabaseEdit = () => {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +29,9 @@ const EmployeeDatabaseEdit = () => {
   const { toast } = useToast();
   const [uploadingFiles, setUploadingFiles] = useState<{ [key: number]: boolean }>({});
   const [employeeDocuments, setEmployeeDocuments] = useState<any[]>([]);
+
+  // Track form activity to prevent auto-logout during form filling
+  useFormActivityTracker();
 
   // Fetch employee documents if editing existing employee
   const { data: documents = [] } = useQuery({
@@ -346,7 +350,7 @@ const EmployeeDatabaseEdit = () => {
                     <label htmlFor="title" className="block text-sm font-medium mb-2">Title</label>
                     <Select 
                       onValueChange={(value) => form.setValue("title", value)}
-                      defaultValue={form.watch("title") || ""}
+                      value={form.watch("title") || ""}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select title" />
@@ -437,7 +441,7 @@ const EmployeeDatabaseEdit = () => {
                     <label htmlFor="maritalStatus" className="block text-sm font-medium mb-2">Marital Status</label>
                     <Select 
                       onValueChange={(value) => form.setValue("maritalStatus", value)}
-                      defaultValue={form.watch("maritalStatus") || ""}
+                      value={form.watch("maritalStatus") || ""}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select marital status" />
@@ -560,7 +564,7 @@ const EmployeeDatabaseEdit = () => {
                     <label htmlFor="term" className="block text-sm font-medium mb-2">Term</label>
                     <Select 
                       onValueChange={(value) => form.setValue("term", value)}
-                      defaultValue={form.watch("term") || ""}
+                      value={form.watch("term") || ""}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select term" />
@@ -576,7 +580,7 @@ const EmployeeDatabaseEdit = () => {
                     <label htmlFor="status" className="block text-sm font-medium mb-2">Status</label>
                     <Select 
                       onValueChange={(value) => form.setValue("status", value)}
-                      defaultValue={form.watch("status") || ""}
+                      value={form.watch("status") || ""}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select status" />
@@ -684,7 +688,7 @@ const EmployeeDatabaseEdit = () => {
                     <label htmlFor="isActive" className="block text-sm font-medium mb-2">Active Status</label>
                     <Select 
                       onValueChange={(value) => form.setValue("isActive", value)}
-                      defaultValue={form.watch("isActive") || "yes"}
+                      value={form.watch("isActive") || "yes"}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select status" />
@@ -735,7 +739,7 @@ const EmployeeDatabaseEdit = () => {
                     <label htmlFor="nextOfKinRelationship" className="block text-sm font-medium mb-2">Relationship with Employee</label>
                     <Select 
                       onValueChange={(value) => form.setValue("nextOfKinRelationship", value)}
-                      defaultValue={form.watch("nextOfKinRelationship") || ""}
+                      value={form.watch("nextOfKinRelationship") || ""}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select relationship" />

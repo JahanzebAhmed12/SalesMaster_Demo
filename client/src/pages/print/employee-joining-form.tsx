@@ -248,6 +248,38 @@ export default function EmployeeJoiningForm() {
         </div>
       </div>
 
+      {/* Next of Kin Information Section */}
+      <div className="mb-6">
+        <h3 className="text-lg font-bold mb-4 bg-gray-100 p-2">NEXT OF KIN INFORMATION</h3>
+        
+        <div className="grid grid-cols-1 gap-4 text-sm">
+          <div className="flex items-center">
+            <span className="w-40 font-medium">Name:</span>
+            <span className="form-field flex-1">{formatValue(employee.nextOfKinName)}</span>
+          </div>
+          
+          <div className="flex items-center">
+            <span className="w-40 font-medium">Relationship:</span>
+            <span className="form-field flex-1">{formatValue(employee.nextOfKinRelationship)}</span>
+          </div>
+          
+          <div className="flex items-center">
+            <span className="w-40 font-medium">Phone Number:</span>
+            <span className="form-field flex-1">{formatValue(employee.nextOfKinPhoneNumber)}</span>
+          </div>
+          
+          <div className="flex items-center">
+            <span className="w-40 font-medium">Email Address:</span>
+            <span className="form-field flex-1">{formatValue(employee.nextOfKinEmail)}</span>
+          </div>
+          
+          <div className="flex items-start">
+            <span className="w-40 font-medium">Home Address:</span>
+            <span className="form-field flex-1 min-h-16">{formatValue(employee.nextOfKinAddress)}</span>
+          </div>
+        </div>
+      </div>
+
       {/* Declaration Section */}
       <div className="mb-8">
         <h3 className="text-lg font-bold mb-4 bg-gray-100 p-2">EMPLOYEE DECLARATION</h3>

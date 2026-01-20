@@ -1,10 +1,11 @@
 import { useAuth } from "@/lib/auth";
-import { usePermissions } from "@/hooks/usePermissions";
+import { usePermissions, useDailyBookSalesPermissions } from "@/hooks/usePermissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function TestPermissions() {
   const { user } = useAuth();
   const permissions = usePermissions();
+  const { canViewTotals } = useDailyBookSalesPermissions();
 
   return (
     <div className="p-6">
@@ -43,6 +44,22 @@ export default function TestPermissions() {
                   </div>
                 ))
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Specific Permission Tests</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Daily Book Sales Totals:</span>
+                <span className={`text-sm font-semibold ${canViewTotals ? 'text-green-600' : 'text-red-600'}`}>
+                  {canViewTotals ? 'Can View' : 'Cannot View'}
+                </span>
+              </div>
             </div>
           </CardContent>
         </Card>

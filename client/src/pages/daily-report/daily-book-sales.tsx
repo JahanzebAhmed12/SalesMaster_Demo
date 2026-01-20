@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import Pagination from "@/components/ui/pagination";
 import { useTablePagination } from "@/hooks/useTablePagination";
 
-import { useBackdatePermissions } from "@/hooks/usePermissions";
+import { useBackdatePermissions, useDailyBookSalesPermissions } from "@/hooks/usePermissions";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
@@ -235,7 +235,7 @@ export default function DailyBookSales() {
         `&search=${encodeURIComponent(searchTerm)}`
       ),
     staleTime: 0, // Consider data stale immediately to ensure fresh data
-    cacheTime: 1000 * 60 * 5, // Keep in cache for 5 minutes
+    gcTime: 1000 * 60 * 5, // Keep in cache for 5 minutes (renamed from cacheTime)
     refetchInterval: 20000, // Auto-refresh every 20 seconds
     refetchIntervalInBackground: true, // Continue refreshing even when tab is not active
     refetchOnWindowFocus: true, // Refetch when window gains focus
@@ -344,6 +344,9 @@ export default function DailyBookSales() {
 
   // Backdate permissions
   const { canEditBackdate } = useBackdatePermissions();
+
+  // Daily Book Sales permissions
+  const { canViewTotals } = useDailyBookSalesPermissions();
 
   // Invoice permissions
   const { canEditInvoice, isInvoiceLocked } = useInvoicePermissions();
@@ -1460,42 +1463,44 @@ export default function DailyBookSales() {
                 </TableBody>
               </Table>
               {/* Summary moved below table, styled for print and screen */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-lg border space-y-2 sm:space-y-0">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Date Range:</span>
-                    <span className="sm:block">{formatDateForDisplay(fromDate, 'MM-dd')} to {formatDateForDisplay(toDate, 'MM-dd')}</span>
-                  </div>
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Total Boxes:</span>
-                    <span className="sm:block">{formatQuantity(totalBoxes)}</span>
-                  </div>
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Total VAT:</span>
-                    <span className="sm:block">£{totalVAT.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Total Amount:</span>
-                    <span className="sm:block">£{totalAmount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Total Cash:</span>
-                    <span className="sm:block">£{totalCash.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Total Bank:</span>
-                    <span className="sm:block">£{totalBank.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Total Transfer:</span>
-                    <span className="sm:block">£{totalBankTransfer.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between sm:block">
-                    <span className="font-semibold">Total Credit:</span>
-                    <span className="sm:block text-red-600">£{totalCredit.toFixed(2)}</span>
+              {canViewTotals && (
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg border space-y-2 sm:space-y-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Date Range:</span>
+                      <span className="sm:block">{formatDateForDisplay(fromDate, 'MM-dd')} to {formatDateForDisplay(toDate, 'MM-dd')}</span>
+                    </div>
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Total Boxes:</span>
+                      <span className="sm:block">{formatQuantity(totalBoxes)}</span>
+                    </div>
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Total VAT:</span>
+                      <span className="sm:block">£{totalVAT.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Total Amount:</span>
+                      <span className="sm:block">£{totalAmount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Total Cash:</span>
+                      <span className="sm:block">£{totalCash.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Total Bank:</span>
+                      <span className="sm:block">£{totalBank.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Total Transfer:</span>
+                      <span className="sm:block">£{totalBankTransfer.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between sm:block">
+                      <span className="font-semibold">Total Credit:</span>
+                      <span className="sm:block text-red-600">£{totalCredit.toFixed(2)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="flex flex-col sm:flex-row justify-between items-center mt-4 text-sm text-gray-600 gap-2">

@@ -145,7 +145,7 @@ const menuSections: MenuSection[] = [
 
 const restrictionSections = menuSections.flatMap(section => {
   const sectionKey = section.title.toLowerCase().replace(/\s+/g, '_');
-  return [
+  const sectionItems = [
     { key: sectionKey, label: section.title, isSection: true },
     ...section.items.map(item => ({
       key: item.title.toLowerCase().replace(/\s+/g, '_'),
@@ -153,6 +153,17 @@ const restrictionSections = menuSections.flatMap(section => {
       isSection: false
     }))
   ];
+  
+  // Add specific permission for Daily Book Sales Totals
+  if (section.title === "Daily Report") {
+    sectionItems.push({
+      key: "daily_book_sales_totals",
+      label: "Daily Book Sales Totals",
+      isSection: false
+    });
+  }
+  
+  return sectionItems;
 });
 
 const AdminFunctions = () => {

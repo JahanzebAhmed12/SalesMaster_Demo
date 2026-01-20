@@ -490,13 +490,15 @@ export default function DailySummary() {
     // Customer Payments (only if has data)
     if (summaryData.customer_payments && summaryData.customer_payments.length > 0) {
       doc.setFontSize(12);
-      doc.text('Customer Payments (Backdate)', 14, yPosition);
+      doc.text('Customer Payments', 14, yPosition);
       yPosition += 5;
 
       autoTable(doc, {
         head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Bank Transfer', 'Cheque', 'Total Amount']],
         body: [
-          ...summaryData.customer_payments.map(payment => [
+          ...summaryData.customer_payments
+            .sort((a, b) => parseInt(a.payment_id) - parseInt(b.payment_id))
+            .map(payment => [
             payment.customer_name,
             payment.payment_id,
             payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-',
@@ -847,15 +849,36 @@ export default function DailySummary() {
     const doc = new jsPDF();
     let yPosition = 20;
 
+    // Add company details header
+    if (companyDetails) {
+      doc.setFontSize(16);
+      doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+
+      doc.setFontSize(10);
+      if (companyDetails.email) {
+        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      if (companyDetails.bankDetails) {
+        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+        yPosition += 5;
+      }
+      yPosition += 5;
+    }
+
     // Add report title
-    doc.setFontSize(16);
-    doc.text('Daily Summary Report', 14, yPosition);
+    doc.setFontSize(14);
+    doc.text('DAILY SUMMARY REPORT', 105, yPosition, { align: 'center' });
+    yPosition += 8;
+    doc.setFontSize(10);
+    doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
     yPosition += 15;
 
-    // Daily Sales Summary
-    doc.setFontSize(14);
-    doc.text(`Daily Sales Summary - ${format(selectedDate, "dd/MM/yyyy")}`, 14, yPosition);
-    yPosition += 10;
+    // Daily Sales Summary (always included)
+    doc.setFontSize(12);
+    doc.text('Daily Sales Summary', 14, yPosition);
+    yPosition += 5;
 
     autoTable(doc, {
       head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
@@ -874,27 +897,24 @@ export default function DailySummary() {
       ],
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
-      didParseCell: function(data) {
-        if (data.row.index === summaryData.sales_summary.length) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [240, 240, 240];
-        }
-      }
+      headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
     });
 
     yPosition = (doc as any).lastAutoTable.finalY + 15;
 
-    // Customer Payments (if has data)
+    // Customer Payments (only if has data)
     if (summaryData.customer_payments && summaryData.customer_payments.length > 0) {
       doc.setFontSize(12);
-      doc.text('Customer Payments (Backdate)', 14, yPosition);
+      doc.text('Customer Payments', 14, yPosition);
       yPosition += 5;
+
+      // Sort customer payments by payment_id
+      const sortedPayments = summaryData.customer_payments.sort((a, b) => parseInt(a.payment_id) - parseInt(b.payment_id));
 
       autoTable(doc, {
         head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Bank Transfer', 'Cheque', 'Total Amount']],
         body: [
-          ...summaryData.customer_payments.map(payment => [
+          ...sortedPayments.map(payment => [
             payment.customer_name,
             payment.payment_id,
             payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-',
@@ -903,17 +923,23 @@ export default function DailySummary() {
             payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-',
             payment.total_amount.toFixed(2)
           ]),
-          ['TOTAL', '', summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2), summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2), summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2), summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2), summaryData.totals.customer_payments_total.toFixed(2)]
+          ['TOTAL', '',
+            summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2),
+            summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2),
+            summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2),
+            summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2),
+            summaryData.totals.customer_payments_total.toFixed(2)
+          ]
         ],
         startY: yPosition,
         styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
       });
 
       yPosition = (doc as any).lastAutoTable.finalY + 15;
     }
 
-    // Supplier Payments (if has data)
+    // Supplier Payments (only if has data)
     if (summaryData.supplier_payments && summaryData.supplier_payments.length > 0) {
       doc.setFontSize(12);
       doc.text('Supplier Payments', 14, yPosition);
@@ -933,13 +959,13 @@ export default function DailySummary() {
         ],
         startY: yPosition,
         styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
       });
 
       yPosition = (doc as any).lastAutoTable.finalY + 15;
     }
 
-    // Expense Entries (if has data)
+    // Expense Entries (only if has data)
     if (summaryData.expense_entries && summaryData.expense_entries.length > 0) {
       doc.setFontSize(12);
       doc.text('Expense Entries', 14, yPosition);
@@ -959,13 +985,13 @@ export default function DailySummary() {
         ],
         startY: yPosition,
         styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
       });
 
       yPosition = (doc as any).lastAutoTable.finalY + 15;
     }
 
-    // Banking Records (if has data)
+    // Banking Records (only if has data)
     if (summaryData.banking_records && summaryData.banking_records.length > 0) {
       doc.setFontSize(12);
       doc.text('Banking Records', 14, yPosition);
@@ -979,19 +1005,24 @@ export default function DailySummary() {
             record.remarks,
             record.payment_type,
             record.amount.toFixed(2),
-            record.bag_details.length > 0 ? record.bag_details.map(bag => `Bag: ${bag.bag_number}`).join(', ') : `${record.paying_number ? `Pay In: ${record.paying_number}` : ''}${record.cheque_number ? ` | Cheque: ${record.cheque_number}` : ''}`
+            record.bag_details.length > 0
+              ? record.bag_details.map(bag => `Bag: ${bag.bag_number}`).join(', ')
+              : `${record.paying_number ? `Pay In: ${record.paying_number}` : ''}${record.cheque_number ? ` | Cheque: ${record.cheque_number}` : ''}`
           ]),
           ['TOTAL', '', '', summaryData.totals.banking_total.toFixed(2), '']
         ],
         startY: yPosition,
         styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
       });
 
       yPosition = (doc as any).lastAutoTable.finalY + 15;
     }
 
-    // Daily Summary Totals
+    // Get current Y position after banking records
+    yPosition = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : yPosition;
+
+    // Daily Summary Totals (always included) - Same page as banking records
     doc.setFontSize(12);
     doc.text('Daily Summary Totals', 14, yPosition);
     yPosition += 5;
@@ -1027,8 +1058,8 @@ export default function DailySummary() {
         fontSize: 14,
         cellPadding: 5,
         fontStyle: 'bold',
-        fillColor: [173, 216, 230],
-        textColor: [0, 0, 0]
+        fillColor: [173, 216, 230], // Light blue background
+        textColor: [0, 0, 0] // Black text
       },
       columnStyles: {
         0: { fontStyle: 'bold', fontSize: 14 },
@@ -1036,14 +1067,35 @@ export default function DailySummary() {
       }
     });
 
-    // Stock Check (if has data) - NEW PAGE
+    // Stock Check (only if has data) - NEW PAGE
     if (stockData && stockData.length > 0) {
       doc.addPage();
       yPosition = 20;
 
+      // Add company details header
+      if (companyDetails) {
+        doc.setFontSize(16);
+        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
+        yPosition += 8;
+
+        doc.setFontSize(10);
+        if (companyDetails.email) {
+          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        if (companyDetails.bankDetails) {
+          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        yPosition += 5;
+      }
+
       doc.setFontSize(14);
-      doc.text(`Stock Check - ${format(selectedDate, "dd/MM/yyyy")}`, 14, yPosition);
-      yPosition += 10;
+      doc.text('STOCK CHECK', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+      yPosition += 15;
 
       // Filter stock data to only include items with non-zero values
       const filteredStockData = stockData.filter((item: StockItem) =>
@@ -1088,7 +1140,7 @@ export default function DailySummary() {
         ],
         startY: yPosition,
         styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
           0: { cellWidth: 15 },
           1: { cellWidth: 35 },
@@ -1101,24 +1153,39 @@ export default function DailySummary() {
           8: { cellWidth: 15 },
           9: { cellWidth: 15 },
           10: { cellWidth: 15 }
-        },
-        didParseCell: function(data) {
-          if (data.row.index === filteredStockData.length) {
-            data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [240, 240, 240];
-          }
         }
       });
     }
 
-    // Product Purchase Full View (if has data) - NEW PAGE
+    // Product Purchase Full View (only if has data) - NEW PAGE
     if (productPurchaseData && productPurchaseData.length > 0) {
       doc.addPage();
       yPosition = 20;
 
+      // Add company details header
+      if (companyDetails) {
+        doc.setFontSize(16);
+        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
+        yPosition += 8;
+
+        doc.setFontSize(10);
+        if (companyDetails.email) {
+          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        if (companyDetails.bankDetails) {
+          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
+          yPosition += 5;
+        }
+        yPosition += 5;
+      }
+
       doc.setFontSize(14);
-      doc.text(`Product Purchase Full View - ${format(selectedDate, "dd/MM/yyyy")}`, 14, yPosition);
-      yPosition += 10;
+      doc.text('PRODUCT PURCHASE FULL VIEW', 105, yPosition, { align: 'center' });
+      yPosition += 8;
+      doc.setFontSize(10);
+      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
+      yPosition += 15;
 
       // Process data for grouped display
       const processedData: any[] = [];
@@ -1128,7 +1195,7 @@ export default function DailySummary() {
         if (row.isHeader) {
           processedData.push([
             row.date, row.supplier, row.invNo,
-            '', '', '', ''
+            '', '', '', '', ''
           ]);
         } else if (row.isTotal) {
           processedData.push([
@@ -1151,7 +1218,7 @@ export default function DailySummary() {
         body: processedData,
         startY: yPosition,
         styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
         columnStyles: {
           0: { cellWidth: 25 },
           1: { cellWidth: 35 },
@@ -1165,11 +1232,9 @@ export default function DailySummary() {
           if (data.row.index < processedData.length) {
             const rowData = processedData[data.row.index];
             if (rowData[0] && rowData[1] && !rowData[3]) {
-              data.cell.styles.fillColor = [220, 220, 220];
               data.cell.styles.fontStyle = 'bold';
             }
             if (rowData[3] && rowData[6] && !rowData[0] && !rowData[1]) {
-              data.cell.styles.fillColor = [200, 200, 200];
               data.cell.styles.fontStyle = 'bold';
             }
           }
@@ -1177,16 +1242,11 @@ export default function DailySummary() {
       });
     }
 
-    // Add footer text "stand 100" on bottom right of each page
+    // Add footer text "stand 100" on bottom right
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
-    const totalPages = doc.getNumberOfPages();
-    
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
-    }
+    doc.setFontSize(8);
+    doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
 
     return doc.output('blob');
   };
@@ -1246,7 +1306,7 @@ export default function DailySummary() {
           const emailData = {
             to: emailList,
             subject: `Daily Summary Report - ${format(selectedDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments (Backdate)\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
             attachment: {
               filename: `daily-summary-${format(selectedDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -1507,7 +1567,7 @@ export default function DailySummary() {
               {/* Customer Payments */}
               <Card className={summaryData.customer_payments && summaryData.customer_payments.length === 0 ? "print:hidden" : ""}>
                 <CardHeader>
-                  <CardTitle>Customer Payments (Backdate Only)</CardTitle>
+                  <CardTitle>Customer Payments</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
@@ -1524,7 +1584,9 @@ export default function DailySummary() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {summaryData.customer_payments.map((payment, index) => (
+                        {summaryData.customer_payments
+                          .sort((a, b) => parseInt(a.payment_id) - parseInt(b.payment_id))
+                          .map((payment, index) => (
                           <TableRow key={index}>
                             <TableCell className="border">{payment.customer_name}</TableCell>
                             <TableCell className="border">{payment.payment_id}</TableCell>
@@ -1678,19 +1740,15 @@ export default function DailySummary() {
               </Card>
 
               {/* Total Sales Summary Card */}
-              <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-bold text-green-800 text-center">
-                    TOTAL SALES SUMMARY
-                  </CardTitle>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Total Sales Summary</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center">
-                    <div className="text-3xl font-bold text-green-900 mb-1">
-                      £{(summaryData.totals.cash_sales + summaryData.totals.card_sales + (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.cheque_sales || 0) + summaryData.totals.account_sales).toFixed(2)}
-                    </div>
-                    <div className="text-sm text-green-700">
-                      Daily Sales (All Payment Methods)
+                  <div className="space-y-3 text-lg">
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Daily Sales (All Payment Methods):</span>
+                      <span className="font-bold">£{(summaryData.totals.cash_sales + summaryData.totals.card_sales + (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.cheque_sales || 0) + summaryData.totals.account_sales).toFixed(2)}</span>
                     </div>
                   </div>
                 </CardContent>

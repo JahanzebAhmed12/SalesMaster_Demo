@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { useAuth } from "@/lib/auth";
 import { useEffect } from "react";
 import { useAutoLogout } from "@/hooks/useAutoLogout";
+import { SessionStatus } from "@/components/session-status";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -636,6 +637,7 @@ function App() {
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
         <TooltipProvider>
           <Toaster />
+          <SessionStatus />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

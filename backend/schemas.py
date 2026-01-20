@@ -478,6 +478,12 @@ class EmployeeSchema(BaseModel):
     licenceCertificateNumber: Optional[str] = Field(default=None, alias='licenceCertificateNumber')
     marketPermitNumber: Optional[str] = Field(default=None, alias='marketPermitNumber')
     entitlementDays: Optional[int] = Field(default=25, alias='entitlementDays')
+    # Next of Kin Information
+    nextOfKinName: Optional[str] = Field(default=None, alias='nextOfKinName')
+    nextOfKinPhoneNumber: Optional[str] = Field(default=None, alias='nextOfKinPhoneNumber')
+    nextOfKinEmail: Optional[str] = Field(default=None, alias='nextOfKinEmail')
+    nextOfKinAddress: Optional[str] = Field(default=None, alias='nextOfKinAddress')
+    nextOfKinRelationship: Optional[str] = Field(default=None, alias='nextOfKinRelationship')
     documents: Optional[List[EmployeeDocumentSchema]] = Field(default=[], alias='documents')
     isActive: str = Field(default="yes", alias='isActive')
 

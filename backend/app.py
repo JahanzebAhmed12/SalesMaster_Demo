@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from flask import make_response
 import re
 import html
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue
+from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave
 
 
 from schemas import (
@@ -2893,12 +2893,46 @@ def update_user(id):
 def delete_user(id):
     try:
         user = User.query.get_or_404(id)
+        
+        # Delete related records first to avoid foreign key constraint issues
+        
+        # Delete user-specific configuration records (these have NOT NULL constraints)
+        UserBackDateOption.query.filter_by(user_id=id).delete()
+        UserRestriction.query.filter_by(user_id=id).delete()
+        UserTimingRestriction.query.filter_by(user_id=id).delete()
+        UserInvoiceRestriction.query.filter_by(user_id=id).delete()
+        UserDailyBookType.query.filter_by(user_id=id).delete()
+        
+        # Delete attendance records (these have NOT NULL user_id constraint)
+        Attendance.query.filter_by(user_id=id).delete()
+        
+        # Delete payroll records (these have NOT NULL user_id constraint)
+        Payroll.query.filter_by(user_id=id).delete()
+        
+        # Handle Leave records - delete leaves created by this user
+        Leave.query.filter_by(user_id=id).delete()
+        
+        # For leaves approved by this user, set approved_by to NULL (this should be nullable)
+        Leave.query.filter_by(approved_by=id).update({'approved_by': None})
+        
+        # Set created_by fields to NULL for records created by this user
+        # (These should be nullable fields)
+        Sale.query.filter_by(created_by=id).update({'created_by': None})
+        StockMovement.query.filter_by(created_by=id).update({'created_by': None})
+        StockAdjustment.query.filter_by(created_by=id).update({'created_by': None})
+        ExpenseEntry.query.filter_by(created_by=id).update({'created_by': None})
+        DumpEntry.query.filter_by(created_by=id).update({'created_by': None})
+        CustomerReturn.query.filter_by(created_by=id).update({'created_by': None})
+        SupplierReturn.query.filter_by(created_by=id).update({'created_by': None})
+        PrintQueue.query.filter_by(created_by=id).update({'created_by': None})
+        
+        # Now delete the user
         db.session.delete(user)
         db.session.commit()
         return jsonify({'message': 'User deleted successfully'}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': str(e)}), 400
+        return jsonify({'message': f'Error deleting user: {str(e)}'}), 400
 
 # Monthly Reports endpoints
 @app.route('/api/reports/attendance', methods=['GET'])
@@ -3347,6 +3381,12 @@ def create_employee():
             licence_certificate_number=employee_data.licenceCertificateNumber,
             market_permit_number=employee_data.marketPermitNumber,
             entitlement_days=employee_data.entitlementDays,
+            # Next of Kin Information
+            next_of_kin_name=employee_data.nextOfKinName,
+            next_of_kin_phone_number=employee_data.nextOfKinPhoneNumber,
+            next_of_kin_email=employee_data.nextOfKinEmail,
+            next_of_kin_address=employee_data.nextOfKinAddress,
+            next_of_kin_relationship=employee_data.nextOfKinRelationship,
             is_active=employee_data.isActive
         )
         
@@ -3404,6 +3444,12 @@ def update_employee(id):
         employee.licence_certificate_number = employee_data.licenceCertificateNumber
         employee.market_permit_number = employee_data.marketPermitNumber
         employee.entitlement_days = employee_data.entitlementDays
+        # Next of Kin Information
+        employee.next_of_kin_name = employee_data.nextOfKinName
+        employee.next_of_kin_phone_number = employee_data.nextOfKinPhoneNumber
+        employee.next_of_kin_email = employee_data.nextOfKinEmail
+        employee.next_of_kin_address = employee_data.nextOfKinAddress
+        employee.next_of_kin_relationship = employee_data.nextOfKinRelationship
         employee.is_active = employee_data.isActive
         
         # Skip document updates - documents are managed separately via upload API
@@ -11331,7 +11377,7 @@ def daily_summary_report():
             sale_entry['account_paid_cheque'] = account_payment_totals[matching_sale.id]['cheque']
     
     # 2. Customer Payments (using payment batch_id as payment_id)
-    # Include all payments made on the selected date, but exclude those already shown in sales summary
+    # Include all payments made on the selected date (both current day and backdate invoices)
     customer_payments = db.session.query(
         Customer.customer_name,
         Payment.id,
@@ -11347,24 +11393,13 @@ def daily_summary_report():
     ).outerjoin(
         Sale, Payment.sale_id == Sale.id
     ).filter(
-        Payment.payment_date == report_date,  # Payments made on the selected date
-        or_(
-            Payment.sale_id.is_(None),  # On-account payments (always show)
-            func.date(Sale.date) < report_date,  # Payments for invoices from previous dates (backdate)
-            # Remove same-day negative payments as they're already shown in sales summary
-        )
+        Payment.payment_date == report_date  # All payments made on the selected date
     ).order_by(Customer.customer_name, Payment.batch_id).all()
     
     # Group payments by customer and batch_id (payment_id)
-    # Filter out payments for invoices that are already shown in sales summary
-    sales_invoice_ids = {sale.id for sale in sales_query}
-    
+    # Include ALL payments made today (both current day and backdate invoices)
     payment_groups = {}
     for payment in customer_payments:
-        # Skip payments for invoices that are already shown in sales summary
-        if payment.sale_id and payment.sale_id in sales_invoice_ids:
-            continue
-            
         # Use batch_id as payment_id, or payment.id if no batch_id
         payment_id = str(payment.batch_id) if payment.batch_id else str(payment.id)
         key = (payment.customer_name, payment_id)
@@ -11513,6 +11548,12 @@ def daily_summary_report():
         if p.payment_mode.lower() == 'cash'
     )
     
+    # Calculate customer cheque payments (for total banking)
+    customer_cheque_payments = sum(
+        float(p.amount) for p in customer_payments 
+        if p.payment_mode.lower() == 'cheque'
+    )
+    
     # Calculate supplier payments (paid out) - only cash and bank payments
     supplier_payments_paid_out = sum(
         float(p.amount) for p in supplier_payments 
@@ -11541,7 +11582,7 @@ def daily_summary_report():
         'cash_sales': cash_total,
         'card_sales': card_total,
         'bank_transfer_sales': bank_transfer_total,
-        'cheque_sales': cheque_total,
+        'cheque_sales': cheque_total + customer_cheque_payments,
         'account_sales': account_total,
         'account_credits': account_credits_total,
         'total_sales': cash_total + card_total + bank_transfer_total + cheque_total + account_total,

@@ -43,4 +43,12 @@ export function useBackdatePermissions() {
     canEditBackdate: backdateOptions?.editing ?? false,
     canDeleteBackdate: backdateOptions?.deleting ?? false,
   };
+}
+
+export function useDailyBookSalesPermissions() {
+  const permissions = usePermissions();
+  
+  return {
+    canViewTotals: permissions['daily_book_sales_totals'] !== false, // Default to true if not set
+  };
 } 
