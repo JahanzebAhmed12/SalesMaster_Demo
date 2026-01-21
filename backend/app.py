@@ -5644,12 +5644,14 @@ def customer_statement():
         Sale.date >= from_dt,
         Sale.date < to_dt,
         Sale.status == 'finalized'
-    ).all()
+    ).order_by(Sale.date.asc(), Sale.id.asc()).all()
+    
+    # Get all payments (both invoice-specific and on-account)
     payments = Payment.query.filter(
         Payment.customer_id == customer_id,
         Payment.payment_date >= from_dt.date(),
         Payment.payment_date < to_dt.date()
-    ).all()
+    ).order_by(Payment.payment_date.asc(), Payment.id.asc()).all()
 
     # Build statement entries
     statement = []
@@ -5658,36 +5660,64 @@ def customer_statement():
 
     # Combine and sort by date (sales and payments)
     entries = []
+    
+    # Add sales entries
     for sale in sales:
+        # Determine if this is a credit invoice (negative total amount)
+        sale_amount = float(sale.total_amount)
+        is_credit = sale_amount < 0
+        
         entries.append({
             'date': sale.date,
             'type': 'sale',
             'invoiceNo': sale.invoice_number,
-            'description': 'Sale Invoice',
-            'accountInv': float(sale.total_amount) if sale.customer_type == 'account' else 0,
-            'cashInv': float(sale.total_amount) if sale.customer_type == 'cash' else 0,
+            'description': 'Credit Note' if is_credit else 'Sale Invoice',
+            'accountInv': sale_amount if sale.customer_type == 'account' and not is_credit else 0,
+            'cashInv': sale_amount if sale.customer_type != 'account' and not is_credit else 0,
             'paid': 0,
-            'accountAdj': 0,
+            'accountAdj': abs(sale_amount) if is_credit else 0,  # Credit invoices go to accountAdj as positive
             'discountAdj': 0,
-            'balance': float(sale.total_amount),
-            'sale_id': sale.id
+            'balance': sale_amount,  # Positive for invoices, negative for credits
+            'sale_id': sale.id,
+            'sort_priority': 1,  # Sales get priority 1
+            'timestamp': sale.date.timestamp() if hasattr(sale.date, 'timestamp') else sale.date.replace(tzinfo=None).timestamp()
         })
+    
+    # Add payment entries
     for payment in payments:
+        payment_datetime = datetime.combine(payment.payment_date, datetime.min.time())
+        
+        if payment.sale_id:
+            # Payment linked to specific invoice
+            invoice_no = payment.sale.invoice_number if payment.sale else f'INV-{payment.sale_id}'
+            description = f'Payment Received - {invoice_no}'
+            sort_priority = 2  # Invoice payments get priority 2
+        else:
+            # On-account payment (creates credit balance)
+            invoice_no = ''
+            description = 'Payment Received - On Account'
+            sort_priority = 3  # On-account payments get priority 3
+        
         entries.append({
-            'date': datetime.combine(payment.payment_date, datetime.min.time()),
+            'date': payment_datetime,
             'type': 'payment',
-            'invoiceNo': payment.sale.invoice_number if payment.sale else '',
-            'description': 'Payment Received',
+            'invoiceNo': invoice_no,
+            'description': description,
             'accountInv': 0,
             'cashInv': 0,
             'paid': float(payment.amount),
             'accountAdj': 0,
             'discountAdj': 0,
-            'balance': -float(payment.amount),
-            'sale_id': payment.sale_id
+            'balance': -float(payment.amount),  # Payments reduce balance (negative)
+            'sale_id': payment.sale_id,
+            'payment_id': payment.id,
+            'sort_priority': sort_priority,
+            'timestamp': payment_datetime.timestamp()
         })
-    # Sort by date
-    entries.sort(key=lambda x: x['date'])
+    
+    # Sort by date, then by priority (sales first, then invoice payments, then on-account)
+    # For same timestamp, ensure invoices come before their payments
+    entries.sort(key=lambda x: (x['timestamp'], x['sort_priority'], x.get('invoiceNo', '')))
 
     # Calculate running balance
     for entry in entries:
@@ -5710,8 +5740,10 @@ def customer_statement():
 
     # Filter by statement type if needed
     if statement_type == "Outstanding Only":
+        # Show entries where running balance is positive (customer owes money)
         statement = [s for s in statement if s['runningBalance'] > 0]
     elif statement_type == "Paid Only":
+        # Show only payment entries
         statement = [s for s in statement if s['paid'] > 0]
 
     return jsonify(statement)
@@ -13992,12 +14024,45 @@ def create_customer_bulk_payment():
         if payment_distribution:
             print(f"Using payment distribution from frontend: {payment_distribution}")
             
+            # Track total payments applied to invoices vs total invoice amounts
+            total_invoice_payments = 0
+            total_invoice_amounts = 0
+            invoice_payment_tracking = {}
+            
+            # First pass: calculate totals and track invoice payments
+            for payment_item in payment_distribution:
+                payment_amount = float(payment_item.get('amount', 0))
+                invoice_id = payment_item.get('invoiceId')
+                
+                if invoice_id and not payment_item.get('isOnAccount', False):
+                    # This is a direct invoice payment
+                    if invoice_id not in invoice_payment_tracking:
+                        # Get the invoice to check its total amount
+                        sale = Sale.query.get(invoice_id)
+                        if sale:
+                            current_paid = float(sale.paid_amount or 0)
+                            outstanding = float(sale.total_amount) - current_paid
+                            invoice_payment_tracking[invoice_id] = {
+                                'total_amount': float(sale.total_amount),
+                                'outstanding': outstanding,
+                                'payments_applied': 0
+                            }
+                            total_invoice_amounts += max(0, outstanding)  # Only count positive outstanding amounts
+                    
+                    if invoice_id in invoice_payment_tracking:
+                        invoice_payment_tracking[invoice_id]['payments_applied'] += payment_amount
+                        total_invoice_payments += payment_amount
+            
+            # Calculate overpayment amount
+            overpayment_amount = max(0, total_invoice_payments - total_invoice_amounts)
+            print(f"Total invoice payments: {total_invoice_payments}, Total invoice amounts: {total_invoice_amounts}, Overpayment: {overpayment_amount}")
+            
             # Create payments based on the frontend's payment distribution
             for payment_item in payment_distribution:
                 payment_amount = float(payment_item.get('amount', 0))
                 
                 if payment_item.get('isOnAccount', False):
-                    # On-account payment
+                    # On-account payment (including auto-applied and pure on-account)
                     if payment_item.get('invoiceId'):
                         # On-account payment applied to specific invoice - treat as direct payment
                         payment = Payment(
@@ -14047,37 +14112,88 @@ def create_customer_bulk_payment():
                         payments_created.append(payment)
                     
                 elif payment_amount > 0:
-                    # Positive invoice payment - create payment record
-                    payment = Payment(
-                        customer_id=customer_id,
-                        sale_id=payment_item.get('invoiceId'),
-                        amount=payment_amount,
-                        payment_mode=payment_item.get('paymentMode', 'cash'),
-                        payment_date=payment_date_obj,
-                        batch_id=batch_id,
-                        payment_type='direct',
-                        payment_source='customer_payment',
-                        remarks=remarks
-                    )
-                    db.session.add(payment)
-                    payments_created.append(payment)
+                    # Positive invoice payment
+                    invoice_id = payment_item.get('invoiceId')
                     
-                    # Update sale payment status
-                    sale = Sale.query.get(payment_item.get('invoiceId'))
+                    # Check if this payment would cause an overpayment for this specific invoice
+                    sale = Sale.query.get(invoice_id)
                     if sale:
                         current_paid = float(sale.paid_amount or 0)
-                        new_paid = current_paid + payment_amount
+                        outstanding = float(sale.total_amount) - current_paid
                         
-                        if new_paid >= float(sale.total_amount):
-                            sale.payment_status = "paid"
-                            sale.paid_amount = sale.total_amount
-                            sale.status = "finalized"
-                            sale.customer_type = payment_item.get('paymentMode', 'cash')
+                        if payment_amount <= outstanding:
+                            # Normal payment - doesn't exceed invoice amount
+                            payment = Payment(
+                                customer_id=customer_id,
+                                sale_id=invoice_id,
+                                amount=payment_amount,
+                                payment_mode=payment_item.get('paymentMode', 'cash'),
+                                payment_date=payment_date_obj,
+                                batch_id=batch_id,
+                                payment_type='direct',
+                                payment_source='customer_payment',
+                                remarks=remarks
+                            )
+                            db.session.add(payment)
+                            payments_created.append(payment)
+                            
+                            # Update sale payment status
+                            new_paid = current_paid + payment_amount
+                            if new_paid >= float(sale.total_amount):
+                                sale.payment_status = "paid"
+                                sale.paid_amount = sale.total_amount
+                                sale.status = "finalized"
+                                sale.customer_type = payment_item.get('paymentMode', 'cash')
+                            else:
+                                sale.payment_status = "partial"
+                                sale.paid_amount = new_paid
+                            
+                            db.session.add(sale)
+                            
                         else:
-                            sale.payment_status = "partial"
-                            sale.paid_amount = new_paid
-                        
-                        db.session.add(sale)
+                            # Overpayment scenario - split into invoice payment + on-account credit
+                            invoice_payment = outstanding
+                            overpay_amount = payment_amount - outstanding
+                            
+                            # Create payment for the invoice amount
+                            if invoice_payment > 0:
+                                payment = Payment(
+                                    customer_id=customer_id,
+                                    sale_id=invoice_id,
+                                    amount=invoice_payment,
+                                    payment_mode=payment_item.get('paymentMode', 'cash'),
+                                    payment_date=payment_date_obj,
+                                    batch_id=batch_id,
+                                    payment_type='direct',
+                                    payment_source='customer_payment',
+                                    remarks=remarks
+                                )
+                                db.session.add(payment)
+                                payments_created.append(payment)
+                                
+                                # Mark invoice as fully paid
+                                sale.payment_status = "paid"
+                                sale.paid_amount = sale.total_amount
+                                sale.status = "finalized"
+                                sale.customer_type = payment_item.get('paymentMode', 'cash')
+                                db.session.add(sale)
+                            
+                            # Create on-account credit for the overpayment
+                            if overpay_amount > 0:
+                                overpay_payment = Payment(
+                                    customer_id=customer_id,
+                                    sale_id=None,  # No specific invoice for overpayment
+                                    amount=overpay_amount,
+                                    payment_mode=payment_item.get('paymentMode', 'cash'),
+                                    payment_date=payment_date_obj,
+                                    batch_id=batch_id,
+                                    payment_type='on-account',
+                                    payment_source='customer_payment',
+                                    remarks=f"{remarks} (Overpayment credit from invoice {sale.invoice_number})" if remarks else f"Overpayment credit from invoice {sale.invoice_number}"
+                                )
+                                db.session.add(overpay_payment)
+                                payments_created.append(overpay_payment)
+                                print(f"Created overpayment credit of {overpay_amount} for customer {customer_id}")
                         
                 elif payment_amount < 0:
                     # Credit invoice - just mark as paid without creating payment record

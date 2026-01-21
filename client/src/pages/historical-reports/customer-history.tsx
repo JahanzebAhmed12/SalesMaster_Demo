@@ -23,6 +23,8 @@ import { useLocation } from 'wouter';
 import { parseISO } from 'date-fns';
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import CustomerSearch from "@/components/ui/customer-search";
+import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 
 interface CompanyDetails {
   id: number;
@@ -45,7 +47,7 @@ interface CompanyDetails {
 
 export default function CustomerHistory() {
   const { user } = useAuth();
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const { selectedCustomer, handleCustomerSelect, customerId, customerName } = useCustomerSearch();
   
   // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -201,17 +203,16 @@ export default function CustomerHistory() {
     }
     
     // Get customer email from selected customer
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    if (!selectedCustomerData?.email) {
+    if (!selectedCustomer?.email) {
       alert('Customer email not found. Please ensure the customer has an email address.');
       return;
     }
 
     try {
       const response = await apiRequest("POST", "/api/send/selected-invoices", {
-        customerId: parseInt(selectedCustomer),
+        customerId: selectedCustomer.id,
         invoiceNumbers: Array.from(selectedInvoices),
-        customerEmails: selectedCustomerData.email
+        customerEmails: selectedCustomer.email
       });
 
       if (response.success) {
@@ -234,15 +235,14 @@ export default function CustomerHistory() {
     }
     
     // Get customer email from selected customer
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    if (!selectedCustomerData?.email) {
+    if (!selectedCustomer?.email) {
       alert('Customer email not found. Please ensure the customer has an email address.');
       return;
     }
 
     try {
       const response = await apiRequest("POST", "/api/send/customer-history", {
-        customerId: parseInt(selectedCustomer),
+        customerId: selectedCustomer.id,
         fromDate: format(fromDate, "yyyy-MM-dd"),
         toDate: format(toDate, "yyyy-MM-dd"),
         filterType: filterType
@@ -261,24 +261,19 @@ export default function CustomerHistory() {
 
   // Send individual invoice via email
   const handleSendInvoice = (invoiceNo: string) => {
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    if (!selectedCustomerData?.email) {
+    if (!selectedCustomer?.email) {
       alert('Customer email not found. Please ensure the customer has an email address.');
       return;
     }
 
     const subject = encodeURIComponent(`Invoice: ${invoiceNo}`);
     const body = encodeURIComponent(`Please find attached invoice: ${invoiceNo}`);
-    const mailtoLink = `mailto:${selectedCustomerData.email}?subject=${subject}&body=${body}`;
+    const mailtoLink = `mailto:${selectedCustomer.email}?subject=${subject}&body=${body}`;
     
     window.open(mailtoLink, '_blank');
   };
 
-  // Fetch customers for dropdown
-  const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
-    queryKey: ["/api/customers"],
-    queryFn: () => apiRequest("GET", "/api/customers"),
-  });
+  // Fetch customers for dropdown - remove this as we're using CustomerSearch now
 
   // Parse URL params once
   useEffect(() => {
@@ -293,41 +288,42 @@ export default function CustomerHistory() {
     }
   }, [wouterLocation]);
 
-  // Set state from URL params when customers are loaded
+  // Set state from URL params when customer search is ready
   useEffect(() => {
-    console.log('[DEBUG] Customers loaded:', customers);
+    console.log('[DEBUG] Customer search ready');
     if (
       !autoFetched &&
       urlParams &&
-      customers.length > 0 &&
-      customers.some(c => c.id.toString() === urlParams.customerId)
+      urlParams.customerId
     ) {
-      setSelectedCustomer(urlParams.customerId!);
+      // Use the customer search hook to set the customer by ID
+      // This will need to be handled differently since we don't have direct access to customers list
+      // For now, we'll set the customerId directly and let the hook handle it
       setFromDate(parseISO(urlParams.fromDate!));
       setToDate(parseISO(urlParams.toDate!));
       setFilterType('All');
       setAutoFetched(true);
       console.log('[DEBUG] Auto-filling state and ready to fetch:', urlParams);
     }
-  }, [urlParams, customers, autoFetched]);
+  }, [urlParams, autoFetched]);
 
   // Trigger fetch when all state is set
   useEffect(() => {
-    console.log('[DEBUG] State for fetch:', { autoFetched, selectedCustomer, fromDate, toDate, filterType });
+    console.log('[DEBUG] State for fetch:', { autoFetched, customerId, fromDate, toDate, filterType });
     if (
       autoFetched &&
-      selectedCustomer &&
+      customerId &&
       fromDate &&
       toDate &&
       filterType === 'All'
     ) {
-      console.log('[DEBUG] Triggering fetch with:', { selectedCustomer, fromDate, toDate, filterType });
+      console.log('[DEBUG] Triggering fetch with:', { customerId, fromDate, toDate, filterType });
       (async () => {
         setLoading(true);
         try {
           const res = await apiRequest(
             "GET",
-            `/api/reports/customer-history?customerId=${selectedCustomer}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=All`
+            `/api/reports/customer-history?customerId=${customerId}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=All`
           );
           setHistoryData(res);
           console.log('[DEBUG] Fetched data:', res);
@@ -337,7 +333,7 @@ export default function CustomerHistory() {
         setLoading(false);
       })();
     }
-  }, [autoFetched, selectedCustomer, fromDate, toDate, filterType]);
+  }, [autoFetched, customerId, fromDate, toDate, filterType]);
 
 
 
@@ -345,9 +341,7 @@ export default function CustomerHistory() {
   const handlePrint = () => {
     if (!tableRef.current) return;
     
-    // Get customer details
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    
+    // Get customer details from selected customer
     const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
@@ -375,17 +369,17 @@ export default function CustomerHistory() {
       printWindow.document.write('</div>');
       
       // Add customer information
-      if (selectedCustomerData) {
+      if (selectedCustomer) {
         printWindow.document.write('<div class="customer-info">');
-        printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomerData.customer_name}<br>`);
-        if (selectedCustomerData.address) {
-          printWindow.document.write(`<strong>Address:</strong> ${selectedCustomerData.address}<br>`);
+        printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomer.customer_name}<br>`);
+        if (selectedCustomer.address) {
+          printWindow.document.write(`<strong>Address:</strong> ${selectedCustomer.address}<br>`);
         }
-        if (selectedCustomerData.telephone) {
-          printWindow.document.write(`<strong>Phone:</strong> ${selectedCustomerData.telephone}<br>`);
+        if (selectedCustomer.telephone) {
+          printWindow.document.write(`<strong>Phone:</strong> ${selectedCustomer.telephone}<br>`);
         }
-        if (selectedCustomerData.email) {
-          printWindow.document.write(`<strong>Email:</strong> ${selectedCustomerData.email}`);
+        if (selectedCustomer.email) {
+          printWindow.document.write(`<strong>Email:</strong> ${selectedCustomer.email}`);
         }
         printWindow.document.write('</div>');
       }
@@ -441,8 +435,7 @@ export default function CustomerHistory() {
   };
 
   const handlePDF = () => {
-    // Get customer details
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
+    // Get customer details from selected customer
     
     // Initialize PDF with margins
     const doc = new jsPDF({
@@ -475,16 +468,16 @@ export default function CustomerHistory() {
     doc.setFontSize(12);
     doc.text('Customer Information:', margin, margin + 35);
     doc.setFontSize(10);
-    if (selectedCustomerData) {
-      doc.text(`Name: ${selectedCustomerData.customer_name}`, margin, margin + 45, { maxWidth: contentWidth });
-      if (selectedCustomerData.address) {
-        doc.text(`Address: ${selectedCustomerData.address}`, margin, margin + 55, { maxWidth: contentWidth });
+    if (selectedCustomer) {
+      doc.text(`Name: ${selectedCustomer.customer_name}`, margin, margin + 45, { maxWidth: contentWidth });
+      if (selectedCustomer.address) {
+        doc.text(`Address: ${selectedCustomer.address}`, margin, margin + 55, { maxWidth: contentWidth });
       }
-      if (selectedCustomerData.telephone) {
-        doc.text(`Phone: ${selectedCustomerData.telephone}`, 20, 75);
+      if (selectedCustomer.telephone) {
+        doc.text(`Phone: ${selectedCustomer.telephone}`, 20, 75);
       }
-      if (selectedCustomerData.email) {
-        doc.text(`Email: ${selectedCustomerData.email}`, 20, 85);
+      if (selectedCustomer.email) {
+        doc.text(`Email: ${selectedCustomer.email}`, 20, 85);
       }
     }
     
@@ -560,7 +553,7 @@ export default function CustomerHistory() {
     doc.text('stand100', pageWidth - margin, pageHeight - margin, { align: 'right' });
     
     // Save the PDF
-    const fileName = `customer-history-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
+    const fileName = `customer-history-${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.pdf`;
     doc.save(fileName);
   };
 
@@ -570,9 +563,6 @@ export default function CustomerHistory() {
       return;
     }
 
-    // Get customer details
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    
     // Create a new workbook
     const wb = XLSX.utils.book_new();
     
@@ -596,10 +586,10 @@ export default function CustomerHistory() {
       ['Address:', `${companyDetails?.address1 || ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}`],
       [''],
       ['Customer Information:'],
-      ['Name:', selectedCustomerData?.customer_name || ''],
-      ['Address:', selectedCustomerData?.address || ''],
-      ['Phone:', selectedCustomerData?.telephone || ''],
-      ['Email:', selectedCustomerData?.email || ''],
+      ['Name:', selectedCustomer?.customer_name || ''],
+      ['Address:', selectedCustomer?.address || ''],
+      ['Phone:', selectedCustomer?.telephone || ''],
+      ['Email:', selectedCustomer?.email || ''],
       [''],
       ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
       [''],
@@ -652,7 +642,7 @@ export default function CustomerHistory() {
     XLSX.utils.book_append_sheet(wb, ws, 'Customer History');
     
     // Generate the Excel file
-    const fileName = `customer-history-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.xlsx`;
+    const fileName = `customer-history-${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), "yyyy-MM-dd")}.xlsx`;
     XLSX.writeFile(wb, fileName);
   };
 
@@ -698,22 +688,14 @@ export default function CustomerHistory() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
               <div>
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingCustomers ? (
-                      <SelectItem value="loading" disabled>Loading...</SelectItem>
-                    ) : (
-                      customers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.customer_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <CustomerSearch
+                  label="Customer"
+                  placeholder="Search customer by code or name..."
+                  onCustomerSelect={handleCustomerSelect}
+                  required
+                  showCode
+                  allowClear
+                />
               </div>
               
               <div>
@@ -790,7 +772,7 @@ export default function CustomerHistory() {
                   try {
                     const res = await apiRequest(
                       "GET",
-                      `/api/reports/customer-history?customerId=${selectedCustomer}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=${encodeURIComponent(filterType)}`
+                      `/api/reports/customer-history?customerId=${customerId}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=${encodeURIComponent(filterType)}`
                     );
                     setHistoryData(res);
                   } catch (err) {
@@ -811,7 +793,7 @@ export default function CustomerHistory() {
           <CardHeader>
             <CardTitle className="text-center text-lg">STATEMENT</CardTitle>
             <div className="text-left">
-              <div className="font-medium">{selectedCustomer},</div>
+              <div className="font-medium">{selectedCustomer?.customer_name || 'No customer selected'},</div>
               <div className="text-sm text-gray-600 mt-1">📧</div>
             </div>
           </CardHeader>

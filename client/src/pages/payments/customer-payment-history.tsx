@@ -18,6 +18,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { useLocation } from "wouter";
+import CustomerSearch from "@/components/ui/customer-search";
+import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 
 interface PaymentHistoryData {
   id: number;
@@ -37,7 +39,7 @@ interface PaymentHistoryData {
 export default function CustomerPaymentHistory() {
   const [, navigate] = useLocation();
   const { currentDate: businessDate } = useBusinessDate();
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("all");
+  const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
   const [fromDate, setFromDate] = useState<Date | undefined>(() => {
     return businessDate ? new Date(businessDate) : new Date();
   });
@@ -80,16 +82,12 @@ export default function CustomerPaymentHistory() {
     }
   }, []);
 
-  // Fetch customers for the dropdown
-  const { data: customers, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
-    queryKey: ["/api/customers"],
-    queryFn: () => apiRequest("GET", "/api/customers"),
-  });
+  // Fetch customers for the dropdown - remove this as we're using CustomerSearch now
 
   // Build query parameters for payment history
   const queryParams = new URLSearchParams();
-  if (selectedCustomer && selectedCustomer !== "all") {
-    queryParams.append("customerId", selectedCustomer);
+  if (selectedCustomer && customerId) {
+    queryParams.append("customerId", customerId.toString());
   }
   if (fromDate) {
     queryParams.append("fromDate", format(fromDate, "yyyy-MM-dd"));
@@ -330,26 +328,25 @@ export default function CustomerPaymentHistory() {
         <Card>
           <CardContent className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-              <div>
-                <label className="block text-sm font-medium mb-2">All Customer</label>
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Customer</SelectItem>
-                    {isLoadingCustomers ? (
-                      <SelectItem value="loading" disabled>Loading customers...</SelectItem>
-                    ) : (
-                      customers?.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.customer_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+                <div>
+                  <Label className="text-sm font-medium mb-2">Customer</Label>
+                  <div className="flex items-center gap-2">
+                    <CustomerSearch
+                      placeholder="Search customer by code or name..."
+                      onCustomerSelect={handleCustomerSelect}
+                      showCode
+                      allowClear
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => handleCustomerSelect(null)}
+                      className="whitespace-nowrap"
+                    >
+                      All Customers
+                    </Button>
+                  </div>
+                </div>
 
               <div>
                 <label className="block text-sm font-medium mb-2">From:</label>

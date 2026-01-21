@@ -18,6 +18,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { Customer, Payment, InsertPayment } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 import type { Sale } from "@shared/schema";
+import CustomerSearch from "@/components/ui/customer-search";
+import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 
 // Extended Payment type that includes batchId from API response
 type PaymentWithBatch = Payment & {
@@ -27,7 +29,7 @@ type PaymentWithBatch = Payment & {
 
 export default function OnAccCustomer() {
   const { currentDate: businessDate } = useBusinessDate();
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const { selectedCustomer, handleCustomerSelect, customerId, customerName } = useCustomerSearch();
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
 
@@ -63,23 +65,8 @@ export default function OnAccCustomer() {
   const [invoicePopoverOpen, setInvoicePopoverOpen] = useState(false);
   const [invoiceQuery, setInvoiceQuery] = useState("");
 
-  // Fetch customers
-  const { data: customersData = [], isLoading: loadingCustomers } = useQuery<Customer[]>({
-    queryKey: ["customers"],
-    queryFn: () => apiRequest("GET", "/api/customers"),
-  });
-
-  // Sort customers alphabetically by name
-  const customers = useMemo(() => {
-    if (!customersData) return [];
-    return [...customersData].sort((a, b) => 
-      a.customer_name.localeCompare(b.customer_name, undefined, { sensitivity: 'base' })
-    );
-  }, [customersData]);
-
-  // Get selected customer object
-  const selectedCustomerObj = useMemo(() => customers.find(c => c.id.toString() === selectedCustomer), [customers, selectedCustomer]);
-  const currency = selectedCustomerObj?.customer_currency || "GBP";
+  // Get currency from selected customer
+  const currency = selectedCustomer?.customer_currency || "GBP";
 
   // Fetch on-account payments for selected customer and date range
   const {
@@ -88,11 +75,11 @@ export default function OnAccCustomer() {
     isError: errorPayments,
     refetch: refetchPayments
   } = useQuery<PaymentWithBatch[]>({
-    queryKey: ["on-acc-payments", selectedCustomer, fromDate, toDate],
-    enabled: !!selectedCustomer,
+    queryKey: ["on-acc-payments", customerId, fromDate, toDate],
+    enabled: !!customerId,
     queryFn: async () => {
       const params = new URLSearchParams({
-        customerId: selectedCustomer,
+        customerId: customerId.toString(),
         fromDate: format(fromDate, "yyyy-MM-dd"),
         toDate: format(toDate, "yyyy-MM-dd"),
         paymentType: "on-account" // Filter to show only on-account payments
@@ -144,7 +131,7 @@ export default function OnAccCustomer() {
     };
 
     const paymentPayload = {
-      customerId: Number(selectedCustomer),
+      customerId: Number(customerId),
       amount: newPayment.amount,
       paymentDate: format(newPayment.paymentDate, "yyyy-MM-dd"),
       remarks: newPayment.remarks || "On-account payment",
@@ -191,7 +178,7 @@ export default function OnAccCustomer() {
 
   // Fetch invoices when customer changes
   useEffect(() => {
-    if (!selectedCustomer) {
+    if (!customerId) {
       setCustomerInvoices([]);
       return;
     }
@@ -200,12 +187,12 @@ export default function OnAccCustomer() {
       const toDate = "2100-01-01";
       const invoices = await apiRequest(
         "GET",
-        `/api/customers/${selectedCustomer}/invoices?fromDate=${fromDate}&toDate=${toDate}`
+        `/api/customers/${customerId}/invoices?fromDate=${fromDate}&toDate=${toDate}`
       );
       setCustomerInvoices(invoices);
     };
     fetchInvoices();
-  }, [selectedCustomer]);
+  }, [customerId]);
 
   // Map backend payment modes back to display values
   const getDisplayPaymentMode = (mode: string) => {
@@ -240,16 +227,14 @@ export default function OnAccCustomer() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer} disabled={loadingCustomers}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingCustomers ? "Loading..." : "Select customer"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers.map(c => (
-                      <SelectItem key={c.id} value={c.id.toString()}>{c.customer_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CustomerSearch
+                  label="Customer"
+                  placeholder="Search customer by code or name..."
+                  onCustomerSelect={handleCustomerSelect}
+                  required
+                  showCode
+                  allowClear
+                />
               </div>
               <div className="flex gap-2 items-end">
                 <div>

@@ -19,6 +19,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatQuantity } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import CustomerSearch from "@/components/ui/customer-search";
+import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 
 // Simplified schema for return form
 const returnSchema = z.object({
@@ -73,8 +75,10 @@ export default function ReturnFromCustomer() {
   // Get business date
   const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
   
+  // Customer search hook
+  const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
+  
   // State management
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [searchFromDate, setSearchFromDate] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [customerSearched, setCustomerSearched] = useState(false);
   const [selectedProductType, setSelectedProductType] = useState<"regular" | "non">("regular");
@@ -92,11 +96,14 @@ export default function ReturnFromCustomer() {
     },
   });
 
-  // Fetch customers
-  const { data: customers = [] } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => apiRequest('GET', '/api/customers')
-  });
+  // Update form when customer changes
+  React.useEffect(() => {
+    if (selectedCustomer) {
+      form.setValue("customerId", selectedCustomer.id);
+    } else {
+      form.setValue("customerId", 0);
+    }
+  }, [selectedCustomer, form]);
 
   // Fetch products
   const { data: products = { regularProducts: [], nonProducts: [] } } = useQuery({
@@ -129,23 +136,23 @@ export default function ReturnFromCustomer() {
 
   // Fetch customer returns (only after customer is searched)
   const { data: returns = [], refetch: refetchReturns } = useQuery({
-    queryKey: ['customer-returns', selectedCustomerId, searchFromDate],
+    queryKey: ['customer-returns', customerId, searchFromDate],
     queryFn: () => {
-      if (!selectedCustomerId || !customerSearched) return [];
-      return apiRequest('GET', `/api/customer-returns?customerId=${selectedCustomerId}&fromDate=${searchFromDate}`);
+      if (!customerId || !customerSearched) return [];
+      return apiRequest('GET', `/api/customer-returns?customerId=${customerId}&fromDate=${searchFromDate}`);
     },
-    enabled: !!selectedCustomerId && customerSearched
+    enabled: !!customerId && customerSearched
   });
 
   // Fetch customer invoices (only when "Get Invoices" is clicked)
   const { data: customerInvoices = [], refetch: refetchInvoices } = useQuery({
-    queryKey: ['customer-invoices', selectedCustomerId, searchFromDate],
+    queryKey: ['customer-invoices', customerId, searchFromDate],
     queryFn: async () => {
-      if (!selectedCustomerId) return [];
+      if (!customerId) return [];
       const toDate = format(new Date(), "yyyy-MM-dd");
       
       // Use searchFromDate as the fromDate parameter to filter invoices
-      const invoices = await apiRequest('GET', `/api/customers/${selectedCustomerId}/invoices?fromDate=${searchFromDate}&toDate=${toDate}`);
+      const invoices = await apiRequest('GET', `/api/customers/${customerId}/invoices?fromDate=${searchFromDate}&toDate=${toDate}`);
       
       // Then fetch detailed data for each invoice to get items
       const detailedInvoices = await Promise.all(
@@ -185,7 +192,7 @@ export default function ReturnFromCustomer() {
       refetchReturns();
       form.reset({
         date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
-        customerId: parseInt(selectedCustomerId),
+        customerId: selectedCustomer?.id || 0,
         productId: 0,
         productType: selectedProductType,
         quantity: 1,
@@ -227,7 +234,7 @@ export default function ReturnFromCustomer() {
 
   // Handle customer search
   const handleCustomerSearch = () => {
-    if (!selectedCustomerId) {
+    if (!selectedCustomer) {
       toast({
         title: "Error",
         description: "Please select a customer first",
@@ -236,12 +243,12 @@ export default function ReturnFromCustomer() {
       return;
     }
     setCustomerSearched(true);
-    form.setValue("customerId", parseInt(selectedCustomerId));
+    form.setValue("customerId", selectedCustomer.id);
   };
 
   // Handle get invoices
   const handleGetInvoices = async () => {
-    if (!selectedCustomerId) {
+    if (!selectedCustomer) {
       toast({
         title: "Error",
         description: "Please select a customer first",
@@ -397,7 +404,6 @@ export default function ReturnFromCustomer() {
     ? (products?.regularProducts || [])
     : (products?.nonProducts || []);
 
-  // Handle form submission
   const onSubmit = (data: ReturnFormData) => {
     const selectedProduct = filteredProducts.find(p => p.id === data.productId);
     
@@ -423,8 +429,6 @@ export default function ReturnFromCustomer() {
     createReturnMutation.mutate(returnData);
   };
 
-  const selectedCustomer = customers.find((c: Customer) => c.id.toString() === selectedCustomerId);
-
   return (
     <PageLayout title="Returns from Customer" breadcrumb="Data Entry > Returns from Customer">
       <div className="space-y-6">
@@ -439,21 +443,14 @@ export default function ReturnFromCustomer() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
-                <Label>Customer:</Label>
-                <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select customer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customers
-                      .sort((a, b) => a.customer_name.localeCompare(b.customer_name))
-                      .map((customer: Customer) => (
-                        <SelectItem key={customer.id} value={customer.id.toString()}>
-                          {customer.customer_name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                <CustomerSearch
+                  label="Customer"
+                  placeholder="Search customer by code or name..."
+                  onCustomerSelect={handleCustomerSelect}
+                  required
+                  showCode
+                  allowClear
+                />
               </div>
               
               <div>
@@ -469,7 +466,7 @@ export default function ReturnFromCustomer() {
                 <Button 
                   className="bg-blue-500 hover:bg-blue-600 w-full"
                   onClick={handleCustomerSearch}
-                  disabled={!selectedCustomerId}
+                  disabled={!selectedCustomer}
                 >
                   <Search className="mr-2 h-4 w-4" />
                   Search
@@ -552,7 +549,7 @@ export default function ReturnFromCustomer() {
                         variant="outline"
                         size="sm"
                         onClick={handleGetInvoices}
-                        disabled={!selectedCustomerId}
+                        disabled={!selectedCustomer}
                       >
                         Get Invoices
                       </Button>
@@ -627,7 +624,7 @@ export default function ReturnFromCustomer() {
                     variant="outline"
                     onClick={() => form.reset({
                       date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
-                      customerId: parseInt(selectedCustomerId),
+                      customerId: selectedCustomer?.id || 0,
                       productId: 0,
                       productType: selectedProductType,
                       quantity: 1,
@@ -654,7 +651,7 @@ export default function ReturnFromCustomer() {
         {customerSearched && selectedCustomer && (
           <Card>
             <CardHeader>
-              <CardTitle>Step 3: Existing Returns - {selectedCustomer.customer_name}</CardTitle>
+              <CardTitle>Step 3: Existing Returns - {selectedCustomer?.customer_name}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">

@@ -18,6 +18,8 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import CustomerSearch from "@/components/ui/customer-search";
+import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 
 interface CompanyDetails {
   id: number;
@@ -54,7 +56,7 @@ interface StatementData {
 }
 
 export default function CustomerStatement() {
-  const [selectedCustomer, setSelectedCustomer] = useState<string>("");
+  const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
   
   // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -82,11 +84,7 @@ export default function CustomerStatement() {
     queryFn: () => apiRequest("GET", "/api/company-details"),
   });
 
-  // Fetch customers for dropdown
-  const { data: customers = [], isLoading: isLoadingCustomers } = useQuery<Customer[]>({
-    queryKey: ["/api/customers"],
-    queryFn: () => apiRequest("GET", "/api/customers"),
-  });
+  // Fetch customers for dropdown - remove this as we're using CustomerSearch now
 
   const totals = {
     accountInv: statementData.reduce((sum, item) => sum + (item.accountInv || 0), 0),
@@ -150,15 +148,14 @@ export default function CustomerStatement() {
     }
     
     // Get customer email from selected customer
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    if (!selectedCustomerData?.email) {
+    if (!selectedCustomer?.email) {
       alert('Customer email not found. Please ensure the customer has an email address.');
       return;
     }
 
     try {
       const response = await apiRequest("POST", "/api/send/customer-statement", {
-        customerId: parseInt(selectedCustomer),
+        customerId: selectedCustomer.id,
         fromDate: format(fromDate, "yyyy-MM-dd"),
         toDate: format(toDate, "yyyy-MM-dd"),
         statementType: statementType
@@ -179,9 +176,7 @@ export default function CustomerStatement() {
   const handlePrint = () => {
     if (!tableRef.current) return;
     
-    // Get customer details
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    
+    // Get customer details from selected customer
     const printContents = tableRef.current.innerHTML;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
@@ -209,17 +204,17 @@ export default function CustomerStatement() {
       printWindow.document.write('</div>');
       
       // Add customer information
-      if (selectedCustomerData) {
+      if (selectedCustomer) {
         printWindow.document.write('<div class="customer-info">');
-        printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomerData.customer_name}<br>`);
-        if (selectedCustomerData.address) {
-          printWindow.document.write(`<strong>Address:</strong> ${selectedCustomerData.address}<br>`);
+        printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomer.customer_name}<br>`);
+        if (selectedCustomer.address) {
+          printWindow.document.write(`<strong>Address:</strong> ${selectedCustomer.address}<br>`);
         }
-        if (selectedCustomerData.telephone) {
-          printWindow.document.write(`<strong>Phone:</strong> ${selectedCustomerData.telephone}<br>`);
+        if (selectedCustomer.telephone) {
+          printWindow.document.write(`<strong>Phone:</strong> ${selectedCustomer.telephone}<br>`);
         }
-        if (selectedCustomerData.email) {
-          printWindow.document.write(`<strong>Email:</strong> ${selectedCustomerData.email}`);
+        if (selectedCustomer.email) {
+          printWindow.document.write(`<strong>Email:</strong> ${selectedCustomer.email}`);
         }
         printWindow.document.write('</div>');
       }
@@ -248,9 +243,6 @@ export default function CustomerStatement() {
       return;
     }
 
-    // Get customer details
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    
     // Create a new workbook
     const wb = XLSX.utils.book_new();
     
@@ -286,10 +278,10 @@ export default function CustomerStatement() {
     // Add customer information
     dataArray.push(
       ['Customer Information:'],
-      ['Name:', selectedCustomerData?.customer_name || ''],
-      ['Address:', selectedCustomerData?.address || ''],
-      ['Phone:', selectedCustomerData?.telephone || ''],
-      ['Email:', selectedCustomerData?.email || ''],
+      ['Name:', selectedCustomer?.customer_name || ''],
+      ['Address:', selectedCustomer?.address || ''],
+      ['Phone:', selectedCustomer?.telephone || ''],
+      ['Email:', selectedCustomer?.email || ''],
       [''],
       ['Statement Details:'],
       ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
@@ -415,7 +407,7 @@ export default function CustomerStatement() {
     XLSX.utils.book_append_sheet(wb, ws, 'Customer Statement');
     
     // Generate filename with customer name and date
-    const customerName = selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer';
+    const customerName = selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer';
     const dateStr = format(new Date(), 'yyyy-MM-dd');
     
     // Save the workbook
@@ -428,9 +420,6 @@ export default function CustomerStatement() {
       return;
     }
 
-    // Get customer details
-    const selectedCustomerData = customers.find(c => c.id.toString() === selectedCustomer);
-    
     // Initialize PDF with margins
     const doc = new jsPDF({
       orientation: 'portrait',
@@ -462,15 +451,15 @@ export default function CustomerStatement() {
     doc.setFontSize(12);
     doc.text('Customer Information:', margin, margin + 35);
     doc.setFontSize(10);
-    if (selectedCustomerData) {
-      doc.text(`Name: ${selectedCustomerData.customer_name || ''}`, margin, margin + 45, { maxWidth: contentWidth });
-      if (selectedCustomerData.address) {
-        doc.text(`Address: ${selectedCustomerData.address}`, margin, margin + 55, { maxWidth: contentWidth });
+    if (selectedCustomer) {
+      doc.text(`Name: ${selectedCustomer.customer_name || ''}`, margin, margin + 45, { maxWidth: contentWidth });
+      if (selectedCustomer.address) {
+        doc.text(`Address: ${selectedCustomer.address}`, margin, margin + 55, { maxWidth: contentWidth });
       }
-      if (selectedCustomerData.telephone || selectedCustomerData.email) {
+      if (selectedCustomer.telephone || selectedCustomer.email) {
         const contactInfo = [];
-        if (selectedCustomerData.telephone) contactInfo.push(`Phone: ${selectedCustomerData.telephone}`);
-        if (selectedCustomerData.email) contactInfo.push(`Email: ${selectedCustomerData.email}`);
+        if (selectedCustomer.telephone) contactInfo.push(`Phone: ${selectedCustomer.telephone}`);
+        if (selectedCustomer.email) contactInfo.push(`Email: ${selectedCustomer.email}`);
         doc.text(contactInfo.join(' | '), margin, margin + 65, { maxWidth: contentWidth });
       }
     }
@@ -586,7 +575,7 @@ export default function CustomerStatement() {
     });
     
     // Save the PDF
-    const fileName = `customer-statement-${selectedCustomerData?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
+    const fileName = `customer-statement-${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
     doc.save(fileName);
   };
 
@@ -638,22 +627,13 @@ export default function CustomerStatement() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <Label className="text-sm font-medium mb-2 block">Customer</Label>
-                  <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isLoadingCustomers ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
-                      ) : (
-                        customers.map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id.toString()}>
-                            {customer.customer_name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <CustomerSearch
+                    placeholder="Search customer by code or name..."
+                    onCustomerSelect={handleCustomerSelect}
+                    required
+                    showCode
+                    allowClear
+                  />
                 </div>
                 
                 <div>
@@ -733,7 +713,7 @@ export default function CustomerStatement() {
                     try {
                       const res = await apiRequest(
                         "GET",
-                        `/api/reports/customer-statement?customerId=${selectedCustomer}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=${encodeURIComponent(statementType)}`
+                        `/api/reports/customer-statement?customerId=${customerId}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=${encodeURIComponent(statementType)}`
                       );
                       setStatementData(res);
                     } catch (err) {
@@ -780,13 +760,13 @@ export default function CustomerStatement() {
         <Card>
           <CardHeader>
             <div className="bg-green-600 text-white text-center py-2 rounded">
-              ACCOUNT STATEMENT - {selectedCustomer}
+              ACCOUNT STATEMENT - {selectedCustomer?.customer_name || 'No customer selected'}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
               <div>
                 <div className="font-semibold">Customer Details:</div>
-                <div>{customers.find(c => c.id.toString() === selectedCustomer)?.customer_name || ''}</div>
-                <div>Account No: C-{selectedCustomer}</div>
+                <div>{selectedCustomer?.customer_name || ''}</div>
+                <div>Account No: C-{customerId || ''}</div>
               </div>
               <div className="text-right">
                 <div className="font-semibold">Statement Period:</div>
@@ -860,10 +840,13 @@ export default function CustomerStatement() {
                       <TableCell className="text-center">£{(statement.accountAdj || 0).toFixed(2)}</TableCell>
                       <TableCell className="text-center">£{(statement.discountAdj || 0).toFixed(2)}</TableCell>
                       <TableCell className={`text-center font-medium ${(statement.balance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        £{(statement.balance || 0).toFixed(2)}
+                        {(statement.balance || 0) >= 0 ? '£' : '-£'}{Math.abs(statement.balance || 0).toFixed(2)}
                       </TableCell>
                       <TableCell className={`text-center font-bold ${(statement.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        £{(statement.runningBalance || 0).toFixed(2)}
+                        {(statement.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(statement.runningBalance || 0).toFixed(2)}
+                        {(statement.runningBalance || 0) < 0 && (
+                          <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">CREDIT</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -880,7 +863,12 @@ export default function CustomerStatement() {
                     <TableCell className="text-center font-bold">£{totals.accountAdj.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.discountAdj.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold text-red-600">£{(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}</TableCell>
+                    <TableCell className={`text-center font-bold ${(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}
+                      {(statementData[statementData.length - 1]?.runningBalance || 0) < 0 && (
+                        <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">CREDIT</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -897,8 +885,23 @@ export default function CustomerStatement() {
                 <div className="text-right">
                   <div className="font-semibold mb-2 text-lg">Current Balance:</div>
                   <div className={`text-2xl font-bold ${(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    £{(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}
+                    {(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}
                   </div>
+                  {(statementData[statementData.length - 1]?.runningBalance || 0) < 0 && (
+                    <div className="text-sm text-green-600 font-medium mt-1">
+                      Customer has credit balance
+                    </div>
+                  )}
+                  {(statementData[statementData.length - 1]?.runningBalance || 0) > 0 && (
+                    <div className="text-sm text-red-600 font-medium mt-1">
+                      Amount due from customer
+                    </div>
+                  )}
+                  {(statementData[statementData.length - 1]?.runningBalance || 0) === 0 && (
+                    <div className="text-sm text-gray-600 font-medium mt-1">
+                      Account balanced
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

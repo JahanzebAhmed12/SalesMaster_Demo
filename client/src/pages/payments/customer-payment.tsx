@@ -26,6 +26,8 @@ import type { Customer, Sale, Payment, InsertPayment } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import CustomerSearch from "@/components/ui/customer-search";
+import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 
 type InvoiceWithBalance = Sale & {
   balance: number;
@@ -51,7 +53,7 @@ type PaymentDistribution = {
 
 
 export default function CustomerPayment() {
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+  const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(new Set());
   const [invoicePaymentModes, setInvoicePaymentModes] = useState<Map<number, string>>(new Map());
   const [invoicePaymentConfigs, setInvoicePaymentConfigs] = useState<Map<number, any>>(new Map());
@@ -140,7 +142,7 @@ export default function CustomerPayment() {
   // Reset email field when customer changes
   useEffect(() => {
     setEmailAddress("");
-  }, [selectedCustomerId]);
+  }, [customerId]);
 
   // Reset on-account amount when customer changes
   useEffect(() => {
@@ -148,34 +150,22 @@ export default function CustomerPayment() {
     if (selectedInvoiceIds.size === 0) {
       setOnAccountAmount(0);
     }
-  }, [selectedCustomerId, selectedInvoiceIds.size]);
+  }, [customerId, selectedInvoiceIds.size]);
 
-  // Fetch customers
-  const { data: customersData, isLoading: isLoadingCustomers } = useQuery<Customer[]>({
-    queryKey: ["/api/customers"],
-    queryFn: () => apiRequest("GET", "/api/customers"),
-  });
-
-  // Sort customers alphabetically by name
-  const customers = useMemo(() => {
-    if (!customersData) return [];
-    return [...customersData].sort((a, b) => 
-      a.customer_name.localeCompare(b.customer_name, undefined, { sensitivity: 'base' })
-    );
-  }, [customersData]);
+  // Fetch customers - remove this as we're using CustomerSearch now
 
   // Fetch outstanding invoices for the selected customer
   const { data: outstandingInvoices, isLoading: isLoadingInvoices, refetch: refetchOutstandingInvoices } = useQuery<Sale[]>({
-    queryKey: ["/api/customers", selectedCustomerId, "outstanding_invoices"],
-    queryFn: () => apiRequest("GET", `/api/customers/${selectedCustomerId}/outstanding_invoices`),
-    enabled: !!selectedCustomerId,
+    queryKey: ["/api/customers", customerId, "outstanding_invoices"],
+    queryFn: () => apiRequest("GET", `/api/customers/${customerId}/outstanding_invoices`),
+    enabled: !!customerId,
   });
 
   // Fetch payment history for the selected customer
   const { data: paymentHistory, refetch: refetchPaymentHistory } = useQuery<Payment[]>({
-    queryKey: ["/api/payments/history", selectedCustomerId],
-    queryFn: () => apiRequest("GET", `/api/payments/history?customerId=${selectedCustomerId}`),
-    enabled: !!selectedCustomerId,
+    queryKey: ["/api/payments/history", customerId],
+    queryFn: () => apiRequest("GET", `/api/payments/history?customerId=${customerId}`),
+    enabled: !!customerId,
   });
 
   // Group payment history by batch ID
@@ -363,7 +353,7 @@ export default function CustomerPayment() {
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
       setOnAccountAmount(0);
-      setSelectedCustomerId(""); // Reset customer selection
+      setSelectedCustomerId(""); // Reset customer selection - remove this line since we don't have setSelectedCustomerId anymore
       resetSplitPayment();
     },
     onError: (error) => {
@@ -555,7 +545,7 @@ export default function CustomerPayment() {
 
   // Validation helper for payments
   const validatePayment = () => {
-    if (!selectedCustomerId || !paymentDate) {
+    if (!selectedCustomer || !paymentDate) {
       toast({
         title: "Validation Error",
         description: "Please select a customer and payment date.",
@@ -788,7 +778,7 @@ export default function CustomerPayment() {
     
     // Build payment payload with explicit distribution
     const paymentPayload = {
-      customerId: parseInt(selectedCustomerId),
+      customerId: selectedCustomer.id,
       amount: receivedAmount, // Use the actual payment amount entered by user
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: remarks || "", // Only use manual remarks, no auto-generated ones
@@ -988,7 +978,7 @@ export default function CustomerPayment() {
 
   // Handle email sending
   const handleEmail = async () => {
-    if (!selectedCustomerId) {
+    if (!selectedCustomer) {
       toast({
         title: "Error",
         description: "Please select a customer first",
@@ -1016,8 +1006,6 @@ export default function CustomerPayment() {
     }
 
     try {
-      const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
-
       // Generate PDF data for email attachment
       const doc = new jsPDF();
 
@@ -1100,7 +1088,6 @@ export default function CustomerPayment() {
   const handlePDF = () => {
     if (groupedPaymentHistory.length === 0) return;
 
-    const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
     const doc = new jsPDF();
 
     // Add company header
@@ -1146,8 +1133,6 @@ export default function CustomerPayment() {
 
   const handleExcel = () => {
     if (groupedPaymentHistory.length === 0) return;
-
-    const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
 
     // Create workbook
     const wb = XLSX.utils.book_new();
@@ -1201,7 +1186,6 @@ export default function CustomerPayment() {
   const handlePrint = () => {
     if (groupedPaymentHistory.length === 0) return;
 
-    const selectedCustomer = customers?.find(c => c.id.toString() === selectedCustomerId);
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Customer Payment History</title>');
@@ -1285,6 +1269,7 @@ export default function CustomerPayment() {
               <h3 className="text-lg font-semibold text-gray-900">Customer Payment</h3>
               <p className="text-xs text-gray-600">Select invoices to pay and/or add on-account credit</p>
               <p className="text-xs text-blue-600 mt-1">💡 On-account credits automatically apply to oldest unpaid invoices to minimize outstanding balance</p>
+              <p className="text-xs text-green-600 mt-1">✨ Overpayments automatically create credit balance for future use</p>
             </div>
 
             {/* Compact Form Layout */}
@@ -1293,24 +1278,13 @@ export default function CustomerPayment() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <Label htmlFor="customer" className="text-sm">Customer:</Label>
-                  <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isLoadingCustomers ? (
-                        <SelectItem value="disabled" disabled>Loading...</SelectItem>
-                      ) : customers && customers.length > 0 ? (
-                        customers.map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id.toString()}>
-                            {customer.customer_name}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="disabled" disabled>No customers found</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <CustomerSearch
+                    placeholder="Search customer by code or name..."
+                    onCustomerSelect={handleCustomerSelect}
+                    required
+                    showCode
+                    allowClear
+                  />
                 </div>
 
                 <div>
@@ -1774,7 +1748,7 @@ export default function CustomerPayment() {
         </Card>
 
         {/* Payment History Table */}
-        {selectedCustomerId && (
+        {selectedCustomer && (
           <Card>
             <CardHeader>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
