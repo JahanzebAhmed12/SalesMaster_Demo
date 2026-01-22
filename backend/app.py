@@ -56,6 +56,17 @@ CORS(app,
          "supports_credentials": True
      }})
 
+# Handle preflight OPTIONS requests
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "http://localhost:5173")
+        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization")
+        response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,PATCH,OPTIONS")
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{os.path.join(os.path.dirname(__file__), "instance", "salesmaster.db")}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -6523,23 +6534,224 @@ def get_supplier_payment_history():
                         invoice_amount = 0
 
             payment_history.append({
-                'slNo': idx,
-                'paymentDate': payment.payment_date.isoformat(),
+                'id': payment.id,  # This is the key field that was missing!
+                'supplierId': payment.supplier_id,
+                'purchaseInvoiceId': payment.purchase_invoice_id,
+                'amount': float(payment.amount),
                 'paymentMode': payment.payment_mode,
+                'paymentDate': payment.payment_date.isoformat(),
+                'supplierInvoiceNumber': payment.supplier_invoice_number or '',
+                'supplierInvoiceDate': payment.supplier_invoice_date.isoformat() if payment.supplier_invoice_date else None,
+                'remarks': payment.remarks or '',
+                # Additional fields for display purposes
+                'slNo': idx,
                 'paymentId': str(payment.id),
                 'paidAmt': float(payment.amount),
                 'invNo': str(invoice_number) if invoice_number is not None else '',
                 'invDate': invoice_date,
                 'supplier': supplier_name,
                 'invoiceAmt': float(invoice_amount) if invoice_amount is not None else 0,
-                'allocated': float(payment.amount) if invoice_number is not None else 0,
-                'remarks': payment.remarks or '',
-                'supplierInvoiceNumber': payment.supplier_invoice_number or '',
-                'supplierInvoiceDate': payment.supplier_invoice_date.isoformat() if payment.supplier_invoice_date else None
+                'allocated': float(payment.amount) if invoice_number is not None else 0
             })
         
         return jsonify(payment_history), 200
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-payments/<int:payment_id>', methods=['PUT'])
+@jwt_required()
+def update_supplier_payment(payment_id):
+    """Update an existing supplier payment"""
+    try:
+        data = request.get_json()
+        
+        # Find the payment
+        payment = SupplierPayment.query.get(payment_id)
+        if not payment:
+            return jsonify({"error": "Payment not found"}), 404
+        
+        # Store old values for reversal
+        old_amount = float(payment.amount)
+        old_purchase_invoice_id = payment.purchase_invoice_id
+        
+        # Update payment fields
+        if 'supplier_id' in data:
+            payment.supplier_id = data['supplier_id']
+        if 'purchase_invoice_id' in data:
+            payment.purchase_invoice_id = data['purchase_invoice_id']
+        if 'amount' in data:
+            payment.amount = data['amount']
+        if 'payment_mode' in data:
+            payment.payment_mode = data['payment_mode']
+        if 'payment_date' in data:
+            payment.payment_date = datetime.strptime(data['payment_date'], '%Y-%m-%d').date()
+        if 'supplier_invoice_number' in data:
+            payment.supplier_invoice_number = data['supplier_invoice_number']
+        if 'supplier_invoice_date' in data and data['supplier_invoice_date']:
+            payment.supplier_invoice_date = datetime.strptime(data['supplier_invoice_date'], '%Y-%m-%d').date()
+        if 'remarks' in data:
+            payment.remarks = data['remarks']
+        
+        # Handle purchase invoice payment status updates
+        # First, reverse the old payment effect
+        if old_purchase_invoice_id:
+            old_invoice = PurchaseInvoice.query.get(old_purchase_invoice_id)
+            if old_invoice:
+                # Subtract the old payment amount
+                current_paid = float(old_invoice.paid_amount or 0)
+                new_paid = max(0, current_paid - old_amount)
+                old_invoice.paid_amount = new_paid
+                
+                # Recalculate payment status
+                total_amount = sum(item.total_price for item in old_invoice.items)
+                if new_paid >= total_amount:
+                    old_invoice.payment_status = "paid"
+                elif new_paid > 0:
+                    old_invoice.payment_status = "partial"
+                else:
+                    old_invoice.payment_status = "pending"
+        
+        # Apply the new payment effect
+        if payment.purchase_invoice_id:
+            new_invoice = PurchaseInvoice.query.get(payment.purchase_invoice_id)
+            if new_invoice:
+                # Add the new payment amount
+                current_paid = float(new_invoice.paid_amount or 0)
+                new_paid = current_paid + float(payment.amount)
+                new_invoice.paid_amount = new_paid
+                
+                # Update payment status
+                total_amount = sum(item.total_price for item in new_invoice.items)
+                if new_paid >= total_amount:
+                    new_invoice.payment_status = "paid"
+                elif new_paid > 0:
+                    new_invoice.payment_status = "partial"
+                else:
+                    new_invoice.payment_status = "pending"
+        
+        db.session.commit()
+        return jsonify(payment.to_dict()), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-payments/<int:payment_id>', methods=['DELETE'])
+@jwt_required()
+def delete_supplier_payment(payment_id):
+    """Delete a supplier payment and revert all related transactions"""
+    try:
+        # Find the payment
+        payment = SupplierPayment.query.get(payment_id)
+        if not payment:
+            return jsonify({"error": "Payment not found"}), 404
+        
+        # Store payment details for reversal
+        payment_amount = float(payment.amount)
+        purchase_invoice_id = payment.purchase_invoice_id
+        
+        # Revert purchase invoice payment status if linked
+        if purchase_invoice_id:
+            purchase_invoice = PurchaseInvoice.query.get(purchase_invoice_id)
+            if purchase_invoice:
+                # Subtract the payment amount from paid_amount
+                current_paid = float(purchase_invoice.paid_amount or 0)
+                new_paid = max(0, current_paid - payment_amount)
+                purchase_invoice.paid_amount = new_paid
+                
+                # Recalculate payment status
+                total_amount = sum(item.total_price for item in purchase_invoice.items)
+                if new_paid >= total_amount:
+                    purchase_invoice.payment_status = "paid"
+                elif new_paid > 0:
+                    purchase_invoice.payment_status = "partial"
+                else:
+                    purchase_invoice.payment_status = "pending"
+        
+        # Delete the payment
+        db.session.delete(payment)
+        db.session.commit()
+        
+        return jsonify({
+            "message": "Payment deleted successfully",
+            "deleted_payment_id": payment_id,
+            "reverted_amount": payment_amount
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-payments/bulk', methods=['POST'])
+@jwt_required()
+def create_bulk_supplier_payments():
+    """Create multiple supplier payments at once"""
+    try:
+        data = request.get_json()
+        
+        if not isinstance(data, list):
+            return jsonify({"error": "Expected an array of payment objects"}), 400
+        
+        created_payments = []
+        
+        for payment_data in data:
+            # Validate required fields
+            if not all(key in payment_data for key in ['supplier_id', 'amount', 'payment_mode', 'payment_date']):
+                return jsonify({"error": "Missing required fields in payment data"}), 400
+            
+            # Validate supplier exists
+            supplier = Supplier.query.get(payment_data['supplier_id'])
+            if not supplier:
+                return jsonify({"error": f"Supplier not found: {payment_data['supplier_id']}"}), 404
+            
+            # Handle purchase invoice if provided
+            if payment_data.get('purchase_invoice_id'):
+                purchase_invoice = PurchaseInvoice.query.get(payment_data['purchase_invoice_id'])
+                if not purchase_invoice:
+                    return jsonify({"error": f"Purchase invoice not found: {payment_data['purchase_invoice_id']}"}), 404
+                
+                # Update purchase invoice payment status
+                total_amount = sum(item.total_price for item in purchase_invoice.items)
+                current_paid = float(purchase_invoice.paid_amount or 0)
+                new_paid = current_paid + float(payment_data['amount'])
+                
+                if new_paid >= total_amount:
+                    purchase_invoice.payment_status = "paid"
+                    purchase_invoice.paid_amount = total_amount
+                else:
+                    purchase_invoice.payment_status = "partial"
+                    purchase_invoice.paid_amount = new_paid
+            
+            # Create the payment
+            new_payment = SupplierPayment(
+                supplier_id=payment_data['supplier_id'],
+                purchase_invoice_id=payment_data.get('purchase_invoice_id'),
+                amount=payment_data['amount'],
+                payment_mode=payment_data['payment_mode'],
+                payment_date=datetime.strptime(payment_data['payment_date'], '%Y-%m-%d').date(),
+                supplier_invoice_number=payment_data.get('supplier_invoice_number'),
+                supplier_invoice_date=datetime.strptime(payment_data['supplier_invoice_date'], '%Y-%m-%d').date() if payment_data.get('supplier_invoice_date') else None,
+                remarks=payment_data.get('remarks')
+            )
+            
+            db.session.add(new_payment)
+            created_payments.append(new_payment)
+        
+        db.session.commit()
+        
+        return jsonify({
+            "message": f"Successfully created {len(created_payments)} payments",
+            "payments": [payment.to_dict() for payment in created_payments]
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500

@@ -91,7 +91,7 @@ export default function SupplierPayment() {
     if (selectedDateFormatted === businessDateFormatted) {
       // For business date, check current_editing permission
       return userPermissions.current_editing !== false;
-    } else if (date < businessDate) {
+    } else if (date < new Date(businessDate)) {
       // For past dates (before business date), check editing permission
       return userPermissions.editing === true;
     } else {
@@ -128,7 +128,10 @@ export default function SupplierPayment() {
   // Fetch payment history for the selected supplier
   const { data: paymentHistory, refetch: refetchPaymentHistory } = useQuery<SupplierPayment[]>({
     queryKey: ["/api/supplier-payments/history", selectedSupplier],
-    queryFn: () => apiRequest("GET", `/api/supplier-payments/history?supplierId=${selectedSupplier}`),
+    queryFn: async () => {
+      const result = await apiRequest("GET", `/api/supplier-payments/history?supplierId=${selectedSupplier}`);
+      return result;
+    },
     enabled: !!selectedSupplier,
   });
 
@@ -190,12 +193,14 @@ export default function SupplierPayment() {
     initialItemsPerPage: 10
   });
 
-  const paginatedPaymentHistory = useMemo(() =>
-    (paymentHistory || [])
-      .sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime())
-      .slice(historyStartIndex, historyEndIndex),
-    [paymentHistory, historyStartIndex, historyEndIndex]
-  );
+  const paginatedPaymentHistory = useMemo(() => {
+    const sorted = (paymentHistory || [])
+      .sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+    
+    const paginated = sorted.slice(historyStartIndex, historyEndIndex);
+    
+    return paginated;
+  }, [paymentHistory, historyStartIndex, historyEndIndex]);
 
   // Handle supplier selection
   const handleSupplierChange = (supplierId: string) => {
@@ -241,6 +246,15 @@ export default function SupplierPayment() {
 
   // Handle delete payment
   const handleDeletePayment = (paymentId: number) => {
+    if (!paymentId || paymentId === undefined) {
+      toast({
+        title: "Error",
+        description: "Invalid payment ID. Cannot delete payment.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     if (window.confirm('Are you sure you want to delete this payment? This will revert all related transactions.')) {
       deletePaymentMutation.mutate(paymentId);
     }
@@ -390,7 +404,7 @@ export default function SupplierPayment() {
   const handlePDF = () => {
     if (!paymentHistory || paymentHistory.length === 0) return;
 
-    const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const selectedSupplierData = suppliers.find((s: Supplier) => s.id.toString() === selectedSupplier);
     const doc = new jsPDF();
 
     // Add company header
@@ -408,17 +422,16 @@ export default function SupplierPayment() {
 
     // Prepare table data
     const tableData = paymentHistory.map((payment: any) => [
-      payment.id.toString(),
-      format(new Date(payment.paymentDate), "dd/MM/yyyy"),
+      payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : '-',
       payment.supplierInvoiceNumber || '-',
-      payment.paymentMode,
-      `£${payment.amount.toFixed(2)}`,
+      payment.paymentMode || '-',
+      `£${(payment.amount || 0).toFixed(2)}`,
       payment.remarks || '-'
     ]);
 
     // Add table
     autoTable(doc, {
-      head: [['Payment ID', 'Date', 'Supplier Invoice', 'Payment Mode', 'Amount', 'Remarks']],
+      head: [['Date', 'Supplier Invoice', 'Payment Mode', 'Amount', 'Remarks']],
       body: tableData,
       startY: 75,
       styles: { fontSize: 8 },
@@ -432,18 +445,17 @@ export default function SupplierPayment() {
   const handleExcel = () => {
     if (!paymentHistory || paymentHistory.length === 0) return;
 
-    const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const selectedSupplierData = suppliers.find((s: Supplier) => s.id.toString() === selectedSupplier);
 
     // Create workbook
     const wb = XLSX.utils.book_new();
 
     // Add data sheet
     const ws = XLSX.utils.json_to_sheet(paymentHistory.map((payment: any) => ({
-      'Payment ID': payment.id,
-      'Date': format(new Date(payment.paymentDate), "dd/MM/yyyy"),
+      'Date': payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : '-',
       'Supplier Invoice': payment.supplierInvoiceNumber || '-',
-      'Payment Mode': payment.paymentMode,
-      'Amount': payment.amount.toFixed(2),
+      'Payment Mode': payment.paymentMode || '-',
+      'Amount': (payment.amount || 0).toFixed(2),
       'Remarks': payment.remarks || '-'
     })));
 
@@ -456,13 +468,12 @@ export default function SupplierPayment() {
   const handleCopy = () => {
     if (!paymentHistory || paymentHistory.length === 0) return;
 
-    const headers = ['Payment ID', 'Date', 'Supplier Invoice', 'Payment Mode', 'Amount', 'Remarks'];
+    const headers = ['Date', 'Supplier Invoice', 'Payment Mode', 'Amount', 'Remarks'];
     const rows = paymentHistory.map((payment: any) => [
-      payment.id,
-      format(new Date(payment.paymentDate), "dd/MM/yyyy"),
+      payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : '-',
       payment.supplierInvoiceNumber || '-',
-      payment.paymentMode,
-      `£${payment.amount.toFixed(2)}`,
+      payment.paymentMode || '-',
+      `£${(payment.amount || 0).toFixed(2)}`,
       payment.remarks || '-'
     ]);
 
@@ -478,7 +489,7 @@ export default function SupplierPayment() {
   const handlePrint = () => {
     if (!paymentHistory || paymentHistory.length === 0) return;
 
-    const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const selectedSupplierData = suppliers.find((s: Supplier) => s.id.toString() === selectedSupplier);
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Supplier Payment History</title>');
@@ -507,16 +518,15 @@ export default function SupplierPayment() {
       // Add table
       printWindow.document.write('<table>');
       printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Payment ID</th><th>Date</th><th>Supplier Invoice</th><th>Payment Mode</th><th>Amount</th><th>Remarks</th>');
+      printWindow.document.write('<th>Date</th><th>Supplier Invoice</th><th>Payment Mode</th><th>Amount</th><th>Remarks</th>');
       printWindow.document.write('</tr></thead><tbody>');
 
       paymentHistory.forEach((payment: any) => {
         printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${payment.id}</td>`);
-        printWindow.document.write(`<td>${format(new Date(payment.paymentDate), "dd/MM/yyyy")}</td>`);
+        printWindow.document.write(`<td>${payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : '-'}</td>`);
         printWindow.document.write(`<td>${payment.supplierInvoiceNumber || '-'}</td>`);
-        printWindow.document.write(`<td>${payment.paymentMode}</td>`);
-        printWindow.document.write(`<td>£${payment.amount.toFixed(2)}</td>`);
+        printWindow.document.write(`<td>${payment.paymentMode || '-'}</td>`);
+        printWindow.document.write(`<td>£${(payment.amount || 0).toFixed(2)}</td>`);
         printWindow.document.write(`<td>${payment.remarks || '-'}</td>`);
         printWindow.document.write('</tr>');
       });
@@ -559,7 +569,7 @@ export default function SupplierPayment() {
     }
 
     try {
-      const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+      const selectedSupplierData = suppliers.find((s: Supplier) => s.id.toString() === selectedSupplier);
 
       // Generate PDF data for email attachment
       const doc = new jsPDF();
@@ -579,17 +589,16 @@ export default function SupplierPayment() {
 
       // Prepare table data
       const tableData = paymentHistory.map((payment: any) => [
-        payment.id.toString(),
-        format(new Date(payment.paymentDate), "dd/MM/yyyy"),
+        payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : '-',
         payment.supplierInvoiceNumber || '-',
-        payment.paymentMode,
-        `£${payment.amount.toFixed(2)}`,
+        payment.paymentMode || '-',
+        `£${(payment.amount || 0).toFixed(2)}`,
         payment.remarks || '-'
       ]);
 
       // Add table
       autoTable(doc, {
-        head: [['Payment ID', 'Date', 'Supplier Invoice', 'Payment Mode', 'Amount', 'Remarks']],
+        head: [['Date', 'Supplier Invoice', 'Payment Mode', 'Amount', 'Remarks']],
         body: tableData,
         startY: 75,
         styles: { fontSize: 8 },
@@ -631,15 +640,15 @@ export default function SupplierPayment() {
     selectedInvoices.includes(invoice.id)
   );
 
-  const totalSelectedAmount = selectedInvoiceData.reduce((sum: number, invoice: OutstandingInvoice) => sum + invoice.outstandingAmount, 0);
-  const totalOutstandingAmount = outstandingInvoices.reduce((sum: number, invoice: OutstandingInvoice) => sum + invoice.outstandingAmount, 0);
+  const totalSelectedAmount = selectedInvoiceData.reduce((sum: number, invoice: OutstandingInvoice) => sum + (invoice.outstandingAmount || 0), 0);
+  const totalOutstandingAmount = outstandingInvoices.reduce((sum: number, invoice: OutstandingInvoice) => sum + (invoice.outstandingAmount || 0), 0);
 
   // This effect automatically updates the "Amount Paid" field when invoices are selected
   useEffect(() => {
     if (selectedInvoices.length > 0 && !isEditing) {
       const totalSelected = outstandingInvoices
         .filter((invoice: OutstandingInvoice) => selectedInvoices.includes(invoice.id))
-        .reduce((sum: number, invoice: OutstandingInvoice) => sum + invoice.outstandingAmount, 0);
+        .reduce((sum: number, invoice: OutstandingInvoice) => sum + (invoice.outstandingAmount || 0), 0);
       setAmountPaid(totalSelected.toFixed(2));
     } else if (selectedInvoices.length === 0 && !isEditing) {
       setAmountPaid("0");
@@ -758,7 +767,7 @@ export default function SupplierPayment() {
                       mode="single"
                       selected={paymentDate}
                       onSelect={(date) => date && setPaymentDate(date)}
-                      defaultMonth={businessDate}
+                      defaultMonth={businessDate ? new Date(businessDate) : undefined}
                       initialFocus
                     />
                   </PopoverContent>
@@ -863,11 +872,11 @@ export default function SupplierPayment() {
                           />
                           {invoice.id}
                         </TableCell>
-                        <TableCell className="text-center">£{invoice.totalAmount.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{invoice.paidAmount.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(invoice.totalAmount || 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(invoice.paidAmount || 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£0.00</TableCell>
-                        <TableCell className="text-center">£{invoice.outstandingAmount.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{invoice.outstandingAmount.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(invoice.outstandingAmount || 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(invoice.outstandingAmount || 0).toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -953,7 +962,6 @@ export default function SupplierPayment() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Payment ID</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Supplier Invoice</TableHead>
                     <TableHead>Payment Mode</TableHead>
@@ -963,13 +971,13 @@ export default function SupplierPayment() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedPaymentHistory.map((payment: any) => (
-                    <TableRow key={payment.id}>
-                      <TableCell className="font-mono">{payment.id}</TableCell>
-                      <TableCell>{format(new Date(payment.paymentDate), "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{payment.supplierInvoiceNumber || '-'}</TableCell>
-                      <TableCell>{payment.paymentMode}</TableCell>
-                      <TableCell className="text-right">£{payment.amount.toFixed(2)}</TableCell>
+                  {paginatedPaymentHistory.map((payment: any, index: number) => {
+                    return (
+                    <TableRow key={payment.id || index}>
+                      <TableCell>{payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : (payment.invDate ? format(new Date(payment.invDate), "dd/MM/yyyy") : '-')}</TableCell>
+                      <TableCell>{payment.supplierInvoiceNumber || payment.invNo || '-'}</TableCell>
+                      <TableCell>{payment.paymentMode || 'CASH'}</TableCell>
+                      <TableCell className="text-right">£{(payment.amount || payment.invoiceAmt || payment.paidAmt || 0).toFixed(2)}</TableCell>
                       <TableCell>{payment.remarks || '-'}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -1004,7 +1012,9 @@ export default function SupplierPayment() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeletePayment(payment.id)}
+                              onClick={() => {
+                                handleDeletePayment(payment.id);
+                              }}
                               title="Delete Payment"
                               className="text-red-600 hover:text-red-800"
                               disabled={deletePaymentMutation.isPending}
@@ -1033,7 +1043,9 @@ export default function SupplierPayment() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => window.open(`/print/supplier-payment-receipt/${payment.id}`, '_blank')}
+                            onClick={() => {
+                              window.open(`/print/supplier-payment-receipt/${payment.id}`, '_blank');
+                            }}
                             title="Print Payment Receipt"
                           >
                             <Receipt className="h-4 w-4" />
@@ -1041,10 +1053,11 @@ export default function SupplierPayment() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                   {paginatedPaymentHistory.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-4">
+                      <TableCell colSpan={6} className="text-center py-4">
                         No payment history found
                       </TableCell>
                     </TableRow>
@@ -1093,3 +1106,7 @@ export default function SupplierPayment() {
             </CardContent>
           </Card>
         </div>
+      </div>
+    </div>
+  );
+}
