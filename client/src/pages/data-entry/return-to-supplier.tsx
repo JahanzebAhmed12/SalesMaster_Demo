@@ -16,6 +16,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import SupplierSearch from "@/components/ui/supplier-search";
+import { useSupplierSearch } from "@/hooks/useSupplierSearch";
 import { 
   RotateCcw, 
   FileText, 
@@ -110,6 +112,7 @@ export default function ReturnToSupplier() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { selectedSupplier: selectedSupplierObj, handleSupplierSelect: handleSupplierSelectHook, supplierId } = useSupplierSearch();
   
   // Get business date
   const { businessDate } = useBusinessDate();
@@ -125,6 +128,13 @@ export default function ReturnToSupplier() {
   const [invoiceFromDate, setInvoiceFromDate] = useState("");
   const [invoiceToDate, setInvoiceToDate] = useState("");
   const tableRef = useRef<HTMLDivElement>(null);
+  
+  // Sync supplierId with selectedSupplier
+  useEffect(() => {
+    if (supplierId) {
+      setSelectedSupplier(supplierId);
+    }
+  }, [supplierId]);
   
   // Initialize dates with business date when available
   useEffect(() => {
@@ -608,19 +618,15 @@ export default function ReturnToSupplier() {
             <div className="flex flex-wrap gap-4 items-end">
               <div className="min-w-[180px]">
                 <Label htmlFor="supplier">Supplier:</Label>
-                <Select value={selectedSupplier?.toString() || "all"} onValueChange={(value) => setSelectedSupplier(value === "all" ? undefined : parseInt(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select supplier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Suppliers</SelectItem>
-                    {suppliers.map((supplier) => (
-                      <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                        {supplier.supplier_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SupplierSearch
+                  placeholder="Search supplier by code or name..."
+                  onSupplierSelect={(supplier) => {
+                    handleSupplierSelectHook(supplier);
+                    setSelectedSupplier(supplier?.id);
+                  }}
+                  showCode
+                  allowClear
+                />
               </div>
               <div className="min-w-[180px]">
                 <Label>From Date:</Label>
@@ -752,21 +758,20 @@ export default function ReturnToSupplier() {
                         </div>
                         <div>
                           <Label htmlFor="supplierId">Supplier</Label>
-                          <Select
-                            value={form.watch('supplierId')?.toString()}
-                            onValueChange={(value) => form.setValue('supplierId', parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select supplier" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {suppliers.map((supplier) => (
-                                <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                                  {supplier.supplier_name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <SupplierSearch
+                            placeholder="Search supplier by code or name..."
+                            onSupplierSelect={(supplier) => {
+                              handleSupplierSelectHook(supplier);
+                              if (supplier) {
+                                form.setValue('supplierId', supplier.id);
+                              } else {
+                                form.setValue('supplierId', 0);
+                              }
+                            }}
+                            required
+                            showCode
+                            allowClear
+                          />
                           {form.formState.errors.supplierId && (
                             <p className="text-red-500 text-sm">{form.formState.errors.supplierId.message}</p>
                           )}

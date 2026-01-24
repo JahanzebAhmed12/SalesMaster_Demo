@@ -80,7 +80,6 @@ export default function CustomerSearch({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setSearchTerm(newValue);
-    debouncedSetSearchTerm(newValue);
     setShowDropdown(true);
     setHighlightedIndex(-1);
     
@@ -147,7 +146,7 @@ export default function CustomerSearch({
     setTimeout(() => {
       setShowDropdown(false);
       setHighlightedIndex(-1);
-    }, 150);
+    }, 200); // Increased delay to allow mouse clicks
   };
 
   // Click outside to close dropdown
@@ -296,39 +295,7 @@ export default function CustomerSearch({
         )}
       </div>
 
-      {/* Selected customer info */}
-      {selectedCustomer && (
-        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-blue-600" />
-              <span className="font-medium text-blue-900">
-                {selectedCustomer.customer_name}
-              </span>
-              {showCode && (
-                <span className="font-mono text-xs text-blue-600 bg-blue-100 px-1 rounded">
-                  {selectedCustomer.customer_code}
-                </span>
-              )}
-            </div>
-            {allowClear && (
-              <button
-                type="button"
-                onClick={handleClear}
-                className="text-blue-600 hover:text-blue-800"
-                title="Clear selection"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          {selectedCustomer.address && (
-            <div className="text-blue-700 mt-1 text-xs">
-              {selectedCustomer.address}
-            </div>
-          )}
-        </div>
-      )}
+      {/* Selected customer info - REMOVED */}
     </div>
   );
 }

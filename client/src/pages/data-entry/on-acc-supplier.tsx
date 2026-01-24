@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
+import SupplierSearch from "@/components/ui/supplier-search";
+import { useSupplierSearch } from "@/hooks/useSupplierSearch";
 import { CalendarIcon, Truck, Search, Info, Save, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -20,9 +22,17 @@ import { toast } from "@/hooks/use-toast";
 
 export default function OnAccSupplier() {
   const { currentDate: businessDate } = useBusinessDate();
+  const { selectedSupplier: selectedSupplierObj, handleSupplierSelect: handleSupplierSelectHook, supplierId } = useSupplierSearch();
   const [selectedSupplier, setSelectedSupplier] = useState<string>("");
   const [fromDate, setFromDate] = useState<Date>(new Date());
   const [toDate, setToDate] = useState<Date>(new Date());
+
+  // Sync supplierId with selectedSupplier
+  useEffect(() => {
+    if (supplierId) {
+      setSelectedSupplier(supplierId.toString());
+    }
+  }, [supplierId]);
 
   // Initialize dates with business date when available
   useEffect(() => {
@@ -184,16 +194,16 @@ export default function OnAccSupplier() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div>
-                <Select value={selectedSupplier} onValueChange={setSelectedSupplier} disabled={loadingSuppliers}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingSuppliers ? "Loading..." : "Select supplier"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {suppliers.map(s => (
-                      <SelectItem key={s.id} value={s.id.toString()}>{s.supplier_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Supplier:</Label>
+                <SupplierSearch
+                  placeholder="Search supplier by code or name..."
+                  onSupplierSelect={(supplier) => {
+                    handleSupplierSelectHook(supplier);
+                    setSelectedSupplier(supplier?.id.toString() || "");
+                  }}
+                  showCode
+                  allowClear
+                />
               </div>
               <div className="flex gap-2 items-end">
                 <div>

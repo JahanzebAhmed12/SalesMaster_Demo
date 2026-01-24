@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,13 +7,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import BusinessDateDisplay from "@/components/common/business-date-display";
+import SupplierSearch from "@/components/ui/supplier-search";
+import { useSupplierSearch } from "@/hooks/useSupplierSearch";
 import { Plus } from "lucide-react";
 import { useLocation } from "wouter";
 import { useBusinessDate } from "@/hooks/use-business-date";
@@ -34,6 +35,7 @@ export default function PurchaseEntry() {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { currentDate: businessDate } = useBusinessDate();
+  const { selectedSupplier, handleSupplierSelect, supplierId } = useSupplierSearch();
   
   const form = useForm<PurchaseFormData>({
     resolver: zodResolver(purchaseSchema),
@@ -47,7 +49,14 @@ export default function PurchaseEntry() {
     },
   });
 
-  // Fetch suppliers from backend
+  // Update supplierId in form when supplier is selected
+  useEffect(() => {
+    if (supplierId) {
+      form.setValue("supplierId", supplierId.toString());
+    }
+  }, [supplierId, form]);
+
+  // Fetch suppliers from backend (not needed anymore but keeping for compatibility)
   const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
     queryKey: ["/api/suppliers"],
     queryFn: () => apiRequest("GET", "/api/suppliers"),
@@ -183,29 +192,20 @@ export default function PurchaseEntry() {
                 </div>
                 <div>
                   <Label htmlFor="supplierId">Supplier</Label>
-                  <Select
-                    value={form.watch("supplierId")}
-                    onValueChange={(value) => form.setValue("supplierId", value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {suppliersLoading ? (
-                        <SelectItem value="loading" disabled>Loading suppliers...</SelectItem>
-                      ) : suppliers.length === 0 ? (
-                        <SelectItem value="no-suppliers" disabled>No suppliers available</SelectItem>
-                      ) : (
-                        suppliers
-                          .sort((a: any, b: any) => a.supplier_name.localeCompare(b.supplier_name))
-                          .map((supplier: any) => (
-                            <SelectItem key={supplier.id} value={String(supplier.id)}>
-                              {supplier.supplier_name}
-                            </SelectItem>
-                          ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <SupplierSearch
+                    placeholder="Search supplier by code or name..."
+                    onSupplierSelect={(supplier) => {
+                      handleSupplierSelect(supplier);
+                      if (supplier) {
+                        form.setValue("supplierId", supplier.id.toString());
+                      } else {
+                        form.setValue("supplierId", "");
+                      }
+                    }}
+                    required
+                    showCode
+                    allowClear
+                  />
                   {form.formState.errors.supplierId && (
                     <p className="text-sm text-red-500 mt-1">
                       {form.formState.errors.supplierId.message}

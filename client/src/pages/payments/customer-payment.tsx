@@ -62,7 +62,7 @@ export default function CustomerPayment() {
     // Don't initialize with any date initially, let the useEffect handle it
     return undefined;
   });
-  const [receivedAmount, setReceivedAmount] = useState<number>(0);
+  const [receivedAmount, setReceivedAmount] = useState<number | "">(0);
   const [remarks, setRemarks] = useState<string>("");
 
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -78,7 +78,7 @@ export default function CustomerPayment() {
 
   const [paymentDistribution, setPaymentDistribution] = useState<PaymentDistribution[]>([]);
 
-  let [onAccountAmount, setOnAccountAmount] = useState<number>(0);
+  let [onAccountAmount, setOnAccountAmount] = useState<number | "">(0);
   const [emailAddress, setEmailAddress] = useState("");
   const [explicitInvoicePayments, setExplicitInvoicePayments] = useState<Map<number, number>>(new Map()); // Track explicit invoice payment amounts in edit mode
   const queryClient = useQueryClient();
@@ -145,13 +145,14 @@ export default function CustomerPayment() {
     setEmailAddress("");
   }, [customerId]);
 
-  // Reset on-account amount when customer changes
+  // Reset on-account amount when customer changes (but not in edit mode)
   useEffect(() => {
-    // Only reset if no invoices are selected to avoid interfering with invoice selection
-    if (selectedInvoiceIds.size === 0) {
+    // Only reset if no invoices are selected and not in edit mode
+    // to avoid interfering with invoice selection or edit mode
+    if (selectedInvoiceIds.size === 0 && !isEditing) {
       setOnAccountAmount(0);
     }
-  }, [customerId, selectedInvoiceIds]);
+  }, [customerId, selectedInvoiceIds, isEditing]);
 
   // Fetch customers - remove this as we're using CustomerSearch now
 
@@ -974,7 +975,7 @@ export default function CustomerPayment() {
         console.log('Explicit payment amounts by invoice:', explicitPaymentAmounts);
         console.log('Auto-applied payment amounts by invoice:', autoAppliedPaymentAmounts);
         console.log('Pure on-account amount:', pureOnAccountAmount);
-        console.log('Total on-account amount:', totalOnAccount);
+        console.log('Total on-account amount (should show in field):', totalOnAccount);
 
         // Store both explicit and auto-applied payment amounts
         // Merge them into explicitInvoicePayments so they're all treated as "invoices to pay"
@@ -990,11 +991,14 @@ export default function CustomerPayment() {
       }
 
       console.log('Final selected invoice IDs:', Array.from(invoiceIds));
-      console.log('Final on-account amount (total):', totalOnAccount);
+      console.log('Final on-account amount to display:', totalOnAccount);
 
       // Update all the states
       setSelectedInvoiceIds(invoiceIds);
-      setOnAccountAmount(totalOnAccount); // Total on-account amount (auto-applied + pure credit)
+      // Set the TOTAL on-account amount (including both auto-applied and remaining credit)
+      // This ensures the user sees the original on-account amount they entered (e.g., 2000)
+      // rather than just the remaining credit (e.g., 280)
+      setOnAccountAmount(totalOnAccount);
 
     } catch (error) {
       console.error('Failed to fetch batch details for editing:', error);
@@ -1532,8 +1536,8 @@ export default function CustomerPayment() {
                   <Input
                     id="on-account-amount"
                     type="number"
-                    value={onAccountAmount}
-                    onChange={(e) => handleOnAccountAmountChange(parseFloat(e.target.value) || 0)}
+                    value={onAccountAmount === 0 ? "" : onAccountAmount}
+                    onChange={(e) => handleOnAccountAmountChange(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
                     placeholder="0.00"
                     className="h-9"
                     step="0.01"
@@ -1546,9 +1550,9 @@ export default function CustomerPayment() {
                   <Input
                     id="received-amount"
                     type="number"
-                    value={receivedAmount}
-                    onChange={(e) => setReceivedAmount(parseFloat(e.target.value) || 0)}
-                    placeholder="Enter amount"
+                    value={receivedAmount === 0 ? "" : receivedAmount}
+                    onChange={(e) => setReceivedAmount(e.target.value === "" ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
                     className="h-9"
                     step="0.01"
                   />
