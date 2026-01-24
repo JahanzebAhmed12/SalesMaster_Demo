@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { Customer } from "@shared/schema";
@@ -86,13 +86,93 @@ export default function CustomerStatement() {
 
   // Fetch customers for dropdown - remove this as we're using CustomerSearch now
 
+  // Process and consolidate statement data
+  const processedStatementData = useMemo(() => {
+    if (!statementData || statementData.length === 0) return [];
+
+    // Group payments by invoice number and date
+    const groupedData: { [key: string]: StatementData[] } = {};
+    const invoiceRecords: StatementData[] = [];
+    const paymentRecords: StatementData[] = [];
+
+    // Separate invoices and payments
+    statementData.forEach(record => {
+      if (record.description && record.description.toLowerCase().includes('payment received')) {
+        paymentRecords.push(record);
+      } else {
+        invoiceRecords.push(record);
+      }
+    });
+
+    // Group payments by invoice number and date
+    const consolidatedPayments: { [key: string]: StatementData } = {};
+    
+    paymentRecords.forEach(payment => {
+      const invoiceMatch = payment.description.match(/Payment Received - (\d+)/);
+      const invoiceNo = invoiceMatch ? invoiceMatch[1] : payment.invoiceNo;
+      const key = `${payment.date}_${invoiceNo}`;
+      
+      if (consolidatedPayments[key]) {
+        // Consolidate multiple payment methods into single record
+        consolidatedPayments[key].paid += payment.paid;
+        consolidatedPayments[key].balance += payment.balance;
+        
+        // Update description to show consolidated payment
+        const existingDesc = consolidatedPayments[key].description;
+        if (!existingDesc.includes('(Multiple Methods)')) {
+          consolidatedPayments[key].description = `Payment Received - ${invoiceNo} (Multiple Methods)`;
+        }
+      } else {
+        consolidatedPayments[key] = { ...payment };
+      }
+    });
+
+    // Combine invoices and consolidated payments
+    const allRecords = [
+      ...invoiceRecords,
+      ...Object.values(consolidatedPayments)
+    ];
+
+    // Sort by date, then by type (invoices first, then payments)
+    const sortedRecords = allRecords.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      
+      // First sort by date
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateA.getTime() - dateB.getTime();
+      }
+      
+      // If same date, invoices come before payments
+      const aIsPayment = a.description && a.description.toLowerCase().includes('payment received');
+      const bIsPayment = b.description && b.description.toLowerCase().includes('payment received');
+      
+      if (aIsPayment && !bIsPayment) return 1;  // Payment after invoice
+      if (!aIsPayment && bIsPayment) return -1; // Invoice before payment
+      
+      // If both are same type, maintain original order
+      return a.slNo - b.slNo;
+    });
+
+    // Recalculate running balance
+    let runningBalance = 0;
+    return sortedRecords.map((record, index) => {
+      runningBalance += record.balance;
+      return {
+        ...record,
+        slNo: index + 1,
+        runningBalance: runningBalance
+      };
+    });
+  }, [statementData]);
+
   const totals = {
-    accountInv: statementData.reduce((sum, item) => sum + (item.accountInv || 0), 0),
-    cashInv: statementData.reduce((sum, item) => sum + (item.cashInv || 0), 0),
-    paid: statementData.reduce((sum, item) => sum + (item.paid || 0), 0),
-    accountAdj: statementData.reduce((sum, item) => sum + (item.accountAdj || 0), 0),
-    discountAdj: statementData.reduce((sum, item) => sum + (item.discountAdj || 0), 0),
-    balance: statementData.reduce((sum, item) => sum + (item.balance || 0), 0)
+    accountInv: processedStatementData.reduce((sum, item) => sum + (item.accountInv || 0), 0),
+    cashInv: processedStatementData.reduce((sum, item) => sum + (item.cashInv || 0), 0),
+    paid: processedStatementData.reduce((sum, item) => sum + (item.paid || 0), 0),
+    accountAdj: processedStatementData.reduce((sum, item) => sum + (item.accountAdj || 0), 0),
+    discountAdj: processedStatementData.reduce((sum, item) => sum + (item.discountAdj || 0), 0),
+    balance: processedStatementData.reduce((sum, item) => sum + (item.balance || 0), 0)
   };
 
   // Update dates when business date changes, but only if not manually changed
@@ -142,7 +222,7 @@ export default function CustomerStatement() {
 
   // Send statement via email
   const handleSendStatement = async () => {
-    if (!selectedCustomer || statementData.length === 0) {
+    if (!selectedCustomer || processedStatementData.length === 0) {
       alert('Please select a customer and generate a statement first');
       return;
     }
@@ -238,7 +318,7 @@ export default function CustomerStatement() {
   };
 
   const handleExcel = () => {
-    if (statementData.length === 0) {
+    if (processedStatementData.length === 0) {
       alert('No data to export. Please generate the statement first.');
       return;
     }
@@ -291,7 +371,7 @@ export default function CustomerStatement() {
     );
 
     // Add data rows
-    statementData.forEach((row) => {
+    processedStatementData.forEach((row) => {
       dataArray.push([
         row.slNo || '',
         row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
@@ -319,7 +399,7 @@ export default function CustomerStatement() {
       parseFloat(totals.accountAdj.toString()).toFixed(2),
       parseFloat(totals.discountAdj.toString()).toFixed(2),
       parseFloat(totals.balance.toString()).toFixed(2),
-      statementData.length > 0 ? parseFloat(statementData[statementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
+      processedStatementData.length > 0 ? parseFloat(processedStatementData[processedStatementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
     ]);
 
     // Create worksheet from array data
@@ -415,7 +495,7 @@ export default function CustomerStatement() {
   };
 
   const handlePDF = () => {
-    if (statementData.length === 0) {
+    if (processedStatementData.length === 0) {
       alert('No data to export. Please generate the statement first.');
       return;
     }
@@ -484,7 +564,7 @@ export default function CustomerStatement() {
       'Running Balance'
     ];
     
-    const tableRows = statementData.map(row => [
+    const tableRows = processedStatementData.map(row => [
       row.slNo || '',
       row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
       row.invoiceNo || '',
@@ -510,7 +590,7 @@ export default function CustomerStatement() {
       parseFloat(totals.accountAdj.toString()).toFixed(2),
       parseFloat(totals.discountAdj.toString()).toFixed(2),
       parseFloat(totals.balance.toString()).toFixed(2),
-      statementData.length > 0 ? parseFloat(statementData[statementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
+      processedStatementData.length > 0 ? parseFloat(processedStatementData[processedStatementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
     ]);
     
     // Add table to PDF with proper margins
@@ -581,7 +661,7 @@ export default function CustomerStatement() {
 
   const handleCopy = async () => {
     let text = 'Sl.No\tDate\tInvoice #\tDescription\tCredit Inv.\tCash Inv.\tPaid\tCredit/Adj\tDiscount/Adj\tBalance\tRunning Balance\n';
-    text += statementData.map((row: StatementData) => [
+    text += processedStatementData.map((row: StatementData) => [
       row.slNo,
       row.date,
       row.invoiceNo,
@@ -729,14 +809,14 @@ export default function CustomerStatement() {
                   <Button 
                     className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 flex-1 sm:flex-none" 
                     onClick={handleSendStatement}
-                    disabled={!selectedCustomer || statementData.length === 0}
+                    disabled={!selectedCustomer || processedStatementData.length === 0}
                   >
                     <Mail size={16} />
                     <span className="hidden sm:inline">Email</span>
                   </Button>
                   <Button 
                     className="bg-red-600 hover:bg-red-700 flex items-center gap-2 flex-1 sm:flex-none"
-                    disabled={!selectedCustomer || statementData.length === 0}
+                    disabled={!selectedCustomer || processedStatementData.length === 0}
                     onClick={handlePDF}
                   >
                     <FileText size={16} />
@@ -744,7 +824,7 @@ export default function CustomerStatement() {
                   </Button>
                   <Button 
                     className="bg-gray-600 hover:bg-gray-700 flex items-center gap-2 flex-1 sm:flex-none"
-                    disabled={!selectedCustomer || statementData.length === 0}
+                    disabled={!selectedCustomer || processedStatementData.length === 0}
                     onClick={handlePrint}
                   >
                     <Printer size={16} />
@@ -828,7 +908,7 @@ export default function CustomerStatement() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {statementData.map((statement) => (
+                  {processedStatementData.map((statement) => (
                     <TableRow key={statement.id} className="hover:bg-gray-50">
                       <TableCell>{statement.slNo}</TableCell>
                       <TableCell>{format(new Date(statement.date), "dd/MM/yyyy")}</TableCell>
@@ -863,9 +943,9 @@ export default function CustomerStatement() {
                     <TableCell className="text-center font-bold">£{totals.accountAdj.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.discountAdj.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
-                    <TableCell className={`text-center font-bold ${(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}
-                      {(statementData[statementData.length - 1]?.runningBalance || 0) < 0 && (
+                    <TableCell className={`text-center font-bold ${(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0).toFixed(2)}
+                      {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) < 0 && (
                         <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">CREDIT</span>
                       )}
                     </TableCell>
@@ -884,20 +964,20 @@ export default function CustomerStatement() {
                 </div>
                 <div className="text-right">
                   <div className="font-semibold mb-2 text-lg">Current Balance:</div>
-                  <div className={`text-2xl font-bold ${(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {(statementData[statementData.length - 1]?.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(statementData[statementData.length - 1]?.runningBalance || 0).toFixed(2)}
+                  <div className={`text-2xl font-bold ${(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0).toFixed(2)}
                   </div>
-                  {(statementData[statementData.length - 1]?.runningBalance || 0) < 0 && (
+                  {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) < 0 && (
                     <div className="text-sm text-green-600 font-medium mt-1">
                       Customer has credit balance
                     </div>
                   )}
-                  {(statementData[statementData.length - 1]?.runningBalance || 0) > 0 && (
+                  {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) > 0 && (
                     <div className="text-sm text-red-600 font-medium mt-1">
                       Amount due from customer
                     </div>
                   )}
-                  {(statementData[statementData.length - 1]?.runningBalance || 0) === 0 && (
+                  {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) === 0 && (
                     <div className="text-sm text-gray-600 font-medium mt-1">
                       Account balanced
                     </div>
@@ -907,7 +987,7 @@ export default function CustomerStatement() {
             </div>
             
             <div className="flex justify-between items-center mt-4 text-sm text-gray-600">
-              <div>Showing 1 to {statementData.length} of {statementData.length} entries</div>
+              <div>Showing 1 to {processedStatementData.length} of {processedStatementData.length} entries</div>
               <div className="flex items-center gap-4">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm">Previous</Button>

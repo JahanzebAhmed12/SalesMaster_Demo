@@ -57,6 +57,7 @@ export default function SupplierPayment() {
   const [editingPayment, setEditingPayment] = useState<SupplierPayment | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [emailAddress, setEmailAddress] = useState("");
+  const [duplicateInvoiceWarning, setDuplicateInvoiceWarning] = useState<string>("");
 
   // Fetch user permissions for current date editing
   const { data: userPermissions } = useQuery<any>({
@@ -110,7 +111,10 @@ export default function SupplierPayment() {
   // Reset email field when supplier changes
   useEffect(() => {
     setEmailAddress("");
+    setDuplicateInvoiceWarning("");
   }, [selectedSupplier]);
+
+
 
   // Fetch suppliers
   const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
@@ -134,6 +138,28 @@ export default function SupplierPayment() {
     },
     enabled: !!selectedSupplier,
   });
+
+  // Check for duplicate supplier invoice numbers
+  useEffect(() => {
+    if (supplierInvoiceNumber.trim() && selectedSupplier && paymentHistory) {
+      const duplicatePayment = paymentHistory.find((payment: any) => 
+        payment.supplierInvoiceNumber && 
+        payment.supplierInvoiceNumber.toLowerCase() === supplierInvoiceNumber.toLowerCase() &&
+        (!isEditing || payment.id !== editingPayment?.id) // Exclude current payment when editing
+      );
+
+      if (duplicatePayment) {
+        const paymentDate = duplicatePayment.paymentDate ? format(new Date(duplicatePayment.paymentDate), "dd/MM/yyyy") : 'Unknown date';
+        setDuplicateInvoiceWarning(
+          `⚠️ Warning: This supplier invoice number "${supplierInvoiceNumber}" was already used in a payment on ${paymentDate} (Amount: £${(duplicatePayment.amount || 0).toFixed(2)})`
+        );
+      } else {
+        setDuplicateInvoiceWarning("");
+      }
+    } else {
+      setDuplicateInvoiceWarning("");
+    }
+  }, [supplierInvoiceNumber, selectedSupplier, paymentHistory, isEditing, editingPayment]);
 
   // Use standardized mutation
   const createPaymentMutation = supplierPayment.create;
@@ -242,6 +268,7 @@ export default function SupplierPayment() {
     setSupplierInvoiceNumber("");
     setSupplierInvoiceDate(undefined);
     setSelectedInvoices([]);
+    setDuplicateInvoiceWarning("");
   };
 
   // Handle delete payment
@@ -342,6 +369,7 @@ export default function SupplierPayment() {
           setSupplierInvoiceNumber("");
           setSupplierInvoiceDate(undefined);
           setSelectedInvoices([]);
+          setDuplicateInvoiceWarning("");
           refetchOutstandingInvoices();
           refetchPaymentHistory();
         }
@@ -394,6 +422,7 @@ export default function SupplierPayment() {
         setSupplierInvoiceNumber("");
         setSupplierInvoiceDate(undefined);
         setSelectedInvoices([]);
+        setDuplicateInvoiceWarning("");
         refetchOutstandingInvoices();
         refetchPaymentHistory();
       }
@@ -660,10 +689,10 @@ export default function SupplierPayment() {
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h1 className="text-xl font-semibold text-gray-900">Supplier Payment</h1>
-            <div className="text-sm text-gray-500">
-              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ, ...
+            <div className="text-sm text-gray-500 hidden md:block">
+              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ
             </div>
           </div>
         </div>
@@ -673,7 +702,7 @@ export default function SupplierPayment() {
         {/* Payment Form */}
         <Card>
           <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
               <div>
                 <Label htmlFor="supplier">Select Supplier :</Label>
                 <Select value={selectedSupplier} onValueChange={handleSupplierChange}>
@@ -703,7 +732,13 @@ export default function SupplierPayment() {
                   value={supplierInvoiceNumber}
                   onChange={(e) => setSupplierInvoiceNumber(e.target.value)}
                   placeholder="Enter invoice number"
+                  className={duplicateInvoiceWarning ? "border-orange-500 focus:border-orange-500" : ""}
                 />
+                {duplicateInvoiceWarning && (
+                  <div className="text-orange-600 text-xs mt-1 p-2 bg-orange-50 border border-orange-200 rounded">
+                    {duplicateInvoiceWarning}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -803,18 +838,19 @@ export default function SupplierPayment() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col sm:flex-row justify-end gap-2">
               {isEditing && (
                 <Button
                   variant="outline"
                   onClick={handleCancelEdit}
                   disabled={createPaymentMutation.isPending || updatePaymentMutation.isPending}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
               )}
               <Button 
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto"
                 onClick={handleSubmitPayment}
                 disabled={createPaymentMutation.isPending || updatePaymentMutation.isPending}
               >
@@ -937,22 +973,22 @@ export default function SupplierPayment() {
                     </Button>
                   </div>
                   {/* Export buttons */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                       <FileText size={14} />
-                      PDF
+                      <span className="hidden sm:inline">PDF</span>
                     </Button>
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                       <Download size={14} />
-                      Excel
+                      <span className="hidden sm:inline">Excel</span>
                     </Button>
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                       <Copy size={14} />
-                      Copy
+                      <span className="hidden sm:inline">Copy</span>
                     </Button>
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                       <Printer size={14} />
-                      Print
+                      <span className="hidden sm:inline">Print</span>
                     </Button>
                   </div>
                 </div>
@@ -967,7 +1003,7 @@ export default function SupplierPayment() {
                     <TableHead>Payment Mode</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Remarks</TableHead>
-                    <TableHead className="w-40">Actions</TableHead>
+                    <TableHead className="w-24 sm:w-40">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1077,9 +1113,9 @@ export default function SupplierPayment() {
 
         {/* Update Payment Button and Balance Summary */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="flex justify-end">
+          <div className="flex justify-center lg:justify-end">
             <Button 
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
               onClick={handleUpdatePayment}
               disabled={selectedInvoices.length === 0 || createPaymentMutation.isPending}
             >

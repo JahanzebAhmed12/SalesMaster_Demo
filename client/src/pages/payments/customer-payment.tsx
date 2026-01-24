@@ -150,7 +150,7 @@ export default function CustomerPayment() {
     if (selectedInvoiceIds.size === 0) {
       setOnAccountAmount(0);
     }
-  }, [customerId, selectedInvoiceIds.size]);
+  }, [customerId, selectedInvoiceIds]);
 
   // Fetch customers - remove this as we're using CustomerSearch now
 
@@ -353,7 +353,6 @@ export default function CustomerPayment() {
       setSelectedInvoiceIds(new Set());
       setInvoicePaymentModes(new Map());
       setOnAccountAmount(0);
-      setSelectedCustomerId(""); // Reset customer selection - remove this line since we don't have setSelectedCustomerId anymore
       resetSplitPayment();
     },
     onError: (error) => {
@@ -778,7 +777,7 @@ export default function CustomerPayment() {
     
     // Build payment payload with explicit distribution
     const paymentPayload = {
-      customerId: selectedCustomer.id,
+      customerId: selectedCustomer?.id || 0,
       amount: receivedAmount, // Use the actual payment amount entered by user
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: remarks || "", // Only use manual remarks, no auto-generated ones
@@ -839,47 +838,47 @@ export default function CustomerPayment() {
       if (batchDetails.payments && Array.isArray(batchDetails.payments)) {
         console.log('Processing', batchDetails.payments.length, 'payments');
 
-        // First, collect all invoice IDs and on-account amounts
+        // Separate payments into different categories
+        const explicitInvoicePayments: any[] = [];
+        const onAccountPayments: any[] = [];
+
         batchDetails.payments.forEach((payment: any, index: number) => {
           console.log(`Processing payment ${index + 1}:`, payment);
 
           if (payment.amount > 0) {
+            // Check if this is an on-account payment based on paymentType
+            const isOnAccountPayment = payment.paymentType === 'on-account' || !payment.invoiceId;
+            
+            if (isOnAccountPayment) {
+              // This is an on-account payment (either applied to invoice or remaining as credit)
+              onAccountPayments.push(payment);
+              totalOnAccount += parseFloat(payment.amount);
+              console.log(`On-account payment: ${payment.amount} (invoice: ${payment.invoiceNumber || 'pure credit'})`);
+            } else {
+              // This is a direct invoice payment (user explicitly selected this invoice)
+              explicitInvoicePayments.push(payment);
+              if (payment.invoiceId) {
+                invoiceIds.add(payment.invoiceId);
+              }
+              console.log(`Direct invoice payment: ${payment.amount} for invoice ${payment.invoiceNumber}`);
+            }
+
             const paymentEntry: PaymentDistribution = {
               invoiceId: payment.invoiceId,
               invoiceNumber: payment.invoiceNumber || `INV-${payment.invoiceId || 'ON-ACCOUNT'}`,
               amount: parseFloat(payment.amount),
-              isOnAccount: payment.isOnAccount || !payment.invoiceId,
+              isOnAccount: isOnAccountPayment,
               paymentMode: payment.paymentMode || 'cash'
             };
-
-            if (payment.invoiceId) {
-              invoiceIds.add(payment.invoiceId);
-            } else {
-              totalOnAccount += paymentEntry.amount;
-            }
 
             console.log('Adding payment entry:', paymentEntry);
             initialPaymentDistribution.push(paymentEntry);
           }
         });
-      }
 
-      console.log('Loaded payment distribution:', initialPaymentDistribution);
-
-      // Update all the states at once to prevent multiple re-renders
-      setSelectedInvoiceIds(invoiceIds);
-      setOnAccountAmount(totalOnAccount);
-      setPaymentDistribution(initialPaymentDistribution);
-
-      // Process each payment in the batch to collect invoice IDs and on-account amounts
-      if (batchDetails.payments) {
-        batchDetails.payments.forEach((payment: any) => {
-          if (payment.invoiceId && payment.invoiceNumber !== 'On Account') {
-            invoiceIds.add(payment.invoiceId);
-          } else if (payment.invoiceNumber === 'On Account' || !payment.invoiceId) {
-            totalOnAccount += parseFloat(payment.amount || 0);
-          }
-        });
+        console.log('Explicit invoice payments:', explicitInvoicePayments);
+        console.log('On-account payments:', onAccountPayments);
+        console.log('Total on-account amount:', totalOnAccount);
 
         // Second pass: ensure all payment methods are properly set
         const paymentMethods = {
@@ -918,8 +917,15 @@ export default function CustomerPayment() {
         });
       }
 
+      console.log('Loaded payment distribution:', initialPaymentDistribution);
+      console.log('Final selected invoice IDs:', Array.from(invoiceIds));
+      console.log('Final on-account amount:', totalOnAccount);
+
+      // Update all the states at once to prevent multiple re-renders
       setSelectedInvoiceIds(invoiceIds);
       setOnAccountAmount(totalOnAccount);
+      setPaymentDistribution(initialPaymentDistribution);
+
     } catch (error) {
       console.error('Failed to fetch batch details for editing:', error);
       // Fallback: clear selected invoices but keep the payment amount
@@ -1251,10 +1257,10 @@ export default function CustomerPayment() {
       {/* Header */}
       <div className="bg-white border-b">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <h1 className="text-xl font-semibold text-gray-900">Customer Payment</h1>
-            <div className="text-sm text-gray-500">
-              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ, ...
+            <div className="text-sm text-gray-500 hidden md:block">
+              TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ
             </div>
           </div>
         </div>
@@ -1268,8 +1274,6 @@ export default function CustomerPayment() {
             <div className="mb-3">
               <h3 className="text-lg font-semibold text-gray-900">Customer Payment</h3>
               <p className="text-xs text-gray-600">Select invoices to pay and/or add on-account credit</p>
-              <p className="text-xs text-blue-600 mt-1">💡 On-account credits automatically apply to oldest unpaid invoices to minimize outstanding balance</p>
-              <p className="text-xs text-green-600 mt-1">✨ Overpayments automatically create credit balance for future use</p>
             </div>
 
             {/* Compact Form Layout */}
@@ -1490,20 +1494,21 @@ export default function CustomerPayment() {
               </div>
 
               {/* Row 4: Action Buttons */}
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pt-2 gap-2">
                 <div className="text-xs text-gray-500">
                   {Math.abs(receivedAmount - ((parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0))) <= 0.01
                     ? '✓ Split amounts match'
                     : '⚠ Split amounts should match received amount'}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                   {isEditing && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={handleCancelEdit}
                       disabled={createPaymentMutation.isPending || updatePaymentMutation.isPending}
+                      className="w-full sm:w-auto"
                     >
                       Cancel
                     </Button>
@@ -1516,6 +1521,7 @@ export default function CustomerPayment() {
                         ? updatePaymentMutation.isPending
                         : createPaymentMutation.isPending || (selectedInvoiceIds.size === 0 && onAccountAmount === 0)
                     }
+                    className="w-full sm:w-auto"
                   >
                     {isEditing
                       ? (updatePaymentMutation.isPending ? 'Updating...' : 'Update Payment')
@@ -1531,23 +1537,24 @@ export default function CustomerPayment() {
         {/* Outstanding Invoices Table */}
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <CardTitle>Outstanding Invoices</CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Input
                   placeholder="Search invoices..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-64"
+                  className="w-full sm:w-64"
                 />
-                <Button variant="outline" size="icon">
+                <Button variant="outline" size="icon" className="shrink-0">
                   <Search className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
+            <div className="overflow-x-auto">
+              <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">
@@ -1647,6 +1654,7 @@ export default function CustomerPayment() {
                 )}
               </TableBody>
             </Table>
+            </div>
 
             {/* Pagination for Outstanding Invoices */}
             {invoicesTotalPages > 1 && (
@@ -1658,7 +1666,7 @@ export default function CustomerPayment() {
             {/* Summary Row */}
             {displayedInvoices.length > 0 && (
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-2 md:grid-5 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div>
                     <span className="font-medium">Unpaid Invoices:</span>
                     <div className="text-lg font-bold text-blue-600">
@@ -1769,29 +1777,30 @@ export default function CustomerPayment() {
                     </Button>
                   </div>
                   {/* Export buttons */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                       <FileText size={14} />
-                      PDF
+                      <span className="hidden sm:inline">PDF</span>
                     </Button>
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleExcel}>
                       <Download size={14} />
-                      Excel
+                      <span className="hidden sm:inline">Excel</span>
                     </Button>
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handleCopy}>
                       <Copy size={14} />
-                      Copy
+                      <span className="hidden sm:inline">Copy</span>
                     </Button>
                     <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePrint}>
                       <Printer size={14} />
-                      Print
+                      <span className="hidden sm:inline">Print</span>
                     </Button>
                   </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
+              <div className="overflow-x-auto">
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Payment ID</TableHead>
@@ -1800,7 +1809,7 @@ export default function CustomerPayment() {
                     <TableHead>Payment Mode</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Remarks</TableHead>
-                    <TableHead className="w-40">Actions</TableHead>
+                    <TableHead className="w-24 sm:w-40">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1918,6 +1927,7 @@ export default function CustomerPayment() {
                   )}
                 </TableBody>
               </Table>
+            </div>
 
               {/* Pagination for Payment History */}
               {historyTotalPages > 1 && (

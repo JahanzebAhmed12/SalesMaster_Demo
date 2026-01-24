@@ -8,6 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -310,128 +311,146 @@ export default function CustomerPaymentHistory() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
+      {/* Header - responsive */}
       <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex justify-between items-center">
-            <h1 className="text-xl font-semibold text-gray-900">TROPIFRUIT UK LTD</h1>
-            <div className="text-sm text-gray-500">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 py-2 sm:py-3">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
+            <h1 className="text-lg sm:text-xl font-semibold text-gray-900 text-center sm:text-left">
+              TROPIFRUIT UK LTD
+            </h1>
+            <div className="text-xs sm:text-sm text-gray-500 text-center sm:text-right">
               3 Dolphin Way, Purfleet, RM19 1NZ, ...
             </div>
           </div>
-          <div className="text-lg font-bold text-center mt-2">Customer Payment History</div>
+          <div className="text-base sm:text-lg font-bold text-center mt-2">
+            Customer Payment History
+          </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 space-y-6">
+      <div className="max-w-7xl mx-auto p-2 sm:p-4 space-y-4 sm:space-y-6">
         {/* Filter Section */}
         <Card>
-          <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-                <div>
-                  <Label className="text-sm font-medium mb-2">Customer</Label>
-                  <div className="flex items-center gap-2">
+          <CardContent className="p-3 sm:p-6">
+            {/* Mobile-first responsive grid */}
+            <div className="space-y-4">
+              {/* Customer Search - Full width on mobile */}
+              <div className="w-full">
+                <Label className="text-sm font-medium mb-2 block">Customer</Label>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="flex-1">
                     <CustomerSearch
-                      placeholder="Search customer by code or name..."
+                      placeholder="Search customer..."
                       onCustomerSelect={handleCustomerSelect}
                       showCode
                       allowClear
                     />
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleCustomerSelect(null)}
-                      className="whitespace-nowrap"
-                    >
-                      All Customers
-                    </Button>
                   </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleCustomerSelect(null)}
+                    className="whitespace-nowrap w-full sm:w-auto"
+                  >
+                    All Customers
+                  </Button>
+                </div>
+              </div>
+
+              {/* Date Range - Side by side on mobile, responsive grid on larger screens */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">From:</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal text-xs sm:text-sm",
+                          !fromDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">
+                          {fromDate ? format(fromDate, "yyyy-MM-dd") : "Select date"}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={fromDate}
+                        onSelect={setFromDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">From:</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "Select date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={setFromDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">To:</label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal text-xs sm:text-sm",
+                          !toDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">
+                          {toDate ? format(toDate, "yyyy-MM-dd") : "Select date"}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={toDate}
+                        onSelect={setToDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium mb-2">To:</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyy-MM-dd") : "Select date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={setToDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Payment Mode</label>
-                <Select value={selectedFilter} onValueChange={setSelectedFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All</SelectItem>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="bank">Card</SelectItem>
-                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Payment Type</label>
-                <div className="flex gap-2">
-                  <Select value={selectedPaymentType} onValueChange={setSelectedPaymentType}>
-                    <SelectTrigger className="flex-1">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Payment Mode</label>
+                  <Select value={selectedFilter} onValueChange={setSelectedFilter}>
+                    <SelectTrigger className="text-xs sm:text-sm">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="All">All</SelectItem>
-                      <SelectItem value="direct">Direct</SelectItem>
-                      <SelectItem value="on-account">On Account</SelectItem>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="bank">Card</SelectItem>
+                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSubmit}>
-                    Submit
-                  </Button>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Payment Type</label>
+                  <div className="flex gap-2">
+                    <Select value={selectedPaymentType} onValueChange={setSelectedPaymentType}>
+                      <SelectTrigger className="flex-1 text-xs sm:text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="All">All</SelectItem>
+                        <SelectItem value="direct">Direct</SelectItem>
+                        <SelectItem value="on-account">On Account</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button 
+                      className="bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 text-xs sm:text-sm" 
+                      onClick={handleSubmit}
+                    >
+                      Submit
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -440,120 +459,166 @@ export default function CustomerPaymentHistory() {
 
         {/* Table Section */}
         <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={handlePrint}>Print</Button>
-                <Button variant="outline" onClick={handlePDF}>PDF</Button>
-                <Button variant="outline" onClick={handleExcel}>Excel</Button>
+          <CardContent className="p-3 sm:p-6">
+            {/* Action buttons - responsive layout */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-4 gap-4">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={handlePrint} size="sm" className="flex-1 sm:flex-none">
+                  Print
+                </Button>
+                <Button variant="outline" onClick={handlePDF} size="sm" className="flex-1 sm:flex-none">
+                  PDF
+                </Button>
+                <Button variant="outline" onClick={handleExcel} size="sm" className="flex-1 sm:flex-none">
+                  Excel
+                </Button>
               </div>
               
-              {/* Email Section */}
-              <div className="flex items-center gap-2">
+              {/* Email Section - responsive */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                 <Input
                   placeholder="Enter emails (comma separated)"
                   value={emails}
                   onChange={(e) => setEmails(e.target.value)}
-                  className="w-64"
+                  className="w-full sm:w-64 text-xs sm:text-sm"
                   disabled={isEmailSending}
                 />
                 <Button 
                   variant="outline" 
                   onClick={handleEmailPDF} 
-                  className="flex items-center gap-2"
+                  className="flex items-center justify-center gap-2 w-full sm:w-auto"
                   disabled={isEmailSending}
+                  size="sm"
                 >
                   <Mail className="h-4 w-4" />
-                  <span>{isEmailSending ? 'Sending...' : 'Email'}</span>
+                  <span className="text-xs sm:text-sm">{isEmailSending ? 'Sending...' : 'Email'}</span>
                 </Button>
               </div>
             </div>
+
             {/* Responsive Table Container */}
-            <div className="overflow-x-auto" id="customer-payment-table">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-blue-50">
-                    <TableHead className="text-center min-w-[120px]">Payment Date</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Payment mode</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Batch ID</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Recd Amt</TableHead>
-                    <TableHead className="text-center min-w-[80px]">Inv No.</TableHead>
-                    <TableHead className="text-center min-w-[80px]">Inv Dt.</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Customer</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Invoice Amt</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Allocated</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Remarks</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoadingPayments ? (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8">
-                        Loading payment history...
-                      </TableCell>
+            <div className="overflow-x-auto -mx-3 sm:mx-0" id="customer-payment-table">
+              <div className="min-w-full inline-block align-middle">
+                <Table className="min-w-[800px]">
+                  <TableHeader>
+                    <TableRow className="bg-blue-50">
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[100px]">
+                        Payment Date
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[90px]">
+                        Payment mode
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[80px]">
+                        Batch ID
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[80px]">
+                        Recd Amt
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[70px]">
+                        Inv No.
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[80px]">
+                        Inv Dt.
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[100px]">
+                        Customer
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[90px]">
+                        Invoice Amt
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[80px]">
+                        Allocated
+                      </TableHead>
+                      <TableHead className="text-center text-xs sm:text-sm font-medium px-2 sm:px-4 py-2 sm:py-3 min-w-[100px]">
+                        Remarks
+                      </TableHead>
                     </TableRow>
-                  ) : paymentHistory && paymentHistory.length > 0 ? (
-                    paymentHistory.map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell className="text-center">
-                          {payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : ''}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {payment.batchId || '-'}
-                        </TableCell>
-                        <TableCell className="text-center">£{payment.amount.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">
-                          {payment.invoiceNumber || '-'}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {payment.invoiceDate ? format(new Date(payment.invoiceDate), "dd/MM/yyyy") : '-'}
-                        </TableCell>
-                        <TableCell className="text-center">{payment.customerName}</TableCell>
-                        <TableCell className="text-center">
-                          {payment.invoiceAmount ? `£${payment.invoiceAmount.toFixed(2)}` : '-'}
-                        </TableCell>
-                        <TableCell className="text-center">£{payment.amount.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">
-                          {payment.remarks || '-'}
+                  </TableHeader>
+                  <TableBody>
+                    {isLoadingPayments ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8 text-sm">
+                          Loading payment history...
                         </TableCell>
                       </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8">
-                        No payment history found.
+                    ) : paymentHistory && paymentHistory.length > 0 ? (
+                      paymentHistory.map((payment) => (
+                        <TableRow key={payment.id} className="hover:bg-gray-50">
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            {payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : ''}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            {payment.paymentMode === 'bank' ? 'Card' : payment.paymentMode}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            {payment.batchId || '-'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3 font-medium">
+                            £{payment.amount.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            {payment.invoiceNumber || '-'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            {payment.invoiceDate ? format(new Date(payment.invoiceDate), "dd/MM/yyyy") : '-'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            <div className="truncate max-w-[100px] sm:max-w-none" title={payment.customerName}>
+                              {payment.customerName}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            {payment.invoiceAmount ? `£${payment.invoiceAmount.toFixed(2)}` : '-'}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3 font-medium">
+                            £{payment.amount.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3">
+                            <div className="truncate max-w-[100px] sm:max-w-none" title={payment.remarks || '-'}>
+                              {payment.remarks || '-'}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-8 text-sm">
+                          No payment history found.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    <TableRow className="bg-blue-100 font-semibold">
+                      <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3 font-bold">
+                        TOTAL
                       </TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
+                      <TableCell className="text-center text-xs sm:text-sm px-2 sm:px-4 py-2 sm:py-3 font-bold">
+                        £{totalAmount.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="px-2 sm:px-4 py-2 sm:py-3"></TableCell>
                     </TableRow>
-                  )}
-                  <TableRow className="bg-blue-100 font-semibold">
-                    <TableCell className="text-center">TOTAL</TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell></TableCell>
-                    <TableCell className="text-center">£{totalAmount.toFixed(2)}</TableCell>
-                    <TableCell></TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
-            {/* Pagination */}
+            {/* Pagination - responsive */}
             <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-4">
-              <div className="text-sm text-gray-600">
+              <div className="text-xs sm:text-sm text-gray-600 order-2 sm:order-1">
                 Showing {paymentHistory?.length || 0} entries
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm">Previous</span>
-                <Button variant="outline" size="sm" disabled>1</Button>
-                <span className="text-sm">Next</span>
+              <div className="flex items-center gap-2 order-1 sm:order-2">
+                <span className="text-xs sm:text-sm">Previous</span>
+                <Button variant="outline" size="sm" disabled className="text-xs sm:text-sm">
+                  1
+                </Button>
+                <span className="text-xs sm:text-sm">Next</span>
               </div>
             </div>
           </CardContent>
