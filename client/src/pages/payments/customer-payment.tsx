@@ -80,6 +80,7 @@ export default function CustomerPayment() {
 
   let [onAccountAmount, setOnAccountAmount] = useState<number>(0);
   const [emailAddress, setEmailAddress] = useState("");
+  const [explicitInvoicePayments, setExplicitInvoicePayments] = useState<Map<number, number>>(new Map()); // Track explicit invoice payment amounts in edit mode
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -290,6 +291,7 @@ export default function CustomerPayment() {
       refetchPaymentHistory();
       setEditingPayment(null);
       setIsEditing(false);
+      setExplicitInvoicePayments(new Map());
     },
     onError: (error) => {
       toast({
@@ -627,17 +629,66 @@ export default function CustomerPayment() {
       return;
     }
 
-    // Get selected invoices and separate positive and negative invoices
-    const selectedInvoices = displayedInvoices
-      .filter(inv => selectedInvoiceIds.has(inv.id))
-      .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+    // Get selected invoices - in edit mode, we need to handle invoices that may not be in displayedInvoices
+    let selectedInvoices: InvoiceWithBalance[];
+    
+    if (isEditMode && explicitInvoicePayments.size > 0) {
+      // In edit mode, reconstruct invoice data from explicitInvoicePayments
+      // These invoices may not be in displayedInvoices if they're already paid
+      selectedInvoices = Array.from(explicitInvoicePayments.entries()).map(([invoiceId, amount]) => {
+        // Try to find in displayedInvoices first
+        const existingInvoice = displayedInvoices.find(inv => inv.id === invoiceId);
+        if (existingInvoice) {
+          return existingInvoice;
+        }
+        
+        // If not found, create a minimal invoice object with the stored payment amount
+        return {
+          id: invoiceId,
+          invoiceNumber: invoiceId.toString(),
+          balance: amount, // Use the explicit payment amount as balance
+          paid: 0,
+          runningBal: 0,
+          totalAmount: amount,
+          date: new Date().toISOString(),
+          customer_id: selectedCustomer?.id || 0,
+          customer_type: 'cash',
+          payment_status: 'unpaid',
+          subtotal: amount,
+          porterage: 0,
+          vat_rate: 0,
+          vat_amount: 0,
+          status: 'finalized'
+        } as InvoiceWithBalance;
+      }).sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+      
+      console.log('DEBUG - Reconstructed selectedInvoices from explicitInvoicePayments:', selectedInvoices);
+    } else {
+      // Normal mode: use displayedInvoices
+      selectedInvoices = displayedInvoices
+        .filter(inv => selectedInvoiceIds.has(inv.id))
+        .sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
+    }
 
-    const positiveInvoices = selectedInvoices.filter(inv => inv.balance > 0);
+    // In edit mode, use explicit payment amounts; otherwise use current balances
+    const positiveInvoices = selectedInvoices.filter(inv => {
+      if (isEditMode) {
+        // In edit mode, include invoices that were explicitly selected (even if balance is now 0)
+        const hasExplicitPayment = explicitInvoicePayments.has(inv.id);
+        const hasPositiveBalance = inv.balance > 0;
+        console.log(`DEBUG - Invoice ${inv.id}: hasExplicitPayment=${hasExplicitPayment}, balance=${inv.balance}`);
+        return hasExplicitPayment || hasPositiveBalance;
+      }
+      return inv.balance > 0;
+    });
     const creditInvoices = selectedInvoices.filter(inv => inv.balance < 0);
 
     // Debug logging for edit mode
     if (isEditMode) {
+      console.log('DEBUG - isEditMode:', isEditMode);
+      console.log('DEBUG - explicitInvoicePayments:', explicitInvoicePayments);
       console.log('DEBUG - selectedInvoiceIds:', Array.from(selectedInvoiceIds));
+      console.log('DEBUG - selectedInvoices:', selectedInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber, balance: inv.balance })));
       console.log('DEBUG - positiveInvoices:', positiveInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber, balance: inv.balance })));
       console.log('DEBUG - creditInvoices:', creditInvoices.map(inv => ({ id: inv.id, number: inv.invoiceNumber, balance: inv.balance })));
     }
@@ -659,7 +710,7 @@ export default function CustomerPayment() {
     }> = [];
 
     // Available payment methods with amounts
-    let remainingPayments = [
+    const remainingPayments = [
       { mode: 'cash', amount: cashAmount },
       { mode: 'bank', amount: cardAmount },
       { mode: 'bank_transfer', amount: bankTransferAmount },
@@ -671,13 +722,21 @@ export default function CustomerPayment() {
     
     // Handle positive invoices: pay sequentially using available payment modes
     for (const posInv of positiveInvoices) {
-      const invoiceAmount = posInv.balance;
+      // In edit mode, use the explicit payment amount; otherwise use current balance
+      const invoiceAmount = isEditMode && explicitInvoicePayments.has(posInv.id) 
+        ? explicitInvoicePayments.get(posInv.id)! 
+        : posInv.balance;
+      
       let remainingInvoiceAmount = invoiceAmount;
       
       // Pay this invoice using available payment modes sequentially
-      for (let i = 0; i < remainingPayments.length && remainingInvoiceAmount > 0; i++) {
-        const payment = remainingPayments[i];
-        if (payment.amount <= 0) continue;
+      while (remainingInvoiceAmount > 0 && remainingPayments.length > 0) {
+        const payment = remainingPayments[0];
+        
+        if (payment.amount <= 0) {
+          remainingPayments.shift(); // Remove exhausted payment mode
+          continue;
+        }
         
         // Use as much of this payment mode as needed/available for this invoice
         const paymentForThisInvoice = Math.min(remainingInvoiceAmount, payment.amount);
@@ -694,6 +753,11 @@ export default function CustomerPayment() {
           // Reduce remaining amounts
           remainingInvoiceAmount = Number((remainingInvoiceAmount - paymentForThisInvoice).toFixed(2));
           payment.amount = Number((payment.amount - paymentForThisInvoice).toFixed(2));
+          
+          // Remove payment mode if exhausted
+          if (payment.amount <= 0) {
+            remainingPayments.shift();
+          }
         }
       }
     }
@@ -729,36 +793,62 @@ export default function CustomerPayment() {
         const paymentForThisInvoice = Math.min(remainingOnAccount, invoiceBalance);
 
         if (paymentForThisInvoice > 0) {
-          // Find the best payment mode to use (prefer modes with remaining amounts)
-          const availablePaymentMode = remainingPayments.find(p => p.amount > 0)?.mode || 'cash';
-
-          paymentDistribution.push({
-            invoiceId: unpaidInv.id,
-            invoiceNumber: unpaidInv.invoiceNumber,
-            amount: Number(paymentForThisInvoice.toFixed(2)),
-            isOnAccount: true, // Mark as on-account application
-            paymentMode: availablePaymentMode
-          });
+          // Use remaining payment modes sequentially
+          let remainingInvoicePayment = paymentForThisInvoice;
+          
+          while (remainingInvoicePayment > 0 && remainingPayments.length > 0) {
+            const payment = remainingPayments[0];
+            
+            if (payment.amount <= 0) {
+              remainingPayments.shift();
+              continue;
+            }
+            
+            const paymentAmount = Math.min(remainingInvoicePayment, payment.amount);
+            
+            paymentDistribution.push({
+              invoiceId: unpaidInv.id,
+              invoiceNumber: unpaidInv.invoiceNumber,
+              amount: Number(paymentAmount.toFixed(2)),
+              isOnAccount: true,
+              paymentMode: payment.mode
+            });
+            
+            remainingInvoicePayment = Number((remainingInvoicePayment - paymentAmount).toFixed(2));
+            payment.amount = Number((payment.amount - paymentAmount).toFixed(2));
+            
+            if (payment.amount <= 0) {
+              remainingPayments.shift();
+            }
+          }
 
           remainingOnAccount = Number((remainingOnAccount - paymentForThisInvoice).toFixed(2));
         }
       }
 
       // Any remaining on-account amount stays as pure on-account credit
-      if (remainingOnAccount > 0) {
-        for (const payment of remainingPayments) {
-          if (payment.amount <= 0 || remainingOnAccount <= 0) continue;
+      while (remainingOnAccount > 0 && remainingPayments.length > 0) {
+        const payment = remainingPayments[0];
+        
+        if (payment.amount <= 0) {
+          remainingPayments.shift();
+          continue;
+        }
 
-          const onAccountPayment = Math.min(payment.amount, remainingOnAccount);
-          if (onAccountPayment > 0) {
-            paymentDistribution.push({
-              amount: Number(onAccountPayment.toFixed(2)),
-              isOnAccount: true,
-              paymentMode: payment.mode
-            });
+        const onAccountPayment = Math.min(payment.amount, remainingOnAccount);
+        
+        if (onAccountPayment > 0) {
+          paymentDistribution.push({
+            amount: Number(onAccountPayment.toFixed(2)),
+            isOnAccount: true,
+            paymentMode: payment.mode
+          });
 
-            payment.amount = Number((payment.amount - onAccountPayment).toFixed(2));
-            remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
+          payment.amount = Number((payment.amount - onAccountPayment).toFixed(2));
+          remainingOnAccount = Number((remainingOnAccount - onAccountPayment).toFixed(2));
+          
+          if (payment.amount <= 0) {
+            remainingPayments.shift();
           }
         }
       }
@@ -767,13 +857,11 @@ export default function CustomerPayment() {
     // Calculate net total for payment distribution (positive amounts minus negative amounts)
     const totalDistributionAmount = paymentDistribution.reduce((sum, payment) => sum + payment.amount, 0);
     
-    // Get all invoice IDs that will be affected (selected + auto-applied)
-    const allAffectedInvoiceIds = new Set([
-      ...Array.from(selectedInvoiceIds),
-      ...paymentDistribution
-        .filter(p => p.invoiceId && p.isOnAccount)
-        .map(p => p.invoiceId!)
-    ]);
+    // Separate explicitly selected invoice IDs from auto-applied ones
+    const explicitInvoiceIds = Array.from(selectedInvoiceIds);
+    const autoAppliedInvoiceIds = paymentDistribution
+      .filter(p => p.invoiceId && p.isOnAccount && !selectedInvoiceIds.has(p.invoiceId))
+      .map(p => p.invoiceId!);
     
     // Build payment payload with explicit distribution
     const paymentPayload = {
@@ -782,16 +870,17 @@ export default function CustomerPayment() {
       paymentDate: format(paymentDate || new Date(), "yyyy-MM-dd"),
       remarks: remarks || "", // Only use manual remarks, no auto-generated ones
       splitPayment: getSplitPaymentNumbers(), // Use user's actual split payment amounts
-      invoiceIds: Array.from(allAffectedInvoiceIds), // Include all affected invoices
+      invoiceIds: explicitInvoiceIds, // Only explicitly selected invoices
       onAccountAmount: onAccountAmount,
       paymentSource: 'customer_payment',
-      paymentDistribution: paymentDistribution, // Send explicit distribution with negative amounts for credits and auto-applications
+      paymentDistribution: paymentDistribution, // Send explicit distribution
       invoices: [] // Keep for backward compatibility
     };
 
     console.log('Payment payload:', JSON.stringify(paymentPayload, null, 2));
     console.log('Payment distribution details:', paymentDistribution);
-    console.log('All affected invoice IDs:', Array.from(allAffectedInvoiceIds));
+    console.log('Explicit invoice IDs:', explicitInvoiceIds);
+    console.log('Auto-applied invoice IDs:', autoAppliedInvoiceIds);
 
     if (isEditMode && editingPayment) {
       const editPayload = {
@@ -808,19 +897,22 @@ export default function CustomerPayment() {
   };
 
   const handleEditPayment = async (batchPayment: any) => {
+    console.log('=== EDIT PAYMENT START ===');
     console.log('Starting handleEditPayment with batchPayment:', batchPayment);
     setEditingPayment(batchPayment);
     setReceivedAmount(batchPayment.totalAmount);
     setPaymentDate(new Date(batchPayment.paymentDate));
     setRemarks(batchPayment.remarks || '');
 
-    // Initialize payment distribution array
-    const initialPaymentDistribution: PaymentDistribution[] = [];
+    // Initialize tracking variables
     const invoiceIds = new Set<number>();
+    const explicitPaymentAmounts = new Map<number, number>(); // Track amounts for explicitly selected invoices
+    const autoAppliedPaymentAmounts = new Map<number, number>(); // Track amounts for auto-applied invoices
     let totalOnAccount = 0;
+    let pureOnAccountAmount = 0; // On-account amount not applied to any invoice
 
     try {
-      // First, set the split payment UI state from the batch payment
+      // Set the split payment UI state from the batch payment
       const splitPayment = {
         cash: batchPayment.cashAmount ? batchPayment.cashAmount.toString() : "",
         card: batchPayment.cardAmount ? batchPayment.cardAmount.toString() : "",
@@ -838,104 +930,84 @@ export default function CustomerPayment() {
       if (batchDetails.payments && Array.isArray(batchDetails.payments)) {
         console.log('Processing', batchDetails.payments.length, 'payments');
 
-        // Separate payments into different categories
-        const explicitInvoicePayments: any[] = [];
-        const onAccountPayments: any[] = [];
-
+        // Separate payments into explicit invoice payments vs on-account
         batchDetails.payments.forEach((payment: any, index: number) => {
           console.log(`Processing payment ${index + 1}:`, payment);
 
           if (payment.amount > 0) {
-            // Check if this is an on-account payment based on paymentType
-            const isOnAccountPayment = payment.paymentType === 'on-account' || !payment.invoiceId;
+            // Check payment type: 'direct' = explicit invoice, 'on-account' = on-account credit
+            const isDirectInvoicePayment = payment.paymentType === 'direct' && payment.invoiceId;
+            const isOnAccountWithInvoice = payment.paymentType === 'on-account' && payment.invoiceId;
+            const isPureOnAccount = payment.paymentType === 'on-account' && !payment.invoiceId;
             
-            if (isOnAccountPayment) {
-              // This is an on-account payment (either applied to invoice or remaining as credit)
-              onAccountPayments.push(payment);
-              totalOnAccount += parseFloat(payment.amount);
-              console.log(`On-account payment: ${payment.amount} (invoice: ${payment.invoiceNumber || 'pure credit'})`);
-            } else {
+            console.log(`  - paymentType: ${payment.paymentType}, invoiceId: ${payment.invoiceId}, isDirectInvoicePayment: ${isDirectInvoicePayment}`);
+            
+            if (isDirectInvoicePayment) {
               // This is a direct invoice payment (user explicitly selected this invoice)
-              explicitInvoicePayments.push(payment);
-              if (payment.invoiceId) {
-                invoiceIds.add(payment.invoiceId);
-              }
-              console.log(`Direct invoice payment: ${payment.amount} for invoice ${payment.invoiceNumber}`);
+              invoiceIds.add(payment.invoiceId);
+              
+              // Track the total amount paid to this invoice (may be split across payment modes)
+              const currentAmount = explicitPaymentAmounts.get(payment.invoiceId) || 0;
+              explicitPaymentAmounts.set(payment.invoiceId, currentAmount + parseFloat(payment.amount));
+              
+              console.log(`  ✓ Direct invoice payment: ${payment.amount} for invoice ${payment.invoiceNumber} (ID: ${payment.invoiceId})`);
+            } else if (isOnAccountWithInvoice) {
+              // This is an on-account payment that was auto-applied to an invoice
+              const currentAmount = autoAppliedPaymentAmounts.get(payment.invoiceId) || 0;
+              autoAppliedPaymentAmounts.set(payment.invoiceId, currentAmount + parseFloat(payment.amount));
+              
+              totalOnAccount += parseFloat(payment.amount);
+              console.log(`  ✓ On-account payment (auto-applied to invoice ${payment.invoiceId}): ${payment.amount}`);
+            } else if (isPureOnAccount) {
+              // This is pure on-account credit not applied to any invoice
+              pureOnAccountAmount += parseFloat(payment.amount);
+              totalOnAccount += parseFloat(payment.amount);
+              console.log(`  ✓ Pure on-account payment: ${payment.amount}`);
+            } else {
+              console.log(`  ⚠ Unknown payment type: ${payment.paymentType}`);
             }
-
-            const paymentEntry: PaymentDistribution = {
-              invoiceId: payment.invoiceId,
-              invoiceNumber: payment.invoiceNumber || `INV-${payment.invoiceId || 'ON-ACCOUNT'}`,
-              amount: parseFloat(payment.amount),
-              isOnAccount: isOnAccountPayment,
-              paymentMode: payment.paymentMode || 'cash'
-            };
-
-            console.log('Adding payment entry:', paymentEntry);
-            initialPaymentDistribution.push(paymentEntry);
           }
         });
 
-        console.log('Explicit invoice payments:', explicitInvoicePayments);
-        console.log('On-account payments:', onAccountPayments);
+        console.log('=== EDIT PAYMENT SUMMARY ===');
+        console.log('Explicit invoice IDs:', Array.from(invoiceIds));
+        console.log('Explicit payment amounts by invoice:', explicitPaymentAmounts);
+        console.log('Auto-applied payment amounts by invoice:', autoAppliedPaymentAmounts);
+        console.log('Pure on-account amount:', pureOnAccountAmount);
         console.log('Total on-account amount:', totalOnAccount);
 
-        // Second pass: ensure all payment methods are properly set
-        const paymentMethods = {
-          cash: 0,
-          bank: 0, // card
-          bank_transfer: 0,
-          cheque: 0
-        };
-
-        batchDetails.payments.forEach((payment: any) => {
-          if (payment.paymentMode && payment.amount > 0) {
-            // Map backend payment modes to frontend format
-            switch (payment.paymentMode) {
-              case 'cash':
-                paymentMethods.cash += parseFloat(payment.amount);
-                break;
-              case 'bank': // card
-                paymentMethods.bank += parseFloat(payment.amount);
-                break;
-              case 'bank_transfer':
-                paymentMethods.bank_transfer += parseFloat(payment.amount);
-                break;
-              case 'cheque':
-                paymentMethods.cheque += parseFloat(payment.amount);
-                break;
-            }
-          }
+        // Store both explicit and auto-applied payment amounts
+        // Merge them into explicitInvoicePayments so they're all treated as "invoices to pay"
+        const allInvoicePayments = new Map(explicitPaymentAmounts);
+        autoAppliedPaymentAmounts.forEach((amount, invoiceId) => {
+          const currentAmount = allInvoicePayments.get(invoiceId) || 0;
+          allInvoicePayments.set(invoiceId, currentAmount + amount);
+          invoiceIds.add(invoiceId); // Add to selected invoices
         });
-
-        // Update split payment state with the actual payment distribution
-        setSplitPayment({
-          cash: paymentMethods.cash > 0 ? paymentMethods.cash.toString() : "",
-          card: paymentMethods.bank > 0 ? paymentMethods.bank.toString() : "",
-          bankTransfer: paymentMethods.bank_transfer > 0 ? paymentMethods.bank_transfer.toString() : "",
-          cheque: paymentMethods.cheque > 0 ? paymentMethods.cheque.toString() : ""
-        });
+        
+        console.log('Combined invoice payments (explicit + auto-applied):', allInvoicePayments);
+        setExplicitInvoicePayments(allInvoicePayments);
       }
 
-      console.log('Loaded payment distribution:', initialPaymentDistribution);
       console.log('Final selected invoice IDs:', Array.from(invoiceIds));
-      console.log('Final on-account amount:', totalOnAccount);
+      console.log('Final on-account amount (total):', totalOnAccount);
 
-      // Update all the states at once to prevent multiple re-renders
+      // Update all the states
       setSelectedInvoiceIds(invoiceIds);
-      setOnAccountAmount(totalOnAccount);
-      setPaymentDistribution(initialPaymentDistribution);
+      setOnAccountAmount(totalOnAccount); // Total on-account amount (auto-applied + pure credit)
 
     } catch (error) {
       console.error('Failed to fetch batch details for editing:', error);
       // Fallback: clear selected invoices but keep the payment amount
       setSelectedInvoiceIds(new Set());
       setOnAccountAmount(0);
+      setExplicitInvoicePayments(new Map());
     }
 
     setInvoicePaymentModes(new Map());
     setIsEditing(true);
 
+    console.log('=== EDIT PAYMENT END ===');
     // Scroll to top
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -949,6 +1021,7 @@ export default function CustomerPayment() {
     setInvoicePaymentModes(new Map());
     setInvoicePaymentConfigs(new Map());
     setOnAccountAmount(0);
+    setExplicitInvoicePayments(new Map());
     resetSplitPayment();
   };
 

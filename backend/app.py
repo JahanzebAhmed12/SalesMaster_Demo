@@ -4641,35 +4641,61 @@ def manage_payment_batch(batch_id):
                 
                 # Create payments based on the frontend's sequential payment distribution
                 for payment_item in payment_distribution:
-                    if payment_item.get('isOnAccount', False):
-                        # On-account payment
+                    invoice_id = payment_item.get('invoiceId')
+                    is_on_account = payment_item.get('isOnAccount', False)
+                    
+                    if is_on_account:
+                        # On-account payment (could be applied to an invoice or pure credit)
                         payment = Payment(
                             customer_id=customer_id,
-                            sale_id=None,  # No specific invoice
+                            sale_id=invoice_id if invoice_id else None,  # May have invoice_id if auto-applied
                             amount=float(payment_item.get('amount', 0)),
                             payment_mode=payment_item.get('paymentMode', 'cash'),
                             payment_date=payment_date_obj,
                             batch_id=batch_id,
                             payment_type='on-account',
                             payment_source='customer_payment',
-                            remarks=f"{remarks} - On-account payment (Updated)"
+                            remarks=f"{remarks} - On-account payment (Updated)" if remarks else "On-account payment (Updated)"
                         )
+                        
+                        # If on-account payment is applied to an invoice, update the sale
+                        if invoice_id:
+                            sale = Sale.query.get(invoice_id)
+                            if sale:
+                                current_paid = float(sale.paid_amount or 0)
+                                new_paid = current_paid + float(payment_item.get('amount', 0))
+                                
+                                if new_paid >= float(sale.total_amount):
+                                    sale.payment_status = "paid"
+                                    sale.paid_amount = sale.total_amount
+                                    sale.status = "finalized"
+                                else:
+                                    sale.payment_status = "partial"
+                                    sale.paid_amount = new_paid
+                                
+                                # Preserve original customer_type
+                                sale.customer_type = original_sale_types.get(invoice_id, sale.customer_type)
+                                db.session.add(sale)
                     else:
-                        # Invoice payment
+                        # Direct invoice payment (explicitly selected by user)
+                        if not invoice_id:
+                            print(f"[EDIT DEBUG] WARNING: Direct payment without invoice_id: {payment_item}")
+                            continue
+                            
                         payment = Payment(
                             customer_id=customer_id,
-                            sale_id=payment_item.get('invoiceId'),
+                            sale_id=invoice_id,
                             amount=float(payment_item.get('amount', 0)),
                             payment_mode=payment_item.get('paymentMode', 'cash'),
                             payment_date=payment_date_obj,
                             batch_id=batch_id,
-                            payment_type='direct',
+                            payment_type='direct',  # IMPORTANT: Mark as direct payment
                             payment_source='customer_payment',
-                            remarks=f"{remarks} - Invoice payment (Updated)"
+                            remarks=f"{remarks} - Invoice payment (Updated)" if remarks else "Invoice payment (Updated)"
                         )
                         
                         # Update sale payment status
-                        sale = Sale.query.get(payment_item.get('invoiceId'))
+                        sale = Sale.query.get(invoice_id)
                         if sale:
                             current_paid = float(sale.paid_amount or 0)
                             new_paid = current_paid + float(payment_item.get('amount', 0))
@@ -4679,17 +4705,18 @@ def manage_payment_batch(batch_id):
                                 sale.paid_amount = sale.total_amount
                                 sale.status = "finalized"
                                 # Preserve original customer_type for daily book categorization
-                                sale.customer_type = original_sale_types.get(payment_item.get('invoiceId'), payment_item.get('paymentMode', 'cash'))
+                                sale.customer_type = original_sale_types.get(invoice_id, payment_item.get('paymentMode', 'cash'))
                             else:
                                 sale.payment_status = "partial"
                                 sale.paid_amount = new_paid
                                 # Preserve original customer_type
-                                sale.customer_type = original_sale_types.get(payment_item.get('invoiceId'), sale.customer_type)
+                                sale.customer_type = original_sale_types.get(invoice_id, sale.customer_type)
                             
                             db.session.add(sale)
                     
                     db.session.add(payment)
                     payments_created.append(payment)
+                    print(f"[EDIT DEBUG] Created payment: {payment_item.get('paymentMode')} £{payment_item.get('amount')} for invoice {invoice_id} (isOnAccount={is_on_account})")
             
             else:
                 print(f"[EDIT DEBUG] No payment distribution from frontend, using fallback logic")
