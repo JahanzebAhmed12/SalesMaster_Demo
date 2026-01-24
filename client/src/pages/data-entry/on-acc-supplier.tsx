@@ -75,8 +75,7 @@ export default function OnAccSupplier() {
     );
   }, [suppliersData]);
 
-  // Get selected supplier object
-  const selectedSupplierObj = useMemo(() => suppliers.find(s => s.id.toString() === selectedSupplier), [suppliers, selectedSupplier]);
+  // Get currency from selected supplier (selectedSupplierObj comes from useSupplierSearch hook)
   const currency = selectedSupplierObj?.supplier_currency || "GBP";
 
   // Fetch on-account supplier payments for selected supplier and date range

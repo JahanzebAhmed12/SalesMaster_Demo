@@ -78,7 +78,7 @@ export default function CustomerPayment() {
 
   const [paymentDistribution, setPaymentDistribution] = useState<PaymentDistribution[]>([]);
 
-  let [onAccountAmount, setOnAccountAmount] = useState<number | "">(0);
+  const [onAccountAmount, setOnAccountAmount] = useState<number | "">(0);
   const [emailAddress, setEmailAddress] = useState("");
   const [explicitInvoicePayments, setExplicitInvoicePayments] = useState<Map<number, number>>(new Map()); // Track explicit invoice payment amounts in edit mode
   const queryClient = useQueryClient();
@@ -146,13 +146,8 @@ export default function CustomerPayment() {
   }, [customerId]);
 
   // Reset on-account amount when customer changes (but not in edit mode)
-  useEffect(() => {
-    // Only reset if no invoices are selected and not in edit mode
-    // to avoid interfering with invoice selection or edit mode
-    if (selectedInvoiceIds.size === 0 && !isEditing) {
-      setOnAccountAmount(0);
-    }
-  }, [customerId, selectedInvoiceIds, isEditing]);
+  // Removed the useEffect that was causing infinite loops
+  // The reset will be handled in the handleCustomerSelect function instead
 
   // Fetch customers - remove this as we're using CustomerSearch now
 
