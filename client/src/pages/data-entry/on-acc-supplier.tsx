@@ -12,10 +12,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandItem, CommandEmpty } from "@/components/ui/command";
 import SupplierSearch from "@/components/ui/supplier-search";
 import { useSupplierSearch } from "@/hooks/useSupplierSearch";
-import { CalendarIcon, Truck, Search, Info, Save, Loader2 } from "lucide-react";
+import { Truck, Search, Info, Save, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Supplier, SupplierPayment, InsertSupplierPayment } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
@@ -57,26 +57,17 @@ export default function OnAccSupplier() {
     amount: 0,
     paymentMode: "CASH",
     remarks: "",
-    purchaseInvoiceId: null as number | null,
+    purchaseInvoiceId: null,
   });
-  const queryClient = useQueryClient();
 
   // Fetch suppliers
-  const { data: suppliersData = [], isLoading: loadingSuppliers } = useQuery<Supplier[]>({
+  const { data: suppliersData = [] } = useQuery<Supplier[]>({
     queryKey: ["suppliers"],
     queryFn: () => apiRequest("GET", "/api/suppliers"),
   });
 
-  // Sort suppliers alphabetically by name
-  const suppliers = useMemo(() => {
-    if (!suppliersData) return [];
-    return [...suppliersData].sort((a, b) => 
-      a.supplier_name.localeCompare(b.supplier_name, undefined, { sensitivity: 'base' })
-    );
-  }, [suppliersData]);
-
   // Get currency from selected supplier (selectedSupplierObj comes from useSupplierSearch hook)
-  const currency = selectedSupplierObj?.supplier_currency || "GBP";
+  const currency = "GBP"; // Default currency since supplier_currency doesn't exist in schema
 
   // Fetch on-account supplier payments for selected supplier and date range
   const {
@@ -124,7 +115,9 @@ export default function OnAccSupplier() {
       amount: newPayment.amount,
       paymentMode: newPayment.paymentMode,
       paymentDate: format(newPayment.paymentDate, "yyyy-MM-dd"),
-      remarks: newPayment.remarks || null
+      remarks: newPayment.remarks || null,
+      supplierInvoiceNumber: null,
+      supplierInvoiceDate: null
     };
     addPaymentMutation.mutate(payload);
   };
@@ -386,7 +379,7 @@ export default function OnAccSupplier() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredPayments.slice(0, Number(recordsPerPage)).map((p, idx) => (
+                    {filteredPayments.slice(0, Number(recordsPerPage)).map((p) => (
                       <TableRow key={p.id}>
                         <TableCell>{p.paymentDate}</TableCell>
                         <TableCell>{p.amount}</TableCell>

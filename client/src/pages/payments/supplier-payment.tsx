@@ -20,6 +20,8 @@ import type { Supplier, SupplierPayment, InsertSupplierPayment } from "@shared/s
 import { Checkbox } from "@/components/ui/checkbox";
 import Pagination from "@/components/ui/pagination";
 import { useTablePagination } from "@/hooks/useTablePagination";
+import SupplierSearch from "@/components/ui/supplier-search";
+import { useSupplierSearch } from "@/hooks/useSupplierSearch";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -172,10 +174,20 @@ export default function SupplierPayment() {
         title: "Success",
         description: "Payment updated successfully.",
       });
+      // Invalidate and refetch all related queries
+      queryClient.invalidateQueries({ queryKey: ["/api/suppliers/outstanding_invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/supplier-payments/history"] });
       refetchOutstandingInvoices();
       refetchPaymentHistory();
+      // Reset form after successful update
       setEditingPayment(null);
       setIsEditing(false);
+      setAmountPaid("0");
+      setRemarks("");
+      setSupplierInvoiceNumber("");
+      setSupplierInvoiceDate(undefined);
+      setSelectedInvoices([]);
+      setDuplicateInvoiceWarning("");
     },
     onError: (error) => {
       toast({
@@ -245,6 +257,8 @@ export default function SupplierPayment() {
 
   // Handle edit payment
   const handleEditPayment = (payment: SupplierPayment) => {
+    console.log('Starting edit for payment:', payment);
+    console.log('Setting payment mode to:', payment.paymentMode);
     setEditingPayment(payment);
     setSelectedSupplier(payment.supplierId.toString());
     setAmountPaid(payment.amount.toString());
@@ -337,16 +351,17 @@ export default function SupplierPayment() {
       // Update existing payment
       const updateData = {
         id: editingPayment.id,
-        supplierId: parseInt(selectedSupplier),
-        purchaseInvoiceId: selectedInvoices.length === 1 ? selectedInvoices[0] : editingPayment.purchaseInvoiceId,
+        supplier_id: parseInt(selectedSupplier),
+        purchase_invoice_id: selectedInvoices.length === 1 ? selectedInvoices[0] : editingPayment.purchaseInvoiceId,
         amount: parseFloat(amountPaid),
-        paymentMode: paymentMode,
-        paymentDate: format(paymentDate, "yyyy-MM-dd"),
+        payment_mode: paymentMode,
+        payment_date: format(paymentDate, "yyyy-MM-dd"),
         remarks: remarks || null,
-        supplierInvoiceNumber: supplierInvoiceNumber || null,
-        supplierInvoiceDate: supplierInvoiceDate ? format(supplierInvoiceDate, "yyyy-MM-dd") : null,
+        supplier_invoice_number: supplierInvoiceNumber || null,
+        supplier_invoice_date: supplierInvoiceDate ? format(supplierInvoiceDate, "yyyy-MM-dd") : null,
       };
 
+      console.log('Updating supplier payment with data:', updateData);
       updatePaymentMutation.mutate(updateData);
     } else {
       // Create new payment
@@ -702,27 +717,21 @@ export default function SupplierPayment() {
         {/* Payment Form */}
         <Card>
           <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+              <div className="sm:col-span-2 lg:col-span-1">
                 <Label htmlFor="supplier">Select Supplier :</Label>
-                <Select value={selectedSupplier} onValueChange={handleSupplierChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select supplier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {suppliersLoading ? (
-                      <SelectItem value="loading" disabled>Loading suppliers...</SelectItem>
-                    ) : suppliers.length === 0 ? (
-                      <SelectItem value="no-suppliers" disabled>No suppliers available</SelectItem>
-                    ) : (
-                      suppliers.map((supplier: Supplier) => (
-                        <SelectItem key={supplier.id} value={String(supplier.id)}>
-                          {supplier.supplier_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <SupplierSearch
+                  placeholder="Search supplier by code or name..."
+                  onSupplierSelect={(supplier) => {
+                    if (supplier) {
+                      handleSupplierChange(supplier.id.toString());
+                    } else {
+                      handleSupplierChange("");
+                    }
+                  }}
+                  showCode
+                  allowClear
+                />
               </div>
 
               <div>
@@ -769,7 +778,10 @@ export default function SupplierPayment() {
 
               <div>
                 <Label htmlFor="payment-mode">Payment Mode:</Label>
-                <Select value={paymentMode} onValueChange={setPaymentMode}>
+                <Select value={paymentMode} onValueChange={(value) => {
+                  console.log('Payment mode changed from', paymentMode, 'to', value);
+                  setPaymentMode(value);
+                }}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -862,80 +874,84 @@ export default function SupplierPayment() {
             </div>
 
             {/* Responsive Table Container */}
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-blue-50">
-                    <TableHead className="text-center">Sl.No</TableHead>
-                    <TableHead className="text-center">Date</TableHead>
-                    <TableHead className="text-center">
-                      <Checkbox className="mr-2" />
-                      Invoice #
-                    </TableHead>
-                    <TableHead className="text-center">Invoice Amt</TableHead>
-                    <TableHead className="text-center">Paid</TableHead>
-                    <TableHead className="text-center">Returns(Adj)</TableHead>
-                    <TableHead className="text-center">Balance</TableHead>
-                    <TableHead className="text-center">Run.Bal.</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoicesLoading ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
-                        Loading invoices...
-                      </TableCell>
+            <div className="overflow-x-auto -mx-6 sm:mx-0">
+              <div className="min-w-full inline-block align-middle">
+                <Table className="min-w-[800px]">
+                  <TableHeader>
+                    <TableRow className="bg-blue-50">
+                      <TableHead className="text-center w-16">Sl.No</TableHead>
+                      <TableHead className="text-center w-24">Date</TableHead>
+                      <TableHead className="text-center w-32">
+                        <Checkbox className="mr-2" />
+                        Invoice #
+                      </TableHead>
+                      <TableHead className="text-center w-28">Invoice Amt</TableHead>
+                      <TableHead className="text-center w-24">Paid</TableHead>
+                      <TableHead className="text-center w-28">Returns(Adj)</TableHead>
+                      <TableHead className="text-center w-24">Balance</TableHead>
+                      <TableHead className="text-center w-28">Run.Bal.</TableHead>
                     </TableRow>
-                  ) : outstandingInvoices.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8">
-                        No outstanding invoices found
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    outstandingInvoices.map((invoice: OutstandingInvoice, index: number) => (
-                      <TableRow key={invoice.id}>
-                        <TableCell className="text-center">{index + 1}</TableCell>
-                        <TableCell className="text-center">
-                          {invoice.date ? format(new Date(invoice.date), "dd/MM/yyyy") : "N/A"}
+                  </TableHeader>
+                  <TableBody>
+                    {invoicesLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8">
+                          Loading invoices...
                         </TableCell>
-                        <TableCell className="text-center">
-                          <input 
-                            type="checkbox" 
-                            className="mr-2"
-                            checked={selectedInvoices.includes(invoice.id)}
-                            onChange={(e) => handleInvoiceSelection(invoice.id, e.target.checked)}
-                          />
-                          {invoice.id}
-                        </TableCell>
-                        <TableCell className="text-center">£{(invoice.totalAmount || 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{(invoice.paidAmount || 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£0.00</TableCell>
-                        <TableCell className="text-center">£{(invoice.outstandingAmount || 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{(invoice.outstandingAmount || 0).toFixed(2)}</TableCell>
                       </TableRow>
-                    ))
-                  )}
-                  <TableRow className="bg-blue-100">
-                    <TableCell className="font-semibold">BALANCE</TableCell>
-                    <TableCell className="bg-blue-200">
-                      <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600">
-                        📄
-                      </Button>
-                    </TableCell>
-                    <TableCell className="bg-blue-200">
-                      <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600">
-                        📧
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-center">£{totalOutstandingAmount.toFixed(2)}</TableCell>
-                    <TableCell className="text-center">£0.00</TableCell>
-                    <TableCell className="text-center">£0.00</TableCell>
-                    <TableCell className="text-center">£{totalOutstandingAmount.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-semibold">Bal:£{totalOutstandingAmount.toFixed(2)}</TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+                    ) : outstandingInvoices.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8">
+                          No outstanding invoices found
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      outstandingInvoices.map((invoice: OutstandingInvoice, index: number) => (
+                        <TableRow key={invoice.id}>
+                          <TableCell className="text-center">{index + 1}</TableCell>
+                          <TableCell className="text-center text-sm">
+                            {invoice.date ? format(new Date(invoice.date), "dd/MM/yyyy") : "N/A"}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <input 
+                                type="checkbox" 
+                                className="rounded"
+                                checked={selectedInvoices.includes(invoice.id)}
+                                onChange={(e) => handleInvoiceSelection(invoice.id, e.target.checked)}
+                              />
+                              <span className="text-sm">{invoice.id}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-center text-sm font-medium">£{(invoice.totalAmount || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-sm">£{(invoice.paidAmount || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-sm">£0.00</TableCell>
+                          <TableCell className="text-center text-sm font-medium">£{(invoice.outstandingAmount || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-sm">£{(invoice.outstandingAmount || 0).toFixed(2)}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                    <TableRow className="bg-blue-100">
+                      <TableCell className="font-semibold">BALANCE</TableCell>
+                      <TableCell className="bg-blue-200">
+                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 h-8 w-8 p-0">
+                          📄
+                        </Button>
+                      </TableCell>
+                      <TableCell className="bg-blue-200">
+                        <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 h-8 w-8 p-0">
+                          📧
+                        </Button>
+                      </TableCell>
+                      <TableCell className="text-center font-semibold">£{totalOutstandingAmount.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">£0.00</TableCell>
+                      <TableCell className="text-center">£0.00</TableCell>
+                      <TableCell className="text-center font-semibold">£{totalOutstandingAmount.toFixed(2)}</TableCell>
+                      <TableCell className="text-center font-bold text-blue-700">Bal:£{totalOutstandingAmount.toFixed(2)}</TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
             {/* Pagination */}
@@ -995,111 +1011,120 @@ export default function SupplierPayment() {
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Supplier Invoice</TableHead>
-                    <TableHead>Payment Mode</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                    <TableHead>Remarks</TableHead>
-                    <TableHead className="w-24 sm:w-40">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedPaymentHistory.map((payment: any, index: number) => {
-                    return (
-                    <TableRow key={payment.id || index}>
-                      <TableCell>{payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : (payment.invDate ? format(new Date(payment.invDate), "dd/MM/yyyy") : '-')}</TableCell>
-                      <TableCell>{payment.supplierInvoiceNumber || payment.invNo || '-'}</TableCell>
-                      <TableCell>{payment.paymentMode || 'CASH'}</TableCell>
-                      <TableCell className="text-right">£{(payment.amount || payment.invoiceAmt || payment.paidAmt || 0).toFixed(2)}</TableCell>
-                      <TableCell>{payment.remarks || '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          {canEditPayment(payment.paymentDate) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditPayment(payment)}
-                              title="Edit Payment"
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                                <path d="m15 5 4 4" />
-                              </svg>
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled
-                              title="You don't have permission to edit this payment"
-                              className="text-gray-400 cursor-not-allowed"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                                <path d="m15 5 4 4" />
-                              </svg>
-                            </Button>
-                          )}
-                          {canEditPayment(payment.paymentDate) ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                handleDeletePayment(payment.id);
-                              }}
-                              title="Delete Payment"
-                              className="text-red-600 hover:text-red-800"
-                              disabled={deletePaymentMutation.isPending}
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M3 6h18" />
-                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                              </svg>
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled
-                              title="You don't have permission to delete this payment"
-                              className="text-gray-400 cursor-not-allowed"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M3 6h18" />
-                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                              </svg>
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              window.open(`/print/supplier-payment-receipt/${payment.id}`, '_blank');
-                            }}
-                            title="Print Payment Receipt"
-                          >
-                            <Receipt className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })}
-                  {paginatedPaymentHistory.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-4">
-                        No payment history found
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+              <div className="overflow-x-auto -mx-6 sm:mx-0">
+                <div className="min-w-full inline-block align-middle">
+                  <Table className="min-w-[700px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-24">Date</TableHead>
+                        <TableHead className="w-32">Supplier Invoice</TableHead>
+                        <TableHead className="w-28">Payment Mode</TableHead>
+                        <TableHead className="text-right w-24">Amount</TableHead>
+                        <TableHead className="w-40">Remarks</TableHead>
+                        <TableHead className="w-32 text-center">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedPaymentHistory.map((payment: any, index: number) => {
+                        return (
+                        <TableRow key={payment.id || index}>
+                          <TableCell className="text-sm">{payment.paymentDate ? format(new Date(payment.paymentDate), "dd/MM/yyyy") : (payment.invDate ? format(new Date(payment.invDate), "dd/MM/yyyy") : '-')}</TableCell>
+                          <TableCell className="text-sm">{payment.supplierInvoiceNumber || payment.invNo || '-'}</TableCell>
+                          <TableCell className="text-sm">
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                              {payment.paymentMode || 'CASH'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right text-sm font-medium">£{(payment.amount || payment.invoiceAmt || payment.paidAmt || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-sm max-w-[200px] truncate" title={payment.remarks || '-'}>{payment.remarks || '-'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-1">
+                              {canEditPayment(payment.paymentDate) ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditPayment(payment)}
+                                  title="Edit Payment"
+                                  className="text-blue-600 hover:text-blue-800 h-8 w-8 p-0"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                    <path d="m15 5 4 4" />
+                                  </svg>
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled
+                                  title="You don't have permission to edit this payment"
+                                  className="text-gray-400 cursor-not-allowed h-8 w-8 p-0"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                    <path d="m15 5 4 4" />
+                                  </svg>
+                                </Button>
+                              )}
+                              {canEditPayment(payment.paymentDate) ? (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    handleDeletePayment(payment.id);
+                                  }}
+                                  title="Delete Payment"
+                                  className="text-red-600 hover:text-red-800 h-8 w-8 p-0"
+                                  disabled={deletePaymentMutation.isPending}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 6h18" />
+                                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                                  </svg>
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled
+                                  title="You don't have permission to delete this payment"
+                                  className="text-gray-400 cursor-not-allowed h-8 w-8 p-0"
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 6h18" />
+                                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                                  </svg>
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  window.open(`/print/supplier-payment-receipt/${payment.id}`, '_blank');
+                                }}
+                                title="Print Payment Receipt"
+                                className="h-8 w-8 p-0"
+                              >
+                                <Receipt className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                        );
+                      })}
+                      {paginatedPaymentHistory.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-4">
+                            No payment history found
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
 
               {/* Pagination for Payment History */}
               {historyTotalPages > 1 && (
@@ -1112,10 +1137,10 @@ export default function SupplierPayment() {
         )}
 
         {/* Update Payment Button and Balance Summary */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="flex justify-center lg:justify-end">
+        <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center">
+          <div className="flex-1 flex justify-center lg:justify-start">
             <Button 
-              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
+              className="bg-green-600 hover:bg-green-700 w-full sm:w-auto px-8 py-2"
               onClick={handleUpdatePayment}
               disabled={selectedInvoices.length === 0 || createPaymentMutation.isPending}
             >
@@ -1123,20 +1148,22 @@ export default function SupplierPayment() {
             </Button>
           </div>
           
-          <Card>
+          <Card className="w-full lg:w-auto lg:min-w-[300px]">
             <CardContent className="p-4">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Running balance :</span>
-                  <span>£{totalOutstandingAmount.toFixed(2)}</span>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Running balance:</span>
+                  <span className="font-medium">£{totalOutstandingAmount.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>On Account balance :</span>
-                  <span>£0.00</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">On Account balance:</span>
+                  <span className="font-medium">£0.00</span>
                 </div>
-                <div className="flex justify-between font-semibold">
-                  <span>TOTAL Outstanding balance :</span>
-                  <span>£{totalOutstandingAmount.toFixed(2)}</span>
+                <div className="border-t pt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-900">TOTAL Outstanding balance:</span>
+                    <span className="font-bold text-lg text-blue-700">£{totalOutstandingAmount.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             </CardContent>

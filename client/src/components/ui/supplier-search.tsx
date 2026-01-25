@@ -231,7 +231,7 @@ export default function SupplierSearch({
           <div
             ref={dropdownRef}
             className={cn(
-              "absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto",
+              "absolute z-50 w-full min-w-[300px] mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto",
               dropdownSizeClasses[size]
             )}
           >
@@ -257,18 +257,18 @@ export default function SupplierSearch({
                   >
                     <Building2 className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-start gap-2 flex-col sm:flex-row sm:items-center">
                         {showCode && (
-                          <span className="font-mono text-xs text-gray-600 bg-gray-100 px-1 rounded">
+                          <span className="font-mono text-xs text-gray-600 bg-gray-100 px-1 rounded flex-shrink-0">
                             {supplier.supplier_code}
                           </span>
                         )}
-                        <span className="font-medium truncate">
+                        <span className="font-medium text-sm leading-tight">
                           {supplier.supplier_name}
                         </span>
                       </div>
                       {supplier.address && (
-                        <div className="text-xs text-gray-500 truncate mt-1">
+                        <div className="text-xs text-gray-500 mt-1 leading-tight">
                           {supplier.address}
                         </div>
                       )}
