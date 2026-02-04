@@ -11649,6 +11649,7 @@ def daily_summary_report():
     
     # 2. Customer Payments (using payment batch_id as payment_id)
     # Include all payments made on the selected date (both current day and backdate invoices)
+    # EXCLUDE split payments from Daily Book Sales
     customer_payments = db.session.query(
         Customer.customer_name,
         Payment.id,
@@ -11664,7 +11665,12 @@ def daily_summary_report():
     ).outerjoin(
         Sale, Payment.sale_id == Sale.id
     ).filter(
-        Payment.payment_date == report_date  # All payments made on the selected date
+        Payment.payment_date == report_date,  # All payments made on the selected date
+        # Exclude split payments from Daily Book Sales
+        or_(
+            Payment.payment_source.is_(None),
+            Payment.payment_source != 'daily_book_sales'
+        )
     ).order_by(Customer.customer_name, Payment.batch_id).all()
     
     # Group payments by customer and batch_id (payment_id)
@@ -11992,6 +11998,11 @@ def daily_summary_pdf():
             or_(
                 Payment.sale_id.is_(None),  # On-account payments (always backdate)
                 func.date(Sale.date) < report_date  # Payments for invoices from previous dates
+            ),
+            # Exclude split payments from Daily Book Sales
+            or_(
+                Payment.payment_source.is_(None),
+                Payment.payment_source != 'daily_book_sales'
             )
         ).order_by(Customer.customer_name, Sale.invoice_number).all()
         

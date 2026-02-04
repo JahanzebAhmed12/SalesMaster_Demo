@@ -70,6 +70,7 @@ interface HeldInvoice {
   notes: string;
   saleItems: any[];
   holdTime: string;
+  currentSale?: SaleWithUser | null; // Add currentSale to preserve existing invoice context
 }
 
 // Extend the Sale type to include createdBy and createdByUsername
@@ -325,8 +326,15 @@ const SalesInvoice = () => {
     const params = new URLSearchParams(window.location.search);
     const invoiceNumber = params.get("invoiceNumber");
     if (invoiceNumber) {
+      console.log('🔍 Loading existing invoice:', invoiceNumber);
       apiRequest("GET", `/api/sales/${invoiceNumber}`)
         .then((data) => {
+          console.log('✅ Invoice loaded successfully:', {
+            invoiceNumber: data.invoiceNumber,
+            id: data.id,
+            customerId: data.customerId,
+            status: data.status
+          });
           setCurrentSale(data);
           setSaleItems(data.items || []);
           setCustomerId(data.customerId?.toString() || "");
@@ -383,7 +391,17 @@ const SalesInvoice = () => {
 
           // Mark that invoice data has been loaded
           setInvoiceDataLoaded(true);
+        })
+        .catch((error) => {
+          console.error('❌ Failed to load invoice:', error);
+          toast({
+            title: "Error",
+            description: "Failed to load invoice. Please try again.",
+            variant: "destructive",
+          });
         });
+    } else {
+      console.log('🆕 Creating new invoice (no invoiceNumber in URL)');
     }
   }, []);
 
@@ -934,6 +952,13 @@ const SalesInvoice = () => {
   const [additionalEmails, setAdditionalEmails] = useState<string>("");
 
   const handleSaveInvoice = (mailInvoice = false, printInvoice = false) => {
+    console.log('💾 handleSaveInvoice called:', {
+      currentSale: currentSale ? { id: currentSale.id, invoiceNumber: currentSale.invoiceNumber } : null,
+      isExistingInvoice: !!(currentSale && currentSale.id),
+      customerId,
+      saleItemsCount: saleItems.length
+    });
+
     if (!customerId) {
       toast({
         title: "Validation Error",
@@ -955,103 +980,217 @@ const SalesInvoice = () => {
     skipAutoHoldRef.current = true; // Prevent auto-hold on navigation
     setIsCreatingSale(true);
     const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
-    const payload: Partial<BackendSalePayload & { mailInvoice?: boolean; emailData?: any }> = {
-      customer_id: parseInt(customerId),
-      customer_type: "account",
-      payment_status: "pending",
-      subtotal,
-      total_amount: totalAmount,
-      porterage: porterage,
-      vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
-      vat_amount: vatAmount,
-      vehicle_details: vehicleDetails || null,
-      gate_number: gateNumber || null,
-      notes: notes || null,
-      status: "finalized",
-      date: businessDate, // Add business date to payload
-      items: saleItems.map(item => ({
-        product_id: item.productId,
-        non_product_id: item.nonProductId,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total_price: item.totalPrice,
-        notes: item.notes,
-        created_at: item.createdAt,
-      })),
-      mailInvoice,
-      emailData: mailInvoice ? {
-        customerEmails: selectedCustomer?.email || '',
-        additionalEmails: additionalEmails
-      } : null,
-    };
-    createSaleMutation.mutate(payload, {
-      onSuccess: (response) => {
-        if (printInvoice && response?.invoiceNumber) {
-          const printUrl = invoicePrintFormat === 'DOTMATRIX'
-            ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
-            : invoicePrintFormat === 'A5'
-              ? `/print/a5-invoice/${response.invoiceNumber}`
-              : `/print/invoice/${response.invoiceNumber}`;
-          window.open(printUrl, '_blank');
-        }
-        if (printDeliveryNote && response?.invoiceNumber) {
-          window.open(`/print/delivery-note/${response.invoiceNumber}`, '_blank');
-        }
-        if (printPackingList && response?.invoiceNumber) {
-          window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
-        }
 
-        // Clear additional emails after successful save
-        if (mailInvoice) {
-          setAdditionalEmails('');
-        }
+    // Check if this is an existing invoice (update) or new invoice (create)
+    if (currentSale && currentSale.id) {
+      // This is an existing invoice - use UPDATE logic
+      console.log('🔄 Updating existing invoice:', currentSale.invoiceNumber);
+      const updatedSalePayload: BackendSalePayload = {
+        invoice_number: currentSale.invoiceNumber,
+        customer_id: parseInt(customerId),
+        customer_type: "account",
+        payment_status: currentSale.paymentStatus || "pending",
+        subtotal,
+        total_amount: totalAmount,
+        porterage: porterage,
+        vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
+        vat_amount: vatAmount,
+        vehicle_details: vehicleDetails || null,
+        gate_number: gateNumber || null,
+        notes: notes || null,
+        status: "finalized",
+        date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
+        items: saleItems.map(item => ({
+          product_id: item.productId,
+          non_product_id: item.nonProductId,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          total_price: item.totalPrice,
+          notes: item.notes,
+          created_at: item.createdAt,
+        })),
+      };
 
-        // Handle WhatsApp sending after successful save
-        if (sendToWhatsapp && selectedCustomer && selectedCustomer.telephone && response?.invoiceNumber) {
-          console.log('[WHATSAPP DEBUG] Invoice saved successfully, now sending to WhatsApp');
-          console.log('[WHATSAPP DEBUG] Invoice number:', response.invoiceNumber);
+      updateSaleMutation.mutate(updatedSalePayload, {
+        onSuccess: (response) => {
+          console.log('✅ Invoice updated successfully:', response.invoiceNumber);
+          if (printInvoice && response?.invoiceNumber) {
+            const printUrl = invoicePrintFormat === 'DOTMATRIX'
+              ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
+              : invoicePrintFormat === 'A5'
+                ? `/print/a5-invoice/${response.invoiceNumber}`
+                : `/print/invoice/${response.invoiceNumber}`;
+            window.open(printUrl, '_blank');
+          }
+          if (printDeliveryNote && response?.invoiceNumber) {
+            window.open(`/print/delivery-note/${response.invoiceNumber}`, '_blank');
+          }
+          if (printPackingList && response?.invoiceNumber) {
+            window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
+          }
 
-          setWhatsappLoading(true);
-          setWhatsappError(null);
-          setWhatsappSuccess(false);
+          // Clear additional emails after successful save
+          if (mailInvoice) {
+            setAdditionalEmails('');
+          }
 
-          // Send to WhatsApp
-          const printUrl = invoicePrintFormat === 'DOTMATRIX'
-            ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
-            : invoicePrintFormat === 'A5'
-              ? `/print/a5-invoice/${response.invoiceNumber}`
-              : `/print/invoice/${response.invoiceNumber}`;
-          const invoiceUrl = `${window.location.origin}${printUrl}`;
-          const payload = {
-            phoneNumber: selectedCustomer.telephone,
-            invoiceUrl,
-            message: `Your invoice from Tropifruit UK Ltd.`
-          };
-          console.log('[WHATSAPP] Sending invoice to:', selectedCustomer.telephone);
-          console.log('[WHATSAPP] Invoice URL:', invoiceUrl);
-          console.log('[WHATSAPP] API request payload:', payload);
+          // Handle WhatsApp sending after successful update
+          if (sendToWhatsapp && selectedCustomer && selectedCustomer.telephone && response?.invoiceNumber) {
+            console.log('[WHATSAPP DEBUG] Invoice updated successfully, now sending to WhatsApp');
+            console.log('[WHATSAPP DEBUG] Invoice number:', response.invoiceNumber);
 
-          apiRequest("POST", "/api/send/whatsapp-invoice", payload)
-            .then(resp => {
-              console.log('[WHATSAPP] API response:', resp);
-              if (resp.messages) {
-                setWhatsappSuccess(true);
-              } else {
+            setWhatsappLoading(true);
+            setWhatsappError(null);
+            setWhatsappSuccess(false);
+
+            // Send to WhatsApp
+            const printUrl = invoicePrintFormat === 'DOTMATRIX'
+              ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
+              : invoicePrintFormat === 'A5'
+                ? `/print/a5-invoice/${response.invoiceNumber}`
+                : `/print/invoice/${response.invoiceNumber}`;
+            const invoiceUrl = `${window.location.origin}${printUrl}`;
+            const payload = {
+              phoneNumber: selectedCustomer.telephone,
+              invoiceUrl,
+              message: `Your updated invoice from Tropifruit UK Ltd.`
+            };
+            console.log('[WHATSAPP] Sending updated invoice to:', selectedCustomer.telephone);
+            console.log('[WHATSAPP] Invoice URL:', invoiceUrl);
+            console.log('[WHATSAPP] API request payload:', payload);
+
+            apiRequest("POST", "/api/send/whatsapp-invoice", payload)
+              .then(resp => {
+                console.log('[WHATSAPP] API response:', resp);
+                if (resp.messages) {
+                  setWhatsappSuccess(true);
+                } else {
+                  setWhatsappError('Failed to send WhatsApp message.');
+                }
+              })
+              .catch(err => {
+                console.error('[WHATSAPP] API error:', err);
                 setWhatsappError('Failed to send WhatsApp message.');
-              }
-            })
-            .catch(err => {
-              console.error('[WHATSAPP] API error:', err);
-              setWhatsappError('Failed to send WhatsApp message.');
-            })
-            .finally(() => {
-              setWhatsappLoading(false);
-            });
-        }
+              })
+              .finally(() => {
+                setWhatsappLoading(false);
+              });
+          }
 
-        setLocation('/data-entry/sales-entry');
-      }
-    });
+          setLocation('/data-entry/sales-entry');
+        },
+        onError: (error) => {
+          console.error('❌ Failed to update invoice:', error);
+          setIsCreatingSale(false);
+        }
+      });
+    } else {
+      // This is a new invoice - use CREATE logic
+      console.log('🆕 Creating new invoice');
+      const payload: Partial<BackendSalePayload & { mailInvoice?: boolean; emailData?: any }> = {
+        customer_id: parseInt(customerId),
+        customer_type: "account",
+        payment_status: "pending",
+        subtotal,
+        total_amount: totalAmount,
+        porterage: porterage,
+        vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
+        vat_amount: vatAmount,
+        vehicle_details: vehicleDetails || null,
+        gate_number: gateNumber || null,
+        notes: notes || null,
+        status: "finalized",
+        date: businessDate, // Add business date to payload
+        items: saleItems.map(item => ({
+          product_id: item.productId,
+          non_product_id: item.nonProductId,
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          total_price: item.totalPrice,
+          notes: item.notes,
+          created_at: item.createdAt,
+        })),
+        mailInvoice,
+        emailData: mailInvoice ? {
+          customerEmails: selectedCustomer?.email || '',
+          additionalEmails: additionalEmails
+        } : null,
+      };
+      
+      createSaleMutation.mutate(payload, {
+        onSuccess: (response) => {
+          console.log('✅ New invoice created successfully:', response.invoiceNumber);
+          if (printInvoice && response?.invoiceNumber) {
+            const printUrl = invoicePrintFormat === 'DOTMATRIX'
+              ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
+              : invoicePrintFormat === 'A5'
+                ? `/print/a5-invoice/${response.invoiceNumber}`
+                : `/print/invoice/${response.invoiceNumber}`;
+            window.open(printUrl, '_blank');
+          }
+          if (printDeliveryNote && response?.invoiceNumber) {
+            window.open(`/print/delivery-note/${response.invoiceNumber}`, '_blank');
+          }
+          if (printPackingList && response?.invoiceNumber) {
+            window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
+          }
+
+          // Clear additional emails after successful save
+          if (mailInvoice) {
+            setAdditionalEmails('');
+          }
+
+          // Handle WhatsApp sending after successful save
+          if (sendToWhatsapp && selectedCustomer && selectedCustomer.telephone && response?.invoiceNumber) {
+            console.log('[WHATSAPP DEBUG] Invoice saved successfully, now sending to WhatsApp');
+            console.log('[WHATSAPP DEBUG] Invoice number:', response.invoiceNumber);
+
+            setWhatsappLoading(true);
+            setWhatsappError(null);
+            setWhatsappSuccess(false);
+
+            // Send to WhatsApp
+            const printUrl = invoicePrintFormat === 'DOTMATRIX'
+              ? `/print/dot-matrix-invoice/${response.invoiceNumber}`
+              : invoicePrintFormat === 'A5'
+                ? `/print/a5-invoice/${response.invoiceNumber}`
+                : `/print/invoice/${response.invoiceNumber}`;
+            const invoiceUrl = `${window.location.origin}${printUrl}`;
+            const payload = {
+              phoneNumber: selectedCustomer.telephone,
+              invoiceUrl,
+              message: `Your invoice from Tropifruit UK Ltd.`
+            };
+            console.log('[WHATSAPP] Sending invoice to:', selectedCustomer.telephone);
+            console.log('[WHATSAPP] Invoice URL:', invoiceUrl);
+            console.log('[WHATSAPP] API request payload:', payload);
+
+            apiRequest("POST", "/api/send/whatsapp-invoice", payload)
+              .then(resp => {
+                console.log('[WHATSAPP] API response:', resp);
+                if (resp.messages) {
+                  setWhatsappSuccess(true);
+                } else {
+                  setWhatsappError('Failed to send WhatsApp message.');
+                }
+              })
+              .catch(err => {
+                console.error('[WHATSAPP] API error:', err);
+                setWhatsappError('Failed to send WhatsApp message.');
+              })
+              .finally(() => {
+                setWhatsappLoading(false);
+              });
+          }
+
+          setLocation('/data-entry/sales-entry');
+        },
+        onError: (error) => {
+          console.error('❌ Failed to create invoice:', error);
+          setIsCreatingSale(false);
+        }
+      });
+    }
   };
 
   const handleSaveInvoiceWithWhatsapp = async (mailInvoice = false, printInvoice = false) => {
@@ -1125,18 +1264,51 @@ const SalesInvoice = () => {
     console.log('Restore effect running, heldInvoiceIdFromUrl:', heldInvoiceIdFromUrl);
     if (heldInvoiceIdFromUrl) {
       const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
+      
+      // Debug: Log what's in localStorage
+      console.log('🔍 Raw localStorage data:', {
+        heldInvoicesRaw: localStorage.getItem('heldInvoices'),
+        parsedHeld: held,
+        lookingForId: heldInvoiceIdFromUrl
+      });
+      
       const invoice = held.find(inv => inv.holdId === heldInvoiceIdFromUrl);
       if (invoice) {
-        console.log('Restoring saleItems from held invoice:', invoice.saleItems);
+        console.log('🔄 Restoring held invoice:', {
+          holdId: invoice.holdId,
+          hasCurrentSale: !!(invoice as any).currentSale,
+          currentSale: (invoice as any).currentSale,
+          saleItemsCount: invoice.saleItems.length,
+          fullInvoiceData: invoice, // Log the complete invoice data
+          invoiceKeys: Object.keys(invoice) // Show all keys in the invoice object
+        });
+        
+        // Restore basic invoice data
+        setCustomerId(invoice.customerId);
+        setVehicleDetails(invoice.vehicleDetails || "");
+        setGateNumber(invoice.gateNumber || "");
+        setNotes(invoice.notes);
+        
+        // IMPORTANT: Restore currentSale if it exists (for edited existing invoices)
+        if ((invoice as any).currentSale) {
+          console.log('✅ Restoring existing invoice context:', (invoice as any).currentSale.invoiceNumber);
+          setCurrentSale((invoice as any).currentSale);
+          // Set the editable date when restoring existing invoice
+          if ((invoice as any).currentSale.date) {
+            setEditableDate(parseISO((invoice as any).currentSale.date));
+          }
+        } else {
+          console.log('🆕 No existing invoice context found in held data - this was a new invoice or currentSale was not saved');
+          console.log('🔍 Available keys in invoice:', Object.keys(invoice));
+          setCurrentSale(null);
+        }
+        
         if (invoice.saleItems.length > 0) {
           invoice.saleItems.forEach((item, idx) => {
             console.log(`  [restore] Item ${idx}:`, item, Object.keys(item));
           });
         }
-        setCustomerId(invoice.customerId);
-        setVehicleDetails(invoice.vehicleDetails || "");
-        setGateNumber(invoice.gateNumber || "");
-        setNotes(invoice.notes);
+        
         // If products are loaded, format items immediately
         if (regularProducts && nonProducts) {
           const formattedItems = invoice.saleItems.map((item, idx) => {
@@ -1168,7 +1340,17 @@ const SalesInvoice = () => {
         const updated = held.filter(inv => inv.holdId !== heldInvoiceIdFromUrl);
         setHeldInvoices(updated);
         localStorage.setItem('heldInvoices', JSON.stringify(updated));
-        toast({ title: "Invoice Resumed", description: "Held invoice has been loaded successfully." });
+        
+        const isExistingInvoice = !!(invoice as any).currentSale;
+        toast({ 
+          title: "Invoice Resumed", 
+          description: isExistingInvoice 
+            ? `Resumed editing invoice ${(invoice as any).currentSale.invoiceNumber}` 
+            : "Held invoice has been loaded successfully." 
+        });
+      } else {
+        console.log('❌ Held invoice not found with ID:', heldInvoiceIdFromUrl);
+        console.log('🔍 Available held invoices:', held.map(h => ({ holdId: h.holdId, hasCurrentSale: !!(h as any).currentSale })));
       }
     }
   }, [toast, regularProducts, nonProducts]);
@@ -1217,14 +1399,14 @@ const SalesInvoice = () => {
     skipAutoHoldRef.current = true;
 
     const holdId = Date.now().toString();
-    console.log('Saving saleItems to held invoice:', saleItems);
+    console.log('🔄 Manual hold - Saving saleItems to held invoice:', saleItems);
     if (saleItems.length > 0) {
       saleItems.forEach((item, idx) => {
-        console.log(`  [save] Item ${idx}:`, item, Object.keys(item));
+        console.log(`  [manual save] Item ${idx}:`, item, Object.keys(item));
       });
     }
 
-    // Create invoice data with current state
+    // Create invoice data with current state - INCLUDE currentSale for existing invoices
     const invoiceData = {
       customerId,
       vehicleDetails,
@@ -1233,13 +1415,37 @@ const SalesInvoice = () => {
       saleItems,
       holdId,
       holdTime: new Date().toISOString(),
+      // IMPORTANT: Save currentSale info to preserve existing invoice context
+      currentSale: currentSale ? {
+        id: currentSale.id,
+        invoiceNumber: currentSale.invoiceNumber,
+        customerId: currentSale.customerId,
+        customerType: currentSale.customerType,
+        paymentStatus: currentSale.paymentStatus,
+        date: currentSale.date,
+        status: currentSale.status,
+        subtotal: currentSale.subtotal,
+        porterage: currentSale.porterage,
+        vatRate: currentSale.vatRate,
+        vatAmount: currentSale.vatAmount,
+        totalAmount: currentSale.totalAmount
+      } : null
     };
+
+    console.log('🔄 Manual hold - Invoice data being saved:', {
+      hasCurrentSale: !!currentSale,
+      currentSale: currentSale,
+      invoiceDataCurrentSale: invoiceData.currentSale
+    });
 
     // Save to localStorage
     const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
     held.push(invoiceData);
     localStorage.setItem('heldInvoices', JSON.stringify(held));
     setHeldInvoices(held);
+
+    console.log('✅ Manual hold - Invoice saved with', saleItems.length, 'items');
+    console.log('📊 Manual hold - Total held invoices now:', held.length);
 
     // Clear current form immediately after saving
     setSaleItems([]);
@@ -1893,26 +2099,26 @@ const SalesInvoice = () => {
     const shouldAutoHold = () => {
       const state = stateRef.current;
       const hasItems = state.saleItems.length > 0;
-      const isUnsaved = !state.currentSale;
       const notSkipped = !skipAutoHoldRef.current;
 
       console.log('🔍 Auto-hold check:', {
         hasItems,
-        isUnsaved,
+        hasCurrentSale: !!state.currentSale,
         notSkipped,
         saleItemsCount: state.saleItems.length,
-        currentSale: !!state.currentSale,
+        currentSale: state.currentSale ? { id: state.currentSale.id, invoiceNumber: state.currentSale.invoiceNumber } : null,
         skipAutoHold: skipAutoHoldRef.current
       });
 
-      // Only auto-hold if there are products and invoice is not saved (no currentSale)
-      return hasItems && isUnsaved && notSkipped;
+      // Auto-hold if there are items and not explicitly skipped
+      // This covers both new invoices (no currentSale) and edited existing invoices (has currentSale)
+      return hasItems && notSkipped;
     };
 
     // Function to create invoice data for holding (using current state from refs)
     const createInvoiceData = () => {
       const state = stateRef.current;
-      return {
+      const invoiceData = {
         customerId: state.customerId,
         vehicleDetails: state.vehicleDetails,
         gateNumber: state.gateNumber,
@@ -1920,7 +2126,31 @@ const SalesInvoice = () => {
         saleItems: state.saleItems,
         holdId: Date.now().toString(),
         holdTime: new Date().toISOString(),
+        // IMPORTANT: Save currentSale info to preserve existing invoice context
+        currentSale: state.currentSale ? {
+          id: state.currentSale.id,
+          invoiceNumber: state.currentSale.invoiceNumber,
+          customerId: state.currentSale.customerId,
+          customerType: state.currentSale.customerType,
+          paymentStatus: state.currentSale.paymentStatus,
+          date: state.currentSale.date,
+          status: state.currentSale.status,
+          subtotal: state.currentSale.subtotal,
+          porterage: state.currentSale.porterage,
+          vatRate: state.currentSale.vatRate,
+          vatAmount: state.currentSale.vatAmount,
+          totalAmount: state.currentSale.totalAmount
+        } : null
       };
+      
+      console.log('📦 Creating invoice data for holding:', {
+        hasCurrentSale: !!state.currentSale,
+        currentSale: state.currentSale,
+        invoiceDataCurrentSale: invoiceData.currentSale,
+        saleItemsCount: state.saleItems.length
+      });
+      
+      return invoiceData;
     };
 
     // Function to check for duplicate invoices
@@ -1946,18 +2176,39 @@ const SalesInvoice = () => {
 
       console.log('💾 Attempting to save to held invoices:', {
         invoiceData,
-        existingHeldCount: held.length
+        existingHeldCount: held.length,
+        currentSaleInData: invoiceData.currentSale,
+        hasCurrentSale: !!invoiceData.currentSale
       });
 
       if (!isDuplicateInvoice(invoiceData, held)) {
         held.push(invoiceData);
+        
+        // Debug: Log what we're about to save to localStorage
+        console.log('💾 About to save to localStorage:', {
+          invoiceDataBeforeSave: invoiceData,
+          heldArrayBeforeSave: held,
+          lastItemInArray: held[held.length - 1],
+          lastItemCurrentSale: held[held.length - 1]?.currentSale
+        });
+        
         localStorage.setItem('heldInvoices', JSON.stringify(held));
+        
+        // Debug: Verify what was actually saved
+        const savedData = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
+        const savedInvoice = savedData[savedData.length - 1];
+        console.log('💾 Verification - what was actually saved:', {
+          savedInvoice,
+          savedCurrentSale: savedInvoice?.currentSale,
+          hasSavedCurrentSale: !!savedInvoice?.currentSale
+        });
 
         // Update the state as well
         setHeldInvoices(held);
 
-        console.log(' Auto-held invoice with', invoiceData.saleItems.length, 'items');
+        console.log('✅ Auto-held invoice with', invoiceData.saleItems.length, 'items');
         console.log('📊 Total held invoices now:', held.length);
+        console.log('💾 Saved invoice data:', invoiceData);
 
         // Clear current draft after successful hold
         localStorage.removeItem('currentInvoiceDraft');
@@ -2037,11 +2288,13 @@ const SalesInvoice = () => {
       console.log('🧹 Cleanup state from refs:', {
         saleItemsLength: state.saleItems.length,
         hasCurrentSale: !!state.currentSale,
+        currentSale: state.currentSale ? { id: state.currentSale.id, invoiceNumber: state.currentSale.invoiceNumber } : null,
         skipAutoHold: skipAutoHoldRef.current
       });
 
-      // Only auto-hold if there are products and invoice is not saved
-      if (state.saleItems.length > 0 && !state.currentSale && !skipAutoHoldRef.current) {
+      // Auto-hold if there are items and not explicitly skipped
+      // This covers both new invoices and edited existing invoices
+      if (state.saleItems.length > 0 && !skipAutoHoldRef.current) {
         // Create invoice data using current state from refs
         const invoiceData = {
           customerId: state.customerId,
@@ -2051,7 +2304,28 @@ const SalesInvoice = () => {
           saleItems: state.saleItems,
           holdId: Date.now().toString(),
           holdTime: new Date().toISOString(),
+          // IMPORTANT: Save currentSale info to preserve existing invoice context
+          currentSale: state.currentSale ? {
+            id: state.currentSale.id,
+            invoiceNumber: state.currentSale.invoiceNumber,
+            customerId: state.currentSale.customerId,
+            customerType: state.currentSale.customerType,
+            paymentStatus: state.currentSale.paymentStatus,
+            date: state.currentSale.date,
+            status: state.currentSale.status,
+            subtotal: state.currentSale.subtotal,
+            porterage: state.currentSale.porterage,
+            vatRate: state.currentSale.vatRate,
+            vatAmount: state.currentSale.vatAmount,
+            totalAmount: state.currentSale.totalAmount
+          } : null
         };
+
+        console.log('🧹 Cleanup - Invoice data being saved:', {
+          hasCurrentSale: !!state.currentSale,
+          currentSale: state.currentSale,
+          invoiceDataCurrentSale: invoiceData.currentSale
+        });
 
         const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
 
@@ -2993,45 +3267,23 @@ const SalesInvoice = () => {
                 {/* Save button for new invoices */}
                 <div className="flex gap-2">
                   {/* Show Save for new, Update for edit */}
+                  {(() => {
+                    const isExistingInvoice = !!(currentSale && currentSale.id);
+                    console.log('🔘 Button rendering:', {
+                      currentSale: currentSale ? { id: currentSale.id, invoiceNumber: currentSale.invoiceNumber } : null,
+                      isExistingInvoice,
+                      buttonToShow: isExistingInvoice ? 'Update Invoice' : 'Save Invoice'
+                    });
+                    return null;
+                  })()}
                   {!currentSale && (
                     <Button variant="outline" size="sm" disabled={isReadOnly} onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)}>
-                      Save Ticket
+                      Save Invoice
                     </Button>
                   )}
                   {currentSale && (
-                    <Button variant="outline" size="sm" disabled={isReadOnly} onClick={() => {
-                      skipAutoHoldRef.current = true; // Prevent auto-hold on navigation after update
-                      // Build update payload and call updateSaleMutation
-                      const { subtotal: calcSubtotal, vatAmount: calcVatAmount, porterage: calcPorterage, totalAmount: calcTotalAmount } = calculateTotalSummary();
-                      const updatedSalePayload = {
-                        invoice_number: currentSale.invoiceNumber,
-                        customer_id: parseInt(customerId),
-                        customer_type: currentSale.customerType,
-                        payment_status: currentSale.paymentStatus,
-                        subtotal: calcSubtotal,
-                        porterage: calcPorterage,
-                        vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
-                        vat_amount: calcVatAmount,
-                        total_amount: calcTotalAmount,
-                        vehicle_details: vehicleDetails || null,
-                        gate_number: gateNumber || null,
-                        notes: notes || null,
-                        status: currentSale.status,
-                        date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
-                        items: saleItems.map(item => ({
-                          product_id: item.productId,
-                          non_product_id: item.nonProductId,
-                          quantity: item.quantity,
-                          unit_price: item.unitPrice,
-                          total_price: item.totalPrice,
-                          notes: item.notes,
-                          created_at: item.createdAt,
-                        })),
-                      };
-                      updateSaleMutation.mutate(updatedSalePayload);
-                      setLocation('/data-entry/sales-entry');
-                    }}>
-                      Update Ticket
+                    <Button variant="outline" size="sm" disabled={isReadOnly} onClick={() => handleSaveInvoiceWithWhatsapp(mailInvoice, printInvoice)}>
+                      Update Invoice
                     </Button>
                   )}
                   <Button
