@@ -207,6 +207,24 @@ const getDisplayCustomerName = (sale: {
   return sale.customer_name || 'Unknown Customer';
 };
 
+// Helper function to check if we should show gate number in parentheses (for non-cash customers)
+const shouldShowGateInParentheses = (sale: {
+  customer_name: string;
+  customer_type?: string;
+  gate_number?: string;
+}): boolean => {
+  const isCashCustomer = sale.customer_type === 'cash';
+  const cashSalePatterns = [
+    'cash sale', 'cash sales', 'cash customer', 'walk-in customer', 
+    'walk in customer', 'cash', 'walk-in', 'walkin'
+  ];
+  const customerNameLower = (sale.customer_name || '').toLowerCase().trim();
+  const isCashByName = cashSalePatterns.includes(customerNameLower);
+  
+  // Don't show in parentheses if we're already showing it as the main name
+  return Boolean(sale.gate_number && !((isCashCustomer || isCashByName) && sale.gate_number.trim()));
+};
+
 function PrintButton() {
   const handlePrint = () => {
     window.print();
@@ -1514,7 +1532,14 @@ export default function DailySummary() {
                       <TableBody>
                         {summaryData?.sales_summary.map((sale, index) => (
                           <TableRow key={index}>
-                            <TableCell className="border">{getDisplayCustomerName(sale)}</TableCell>
+                            <TableCell className="border">
+                              {getDisplayCustomerName(sale)}
+                              {shouldShowGateInParentheses(sale) && (
+                                <span className="text-xs text-gray-500 font-normal ml-2">
+                                  ({sale.gate_number})
+                                </span>
+                              )}
+                            </TableCell>
                             <TableCell className="border">{sale.invoice_no || '-'}</TableCell>
                             <TableCell className="border text-right">
                               {sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-'}
