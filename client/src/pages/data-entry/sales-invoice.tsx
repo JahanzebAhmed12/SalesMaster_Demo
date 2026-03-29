@@ -1269,20 +1269,15 @@ const SalesInvoice = () => {
   const [heldInvoices, setHeldInvoices] = useState<HeldInvoice[]>([]);
 
   // Load held invoices from localStorage on mount.
-  // If there are held invoices and we're on the bare entry page (no URL params),
-  // navigate to sales-entry so the user can resume from the held invoices panel.
+  // Only redirect to sales-entry if the page was loaded with NO URL params
+  // (bare refresh of /data-entry/sales-invoice). Navigation from sales-entry
+  // always includes ?customerId= so it won't trigger this.
   useEffect(() => {
     const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
     setHeldInvoices(held);
 
-    if (held.length > 0) {
-      const params = new URLSearchParams(window.location.search);
-      const hasInvoiceNumber = !!params.get('invoiceNumber');
-      const hasHeldId = !!params.get('heldInvoiceId');
-
-      if (!hasInvoiceNumber && !hasHeldId) {
-        setLocation('/data-entry/sales-entry');
-      }
+    if (held.length > 0 && window.location.search === '') {
+      setLocation('/data-entry/sales-entry');
     }
   }, []);
 

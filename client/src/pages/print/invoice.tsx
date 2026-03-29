@@ -209,52 +209,15 @@ export default function InvoicePrintPage() {
           {data.notes?.split("\n").map((line, i) => <div key={i}>{line}</div>)}
         </div>
         <div style={{ flex: 1, border: "1px solid #888", borderLeft: "none", fontSize: 15 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-            <span>Vat</span><span>£{data.sale?.vat_amount?.toFixed(2) ?? "0.00"}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-            <span>Porterage</span><span>£{data.sale?.porterage?.toFixed(2) ?? "0.00"}</span>
-          </div>
+          {(data.sale?.porterage ?? 0) > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
+              <span>Porterage</span><span>£{data.sale?.porterage?.toFixed(2) ?? "0.00"}</span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", padding: 4, fontWeight: "bold" }}>
             <span>TOTAL</span>
             <span>£{(data.sale?.total_amount ?? data.sale?.totalAmount ?? 0).toFixed(2)}</span>
           </div>
-
-          {data.sale?.customer_type === "cash" ? (
-            <>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-                <span>PAID</span>
-                <span>
-                  {(() => {
-                    const paymentMode = data.sale?.payment_mode ?? data.sale?.paymentMode ?? "cash";
-                    const displayMode = paymentMode === 'cash' ? 'Cash' : 
-                                       paymentMode === 'bank' ? 'Card' :
-                                       paymentMode === 'bank_transfer' ? 'Bank Transfer' :
-                                       paymentMode === 'cheque' ? 'Cheque' :
-                                       paymentMode;
-                    return `${displayMode} £${(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}`;
-                  })()}
-                </span>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-                <span>ACCOUNT</span>
-                <span>
-                  £{((data.sale?.total_amount ?? data.sale?.totalAmount ?? 0) - (data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0)).toFixed(2)}
-                </span>
-              </div>
-              {showOutstandingBalance && (
-                <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
-                  <span>BALANCE</span>
-                  <span>
-                    £{((data.sale?.total_amount ?? data.sale?.totalAmount ?? 0) - (data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0)).toFixed(2)}
-                  </span>
-                </div>
-              )}
-            </>
-          )}
         </div>
       </div>
       {/* Dynamic Invoice Footer */}
