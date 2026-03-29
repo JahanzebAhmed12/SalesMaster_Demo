@@ -1250,6 +1250,7 @@ class Employee(db.Model):
     next_of_kin_email = db.Column(db.String(100))
     next_of_kin_address = db.Column(db.Text)
     next_of_kin_relationship = db.Column(db.String(50))
+    email = db.Column(db.String(200))
     is_active = db.Column(db.String(3), default='yes')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1300,6 +1301,7 @@ class Employee(db.Model):
             'nextOfKinEmail': self.next_of_kin_email,
             'nextOfKinAddress': self.next_of_kin_address,
             'nextOfKinRelationship': self.next_of_kin_relationship,
+            'email': self.email,
             'documents': documents_list,
             'isActive': self.is_active,
             'createdAt': self.created_at.isoformat() if self.created_at else None,

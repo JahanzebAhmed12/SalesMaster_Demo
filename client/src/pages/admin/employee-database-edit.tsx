@@ -163,6 +163,7 @@ const EmployeeDatabaseEdit = () => {
       nextOfKinEmail: "",
       nextOfKinAddress: "",
       nextOfKinRelationship: "",
+      email: "",
       documents: [],
       isActive: "yes",
     },
@@ -391,6 +392,19 @@ const EmployeeDatabaseEdit = () => {
                       placeholder="Enter mobile number" 
                       {...form.register("mobileNumber")}
                     />
+                  </div>
+
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium mb-2">Email Address</label>
+                    <Input 
+                      id="email" 
+                      type="email"
+                      placeholder="Enter email address" 
+                      {...form.register("email")}
+                    />
+                    {form.formState.errors.email && (
+                      <p className="text-red-500 text-xs mt-1">{form.formState.errors.email.message}</p>
+                    )}
                   </div>
 
                   <div>

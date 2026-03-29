@@ -56,6 +56,13 @@ export default function PurchaseEntry() {
     }
   }, [supplierId, form]);
 
+  // Sync invoice date to business date once it loads
+  useEffect(() => {
+    if (businessDate) {
+      form.setValue("invoiceDate", businessDate);
+    }
+  }, [businessDate, form]);
+
   // Fetch suppliers from backend (not needed anymore but keeping for compatibility)
   const { data: suppliers = [], isLoading: suppliersLoading } = useQuery({
     queryKey: ["/api/suppliers"],

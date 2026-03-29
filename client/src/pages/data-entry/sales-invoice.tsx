@@ -143,6 +143,8 @@ const SalesInvoice = () => {
   const [invoiceDataLoaded, setInvoiceDataLoaded] = useState(false);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
   const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
+  const [isEditGateNumberOpen, setIsEditGateNumberOpen] = useState(false);
+  const [editGateNumberValue, setEditGateNumberValue] = useState("");
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [editableDate, setEditableDate] = useState<Date | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -548,6 +550,7 @@ const SalesInvoice = () => {
       if (highlightedProduct >= 0 && highlightedProduct < productOptions.length) {
         const p = productOptions[highlightedProduct];
         setSelectedProductId(p.id.toString());
+        setSelectedProductType((p as any).productType === 'regular' ? 'regular' : 'non_product');
         setProductSearch(`${p.productCode} - ${p.description}`);
         setShowProductDropdown(false);
         // Auto-focus to notes input if available, otherwise quantity
@@ -628,6 +631,19 @@ const SalesInvoice = () => {
     : selectedCustomer?.customer_name || 'N/A';
   const customerType = currentSale?.customerType || "account";
   const paymentStatus = currentSale?.paymentStatus || "pending";
+
+  // Open gate number edit dialog — pre-fill with current value
+  const openEditGateNumber = () => {
+    setEditGateNumberValue(currentSale?.gateNumber || gateNumber || "");
+    setIsEditGateNumberOpen(true);
+  };
+
+  // Save gate number — update local state only; DB persisted when Update Invoice is clicked
+  const handleSaveGateNumber = () => {
+    setGateNumber(editGateNumberValue);
+    setIsGateNumberFromCustomer(false);
+    setIsEditGateNumberOpen(false);
+  };
 
   // Function to update payment status
   const updatePaymentStatus = async (newStatus: string) => {
@@ -2607,15 +2623,42 @@ const SalesInvoice = () => {
                     <span className="font-semibold">{currentSale?.vehicleDetails || vehicleDetails}</span>
                   </div>
                 )}
-                {(currentSale?.gateNumber || gateNumber) && (
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-1">
-                    <span>Gate Number: </span>
-                    <span className="font-semibold">{currentSale?.gateNumber || gateNumber}</span>
-                    {isGateNumberFromCustomer && !currentSale && (
-                      <span className="text-xs text-gray-500">(from customer)</span>
-                    )}
-                  </div>
-                )}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                  <span>Gate Number: </span>
+                  <span className="font-semibold">{currentSale?.gateNumber || gateNumber || <span className="text-gray-400 italic">None</span>}</span>
+                  <button
+                    type="button"
+                    className={`flex items-center w-fit ${isReadOnly ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:underline'}`}
+                    onClick={() => !isReadOnly && openEditGateNumber()}
+                    title={isReadOnly ? "Cannot edit in read-only mode" : "Edit Gate Number"}
+                    disabled={isReadOnly}
+                  >
+                    <Pencil size={14} className="mr-1" />
+                    Edit
+                  </button>
+                </div>
+                <Dialog open={isEditGateNumberOpen} onOpenChange={setIsEditGateNumberOpen}>
+                  <DialogContent className="w-[95vw] max-w-sm">
+                    <DialogTitle>Edit Gate Number</DialogTitle>
+                    <div className="space-y-4 mt-2">
+                      <input
+                        className="w-full border rounded p-2"
+                        placeholder="Enter gate number..."
+                        value={editGateNumberValue}
+                        onChange={e => setEditGateNumberValue(e.target.value)}
+                        autoFocus
+                        onKeyDown={e => {
+                          if (e.key === "Enter") handleSaveGateNumber();
+                          if (e.key === "Escape") setIsEditGateNumberOpen(false);
+                        }}
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <Button variant="outline" size="sm" onClick={() => setIsEditGateNumberOpen(false)}>Cancel</Button>
+                        <Button size="sm" onClick={handleSaveGateNumber}>Save</Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
             </div>
 
@@ -2729,6 +2772,7 @@ const SalesInvoice = () => {
                           className={`p-3 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
                           onMouseDown={() => {
                             setSelectedProductId(p.id.toString());
+                            setSelectedProductType((p as any).productType === 'regular' ? 'regular' : 'non_product');
                             setProductSearch(`${p.productCode} - ${p.description}`);
                             setShowProductDropdown(false);
                             setTimeout(() => {
@@ -3076,6 +3120,7 @@ const SalesInvoice = () => {
                                 className={`p-2 cursor-pointer flex items-center ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
                                 onMouseDown={() => {
                                   setSelectedProductId(p.id.toString());
+                                  setSelectedProductType((p as any).productType === 'regular' ? 'regular' : 'non_product');
                                   setProductSearch(`${p.productCode} - ${p.description}`);
                                   setShowProductDropdown(false);
                                   // Auto-focus to notes input if available, otherwise quantity

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams } from "wouter";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -12,12 +12,22 @@ import { apiRequest } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 export default function SupplierPurchaseHistoryPage() {
   const params = useParams();
   const supplierId = params.supplierId;
-  const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
-  const [toDate, setToDate] = useState<Date | undefined>(new Date());
+  const { currentDate: businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
+  const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
+  const [toDate, setToDate] = useState<Date | undefined>(undefined);
+
+  // Set dates to business date once it loads
+  useEffect(() => {
+    if (!isLoadingBusinessDate && businessDate) {
+      setFromDate(new Date(businessDate));
+      setToDate(new Date(businessDate));
+    }
+  }, [businessDate, isLoadingBusinessDate]);
 
   const { data: purchases = [], isLoading } = useQuery<any[]>({
     queryKey: ["supplier-purchase-history", supplierId, fromDate, toDate],

@@ -2340,7 +2340,16 @@ def delete_customer(id):
 @app.route('/api/suppliers', methods=['GET'])
 def get_suppliers():
     try:
-        suppliers = Supplier.query.all()
+        search = request.args.get('search', '').strip()
+        query = Supplier.query
+        if search:
+            query = query.filter(
+                db.or_(
+                    Supplier.supplier_name.ilike(f'%{search}%'),
+                    Supplier.supplier_code.ilike(f'%{search}%')
+                )
+            )
+        suppliers = query.order_by(Supplier.supplier_name).all()
         return jsonify([supplier.to_dict() for supplier in suppliers])
     except Exception as e:
         return jsonify({'message': str(e)}), 500
@@ -3398,6 +3407,7 @@ def create_employee():
             next_of_kin_email=employee_data.nextOfKinEmail,
             next_of_kin_address=employee_data.nextOfKinAddress,
             next_of_kin_relationship=employee_data.nextOfKinRelationship,
+            email=employee_data.email,
             is_active=employee_data.isActive
         )
         
@@ -3461,6 +3471,7 @@ def update_employee(id):
         employee.next_of_kin_email = employee_data.nextOfKinEmail
         employee.next_of_kin_address = employee_data.nextOfKinAddress
         employee.next_of_kin_relationship = employee_data.nextOfKinRelationship
+        employee.email = employee_data.email
         employee.is_active = employee_data.isActive
         
         # Skip document updates - documents are managed separately via upload API
@@ -3550,6 +3561,22 @@ def add_entitlement_days_column():
 # Run migration when app starts
 with app.app_context():
     add_entitlement_days_column()
+
+def add_employee_email_column():
+    """Add email column to employees table if it doesn't exist"""
+    try:
+        result = db.session.execute(db.text("PRAGMA table_info(employees)")).fetchall()
+        columns = [row[1] for row in result]
+        if 'email' not in columns:
+            db.session.execute(db.text("ALTER TABLE employees ADD COLUMN email VARCHAR(200)"))
+            db.session.commit()
+            print("Added email column to employees table")
+    except Exception as e:
+        print(f"Error adding email column: {str(e)}")
+        db.session.rollback()
+
+with app.app_context():
+    add_employee_email_column()
 
 # Employee Document routes
 @app.route('/api/employees/<int:employee_id>/documents', methods=['POST'])
@@ -11040,7 +11067,8 @@ def get_invoice_data(invoice_number):
                 "qty": float(item.quantity),
                 "weight": weight,
                 "product": product_name,
-                "hsCode": hs_code
+                "hsCode": hs_code,
+                "notes": item.notes or ""
             })
         # Payment info (credit, balance, etc.)
         paid_amount = float(sale.paid_amount or 0)

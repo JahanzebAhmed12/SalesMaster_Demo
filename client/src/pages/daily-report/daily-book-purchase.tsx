@@ -89,18 +89,13 @@ export default function DailyBookPurchase() {
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate) {
       try {
-        // Only update if the dates are different to avoid unnecessary re-renders
-        if (!fromDate || fromDate.getTime() !== businessDate.getTime()) {
-          setFromDate(new Date(businessDate));
-        }
-        if (!toDate || toDate.getTime() !== businessDate.getTime()) {
-          setToDate(new Date(businessDate));
-        }
+        setFromDate(new Date(businessDate));
+        setToDate(new Date(businessDate));
       } catch (error) {
         console.error('Error processing business date:', error);
       }
     }
-  }, []);
+  }, [businessDate, isLoadingBusinessDate]);
 
   const [user, setUser] = useState<any>(null);
   const [dailyBookType, setDailyBookType] = useState<'all' | 'own' | null>(null);

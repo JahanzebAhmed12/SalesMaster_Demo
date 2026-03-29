@@ -35,13 +35,14 @@ export function useBackdatePermissions() {
     queryFn: () =>
       user?.id
         ? apiRequest("GET", `/api/user-backdate-options/${user.id}`)
-        : Promise.resolve({ editing: false, deleting: false }),
+        : Promise.resolve({ editing: false, deleting: false, current_editing: true }),
     enabled: !!user?.id,
   });
 
   return {
     canEditBackdate: backdateOptions?.editing ?? false,
     canDeleteBackdate: backdateOptions?.deleting ?? false,
+    canEditCurrentDate: backdateOptions?.current_editing !== false, // true by default
   };
 }
 

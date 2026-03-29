@@ -484,6 +484,7 @@ class EmployeeSchema(BaseModel):
     nextOfKinEmail: Optional[str] = Field(default=None, alias='nextOfKinEmail')
     nextOfKinAddress: Optional[str] = Field(default=None, alias='nextOfKinAddress')
     nextOfKinRelationship: Optional[str] = Field(default=None, alias='nextOfKinRelationship')
+    email: Optional[str] = Field(default=None, alias='email')
     documents: Optional[List[EmployeeDocumentSchema]] = Field(default=[], alias='documents')
     isActive: str = Field(default="yes", alias='isActive')
 

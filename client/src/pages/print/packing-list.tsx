@@ -8,6 +8,7 @@ interface PackingListItem {
   weight: number;
   product: string;
   hsCode?: string;
+  notes?: string;
 }
 
 interface PackingListData {
@@ -83,7 +84,12 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
           {items.map((item, idx) => (
             <tr key={idx}>
               <td style={{ border: "1px solid #888", padding: 4, textAlign: "center", fontWeight: 600, fontSize: 16 }}>{item.qty}</td>
-              <td style={{ border: "1px solid #888", padding: 4, fontSize: 14 }}>{item.product}</td>
+              <td style={{ border: "1px solid #888", padding: 4, fontSize: 14 }}>
+                  {item.product}
+                  {item.notes && (
+                    <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>{item.notes}</div>
+                  )}
+                </td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold", background: "#f5f5f5" }}>

@@ -1609,27 +1609,52 @@ export default function DailySummary() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {summaryData.customer_payments
-                          .sort((a, b) => parseInt(a.payment_id) - parseInt(b.payment_id))
-                          .map((payment, index) => (
-                          <TableRow key={index}>
-                            <TableCell className="border">{payment.customer_name}</TableCell>
-                            <TableCell className="border">{payment.payment_id}</TableCell>
-                            <TableCell className="border text-right">
-                              {payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-'}
-                            </TableCell>
-                            <TableCell className="border text-right">
-                              {payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-'}
-                            </TableCell>
-                            <TableCell className="border text-right">
-                              {payment.bank_transfer_amount > 0 ? payment.bank_transfer_amount.toFixed(2) : '-'}
-                            </TableCell>
-                            <TableCell className="border text-right">
-                              {payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-'}
-                            </TableCell>
-                            <TableCell className="border text-right">{payment.total_amount.toFixed(2)}</TableCell>
-                          </TableRow>
-                        ))}
+                        {(() => {
+                          const sorted = [...summaryData.customer_payments].sort(
+                            (a, b) => parseInt(a.payment_id) - parseInt(b.payment_id)
+                          );
+                          const rows: React.ReactNode[] = [];
+                          sorted.forEach((payment, index) => {
+                            // Insert VOID rows for any gaps before this payment
+                            if (index > 0) {
+                              const prev = parseInt(sorted[index - 1].payment_id);
+                              const curr = parseInt(payment.payment_id);
+                              for (let missing = prev + 1; missing < curr; missing++) {
+                                rows.push(
+                                  <TableRow key={`void-${missing}`} className="bg-red-50 text-gray-400 italic">
+                                    <TableCell className="border">VOID</TableCell>
+                                    <TableCell className="border">{missing}</TableCell>
+                                    <TableCell className="border text-right">-</TableCell>
+                                    <TableCell className="border text-right">-</TableCell>
+                                    <TableCell className="border text-right">-</TableCell>
+                                    <TableCell className="border text-right">-</TableCell>
+                                    <TableCell className="border text-right">-</TableCell>
+                                  </TableRow>
+                                );
+                              }
+                            }
+                            rows.push(
+                              <TableRow key={payment.payment_id}>
+                                <TableCell className="border">{payment.customer_name}</TableCell>
+                                <TableCell className="border">{payment.payment_id}</TableCell>
+                                <TableCell className="border text-right">
+                                  {payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-'}
+                                </TableCell>
+                                <TableCell className="border text-right">
+                                  {payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-'}
+                                </TableCell>
+                                <TableCell className="border text-right">
+                                  {payment.bank_transfer_amount > 0 ? payment.bank_transfer_amount.toFixed(2) : '-'}
+                                </TableCell>
+                                <TableCell className="border text-right">
+                                  {payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-'}
+                                </TableCell>
+                                <TableCell className="border text-right">{payment.total_amount.toFixed(2)}</TableCell>
+                              </TableRow>
+                            );
+                          });
+                          return rows;
+                        })()}
                         {summaryData.customer_payments.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={7} className="border text-center text-gray-500 py-4">

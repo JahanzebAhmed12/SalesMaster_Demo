@@ -68,8 +68,6 @@ export default function SupplierSearch({
         setIsSearching(false);
       }
     },
-    staleTime: 30000, // Cache for 30 seconds
-    enabled: true,
   });
 
   // Handle input change

@@ -343,7 +343,7 @@ export default function DailyBookSales() {
 
 
   // Backdate permissions
-  const { canEditBackdate } = useBackdatePermissions();
+  const { canEditBackdate, canEditCurrentDate } = useBackdatePermissions();
 
   // Daily Book Sales permissions
   const { canViewTotals } = useDailyBookSalesPermissions();
@@ -1314,7 +1314,7 @@ export default function DailyBookSales() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" className="w-48">
-                              {(!isPastDate(sale.date) || canEditBackdate) && (
+                              {(isPastDate(sale.date) ? canEditBackdate : canEditCurrentDate) && (
                                 <DropdownMenuItem
                                   className="text-sm py-2"
                                   onClick={() => {

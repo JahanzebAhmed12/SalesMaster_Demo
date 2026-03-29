@@ -782,6 +782,7 @@ export const employeeSchema = z.object({
   nextOfKinEmail: z.string().optional().nullable(),
   nextOfKinAddress: z.string().optional().nullable(),
   nextOfKinRelationship: z.string().optional().nullable(),
+  email: z.string().email().optional().nullable(),
   documents: z.array(employeeDocumentSchema).optional().default([]),
   isActive: z.string().default("yes"),
   createdAt: z.string(),
