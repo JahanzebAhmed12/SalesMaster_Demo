@@ -1268,9 +1268,22 @@ const SalesInvoice = () => {
 
   const [heldInvoices, setHeldInvoices] = useState<HeldInvoice[]>([]);
 
-  // Load held invoices from localStorage on mount
+  // Load held invoices from localStorage on mount.
+  // If there are held invoices and we're on the bare entry page (no URL params),
+  // navigate to sales-entry so the user can resume from the held invoices panel.
   useEffect(() => {
-    setHeldInvoices(JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[]);
+    const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
+    setHeldInvoices(held);
+
+    if (held.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const hasInvoiceNumber = !!params.get('invoiceNumber');
+      const hasHeldId = !!params.get('heldInvoiceId');
+
+      if (!hasInvoiceNumber && !hasHeldId) {
+        setLocation('/data-entry/sales-entry');
+      }
+    }
   }, []);
 
   // Handle held invoice resumption from URL parameter
@@ -2250,52 +2263,23 @@ const SalesInvoice = () => {
       return saveToHeldInvoices(invoiceData);
     };
 
-    // Handle browser/tab close with confirmation
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    // Handle browser/tab close — silently hold, no confirmation popup
+    const handleBeforeUnload = () => {
       console.log('🚪 beforeunload event triggered');
       if (shouldAutoHold()) {
         console.log('🚪 Auto-holding invoice before unload');
-        // Auto-hold the invoice
         autoHoldInvoice();
-
-        // Show confirmation dialog (browser will show generic message)
-        e.preventDefault();
-        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-        return 'You have unsaved changes. Are you sure you want to leave?';
       } else {
         console.log('🚪 No auto-hold needed on beforeunload');
       }
     };
 
-    // Handle visibility change (tab switch, minimize, etc.)
-    const handleVisibilityChange = () => {
-      console.log('👁️ Visibility change event:', document.hidden ? 'hidden' : 'visible');
-      if (document.hidden && shouldAutoHold()) {
-        console.log('📱 Tab hidden - auto-holding invoice');
-        autoHoldInvoice();
-      }
-    };
-
-    // Handle page focus loss (additional safety)
-    const handleBlur = () => {
-      console.log('🔄 Window blur event triggered');
-      if (shouldAutoHold()) {
-        console.log('🔄 Page lost focus - auto-holding invoice');
-        autoHoldInvoice();
-      }
-    };
-
-    // Add event listeners
+    // Only listen to beforeunload — tab switches (visibilitychange/blur) should NOT trigger auto-hold
     window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('blur', handleBlur);
 
-    // Cleanup: auto-hold on unmount (SPA navigation)
+    // Cleanup: auto-hold on unmount (SPA route navigation away from invoice page)
     return () => {
-      // Remove event listeners
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('blur', handleBlur);
 
       // Auto-hold on component unmount (use refs for current state)
       const state = stateRef.current;
@@ -2349,16 +2333,11 @@ const SalesInvoice = () => {
           held.push(invoiceData);
           localStorage.setItem('heldInvoices', JSON.stringify(held));
           console.log('🚀 Auto-held invoice on unmount with', state.saleItems.length, 'items');
-
-          // Show toast notification (this might not show since component is unmounting)
-          try {
-            toast({
-              title: "Invoice Auto-Held",
-              description: `Invoice with ${currentSaleItems.length} items has been automatically saved on navigation.`,
-            });
-          } catch (e) {
-            console.log('Toast failed during unmount (expected)');
-          }
+          // Redirect to sales entry so user can resume from held invoices
+          // Use a small timeout to let the current navigation complete first
+          setTimeout(() => {
+            window.location.href = '/data-entry/sales-invoice';
+          }, 50);
         } else {
           console.log('🚀 Duplicate detected during unmount, not auto-holding');
         }
