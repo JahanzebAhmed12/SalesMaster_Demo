@@ -43,21 +43,45 @@ export default function PurchaseInvoice() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const id = params.get("purchaseId");
+    const invId = params.get("invoiceId");
     const editMode = params.get("edit");
-    console.log("PurchaseInvoice: Extracted purchaseId from URL:", id, "Edit mode:", editMode);
-    setPurchaseId(id);
+    console.log("PurchaseInvoice: Extracted purchaseId from URL:", id, "invoiceId:", invId, "Edit mode:", editMode);
 
-    // If in edit mode, fetch existing invoice data
-    if (editMode === "true" && id) {
-      fetchExistingInvoiceData(id);
+    if (invId && !id) {
+      // Opened directly by invoiceId (e.g. from daily book purchase link)
+      // Fetch purchase info via the invoice
+      apiRequest("GET", `/api/purchase-invoices/by-invoice/${invId}`).then((response: any) => {
+        if (response.purchase) {
+          setPurchaseId(response.purchase.id.toString());
+        }
+        if (response.invoice) {
+          setIsEditMode(true);
+          setInvoiceId(response.invoice.id);
+          setRemarks(response.invoice.remarks || "");
+          const items = response.invoice.items || [];
+          setItems(items.map((item: any) => ({
+            productId: item.productId,
+            productName: item.productName,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+            remarks: item.remarks || ""
+          })));
+        }
+      }).catch(console.error);
+    } else {
+      setPurchaseId(id);
+      if (editMode === "true" && id) {
+        fetchExistingInvoiceData(id);
+      }
     }
   }, [locationStr]);
 
-  // Extract invoiceId from URL on mount and URL changes
+  // Extract invoiceId from URL on mount and URL changes — handled in purchaseId effect above
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const invId = params.get("invoiceId");
-    setInvoiceId(invId);
+    if (invId) setInvoiceId(invId);
   }, [locationStr]);
 
   // Function to fetch existing invoice data for editing

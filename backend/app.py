@@ -6120,6 +6120,20 @@ def get_purchase_invoice_by_purchase_id(purchase_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/purchase-invoices/by-invoice/<int:invoice_id>', methods=['GET'])
+@jwt_required()
+def get_purchase_invoice_by_invoice_id(invoice_id):
+    """Get purchase invoice data by PurchaseInvoice.id for editing"""
+    try:
+        invoice = PurchaseInvoice.query.get_or_404(invoice_id)
+        purchase = Purchase.query.get_or_404(invoice.purchase_id)
+        return jsonify({
+            "purchase": purchase.to_dict(),
+            "invoice": invoice.to_dict()
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/purchase-invoices/<int:invoice_id>', methods=['DELETE'])
 @jwt_required()
 def delete_purchase_invoice(invoice_id):
@@ -6871,7 +6885,7 @@ def daily_book_purchase():
             'date': row.date.strftime('%Y-%m-%d') if row.date else None,
             'supplier': row.supplier_name,
             'supplierId': row.supplier_id,
-            'invNo': row.purchase_id,
+            'invNo': row.id,
             'invoiceAmt': float(row.invoice_amount) if row.invoice_amount else 0
         })
     
@@ -7749,7 +7763,6 @@ def stock_check_report():
                 
                 # Get new stock (purchases) between dates
                 new_stock = get_new_stock(product.id, 'regular', from_dt, to_dt)
-                print(f"[DEBUG] Regular product {product.description} (ID: {product.id}): new_stock={new_stock}")
                 
                 # Get sales between dates
                 sales = get_sales_quantity(product.id, 'regular', from_dt, to_dt)
@@ -7955,35 +7968,27 @@ def get_opening_stock(product_id, product_type, from_date):
         return 0
 
 def get_new_stock(product_id, product_type, from_date, to_date):
-    """Get new stock (purchases) between dates - filter by purchase invoice date, not movement creation date"""
+    """Get new stock (purchases) between dates"""
     try:
-        # Join with PurchaseInvoice table to filter by actual invoice date instead of movement creation date
-        movements = db.session.query(StockMovement).join(
-            PurchaseInvoice, StockMovement.reference_id == PurchaseInvoice.id
-        ).filter(
+        # Query all purchase and reversal movements by their creation date
+        # We use created_at because deleted invoices no longer exist to join against
+        movements = db.session.query(StockMovement).filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
-            StockMovement.reference_type == 'purchase',
-            PurchaseInvoice.date >= from_date,
-            PurchaseInvoice.date <= to_date
+            StockMovement.created_at >= from_date,
+            StockMovement.created_at <= to_date
         ).all()
-        
-        print(f"[DEBUG] get_new_stock for product {product_id} ({product_type}) from {from_date} to {to_date}: found {len(movements)} movements")
-        
+
         total = 0
         for movement in movements:
             quantity = safe_float(movement.quantity)
-            print(f"[DEBUG] Movement: type={movement.movement_type}, quantity={quantity}, created_at={movement.created_at}, reference_id={movement.reference_id}")
-            
             if movement.movement_type == 'purchase' and quantity > 0:
                 total += quantity
             elif movement.movement_type == 'purchase_reversal' and quantity < 0:
-                # Purchase reversals have negative quantities, so we add them (which reduces the total)
-                total += quantity
-        
-        print(f"[DEBUG] Total new stock for product {product_id}: {total}")
-        return max(0, total)  # Ensure we don't return negative new stock
+                total += quantity  # negative, reduces total
+
+        return max(0, total)
     except Exception as e:
         print(f"[ERROR] Error getting new stock: {e}")
         import traceback
@@ -8024,7 +8029,6 @@ def get_sales_quantity(product_id, product_type, from_date, to_date):
         # Net sales = positive sales - returns processed as negative sales
         net_sales = total - negative_returns
         
-        print(f"[DEBUG] Sales quantity for product {product_id} ({product_type}): {net_sales} (positive: {total}, negative returns: {negative_returns}) from {len(sales_items)} items")
         return max(0, net_sales)  # Ensure non-negative result
     except Exception as e:
         print(f"[ERROR] Error getting sales quantity: {e}")

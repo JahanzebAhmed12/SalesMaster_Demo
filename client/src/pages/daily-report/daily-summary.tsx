@@ -1830,18 +1830,18 @@ export default function DailySummary() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3 text-lg">
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <span className="font-medium">Total Bank Transfer Sales:</span>
+                    {/* <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Current Day Bank Transfers:</span>
                       <span className="font-bold">£{(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}</span>
                     </div>
-                    {/* <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Customer Bank Transfer Payments:</span>
-                    <span className="font-bold">�{(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="font-medium">Total Bank Transfer Received:</span>
-                    <span className="font-bold">�{((summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0)).toFixed(2)}</span>
-                  </div> */}
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="font-medium">Bank Transfer (Backdate):</span>
+                      <span className="font-bold">£{(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}</span>
+                    </div> */}
+                    <div className="flex justify-between items-center py-2 border-b font-semibold">
+                      <span>Total Bank Transfer:</span>
+                      <span>£{((summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0)).toFixed(2)}</span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -2081,7 +2081,7 @@ export default function DailySummary() {
                                     <Button
                                       variant="link"
                                       className="p-0 text-blue-600 underline"
-                                      onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invNo}&edit=true`, '_self')}
+                                      onClick={() => window.open(`/data-entry/purchase-invoice?invoiceId=${row.invNo}&edit=true`, '_self')}
                                     >
                                       {row.invNo}
                                     </Button>

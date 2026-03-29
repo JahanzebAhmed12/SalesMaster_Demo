@@ -567,7 +567,7 @@ export default function DailyBookPurchase() {
                                 <Button
                                   variant="link"
                                   className="p-0 text-blue-600 underline"
-                                  onClick={() => navigate(`/data-entry/purchase-invoice?purchaseId=${item.invNo}&edit=true`)}
+                                  onClick={() => navigate(`/data-entry/purchase-invoice?invoiceId=${item.invNo}&edit=true`)}
                                 >
                                   {item.invNo}
                                 </Button>
