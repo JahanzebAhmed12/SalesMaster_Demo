@@ -10,7 +10,7 @@ class AutoChromePrintService {
   constructor() {
     this.vpsUrl = 'https://tropifruituk.net';
     this.pollInterval = 10000;
-    this.printerName = 'EPSON LQ-350 ESC/P2';
+    this.printerName = 'Microdoft Print to PDF';
     this.customPaperSize = 'DOT MATRIX (18.6x20)';
     this.isProcessing = false;
     this.tempDir = path.join(__dirname, 'temp');
@@ -118,39 +118,78 @@ class AutoChromePrintService {
   }
 
   async printWithPuppeteer(htmlFilePath) {
-    console.log('🖨️  Printing with Puppeteer (automated Chrome)...');
+    console.log('🖨️  Printing with Chrome (off-screen, no visible window)...');
     console.log(`📄 Using printer: ${this.printerName}`);
 
     const browser = await puppeteer.launch({
-      headless: false, // Show browser for print dialog
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: false,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--window-position=-32000,-32000',
+        '--window-size=1,1',
+        '--disable-gpu',
+        '--kiosk-printing',
+      ]
     });
 
-    const page = await browser.newPage();
-    
-    // Load the HTML file
-    await page.goto(`file://${htmlFilePath}`, {
-      waitUntil: 'networkidle0',
-      timeout: 30000
-    });
+    try {
+      const page = await browser.newPage();
 
-    console.log('⏳ Triggering print dialog...');
+      page.on('pageerror', err => console.error('❌ Page error:', err.message));
 
-    // Trigger print dialog programmatically
-    await page.evaluate(() => {
-      window.print();
-    });
+      console.log(`📂 Loading file: ${htmlFilePath}`);
+      await page.goto(`file://${htmlFilePath}`, {
+        waitUntil: 'networkidle0',
+        timeout: 30000
+      });
 
-    // Wait a bit for print dialog to appear
-    await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('✅ Page loaded');
 
-    console.log('✅ Print dialog should be open');
-    console.log('📋 The print dialog will show - select your printer and custom paper size');
+      // Use target().createCDPSession() — compatible with older puppeteer versions
+      let cdpSession = null;
+      try {
+        cdpSession = await page.target().createCDPSession();
+      } catch (e) {
+        console.log('⚠️  CDP session not available, using window.print() only');
+      }
 
-    // Keep browser open for a bit to allow printing
-    await new Promise(resolve => setTimeout(resolve, 10000));
+      if (cdpSession) {
+        try {
+          // Generate a test PDF to verify layout
+          const result = await cdpSession.send('Page.printToPDF', {
+            paperWidth: 7.32,   // 186mm in inches (186/25.4)
+            paperHeight: 7.87,  // 200mm in inches (200/25.4)
+            marginTop: 0,
+            marginBottom: 0,
+            marginLeft: 0,
+            marginRight: 0,
+            printBackground: true,
+            preferCSSPageSize: true,
+          });
 
-    await browser.close();
+          const pdfPath = htmlFilePath.replace('.html', '_preview.pdf');
+          fs.writeFileSync(pdfPath, Buffer.from(result.data, 'base64'));
+          const sizeKB = (fs.statSync(pdfPath).size / 1024).toFixed(1);
+          console.log(`✅ Preview PDF saved: ${pdfPath} (${sizeKB} KB)`);
+          console.log('💡 Open the preview PDF to verify layout before using real printer');
+        } catch (pdfErr) {
+          console.warn('⚠️  Could not generate preview PDF:', pdfErr.message);
+        }
+      }
+
+      // Send to printer via window.print() — kiosk-printing auto-confirms
+      console.log('🖨️  Sending to printer...');
+      await page.evaluate(() => window.print());
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.log('✅ Print command sent');
+
+    } catch (err) {
+      console.error('❌ Print failed:', err.message);
+      throw err;
+    } finally {
+      await browser.close();
+    }
   }
   generateInvoiceHTML(printData) {
     const { sale, items, customer } = printData;
@@ -310,12 +349,12 @@ class AutoChromePrintService {
 }
 
 // Start the service
-console.log('🚀 Starting Auto Chrome Print Service');
+console.log('🚀 Starting Auto Chrome Print Service (Off-Screen Mode)');
 console.log('📝 This service:');
-console.log('   1. Uses Puppeteer to control Chrome');
-console.log('   2. Automatically opens print dialog');
-console.log('   3. You select printer and paper size in dialog');
-console.log('   4. Provides full control over print settings');
+console.log('   1. Launches Chrome off-screen (window moved to -32000,-32000)');
+console.log('   2. Uses --kiosk-printing to auto-confirm print dialog');
+console.log('   3. Prints with Chrome so custom paper size is respected');
+console.log('   4. No visible window, no interaction needed');
 console.log('');
 
 const service = new AutoChromePrintService();

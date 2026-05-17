@@ -25,6 +25,8 @@ class SaleSchema(BaseModel):
     payment_status: str = 'pending'
     subtotal: float
     porterage: float = 0
+    porterage_type: Optional[str] = 'per_unit'
+    porterage_rate: Optional[float] = 0
     vat_rate: float = 0
     vat_amount: float = 0
     total_amount: float

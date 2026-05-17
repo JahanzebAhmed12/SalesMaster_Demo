@@ -114,6 +114,8 @@ export const saleSchema = z.object({
   paymentStatus: z.string(),
   subtotal: z.number(),
   porterage: z.number(),
+  porterageType: z.string().default('per_unit'),
+  porterageRate: z.number().default(0),
   vatRate: z.number(),
   vatAmount: z.number(),
   totalAmount: z.number(),

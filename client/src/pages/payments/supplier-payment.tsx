@@ -92,13 +92,13 @@ export default function SupplierPayment() {
     const selectedDateFormatted = format(date, 'yyyy-MM-dd');
 
     if (selectedDateFormatted === businessDateFormatted) {
-      // For business date, check current_editing permission
-      return userPermissions.current_editing !== false;
+      // Creating payments for business date is always allowed regardless of current_editing
+      return true;
     } else if (date < new Date(businessDate)) {
       // For past dates (before business date), check editing permission
       return userPermissions.editing === true;
     } else {
-      // For future dates (after business date), allow (assuming future dates are always allowed)
+      // For future dates (after business date), allow
       return true;
     }
   };

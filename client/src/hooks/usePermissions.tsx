@@ -51,5 +51,6 @@ export function useDailyBookSalesPermissions() {
   
   return {
     canViewTotals: permissions['daily_book_sales_totals'] !== false, // Default to true if not set
+    canMakePayments: permissions['daily_book_sales_payments'] !== false, // Default to true if not set
   };
 } 

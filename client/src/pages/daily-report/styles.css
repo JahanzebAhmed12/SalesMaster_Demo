@@ -37,7 +37,6 @@
     & #daily-summary-page table {
       width: 100% !important;
       border-collapse: collapse !important;
-      page-break-inside: avoid;
       border: 1px solid #666 !important;
     }
 
@@ -78,7 +77,6 @@
     & #daily-summary-page section:not(table):not(th):not(td),
     & #daily-summary-page article:not(table):not(th):not(td) {
       box-shadow: none !important;
-      border: none !important;
       border-radius: 0 !important;
     }
 
@@ -86,5 +84,33 @@
       background-color: #4b5563 !important;
       color: white !important;
     }
+  }
+}
+
+/* Page break sections — heading + table stay together on new page */
+@media print {
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+    display: block !important;
+  }
+  .print-no-margin {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+  /* Keep card header glued to the table that follows */
+  .print-card-header {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+    padding-bottom: 4px !important;
+  }
+  /* Allow table rows to break across pages — don't avoid inside */
+  .print-page-break table {
+    page-break-inside: auto !important;
+  }
+  .print-page-break tr {
+    page-break-inside: avoid !important;
   }
 }

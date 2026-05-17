@@ -54,6 +54,7 @@ type PaymentDistribution = {
 
 export default function CustomerPayment() {
   const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
+  const [customerSearchKey, setCustomerSearchKey] = useState(0);
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<number>>(new Set());
   const [invoicePaymentModes, setInvoicePaymentModes] = useState<Map<number, string>>(new Map());
   const [invoicePaymentConfigs, setInvoicePaymentConfigs] = useState<Map<number, any>>(new Map());
@@ -352,6 +353,8 @@ export default function CustomerPayment() {
       setInvoicePaymentModes(new Map());
       setOnAccountAmount(0);
       resetSplitPayment();
+      handleCustomerSelect(null); // Reset customer search field
+      setCustomerSearchKey(k => k + 1); // Force CustomerSearch to remount and clear
     },
     onError: (error) => {
       toast({
@@ -497,18 +500,12 @@ export default function CustomerPayment() {
     const totalAmount = Math.max(0, netInvoicesAmount) + amount;
 
     setReceivedAmount(totalAmount);
-    
-    // Update split payment to reflect new total
-    const currentSplitTotal = (parseFloat(splitPayment.cash) || 0) + (parseFloat(splitPayment.card) || 0) + 
-                             (parseFloat(splitPayment.bankTransfer) || 0) + (parseFloat(splitPayment.cheque) || 0);
-    
-    if (currentSplitTotal === 0 && totalAmount > 0) {
-      // Auto-fill cash if no split payment is set
-      setSplitPayment(prev => ({
-        ...prev,
-        cash: totalAmount.toFixed(2)
-      }));
-    }
+
+    // Always sync cash field to the new total (user can manually adjust other splits after)
+    setSplitPayment(prev => ({
+      ...prev,
+      cash: totalAmount > 0 ? totalAmount.toFixed(2) : "",
+    }));
   };
 
   // Handle split payment amount changes
@@ -1355,6 +1352,7 @@ export default function CustomerPayment() {
                 <div>
                   <Label htmlFor="customer" className="text-sm">Customer:</Label>
                   <CustomerSearch
+                    key={customerSearchKey}
                     placeholder="Search customer by code or name..."
                     onCustomerSelect={handleCustomerSelect}
                     required

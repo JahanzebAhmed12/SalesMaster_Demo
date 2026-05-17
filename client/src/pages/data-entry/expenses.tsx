@@ -634,10 +634,11 @@ export default function Expenses() {
                         <Input
                           type="number"
                           step="0.01"
-                          value={newExpense.amount}
+                          value={newExpense.amount === 0 ? "" : newExpense.amount}
                           onChange={(e) => setNewExpense({ ...newExpense, amount: parseFloat(e.target.value) || 0 })}
                           className="w-full text-right"
                           min="0"
+                          placeholder="0.00"
                         />
                       </div>
                       <div>

@@ -43,6 +43,8 @@ class Sale(db.Model):
     payment_status = db.Column(db.String(20), default='pending')  # pending, paid, partial
     subtotal = db.Column(db.Numeric(10, 2), nullable=False)
     porterage = db.Column(db.Numeric(10, 2), default=0)
+    porterage_type = db.Column(db.String(10), default='per_unit')  # 'per_unit' or 'fixed'
+    porterage_rate = db.Column(db.Numeric(10, 4), default=0)  # per-unit rate or fixed amount
     vat_rate = db.Column(db.Numeric(5, 2), default=0)
     vat_amount = db.Column(db.Numeric(10, 2), default=0)
     total_amount = db.Column(db.Numeric(10, 2), nullable=False)
@@ -71,6 +73,8 @@ class Sale(db.Model):
             'paymentStatus': self.payment_status,
             'subtotal': float(self.subtotal),
             'porterage': float(self.porterage),
+            'porterageType': self.porterage_type or 'per_unit',
+            'porterageRate': float(self.porterage_rate) if self.porterage_rate else 0,
             'vatRate': float(self.vat_rate),
             'vatAmount': float(self.vat_amount),
             'totalAmount': float(self.total_amount),

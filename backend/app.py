@@ -1016,6 +1016,8 @@ def create_sale():
                 payment_status=sale_data.payment_status,
                 subtotal=sale_data.subtotal,
                 porterage=sale_data.porterage,
+                porterage_type=sale_data.porterage_type or 'per_unit',
+                porterage_rate=sale_data.porterage_rate or 0,
                 vat_rate=sale_data.vat_rate,
                 vat_amount=sale_data.vat_amount,
                 total_amount=sale_data.total_amount,
@@ -1300,14 +1302,19 @@ def update_sale(id):
         # Check current date editing permission
         if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale.date.date() == today:
             return jsonify({"error": "You do not have permission to edit sales for today."}), 403
-        
+
+        # Block editing paid invoices for non-admin users
+        if sale.payment_status in ('paid', 'overpaid'):
+            user = User.query.get(user_id)
+            if not user or user.user_type != 'admin':
+                return jsonify({"error": "This invoice has been paid and cannot be edited. Only admin users can modify paid invoices."}), 403
+
         # Initialize stock warnings list
         stock_warnings = []
-        
+
         # Store old status and items to check changes
         old_status = sale.status
         new_status = sale_data.status
-        
         # Create detailed item comparison for better change detection
         old_items_detailed = {}
         for item in sale.items:
@@ -3577,6 +3584,25 @@ def add_employee_email_column():
 
 with app.app_context():
     add_employee_email_column()
+
+def add_porterage_columns():
+    """Add porterage_type and porterage_rate columns to sale table if they don't exist"""
+    try:
+        result = db.session.execute(db.text("PRAGMA table_info(sale)")).fetchall()
+        columns = [row[1] for row in result]
+        if 'porterage_type' not in columns:
+            db.session.execute(db.text("ALTER TABLE sale ADD COLUMN porterage_type VARCHAR(10) DEFAULT 'per_unit'"))
+            print("Added porterage_type column to sale table")
+        if 'porterage_rate' not in columns:
+            db.session.execute(db.text("ALTER TABLE sale ADD COLUMN porterage_rate NUMERIC(10,4) DEFAULT 0"))
+            print("Added porterage_rate column to sale table")
+        db.session.commit()
+    except Exception as e:
+        print(f"Error adding porterage columns: {str(e)}")
+        db.session.rollback()
+
+with app.app_context():
+    add_porterage_columns()
 
 # Employee Document routes
 @app.route('/api/employees/<int:employee_id>/documents', methods=['POST'])
@@ -6626,6 +6652,21 @@ def get_supplier_payment_history():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/supplier-payments/<int:payment_id>', methods=['GET'])
+def get_supplier_payment(payment_id):
+    """Get a single supplier payment by ID (public, for print receipt)"""
+    try:
+        payment = SupplierPayment.query.get_or_404(payment_id)
+        supplier = Supplier.query.get(payment.supplier_id)
+        company = Company.query.first()
+        return jsonify({
+            'payment': payment.to_dict(),
+            'supplier': supplier.to_dict() if supplier else {},
+            'company': company.to_dict() if company else {}
+        })
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/supplier-payments/<int:payment_id>', methods=['PUT'])

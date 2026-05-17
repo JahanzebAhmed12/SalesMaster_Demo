@@ -161,6 +161,11 @@ const restrictionSections = menuSections.flatMap(section => {
       label: "Daily Book Sales Totals",
       isSection: false
     });
+    sectionItems.push({
+      key: "daily_book_sales_payments",
+      label: "Daily Book Sales Payment Options",
+      isSection: false
+    });
   }
   
   return sectionItems;

@@ -85,12 +85,15 @@ export default function DailyBookPurchase() {
     }
   };
 
-  // Update dates when business date changes
+  const datesInitialized = useRef(false);
+
+  // Update dates when business date changes — only on first load, not on every re-render
   useEffect(() => {
-    if (!isLoadingBusinessDate && businessDate) {
+    if (!isLoadingBusinessDate && businessDate && !datesInitialized.current) {
       try {
         setFromDate(new Date(businessDate));
         setToDate(new Date(businessDate));
+        datesInitialized.current = true;
       } catch (error) {
         console.error('Error processing business date:', error);
       }

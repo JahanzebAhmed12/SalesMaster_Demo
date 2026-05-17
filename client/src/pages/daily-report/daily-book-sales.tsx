@@ -346,7 +346,7 @@ export default function DailyBookSales() {
   const { canEditBackdate, canEditCurrentDate } = useBackdatePermissions();
 
   // Daily Book Sales permissions
-  const { canViewTotals } = useDailyBookSalesPermissions();
+  const { canViewTotals, canMakePayments } = useDailyBookSalesPermissions();
 
   // Invoice permissions
   const { canEditInvoice, isInvoiceLocked } = useInvoicePermissions();
@@ -1147,56 +1147,60 @@ export default function DailyBookSales() {
 
                 {/* Payment action buttons - smaller and on the right */}
                 <div className="flex flex-wrap gap-1">
-                  <Button
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 h-7"
-                    onClick={handleUpdateToCash}
-                    disabled={selectedSales.size === 0}
-                  >
-                    <span className="hidden sm:inline">Paid (Cash) - </span>
-                    <span className="sm:hidden">Cash - </span>
-                    {selectedSales.size}
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 h-7"
-                    onClick={handleUpdateToCard}
-                    disabled={selectedSales.size === 0}
-                  >
-                    <span className="hidden sm:inline">Pay Card - </span>
-                    <span className="sm:hidden">Card - </span>
-                    {selectedSales.size}
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-2 py-1 h-7"
-                    onClick={handleUpdateToBankTransfer}
-                    disabled={selectedSales.size === 0}
-                  >
-                    <span className="hidden sm:inline">Transfer - </span>
-                    <span className="sm:hidden">Trans - </span>
-                    {selectedSales.size}
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1 h-7"
-                    onClick={handleUpdateToCheque}
-                    disabled={selectedSales.size === 0}
-                  >
-                    <span className="hidden sm:inline">Cheque - </span>
-                    <span className="sm:hidden">Chq - </span>
-                    {selectedSales.size}
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="bg-orange-600 hover:bg-orange-700 text-white text-xs px-2 py-1 h-7"
-                    onClick={handleUpdateToAccount}
-                    disabled={selectedSales.size === 0}
-                  >
-                    <span className="hidden sm:inline">Account - </span>
-                    <span className="sm:hidden">Acc - </span>
-                    {selectedSales.size}
-                  </Button>
+                  {canMakePayments && (
+                    <>
+                      <Button
+                        size="sm"
+                        className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 h-7"
+                        onClick={handleUpdateToCash}
+                        disabled={selectedSales.size === 0}
+                      >
+                        <span className="hidden sm:inline">Paid (Cash) - </span>
+                        <span className="sm:hidden">Cash - </span>
+                        {selectedSales.size}
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 h-7"
+                        onClick={handleUpdateToCard}
+                        disabled={selectedSales.size === 0}
+                      >
+                        <span className="hidden sm:inline">Pay Card - </span>
+                        <span className="sm:hidden">Card - </span>
+                        {selectedSales.size}
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-2 py-1 h-7"
+                        onClick={handleUpdateToBankTransfer}
+                        disabled={selectedSales.size === 0}
+                      >
+                        <span className="hidden sm:inline">Transfer - </span>
+                        <span className="sm:hidden">Trans - </span>
+                        {selectedSales.size}
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1 h-7"
+                        onClick={handleUpdateToCheque}
+                        disabled={selectedSales.size === 0}
+                      >
+                        <span className="hidden sm:inline">Cheque - </span>
+                        <span className="sm:hidden">Chq - </span>
+                        {selectedSales.size}
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="bg-orange-600 hover:bg-orange-700 text-white text-xs px-2 py-1 h-7"
+                        onClick={handleUpdateToAccount}
+                        disabled={selectedSales.size === 0}
+                      >
+                        <span className="hidden sm:inline">Account - </span>
+                        <span className="sm:hidden">Acc - </span>
+                        {selectedSales.size}
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1347,21 +1351,25 @@ export default function DailyBookSales() {
                               <DropdownMenuItem className="text-sm py-2" onClick={() => window.open(`/print/packing-list/${sale.invoiceNo}`, '_blank')}>
                                 <Package className="mr-2 h-4 w-4" /> Picking List
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'cash')}>
-                                <Banknote className="mr-2 h-4 w-4" /> Pay (Cash)
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'bank')}>
-                                <CreditCard className="mr-2 h-4 w-4" /> Pay (Card)
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'bank_transfer')}>
-                                <Building2 className="mr-2 h-4 w-4" /> Pay (Transfer)
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'cheque')}>
-                                <Receipt className="mr-2 h-4 w-4" /> Pay (Cheque)
-                              </DropdownMenuItem>
-                              <DropdownMenuItem className="text-sm py-2" onClick={() => handleSplitPayment(sale)}>
-                                <Split className="mr-2 h-4 w-4" /> Split Payment
-                              </DropdownMenuItem>
+                              {canMakePayments && (
+                                <>
+                                  <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'cash')}>
+                                    <Banknote className="mr-2 h-4 w-4" /> Pay (Cash)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'bank')}>
+                                    <CreditCard className="mr-2 h-4 w-4" /> Pay (Card)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'bank_transfer')}>
+                                    <Building2 className="mr-2 h-4 w-4" /> Pay (Transfer)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-sm py-2" onClick={() => pay(sale, 'cheque')}>
+                                    <Receipt className="mr-2 h-4 w-4" /> Pay (Cheque)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem className="text-sm py-2" onClick={() => handleSplitPayment(sale)}>
+                                    <Split className="mr-2 h-4 w-4" /> Split Payment
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

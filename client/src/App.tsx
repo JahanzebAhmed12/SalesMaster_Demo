@@ -21,6 +21,7 @@ import HolidayRequestPrint from "@/pages/print/holiday-request-print";
 import EmployeeContractPrint from "@/pages/print/employee-contract-print";
 import EmployeeJoiningForm from "@/pages/print/employee-joining-form";
 import PaymentReceiptPrint from "@/pages/print/payment-receipt-print";
+import SupplierPaymentReceiptPrint from "@/pages/print/supplier-payment-receipt";
 
 // Data Entry Pages
 import SalesEntry from "@/pages/data-entry/sales-entry";
@@ -611,6 +612,9 @@ function Router() {
       </Route>
       <Route path="/print/payment-receipt/:paymentId/:paymentType">
         <PaymentReceiptPrint />
+      </Route>
+      <Route path="/print/supplier-payment-receipt/:paymentId">
+        <SupplierPaymentReceiptPrint />
       </Route>
 
       {/* Fallback to 404 */}

@@ -439,836 +439,354 @@ export default function DailySummary() {
     }
   };
 
-  const handleGenerateCleanPDF = () => {
-    if (!selectedDate || !summaryData) {
-      toast({
-        title: "Error",
-        description: "Please select a valid date and ensure data is loaded",
-        variant: "destructive",
+  // ── Single PDF builder — matches the screen layout exactly ──────────────
+  const buildPDF = async (): Promise<jsPDF | null> => {
+    if (!selectedDate || !summaryData) return null;
+
+    // Always fetch stock data fresh so PDF always includes it
+    let pdfStockData: StockItem[] = stockData;
+    try {
+      const params = new URLSearchParams({
+        fromDate: format(selectedDate, "yyyy-MM-dd"),
+        toDate: format(selectedDate, "yyyy-MM-dd"),
+        search: ""
       });
+      const freshStock = await apiRequest("GET", `/api/reports/stock-check?${params}`);
+      if (Array.isArray(freshStock) && freshStock.length > 0) {
+        pdfStockData = freshStock;
+      }
+    } catch {
+      // fall back to cached stockData
+    }
+
+    const doc = new jsPDF();
+    let y = 20;
+
+    const tbl = (head: string[][], body: any[], opts?: any) => {
+      const { didParseCell: userDidParseCell, ...restOpts } = opts || {};
+      autoTable(doc, {
+        head, body,
+        startY: y,
+        theme: 'grid',
+        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+        headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.3 },
+        bodyStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number] },
+        alternateRowStyles: { fillColor: [255, 255, 255] as [number, number, number] },
+        ...restOpts,
+        didParseCell: (data: any) => {
+          const row = body[data.row.index];
+          if (row && row[0] === 'VOID') {
+            data.cell.styles.textColor = [180, 180, 180];
+            data.cell.styles.fontStyle = 'italic';
+          }
+          if (userDidParseCell) userDidParseCell(data);
+        }
+      });
+      y = (doc as any).lastAutoTable.finalY + 12;
+    };
+
+    const section = (title: string) => {
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text(title, 14, y);
+      doc.setFont('helvetica', 'normal');
+      y += 8;
+    };
+
+    // ── Page 1 header ────────────────────────────────────────────────────
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Daily Summary Report', 14, y);
+    doc.setFont('helvetica', 'normal');
+    y += 12;
+
+    // 1. Daily Sales Summary
+    section(`Daily Sales Summary - ${format(selectedDate, "dd/MM/yyyy")}`);
+    tbl(
+      [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
+      [
+        ...summaryData.sales_summary.map(s => [
+          getDisplayCustomerName(s),
+          s.invoice_no || '-',
+          s.cash_sales > 0 ? s.cash_sales.toFixed(2) : '-',
+          s.card_paid > 0 ? s.card_paid.toFixed(2) : '-',
+          (s.bank_transfer || 0) > 0 ? (s.bank_transfer || 0).toFixed(2) : '-',
+          (s.cheque || 0) > 0 ? (s.cheque || 0).toFixed(2) : '-',
+          s.account_sales > 0 ? s.account_sales.toFixed(2) : '-',
+          s.account_credits > 0 ? s.account_credits.toFixed(2) : '-',
+        ]),
+        ['TOTALS', '',
+          summaryData.totals.cash_sales.toFixed(2),
+          summaryData.totals.card_sales.toFixed(2),
+          (summaryData.totals.bank_transfer_sales || 0).toFixed(2),
+          (summaryData.totals.cheque_sales || 0).toFixed(2),
+          summaryData.totals.account_sales.toFixed(2),
+          (summaryData.totals.account_credits || 0).toFixed(2),
+        ],
+      ]
+    );
+
+    // 2. Customer Payments (with VOID gap rows)
+    if (summaryData.customer_payments.length > 0) {
+      section('Customer Payments');
+      const sorted = [...summaryData.customer_payments].sort((a, b) => parseInt(a.payment_id) - parseInt(b.payment_id));
+      const cpBody: any[] = [];
+      sorted.forEach((p, i) => {
+        if (i > 0) {
+          const prev = parseInt(sorted[i - 1].payment_id);
+          const curr = parseInt(p.payment_id);
+          for (let m = prev + 1; m < curr; m++) {
+            cpBody.push(['VOID', String(m), '-', '-', '-', '-', '-']);
+          }
+        }
+        cpBody.push([
+          p.customer_name, p.payment_id,
+          p.cash_amount > 0 ? p.cash_amount.toFixed(2) : '-',
+          p.card_amount > 0 ? p.card_amount.toFixed(2) : '-',
+          p.bank_transfer_amount > 0 ? p.bank_transfer_amount.toFixed(2) : '-',
+          p.cheque_amount > 0 ? p.cheque_amount.toFixed(2) : '-',
+          p.total_amount.toFixed(2),
+        ]);
+      });
+      cpBody.push(['TOTAL', '',
+        summaryData.customer_payments.reduce((s, p) => s + p.cash_amount, 0).toFixed(2),
+        summaryData.customer_payments.reduce((s, p) => s + p.card_amount, 0).toFixed(2),
+        summaryData.customer_payments.reduce((s, p) => s + (p.bank_transfer_amount || 0), 0).toFixed(2),
+        summaryData.customer_payments.reduce((s, p) => s + (p.cheque_amount || 0), 0).toFixed(2),
+        summaryData.totals.customer_payments_total.toFixed(2),
+      ]);
+      tbl([['Customer Name', 'Payment ID', 'Cash', 'Card', 'Bank Transfer', 'Cheque', 'Total']], cpBody);
+    }
+
+    // 3. Supplier Payments
+    if (summaryData.supplier_payments.length > 0) {
+      section('Supplier Payments');
+      tbl(
+        [['Supplier Name', 'Supplier Invoice No', 'Supplier Invoice Date', 'Amount', 'Payment Mode']],
+        [
+          ...summaryData.supplier_payments.map(p => [
+            p.supplier_name,
+            p.supplier_invoice_number || '-',
+            p.supplier_invoice_date ? format(new Date(p.supplier_invoice_date), "dd/MM/yyyy") : '-',
+            p.amount.toFixed(2),
+            p.payment_mode,
+          ]),
+          ['TOTAL', '', '', summaryData.totals.supplier_payments_total.toFixed(2), ''],
+        ]
+      );
+    }
+
+    // 4. Expense Entries
+    if (summaryData.expense_entries.length > 0) {
+      section('Expense Entries');
+      tbl(
+        [['Supplier Invoice No', 'Supplier Name', 'Expense Name', 'Amount', 'Payment Mode']],
+        [
+          ...summaryData.expense_entries.map(e => [
+            e.invoice_number || '-', e.supplier_name, e.expense_name, e.amount.toFixed(2), e.payment_mode,
+          ]),
+          ['TOTAL', '', '', summaryData.expense_entries.reduce((s, e) => s + e.amount, 0).toFixed(2), ''],
+        ]
+      );
+    }
+
+    // 5. Total Sales Summary
+    section('Total Sales Summary');
+    const totalAllSales = summaryData.totals.cash_sales + summaryData.totals.card_sales +
+      (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.cheque_sales || 0) +
+      summaryData.totals.account_sales;
+    tbl([], [['Daily Sales (All Payment Methods)', `£${totalAllSales.toFixed(2)}`]], {
+      styles: { fontSize: 10, cellPadding: 3 },
+      columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } }
+    });
+
+    // 6. Card Sales & Customer Card Payments
+    section('Card Sales & Customer Card Payments');
+    tbl([], [
+      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
+      ['Account Paid Card (Backdate)', `£${summaryData.customer_payments.reduce((s, p) => s + p.card_amount, 0).toFixed(2)}`],
+    ], {
+      styles: { fontSize: 10, cellPadding: 3 },
+      columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } }
+    });
+
+    // 7. Payment Received via Bank Transfer
+    section('Payment Received via Bank Transfer');
+    const totalBankTransfer = (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.bank_transfer_payments || 0);
+    tbl([], [
+      ['Current Day Invoice Bank Transfers', `£${(summaryData.totals.bank_transfer_sales || 0).toFixed(2)}`],
+      ['Customer Bank Transfer Payments', `£${(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}`],
+      ['Total Bank Transfer Received', `£${totalBankTransfer.toFixed(2)}`],
+    ], {
+      styles: { fontSize: 10, cellPadding: 3 },
+      columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } }
+    });
+
+    // 8. Total Banking
+    section('Total Banking');
+    tbl([], [
+      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
+      ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
+      ['Account Paid Cash (Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
+      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
+      ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`],
+      ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`],
+    ], {
+      styles: { fontSize: 10, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+      columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } },
+      didParseCell: (data: any) => {
+        if (data.row.index === 6) {
+          data.cell.styles.fillColor = [173, 216, 230];
+          data.cell.styles.fontSize = 12;
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
+    });
+
+    // 9. Banking Records
+    if (summaryData.banking_records.length > 0) {
+      section('Banking Records');
+      tbl(
+        [['Date', 'Remarks', 'Payment Type', 'Amount', 'Details']],
+        [
+          ...summaryData.banking_records.map(r => [
+            r.date ? format(new Date(r.date), "dd/MM/yyyy") : 'N/A',
+            r.remarks, r.payment_type, r.amount.toFixed(2),
+            r.bag_details.length > 0
+              ? r.bag_details.map(b => `Bag: ${b.bag_number}`).join(', ')
+              : `${r.paying_number ? `Pay In: ${r.paying_number}` : ''}${r.cheque_number ? ` | Cheque: ${r.cheque_number}` : ''}`,
+          ]),
+          ['TOTAL', '', '', summaryData.totals.banking_total.toFixed(2), ''],
+        ]
+      );
+    }
+
+    // 10. Product Purchase Full View — new page
+    if (productPurchaseData.length > 0) {
+      doc.addPage();
+      y = 20;
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Product Purchase Full View', 14, y);
+      doc.setFont('helvetica', 'normal');
+      y += 8;
+      doc.setFontSize(10);
+      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 14, y);
+      y += 10;
+
+      const displayData = Array.isArray(productPurchaseData) ? productPurchaseData : [];
+      const processedData: any[] = [];
+      displayData.forEach((row, index) => {
+        if (row.isHeader) {
+          processedData.push([row.date, row.supplier, row.invNo, '', '', '', '']);
+        } else if (row.isTotal) {
+          processedData.push(['', '', '', row.product, formatQuantity(row.quantity), '', Number(row.total).toFixed(2)]);
+          if (index < displayData.length - 1) processedData.push(['', '', '', '', '', '', '']);
+        } else {
+          processedData.push(['', '', row.invNo, row.product, formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)]);
+        }
+      });
+      tbl(
+        [['Date', 'Supplier', 'Inv.No', 'Product', 'Quantity', 'Unit Price', 'Total']],
+        processedData,
+        {
+          theme: 'grid',
+          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.3 },
+          columnStyles: {
+            0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 20 },
+            3: { cellWidth: 35 }, 4: { cellWidth: 20 }, 5: { cellWidth: 25 }, 6: { cellWidth: 25 },
+          },
+          didParseCell: (data: any) => {
+            const r = processedData[data.row.index];
+            if (r && r[0] && r[1] && !r[3]) data.cell.styles.fontStyle = 'bold';
+            if (r && r[3] && r[6] && !r[0] && !r[1]) data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      );
+    }
+
+    // 11. Stock Check — new page
+    const filteredStock = pdfStockData.filter((item: StockItem) =>
+      item.os !== 0 || item.ns !== 0 || item.sales !== 0 || item.crtn !== 0 ||
+      item.dmps !== 0 || item.srtn !== 0 || item.stock !== 0 || item.clStock !== 0
+    );
+    if (filteredStock.length > 0) {
+      doc.addPage();
+      y = 20;
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Stock Check', 14, y);
+      doc.setFont('helvetica', 'normal');
+      y += 8;
+      doc.setFontSize(10);
+      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 14, y);
+      y += 10;
+
+      const st = {
+        os: filteredStock.reduce((s, i) => s + i.os, 0),
+        ns: filteredStock.reduce((s, i) => s + i.ns, 0),
+        sales: filteredStock.reduce((s, i) => s + i.sales, 0),
+        crtn: filteredStock.reduce((s, i) => s + i.crtn, 0),
+        dmps: filteredStock.reduce((s, i) => s + i.dmps, 0),
+        srtn: filteredStock.reduce((s, i) => s + i.srtn, 0),
+        stock: filteredStock.reduce((s, i) => s + i.stock, 0),
+        clStock: filteredStock.reduce((s, i) => s + i.clStock, 0),
+      };
+      tbl(
+        [['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result']],
+        [
+          ...filteredStock.map((item: StockItem) => [
+            item.slNo, item.productDescription,
+            formatQuantity(item.os), formatQuantity(item.ns), formatQuantity(item.sales),
+            formatQuantity(item.crtn), formatQuantity(item.dmps), formatQuantity(item.srtn),
+            formatQuantity(item.stock), formatQuantity(item.clStock), item.result,
+          ]),
+          ['TOTAL', '',
+            formatQuantity(st.os), formatQuantity(st.ns), formatQuantity(st.sales),
+            formatQuantity(st.crtn), formatQuantity(st.dmps), formatQuantity(st.srtn),
+            formatQuantity(st.stock), formatQuantity(st.clStock), '',
+          ],
+        ],
+        {
+          theme: 'grid',
+          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.3 },
+          columnStyles: {
+            0: { cellWidth: 12 }, 1: { cellWidth: 38 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 },
+            4: { cellWidth: 14 }, 5: { cellWidth: 14 }, 6: { cellWidth: 14 }, 7: { cellWidth: 14 },
+            8: { cellWidth: 14 }, 9: { cellWidth: 14 }, 10: { cellWidth: 14 },
+          }
+        }
+      );
+    }
+
+    // Footer on last page
+    const ph = doc.internal.pageSize.height;
+    const pw = doc.internal.pageSize.width;
+    doc.setFontSize(8);
+    doc.text('stand 100', pw - 30, ph - 10, { align: 'right' });
+
+    return doc;
+  };
+
+  const handleGenerateCleanPDF = async () => {
+    if (!selectedDate || !summaryData) {
+      toast({ title: "Error", description: "Please select a valid date and ensure data is loaded", variant: "destructive" });
       return;
     }
-
-    const doc = new jsPDF();
-    let yPosition = 20;
-
-    // Add company details header
-    if (companyDetails) {
-      doc.setFontSize(16);
-      doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-
-      doc.setFontSize(10);
-      if (companyDetails.email) {
-        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      if (companyDetails.bankDetails) {
-        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      yPosition += 5;
-    }
-
-    // Add report title
-    doc.setFontSize(14);
-    doc.text('DAILY SUMMARY REPORT', 105, yPosition, { align: 'center' });
-    yPosition += 8;
-    doc.setFontSize(10);
-    doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-    yPosition += 15;
-
-    // Daily Sales Summary (always included)
-    doc.setFontSize(12);
-    doc.text('Daily Sales Summary', 14, yPosition);
-    yPosition += 5;
-
-    autoTable(doc, {
-      head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
-      body: [
-        ...summaryData.sales_summary.map(sale => [
-          getDisplayCustomerName(sale),
-          sale.invoice_no || '-',
-          sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
-          sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
-          (sale.bank_transfer || 0) > 0 ? (sale.bank_transfer || 0).toFixed(2) : '-',
-          (sale.cheque || 0) > 0 ? (sale.cheque || 0).toFixed(2) : '-',
-          sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-',
-          sale.account_credits > 0 ? sale.account_credits.toFixed(2) : '-'
-        ]),
-        ['TOTALS', '', summaryData.totals.cash_sales.toFixed(2), summaryData.totals.card_sales.toFixed(2), (summaryData.totals.bank_transfer_sales || 0).toFixed(2), (summaryData.totals.cheque_sales || 0).toFixed(2), summaryData.totals.account_sales.toFixed(2), (summaryData.totals.account_credits || 0).toFixed(2)]
-      ],
-      startY: yPosition,
-      styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-    });
-
-    yPosition = (doc as any).lastAutoTable.finalY + 15;
-
-    // Customer Payments (only if has data)
-    if (summaryData.customer_payments && summaryData.customer_payments.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Customer Payments', 14, yPosition);
-      yPosition += 5;
-
-      autoTable(doc, {
-        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Bank Transfer', 'Cheque', 'Total Amount']],
-        body: [
-          ...summaryData.customer_payments
-            .sort((a, b) => parseInt(a.payment_id) - parseInt(b.payment_id))
-            .map(payment => [
-            payment.customer_name,
-            payment.payment_id,
-            payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-',
-            payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-',
-            payment.bank_transfer_amount > 0 ? payment.bank_transfer_amount.toFixed(2) : '-',
-            payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-',
-            payment.total_amount.toFixed(2)
-          ]),
-          ['TOTAL', '',
-            summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2),
-            summaryData.totals.customer_payments_total.toFixed(2)
-          ]
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Supplier Payments (only if has data)
-    if (summaryData.supplier_payments && summaryData.supplier_payments.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Supplier Payments', 14, yPosition);
-      yPosition += 5;
-
-      autoTable(doc, {
-        head: [['Supplier Name', 'Supplier Invoice No', 'Supplier Invoice Date', 'Amount', 'Payment Mode']],
-        body: [
-          ...summaryData.supplier_payments.map(payment => [
-            payment.supplier_name,
-            payment.supplier_invoice_number || '-',
-            payment.supplier_invoice_date ? format(new Date(payment.supplier_invoice_date), "dd/MM/yyyy") : '-',
-            payment.amount.toFixed(2),
-            payment.payment_mode
-          ]),
-          ['TOTAL', '', '', summaryData.totals.supplier_payments_total.toFixed(2), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Expense Entries (only if has data)
-    if (summaryData.expense_entries && summaryData.expense_entries.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Expense Entries', 14, yPosition);
-      yPosition += 5;
-
-      autoTable(doc, {
-        head: [['Supplier Invoice No', 'Supplier Name', 'Expense Name', 'Amount', 'Payment Mode']],
-        body: [
-          ...summaryData.expense_entries.map(expense => [
-            expense.invoice_number || '-',
-            expense.supplier_name,
-            expense.expense_name,
-            expense.amount.toFixed(2),
-            expense.payment_mode
-          ]),
-          ['TOTAL', '', '', summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Banking Records (only if has data)
-    if (summaryData.banking_records && summaryData.banking_records.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Banking Records', 14, yPosition);
-      yPosition += 5;
-
-      autoTable(doc, {
-        head: [['Date', 'Remarks', 'Payment Type', 'Amount', 'Details']],
-        body: [
-          ...summaryData.banking_records.map(record => [
-            record.date ? format(new Date(record.date), "dd/MM/yyyy") : "N/A",
-            record.remarks,
-            record.payment_type,
-            record.amount.toFixed(2),
-            record.bag_details.length > 0
-              ? record.bag_details.map(bag => `Bag: ${bag.bag_number}`).join(', ')
-              : `${record.paying_number ? `Pay In: ${record.paying_number}` : ''}${record.cheque_number ? ` | Cheque: ${record.cheque_number}` : ''}`
-          ]),
-          ['TOTAL', '', '', summaryData.totals.banking_total.toFixed(2), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Get current Y position after banking records
-    yPosition = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : yPosition;
-
-    // Daily Summary Totals (always included) - Same page as banking records
-    doc.setFontSize(12);
-    doc.text('Daily Summary Totals', 14, yPosition);
-    yPosition += 5;
-
-    const totalsData = [
-      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
-      ['Account Paid Cash(Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
-    ];
-
-    autoTable(doc, {
-      body: totalsData,
-      startY: yPosition,
-      styles: { fontSize: 10, cellPadding: 3 },
-      columnStyles: {
-        0: { fontStyle: 'bold' },
-        1: { fontStyle: 'bold', halign: 'right' }
-      }
-    });
-
-    // Add Total Banking as a separate, bigger and bolder row
-    yPosition = (doc as any).lastAutoTable.finalY + 10;
-
-    autoTable(doc, {
-      body: [['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]],
-      startY: yPosition,
-      styles: {
-        fontSize: 14,
-        cellPadding: 5,
-        fontStyle: 'bold',
-        fillColor: [173, 216, 230], // Light blue background
-        textColor: [0, 0, 0] // Black text
-      },
-      columnStyles: {
-        0: { fontStyle: 'bold', fontSize: 14 },
-        1: { fontStyle: 'bold', halign: 'right', fontSize: 14 }
-      }
-    });
-
-    // Stock Check (only if has data) - NEW PAGE
-    if (stockData && stockData.length > 0) {
-      doc.addPage();
-      yPosition = 20;
-
-      // Add company details header
-      if (companyDetails) {
-        doc.setFontSize(16);
-        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-        yPosition += 8;
-
-        doc.setFontSize(10);
-        if (companyDetails.email) {
-          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        if (companyDetails.bankDetails) {
-          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        yPosition += 5;
-      }
-
-      doc.setFontSize(14);
-      doc.text('STOCK CHECK', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-      doc.setFontSize(10);
-      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Filter stock data to only include items with non-zero values
-      const filteredStockData = stockData.filter((item: StockItem) =>
-        item.os !== 0 ||
-        item.ns !== 0 ||
-        item.sales !== 0 ||
-        item.crtn !== 0 ||
-        item.dmps !== 0 ||
-        item.srtn !== 0 ||
-        item.stock !== 0 ||
-        item.clStock !== 0
-      );
-
-      const stockTotals = {
-        os: filteredStockData.reduce((sum, item) => sum + item.os, 0),
-        ns: filteredStockData.reduce((sum, item) => sum + item.ns, 0),
-        sales: filteredStockData.reduce((sum, item) => sum + item.sales, 0),
-        crtn: filteredStockData.reduce((sum, item) => sum + item.crtn, 0),
-        dmps: filteredStockData.reduce((sum, item) => sum + item.dmps, 0),
-        srtn: filteredStockData.reduce((sum, item) => sum + item.srtn, 0),
-        stock: filteredStockData.reduce((sum, item) => sum + item.stock, 0),
-        clStock: filteredStockData.reduce((sum, item) => sum + item.clStock, 0)
-      };
-
-      autoTable(doc, {
-        head: [['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result']],
-        body: [
-          ...filteredStockData.map((item: StockItem) => [
-            item.slNo,
-            item.productDescription,
-            formatQuantity(item.os),
-            formatQuantity(item.ns),
-            formatQuantity(item.sales),
-            formatQuantity(item.crtn),
-            formatQuantity(item.dmps),
-            formatQuantity(item.srtn),
-            formatQuantity(item.stock),
-            formatQuantity(item.clStock),
-            item.result
-          ]),
-          ['TOTAL', '', formatQuantity(stockTotals.os), formatQuantity(stockTotals.ns), formatQuantity(stockTotals.sales), formatQuantity(stockTotals.crtn), formatQuantity(stockTotals.dmps), formatQuantity(stockTotals.srtn), formatQuantity(stockTotals.stock), formatQuantity(stockTotals.clStock), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 15 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 15 },
-          3: { cellWidth: 15 },
-          4: { cellWidth: 15 },
-          5: { cellWidth: 15 },
-          6: { cellWidth: 15 },
-          7: { cellWidth: 15 },
-          8: { cellWidth: 15 },
-          9: { cellWidth: 15 },
-          10: { cellWidth: 15 }
-        }
-      });
-    }
-
-    // Product Purchase Full View (only if has data) - NEW PAGE
-    if (productPurchaseData && productPurchaseData.length > 0) {
-      doc.addPage();
-      yPosition = 20;
-
-      // Add company details header
-      if (companyDetails) {
-        doc.setFontSize(16);
-        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-        yPosition += 8;
-
-        doc.setFontSize(10);
-        if (companyDetails.email) {
-          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        if (companyDetails.bankDetails) {
-          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        yPosition += 5;
-      }
-
-      doc.setFontSize(14);
-      doc.text('PRODUCT PURCHASE FULL VIEW', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-      doc.setFontSize(10);
-      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Process data for grouped display
-      const processedData: any[] = [];
-      const displayData = Array.isArray(productPurchaseData) ? productPurchaseData : [];
-
-      displayData.forEach((row, index) => {
-        if (row.isHeader) {
-          processedData.push([
-            row.date, row.supplier, row.invNo,
-            '', '', '', '', ''
-          ]);
-        } else if (row.isTotal) {
-          processedData.push([
-            '', '', '', row.product, formatQuantity(row.quantity),
-            '', Number(row.total).toFixed(2)
-          ]);
-          if (index < displayData.length - 1) {
-            processedData.push(['', '', '', '', '', '', '']);
-          }
-        } else {
-          processedData.push([
-            '', '', row.invNo, row.product, formatQuantity(row.quantity),
-            Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
-          ]);
-        }
-      });
-
-      autoTable(doc, {
-        head: [['Date', 'Supplier', 'Inv.No', 'Product', 'Quantity', 'Unit Price', 'Total']],
-        body: processedData,
-        startY: yPosition,
-        styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 35 },
-          4: { cellWidth: 20 },
-          5: { cellWidth: 25 },
-          6: { cellWidth: 25 },
-        },
-        didParseCell: function (data) {
-          if (data.row.index < processedData.length) {
-            const rowData = processedData[data.row.index];
-            if (rowData[0] && rowData[1] && !rowData[3]) {
-              data.cell.styles.fontStyle = 'bold';
-            }
-            if (rowData[3] && rowData[6] && !rowData[0] && !rowData[1]) {
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-        }
-      });
-    }
-
-    // Add footer text "stand 100" on bottom right
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(8);
-    doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
-
+    const doc = await buildPDF();
+    if (!doc) return;
     doc.save(`daily-summary-${format(selectedDate, "yyyy-MM-dd")}.pdf`);
-
-    toast({
-      title: "Success",
-      description: "Clean PDF generated successfully (empty tables excluded)",
-    });
+    toast({ title: "Success", description: "PDF downloaded successfully" });
   };
 
-  // Generate PDF blob for email (complete daily summary)
-  const generatePDFBlob = () => {
-    if (!selectedDate || !summaryData) {
-      return null;
-    }
-
-    const doc = new jsPDF();
-    let yPosition = 20;
-
-    // Add company details header
-    if (companyDetails) {
-      doc.setFontSize(16);
-      doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-
-      doc.setFontSize(10);
-      if (companyDetails.email) {
-        doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      if (companyDetails.bankDetails) {
-        doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-        yPosition += 5;
-      }
-      yPosition += 5;
-    }
-
-    // Add report title
-    doc.setFontSize(14);
-    doc.text('DAILY SUMMARY REPORT', 105, yPosition, { align: 'center' });
-    yPosition += 8;
-    doc.setFontSize(10);
-    doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-    yPosition += 15;
-
-    // Daily Sales Summary (always included)
-    doc.setFontSize(12);
-    doc.text('Daily Sales Summary', 14, yPosition);
-    yPosition += 5;
-
-    autoTable(doc, {
-      head: [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
-      body: [
-        ...summaryData.sales_summary.map(sale => [
-          getDisplayCustomerName(sale),
-          sale.invoice_no || '-',
-          sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-',
-          sale.card_paid > 0 ? sale.card_paid.toFixed(2) : '-',
-          (sale.bank_transfer || 0) > 0 ? (sale.bank_transfer || 0).toFixed(2) : '-',
-          (sale.cheque || 0) > 0 ? (sale.cheque || 0).toFixed(2) : '-',
-          sale.account_sales > 0 ? sale.account_sales.toFixed(2) : '-',
-          sale.account_credits > 0 ? sale.account_credits.toFixed(2) : '-'
-        ]),
-        ['TOTALS', '', summaryData.totals.cash_sales.toFixed(2), summaryData.totals.card_sales.toFixed(2), (summaryData.totals.bank_transfer_sales || 0).toFixed(2), (summaryData.totals.cheque_sales || 0).toFixed(2), summaryData.totals.account_sales.toFixed(2), (summaryData.totals.account_credits || 0).toFixed(2)]
-      ],
-      startY: yPosition,
-      styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-    });
-
-    yPosition = (doc as any).lastAutoTable.finalY + 15;
-
-    // Customer Payments (only if has data)
-    if (summaryData.customer_payments && summaryData.customer_payments.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Customer Payments', 14, yPosition);
-      yPosition += 5;
-
-      // Sort customer payments by payment_id
-      const sortedPayments = summaryData.customer_payments.sort((a, b) => parseInt(a.payment_id) - parseInt(b.payment_id));
-
-      autoTable(doc, {
-        head: [['Customer Name', 'Payment ID', 'Cash Amount', 'Card Amount', 'Bank Transfer', 'Cheque', 'Total Amount']],
-        body: [
-          ...sortedPayments.map(payment => [
-            payment.customer_name,
-            payment.payment_id,
-            payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-',
-            payment.card_amount > 0 ? payment.card_amount.toFixed(2) : '-',
-            payment.bank_transfer_amount > 0 ? payment.bank_transfer_amount.toFixed(2) : '-',
-            payment.cheque_amount > 0 ? payment.cheque_amount.toFixed(2) : '-',
-            payment.total_amount.toFixed(2)
-          ]),
-          ['TOTAL', '',
-            summaryData.customer_payments.reduce((sum, p) => sum + p.cash_amount, 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + (p.bank_transfer_amount || 0), 0).toFixed(2),
-            summaryData.customer_payments.reduce((sum, p) => sum + (p.cheque_amount || 0), 0).toFixed(2),
-            summaryData.totals.customer_payments_total.toFixed(2)
-          ]
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Supplier Payments (only if has data)
-    if (summaryData.supplier_payments && summaryData.supplier_payments.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Supplier Payments', 14, yPosition);
-      yPosition += 5;
-
-      autoTable(doc, {
-        head: [['Supplier Name', 'Supplier Invoice No', 'Supplier Invoice Date', 'Amount', 'Payment Mode']],
-        body: [
-          ...summaryData.supplier_payments.map(payment => [
-            payment.supplier_name,
-            payment.supplier_invoice_number || '-',
-            payment.supplier_invoice_date ? format(new Date(payment.supplier_invoice_date), "dd/MM/yyyy") : '-',
-            payment.amount.toFixed(2),
-            payment.payment_mode
-          ]),
-          ['TOTAL', '', '', summaryData.totals.supplier_payments_total.toFixed(2), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Expense Entries (only if has data)
-    if (summaryData.expense_entries && summaryData.expense_entries.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Expense Entries', 14, yPosition);
-      yPosition += 5;
-
-      autoTable(doc, {
-        head: [['Supplier Invoice No', 'Supplier Name', 'Expense Name', 'Amount', 'Payment Mode']],
-        body: [
-          ...summaryData.expense_entries.map(expense => [
-            expense.invoice_number || '-',
-            expense.supplier_name,
-            expense.expense_name,
-            expense.amount.toFixed(2),
-            expense.payment_mode
-          ]),
-          ['TOTAL', '', '', summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Banking Records (only if has data)
-    if (summaryData.banking_records && summaryData.banking_records.length > 0) {
-      doc.setFontSize(12);
-      doc.text('Banking Records', 14, yPosition);
-      yPosition += 5;
-
-      autoTable(doc, {
-        head: [['Date', 'Remarks', 'Payment Type', 'Amount', 'Details']],
-        body: [
-          ...summaryData.banking_records.map(record => [
-            record.date ? format(new Date(record.date), "dd/MM/yyyy") : "N/A",
-            record.remarks,
-            record.payment_type,
-            record.amount.toFixed(2),
-            record.bag_details.length > 0
-              ? record.bag_details.map(bag => `Bag: ${bag.bag_number}`).join(', ')
-              : `${record.paying_number ? `Pay In: ${record.paying_number}` : ''}${record.cheque_number ? ` | Cheque: ${record.cheque_number}` : ''}`
-          ]),
-          ['TOTAL', '', '', summaryData.totals.banking_total.toFixed(2), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' }
-      });
-
-      yPosition = (doc as any).lastAutoTable.finalY + 15;
-    }
-
-    // Get current Y position after banking records
-    yPosition = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 15 : yPosition;
-
-    // Daily Summary Totals (always included) - Same page as banking records
-    doc.setFontSize(12);
-    doc.text('Daily Summary Totals', 14, yPosition);
-    yPosition += 5;
-
-    const totalsData = [
-      ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
-      ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
-      ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
-      ['Account Paid Cash(Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
-      ['Account Payment/Customer Card Payment (Backdate)', `£${summaryData.customer_payments.reduce((sum, p) => sum + p.card_amount, 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
-      ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
-      ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`]
-    ];
-
-    autoTable(doc, {
-      body: totalsData,
-      startY: yPosition,
-      styles: { fontSize: 10, cellPadding: 3 },
-      columnStyles: {
-        0: { fontStyle: 'bold' },
-        1: { fontStyle: 'bold', halign: 'right' }
-      }
-    });
-
-    // Add Total Banking as a separate, bigger and bolder row
-    yPosition = (doc as any).lastAutoTable.finalY + 10;
-
-    autoTable(doc, {
-      body: [['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`]],
-      startY: yPosition,
-      styles: {
-        fontSize: 14,
-        cellPadding: 5,
-        fontStyle: 'bold',
-        fillColor: [173, 216, 230], // Light blue background
-        textColor: [0, 0, 0] // Black text
-      },
-      columnStyles: {
-        0: { fontStyle: 'bold', fontSize: 14 },
-        1: { fontStyle: 'bold', halign: 'right', fontSize: 14 }
-      }
-    });
-
-    // Stock Check (only if has data) - NEW PAGE
-    if (stockData && stockData.length > 0) {
-      doc.addPage();
-      yPosition = 20;
-
-      // Add company details header
-      if (companyDetails) {
-        doc.setFontSize(16);
-        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-        yPosition += 8;
-
-        doc.setFontSize(10);
-        if (companyDetails.email) {
-          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        if (companyDetails.bankDetails) {
-          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        yPosition += 5;
-      }
-
-      doc.setFontSize(14);
-      doc.text('STOCK CHECK', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-      doc.setFontSize(10);
-      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Filter stock data to only include items with non-zero values
-      const filteredStockData = stockData.filter((item: StockItem) =>
-        item.os !== 0 ||
-        item.ns !== 0 ||
-        item.sales !== 0 ||
-        item.crtn !== 0 ||
-        item.dmps !== 0 ||
-        item.srtn !== 0 ||
-        item.stock !== 0 ||
-        item.clStock !== 0
-      );
-
-      const stockTotals = {
-        os: filteredStockData.reduce((sum, item) => sum + item.os, 0),
-        ns: filteredStockData.reduce((sum, item) => sum + item.ns, 0),
-        sales: filteredStockData.reduce((sum, item) => sum + item.sales, 0),
-        crtn: filteredStockData.reduce((sum, item) => sum + item.crtn, 0),
-        dmps: filteredStockData.reduce((sum, item) => sum + item.dmps, 0),
-        srtn: filteredStockData.reduce((sum, item) => sum + item.srtn, 0),
-        stock: filteredStockData.reduce((sum, item) => sum + item.stock, 0),
-        clStock: filteredStockData.reduce((sum, item) => sum + item.clStock, 0)
-      };
-
-      autoTable(doc, {
-        head: [['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result']],
-        body: [
-          ...filteredStockData.map((item: StockItem) => [
-            item.slNo,
-            item.productDescription,
-            formatQuantity(item.os),
-            formatQuantity(item.ns),
-            formatQuantity(item.sales),
-            formatQuantity(item.crtn),
-            formatQuantity(item.dmps),
-            formatQuantity(item.srtn),
-            formatQuantity(item.stock),
-            formatQuantity(item.clStock),
-            item.result
-          ]),
-          ['TOTAL', '', formatQuantity(stockTotals.os), formatQuantity(stockTotals.ns), formatQuantity(stockTotals.sales), formatQuantity(stockTotals.crtn), formatQuantity(stockTotals.dmps), formatQuantity(stockTotals.srtn), formatQuantity(stockTotals.stock), formatQuantity(stockTotals.clStock), '']
-        ],
-        startY: yPosition,
-        styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 15 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 15 },
-          3: { cellWidth: 15 },
-          4: { cellWidth: 15 },
-          5: { cellWidth: 15 },
-          6: { cellWidth: 15 },
-          7: { cellWidth: 15 },
-          8: { cellWidth: 15 },
-          9: { cellWidth: 15 },
-          10: { cellWidth: 15 }
-        }
-      });
-    }
-
-    // Product Purchase Full View (only if has data) - NEW PAGE
-    if (productPurchaseData && productPurchaseData.length > 0) {
-      doc.addPage();
-      yPosition = 20;
-
-      // Add company details header
-      if (companyDetails) {
-        doc.setFontSize(16);
-        doc.text(companyDetails.companyName || 'Company Name', 105, yPosition, { align: 'center' });
-        yPosition += 8;
-
-        doc.setFontSize(10);
-        if (companyDetails.email) {
-          doc.text(companyDetails.email, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        if (companyDetails.bankDetails) {
-          doc.text(companyDetails.bankDetails, 105, yPosition, { align: 'center' });
-          yPosition += 5;
-        }
-        yPosition += 5;
-      }
-
-      doc.setFontSize(14);
-      doc.text('PRODUCT PURCHASE FULL VIEW', 105, yPosition, { align: 'center' });
-      yPosition += 8;
-      doc.setFontSize(10);
-      doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 105, yPosition, { align: 'center' });
-      yPosition += 15;
-
-      // Process data for grouped display
-      const processedData: any[] = [];
-      const displayData = Array.isArray(productPurchaseData) ? productPurchaseData : [];
-
-      displayData.forEach((row, index) => {
-        if (row.isHeader) {
-          processedData.push([
-            row.date, row.supplier, row.invNo,
-            '', '', '', '', ''
-          ]);
-        } else if (row.isTotal) {
-          processedData.push([
-            '', '', '', row.product, formatQuantity(row.quantity),
-            '', Number(row.total).toFixed(2)
-          ]);
-          if (index < displayData.length - 1) {
-            processedData.push(['', '', '', '', '', '', '']);
-          }
-        } else {
-          processedData.push([
-            '', '', row.invNo, row.product, formatQuantity(row.quantity),
-            Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
-          ]);
-        }
-      });
-
-      autoTable(doc, {
-        head: [['Date', 'Supplier', 'Inv.No', 'Product', 'Quantity', 'Unit Price', 'Total']],
-        body: processedData,
-        startY: yPosition,
-        styles: { fontSize: 7, cellPadding: 1 },
-        headStyles: { fillColor: [66, 139, 202], textColor: 255, fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 25 },
-          1: { cellWidth: 35 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 35 },
-          4: { cellWidth: 20 },
-          5: { cellWidth: 25 },
-          6: { cellWidth: 25 },
-        },
-        didParseCell: function (data) {
-          if (data.row.index < processedData.length) {
-            const rowData = processedData[data.row.index];
-            if (rowData[0] && rowData[1] && !rowData[3]) {
-              data.cell.styles.fontStyle = 'bold';
-            }
-            if (rowData[3] && rowData[6] && !rowData[0] && !rowData[1]) {
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-        }
-      });
-    }
-
-    // Add footer text "stand 100" on bottom right
-    const pageHeight = doc.internal.pageSize.height;
-    const pageWidth = doc.internal.pageSize.width;
-    doc.setFontSize(8);
-    doc.text('stand 100', pageWidth - 30, pageHeight - 10, { align: 'right' });
-
-    return doc.output('blob');
+  // Generate PDF blob for email
+  const generatePDFBlob = async (): Promise<Blob | null> => {
+    const doc = await buildPDF();
+    return doc ? doc.output('blob') : null;
   };
-
   // Email PDF handler
   const handleEmailPDF = async () => {
     if (!emails.trim()) {
@@ -1307,7 +825,7 @@ export default function DailySummary() {
 
     try {
       // Generate PDF blob
-      const pdfBlob = generatePDFBlob();
+      const pdfBlob = await generatePDFBlob();
 
       if (!pdfBlob) {
         throw new Error('Failed to generate PDF');
@@ -1949,88 +1467,11 @@ export default function DailySummary() {
                 </CardContent>
               </Card>
 
-              {/* Stock Check */}
-              <Card className={`${filteredStockData && filteredStockData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
-                <CardHeader>
-                  <CardTitle>Stock Check - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-gray-50">
-                          <TableHead className="font-semibold border w-16">Sl.No</TableHead>
-                          <TableHead className="font-semibold border min-w-48">Product Description</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">O.S</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">N.S</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">Sales</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">C.RTN</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">Dmps</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">S.RTN</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">Stock</TableHead>
-                          <TableHead className="font-semibold border text-center w-20">Cl.Stock</TableHead>
-                          <TableHead className="font-semibold border text-center w-16">Result</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredStockData.map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell className="border w-16">{item.slNo}</TableCell>
-                            <TableCell className="border min-w-48">{item.productDescription}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(item.os)}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(item.ns)}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(item.sales)}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(item.crtn)}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(item.dmps)}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(item.srtn)}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(item.stock)}</TableCell>
-                            <TableCell className="border text-center w-20">{formatQuantity(item.clStock)}</TableCell>
-                            <TableCell className="border text-center">
-                              {item.result === "✓" ? (
-                                <span className="text-green-600">✓</span>
-                              ) : (
-                                <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
-                                  {item.result}
-                                </span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        {filteredStockData.length === 0 && (
-                          <TableRow>
-                            <TableCell colSpan={11} className="border text-center text-gray-500 py-4">
-                              No stock check data found (entries with all zero values are hidden)
-                            </TableCell>
-                          </TableRow>
-                        )}
-                        {filteredStockData.length > 0 && (
-                          <TableRow className="bg-gray-100 font-semibold">
-                            <TableCell className="border w-16"></TableCell>
-                            <TableCell className="border min-w-48">TOTAL</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.os, 0))}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.ns, 0))}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.sales, 0))}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.crtn, 0))}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.dmps, 0))}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.srtn, 0))}</TableCell>
-                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.stock, 0))}</TableCell>
-                            <TableCell className="border text-center w-20">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.clStock, 0))}</TableCell>
-                            <TableCell className="border w-16"></TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-
               {/* Product Purchase Full View */}
-              <Card className={`${productPurchaseData && productPurchaseData.length === 0 ? "print:hidden" : ""} print:page-break-before-always`}>
-                <CardHeader>
-                  <CardTitle>Product Purchase Full View - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
+              <div className={`${productPurchaseData && productPurchaseData.length === 0 ? "print:hidden" : ""} print-page-break`}>
+                <div className="print-section-inner">
+                  <h2 className="text-xl font-bold mb-3 print-section-title">Product Purchase Full View - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</h2>
+                  <div className="overflow-x-auto border rounded-lg">
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50">
@@ -2102,8 +1543,81 @@ export default function DailySummary() {
                       </TableBody>
                     </Table>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
+
+              {/* Stock Check */}
+              <div className={`${filteredStockData && filteredStockData.length === 0 ? "print:hidden" : ""} print-page-break`}>
+                <div className="print-section-inner">
+                  <h2 className="text-xl font-bold mb-3 print-section-title">Stock Check - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</h2>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold border w-16">Sl.No</TableHead>
+                          <TableHead className="font-semibold border min-w-48">Product Description</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">O.S</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">N.S</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Sales</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">C.RTN</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Dmps</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">S.RTN</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Stock</TableHead>
+                          <TableHead className="font-semibold border text-center w-20">Cl.Stock</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Result</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredStockData.map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="border w-16">{item.slNo}</TableCell>
+                            <TableCell className="border min-w-48">{item.productDescription}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.os)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.ns)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.sales)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.crtn)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.dmps)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.srtn)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.stock)}</TableCell>
+                            <TableCell className="border text-center w-20">{formatQuantity(item.clStock)}</TableCell>
+                            <TableCell className="border text-center">
+                              {item.result === "✓" ? (
+                                <span className="text-green-600">✓</span>
+                              ) : (
+                                <span className={item.status === 'short' ? "text-red-600" : "text-orange-600"}>
+                                  {item.result}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {filteredStockData.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={11} className="border text-center text-gray-500 py-4">
+                              No stock check data found (entries with all zero values are hidden)
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {filteredStockData.length > 0 && (
+                          <TableRow className="bg-gray-100 font-semibold">
+                            <TableCell className="border w-16"></TableCell>
+                            <TableCell className="border min-w-48">TOTAL</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.os, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.ns, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.sales, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.crtn, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.dmps, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.srtn, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.stock, 0))}</TableCell>
+                            <TableCell className="border text-center w-20">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.clStock, 0))}</TableCell>
+                            <TableCell className="border w-16"></TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : null}
         </div>

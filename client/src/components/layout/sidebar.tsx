@@ -55,8 +55,6 @@ const menuSections: MenuSection[] = [
       { title: "Till/Float(C/F)", path: "/data-entry/cash-cf" },
       { title: "Banking", path: "/data-entry/banking" },
       { title: "Expenses", path: "/data-entry/expenses" },
-      { title: "On A/c Customer", path: "/data-entry/on-acc-customer" },
-      { title: "On A/c Supplier", path: "/data-entry/on-acc-supplier" },
     ],
   },
   {

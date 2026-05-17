@@ -31,6 +31,8 @@ interface BackendSalePayload {
   payment_status: string;
   subtotal: number;
   porterage: number;
+  porterage_type: string;
+  porterage_rate: number;
   vat_rate: number;
   vat_amount: number;
   total_amount: number;
@@ -340,43 +342,34 @@ const SalesInvoice = () => {
           setCurrentSale(data);
           setSaleItems(data.items || []);
           setCustomerId(data.customerId?.toString() || "");
+
+          // Lock invoice if payment has been made — only admin can edit paid invoices
+          const isPaid = data.paymentStatus === 'paid' || data.paymentStatus === 'overpaid';
+          if (isPaid && currentUser?.userType !== 'admin') {
+            setIsReadOnly(true);
+          }
           setVehicleDetails(data.vehicleDetails || "");
           setGateNumber(data.gateNumber || "");
           setNotes(data.notes || "");
           // Set the editable date when loading the sale
           setEditableDate(data.date ? parseISO(data.date) : new Date());
 
-          // Set porterage settings based on loaded invoice data
+          // Set porterage settings based on stored porterage_type and porterage_rate
           const hasPorterage = data.porterage && data.porterage > 0;
-          setApplyPorterage(hasPorterage);
+          setApplyPorterage(!!hasPorterage);
 
           if (hasPorterage) {
-            const totalQuantity = (data.items || []).reduce((sum: number, item: any) => sum + (item.quantity || 0), 0);
-
-            // Try to determine if this was a fixed or per-unit porterage
-            // If porterage amount doesn't divide evenly by quantity, it's likely fixed
-            const perUnitPorterage = totalQuantity > 0 ? (data.porterage / totalQuantity) : 0;
-            const isLikelyFixed = totalQuantity > 0 && (data.porterage % totalQuantity !== 0 || totalQuantity === 1);
-
-            if (isLikelyFixed) {
-              // Treat as fixed porterage
-              setPorterageType('fixed');
-              setFixedPorterageAmount(data.porterage.toFixed(2));
-              setPorterageDetails({
-                withPorterage: true,
-                porterageCharge: '0.00' // Reset per-unit charge
-              });
+            const storedType = data.porterageType || 'per_unit';
+            const storedRate = data.porterageRate || 0;
+            setPorterageType(storedType);
+            if (storedType === 'fixed') {
+              setFixedPorterageAmount(storedRate.toFixed(2));
+              setPorterageDetails({ withPorterage: true, porterageCharge: '0.00' });
             } else {
-              // Treat as per-unit porterage
-              setPorterageType('per_unit');
-              setPorterageDetails({
-                withPorterage: true,
-                porterageCharge: perUnitPorterage.toFixed(4)
-              });
-              setFixedPorterageAmount('0.00'); // Reset fixed amount
+              setPorterageDetails({ withPorterage: true, porterageCharge: storedRate.toFixed(4) });
+              setFixedPorterageAmount('0.00');
             }
           } else {
-            // If no porterage or porterage is 0, ensure it's disabled
             setApplyPorterage(false);
             setPorterageType('per_unit');
             setFixedPorterageAmount('0.00');
@@ -522,6 +515,13 @@ const SalesInvoice = () => {
   };
 
   // Keyboard navigation for product dropdown with auto-focus to quantity
+  // Helper: get stock for a product regardless of which mode the user is in
+  // Searches both regular and non stock to find the actual entry
+  const getStockForProduct = (productId: number): number => {
+    const item = currentStock.find(s => s.id === productId);
+    if (!item) return 0;
+    return getCurrentStock(productId, item.productType === 'regular' ? 'regular' : 'non');
+  };
   const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (!showProductDropdown || productOptions.length === 0) {
       // If no dropdown is showing and user presses Enter, move to notes if available, otherwise quantity
@@ -550,7 +550,7 @@ const SalesInvoice = () => {
       if (highlightedProduct >= 0 && highlightedProduct < productOptions.length) {
         const p = productOptions[highlightedProduct];
         setSelectedProductId(p.id.toString());
-        setSelectedProductType((p as any).productType === 'regular' ? 'regular' : 'non_product');
+        // Do NOT override selectedProductType — keep the user's radio button choice
         setProductSearch(`${p.productCode} - ${p.description}`);
         setShowProductDropdown(false);
         // Auto-focus to notes input if available, otherwise quantity
@@ -603,13 +603,17 @@ const SalesInvoice = () => {
   // When productId changes, update productSearch only (no auto-fill price)
   useEffect(() => {
     if (!selectedProductId) return;
-    const list = selectedProductType === "regular" ? regularProducts || [] : nonProducts || [];
-    const p = list.find((x: any) => x.id.toString() === selectedProductId);
+    // Search both lists regardless of selectedProductType to avoid switching tabs
+    const allProducts = [
+      ...(regularProducts || []),
+      ...(nonProducts || []),
+    ];
+    const p = allProducts.find((x: any) => x.id.toString() === selectedProductId);
     if (p) {
       setProductSearch(`${p.productCode} - ${p.description}`);
       // Remove auto-fill price - let user enter manually
     }
-  }, [selectedProductId, selectedProductType, regularProducts, nonProducts]);
+  }, [selectedProductId, regularProducts, nonProducts]);
 
   // Extract from URL for initial values and pre-populate customer details
   // useEffect(() => {
@@ -784,6 +788,11 @@ const SalesInvoice = () => {
       setSaleItems(data.items || []);
       // Force refresh stock data to show correct levels
       queryClient.refetchQueries({ queryKey: ["currentStock"] });
+      // Re-check payment lock after update
+      const isPaidAfterUpdate = data.paymentStatus === 'paid' || data.paymentStatus === 'overpaid';
+      if (isPaidAfterUpdate && currentUser?.userType !== 'admin') {
+        setIsReadOnly(true);
+      }
     },
     onError: (error: any) => {
       toast({
@@ -876,18 +885,16 @@ const SalesInvoice = () => {
 
     const totalRequestedQuantity = existingQuantity + Number(itemQuantity);
 
-    // For regular products, block sales if insufficient stock (only positive stock products should be in regular section)
+    // Block insufficient stock ONLY in regular product mode (non-product mode allows negative stock)
     if (selectedProductType === 'regular' && totalRequestedQuantity > actualStockLevel) {
       const availableStock = getCurrentStock(parseInt(selectedProductId), selectedProductType);
       toast({
         title: "Insufficient Stock",
-        description: `Only ${availableStock} units available in stock. You already have ${existingQuantity} in this invoice. Use Non-Products section for negative stock sales.`,
+        description: `Only ${availableStock} units available in stock. You already have ${existingQuantity} in this invoice. Switch to Non-Products to sell beyond available stock.`,
         variant: "destructive",
       });
-      return; // Block the sale for regular products
+      return;
     }
-    // For non_product section, allow adding even if out of stock (stock can go negative)
-    // This is where users can sell products with zero or negative stock
 
     let product: RegularProduct | NonProduct | undefined;
     let isRegular = false;
@@ -1009,6 +1016,10 @@ const SalesInvoice = () => {
         subtotal,
         total_amount: totalAmount,
         porterage: porterage,
+        porterage_type: porterageType,
+        porterage_rate: porterageType === 'fixed'
+          ? parseFloat(fixedPorterageAmount) || 0
+          : parseFloat(porterageDetails.porterageCharge) || 0,
         vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
         vat_amount: vatAmount,
         vehicle_details: vehicleDetails || null,
@@ -1110,6 +1121,10 @@ const SalesInvoice = () => {
         subtotal,
         total_amount: totalAmount,
         porterage: porterage,
+        porterage_type: porterageType,
+        porterage_rate: porterageType === 'fixed'
+          ? parseFloat(fixedPorterageAmount) || 0
+          : parseFloat(porterageDetails.porterageCharge) || 0,
         vat_rate: taxDetails.withTax ? parseFloat(taxDetails.taxPercentage) : 0,
         vat_amount: vatAmount,
         vehicle_details: vehicleDetails || null,
@@ -1232,7 +1247,7 @@ const SalesInvoice = () => {
         porterage = parseFloat(fixedPorterageAmount) || 0;
       } else {
         // Per unit calculation (original behavior)
-        const totalQuantity = saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+        const totalQuantity = saleItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
         porterage = parseFloat(porterageDetails.porterageCharge) * totalQuantity;
       }
     }
@@ -2746,7 +2761,7 @@ const SalesInvoice = () => {
                           className={`p-3 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
                           onMouseDown={() => {
                             setSelectedProductId(p.id.toString());
-                            setSelectedProductType((p as any).productType === 'regular' ? 'regular' : 'non_product');
+                            // Do NOT override selectedProductType — keep the user's radio button choice
                             setProductSearch(`${p.productCode} - ${p.description}`);
                             setShowProductDropdown(false);
                             setTimeout(() => {
@@ -2780,7 +2795,7 @@ const SalesInvoice = () => {
                   )}
                   {/* Show current stock below input if a product is selected */}
                   {selectedProductId && (() => {
-                    const stock = getCurrentStock(Number(selectedProductId), selectedProductType);
+                    const stock = getStockForProduct(Number(selectedProductId));
                     return (
                       <div className={`text-xs mt-1 ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-600'}`}>
                         Current Stock: {stock}
@@ -3094,7 +3109,7 @@ const SalesInvoice = () => {
                                 className={`p-2 cursor-pointer flex items-center ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
                                 onMouseDown={() => {
                                   setSelectedProductId(p.id.toString());
-                                  setSelectedProductType((p as any).productType === 'regular' ? 'regular' : 'non_product');
+                                  // Do NOT override selectedProductType — keep the user's radio button choice
                                   setProductSearch(`${p.productCode} - ${p.description}`);
                                   setShowProductDropdown(false);
                                   // Auto-focus to notes input if available, otherwise quantity
@@ -3125,7 +3140,7 @@ const SalesInvoice = () => {
                         )}
                         {/* Show current stock below input if a product is selected */}
                         {selectedProductId && (() => {
-                          const stock = getCurrentStock(Number(selectedProductId), selectedProductType);
+                          const stock = getStockForProduct(Number(selectedProductId));
                           return (
                             <div className={`text-xs mt-1 ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-600'}`}>
                               Current Stock: {stock}
@@ -3419,7 +3434,7 @@ const SalesInvoice = () => {
                     <div className="flex justify-between items-center">
                       <span>
                         {porterageType === 'per_unit'
-                          ? `Porterage (${formatQuantity(saleItems.reduce((sum, item) => sum + (item.quantity || 0), 0))} × £${parseFloat(porterageDetails.porterageCharge).toFixed(2)}):`
+                          ? `Porterage (${formatQuantity(saleItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0))} × £${parseFloat(porterageDetails.porterageCharge).toFixed(2)}):`
                           : `Porterage (Fixed):`
                         }
                       </span>
