@@ -11287,21 +11287,22 @@ def daily_accounts_report():
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
-    def sum_payment(mode, sale_id_null=False):
+    def sum_payment(mode, on_account=False):
         query = db.session.query(func.sum(Payment.amount)).filter(
             Payment.payment_mode.ilike(mode),
             Payment.payment_date >= from_dt.date(),
-            Payment.payment_date <= to_dt.date()
+            Payment.payment_date < to_dt.date(),
+            or_(Payment.payment_source.is_(None), Payment.payment_source != 'daily_book_sales')
         )
-        if sale_id_null:
-            query = query.filter(Payment.sale_id == None)
+        if on_account:
+            query = query.filter(Payment.payment_type == 'on-account')
         else:
-            query = query.filter(Payment.sale_id != None)
-        return float(query.scalar() or 0)  # Convert Decimal to float here
+            query = query.filter(or_(Payment.payment_type != 'on-account', Payment.payment_type.is_(None)))
+        return float(query.scalar() or 0)
 
     # --- Receivables Cash ---
-    sales_cash = sum_payment('cash', sale_id_null=False)
-    on_account_cash = sum_payment('cash', sale_id_null=True)
+    sales_cash = sum_payment('cash', on_account=False)
+    on_account_cash = sum_payment('cash', on_account=True)
     
     # Get Cash Carry Forward (C/F) for the selected date
     cf = db.session.query(CashCarryForward).filter(
@@ -11309,26 +11310,22 @@ def daily_accounts_report():
     ).first()
     cf_amount = float(cf.pounds + cf.coins) if cf else 0  # Convert Decimal to float
     
-    # Account Cash should show the C/F amount for backdate payments
-    account_cash = cf_amount
-    
-    total_cash = sales_cash + account_cash + on_account_cash
+    total_cash = sales_cash + on_account_cash
     receivables_cash = [
         {"item": "Sales Cash", "amount": sales_cash},
-        {"item": "Account Cash", "amount": account_cash},
         {"item": "On Account Cash", "amount": on_account_cash},
         {"item": "TOTAL CASH", "amount": total_cash}
     ]
 
     # --- Receivables Others ---
-    cheque = sum_payment('cheque')
-    card = sum_payment('bank')  # Card payments are stored as 'bank' in the database
-    bank_transfer = sum_payment('bank_transfer')
-    others = sum_payment('others')
-    on_account_cheque = sum_payment('cheque', sale_id_null=True)
-    on_account_card = sum_payment('bank', sale_id_null=True)  # Card payments are stored as 'bank' in the database
-    on_account_bank = sum_payment('bank_transfer', sale_id_null=True)
-    on_account_others = sum_payment('others', sale_id_null=True)
+    cheque = sum_payment('cheque', on_account=False)
+    card = sum_payment('bank', on_account=False)
+    bank_transfer = sum_payment('bank_transfer', on_account=False)
+    others = sum_payment('others', on_account=False)
+    on_account_cheque = sum_payment('cheque', on_account=True)
+    on_account_card = sum_payment('bank', on_account=True)
+    on_account_bank = sum_payment('bank_transfer', on_account=True)
+    on_account_others = sum_payment('others', on_account=True)
     total_others = cheque + card + bank_transfer + others + on_account_cheque + on_account_card + on_account_bank + on_account_others
     receivables_others = [
         {"item": "Cheque", "amount": cheque},
@@ -11345,7 +11342,7 @@ def daily_accounts_report():
     # --- Banking ---
     banking_entries = db.session.query(BankingEntry).filter(
         BankingEntry.date >= from_dt.date(),
-        BankingEntry.date <= to_dt.date()
+        BankingEntry.date < to_dt.date()
     ).all()
     def sum_banking(mode):
         return sum(float(b.amount or 0) for b in banking_entries if b.payment_type and b.payment_type.lower() == mode)  # Convert Decimal to float
@@ -11365,36 +11362,36 @@ def daily_accounts_report():
     ]
 
     # --- Payables Cash ---
-    misc_expenses_cash = float(db.session.query(func.sum(ExpenseEntry.amount)).filter(  # Convert Decimal to float
+    misc_expenses_cash = float(db.session.query(func.sum(ExpenseEntry.amount)).filter(
         ExpenseEntry.payment_mode.ilike('cash'),
         ExpenseEntry.date >= from_dt.date(),
-        ExpenseEntry.date <= to_dt.date()
+        ExpenseEntry.date < to_dt.date()
     ).scalar() or 0)
-    supplier_payments_cash = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+    supplier_payments_cash = float(db.session.query(func.sum(SupplierPayment.amount)).filter(
         SupplierPayment.payment_mode.in_(['cash', 'CASH']),
         SupplierPayment.payment_date >= from_dt.date(),
-        SupplierPayment.payment_date <= to_dt.date()
+        SupplierPayment.payment_date < to_dt.date()
     ).scalar() or 0)
-    supplier_payments_card = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
-        SupplierPayment.payment_mode.in_(['bank', 'BANK', 'card', 'CARD']),  # Keep BANK for backward compatibility
+    supplier_payments_card = float(db.session.query(func.sum(SupplierPayment.amount)).filter(
+        SupplierPayment.payment_mode.in_(['bank', 'BANK', 'card', 'CARD']),
         SupplierPayment.payment_date >= from_dt.date(),
-        SupplierPayment.payment_date <= to_dt.date()
+        SupplierPayment.payment_date < to_dt.date()
     ).scalar() or 0)
-    supplier_payments_bank_transfer = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+    supplier_payments_bank_transfer = float(db.session.query(func.sum(SupplierPayment.amount)).filter(
         SupplierPayment.payment_mode.in_(['bank_transfer', 'BANK_TRANSFER']),
         SupplierPayment.payment_date >= from_dt.date(),
-        SupplierPayment.payment_date <= to_dt.date()
+        SupplierPayment.payment_date < to_dt.date()
     ).scalar() or 0)
-    supplier_payments_cheque = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+    supplier_payments_cheque = float(db.session.query(func.sum(SupplierPayment.amount)).filter(
         SupplierPayment.payment_mode.in_(['cheque', 'CHEQUE']),
         SupplierPayment.payment_date >= from_dt.date(),
-        SupplierPayment.payment_date <= to_dt.date()
+        SupplierPayment.payment_date < to_dt.date()
     ).scalar() or 0)
-    supplier_payments_onac = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+    supplier_payments_onac = float(db.session.query(func.sum(SupplierPayment.amount)).filter(
         SupplierPayment.payment_mode.in_(['cash', 'CASH']),
         SupplierPayment.purchase_invoice_id == None,
         SupplierPayment.payment_date >= from_dt.date(),
-        SupplierPayment.payment_date <= to_dt.date()
+        SupplierPayment.payment_date < to_dt.date()
     ).scalar() or 0)
     total_payables_cash = misc_expenses_cash + supplier_payments_cash + supplier_payments_card + supplier_payments_bank_transfer + supplier_payments_cheque + supplier_payments_onac
     payables_cash = [
@@ -11408,21 +11405,21 @@ def daily_accounts_report():
     ]
 
     # --- Payables Others ---
-    misc_expenses_others = float(db.session.query(func.sum(ExpenseEntry.amount)).filter(  # Convert Decimal to float
+    misc_expenses_others = float(db.session.query(func.sum(ExpenseEntry.amount)).filter(
         ExpenseEntry.payment_mode.ilike('others'),
         ExpenseEntry.date >= from_dt.date(),
-        ExpenseEntry.date <= to_dt.date()
+        ExpenseEntry.date < to_dt.date()
     ).scalar() or 0)
-    supplier_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+    supplier_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(
         ~SupplierPayment.payment_mode.in_(['cash', 'CASH', 'bank', 'BANK', 'card', 'CARD', 'bank_transfer', 'BANK_TRANSFER', 'cheque', 'CHEQUE']),
         SupplierPayment.payment_date >= from_dt.date(),
-        SupplierPayment.payment_date <= to_dt.date()
+        SupplierPayment.payment_date < to_dt.date()
     ).scalar() or 0)
-    onac_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(  # Convert Decimal to float
+    onac_payments_others = float(db.session.query(func.sum(SupplierPayment.amount)).filter(
         ~SupplierPayment.payment_mode.in_(['cash', 'CASH', 'bank', 'BANK', 'card', 'CARD', 'bank_transfer', 'BANK_TRANSFER', 'cheque', 'CHEQUE']),
         SupplierPayment.purchase_invoice_id == None,
         SupplierPayment.payment_date >= from_dt.date(),
-        SupplierPayment.payment_date <= to_dt.date()
+        SupplierPayment.payment_date < to_dt.date()
     ).scalar() or 0)
     total_payables_others = misc_expenses_others + supplier_payments_others + onac_payments_others
     payables_others = [

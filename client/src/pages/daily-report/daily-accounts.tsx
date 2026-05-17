@@ -372,8 +372,6 @@ export default function DailyAccounts() {
                     // Set up navigation based on the item
                     if (item.item === 'Sales Cash') {
                       onClick = () => navigate('/daily-report/daily-book-sales');
-                    } else if (item.item === 'Account Cash') {
-                      onClick = () => navigate('/payments/customer-payment-history');
                     } else if (item.item === 'On Account Cash') {
                       onClick = () => navigate('/data-entry/on-acc-customer');
                     }
