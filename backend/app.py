@@ -463,8 +463,7 @@ def update_sale_payment_method():
             if backdate_opt and not backdate_opt.editing and sale_date < today:
                 return jsonify({"error": f"You do not have permission to edit sales for previous dates (Sale {sale.invoice_number})"}), 403
             
-            if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale_date == today:
-                return jsonify({"error": f"You do not have permission to edit sales for today (Sale {sale.invoice_number})"}), 403
+            # Note: current_editing permission does NOT block payment method updates in Daily Book Sales
             
             old_customer_type = sale.customer_type
             
@@ -581,8 +580,7 @@ def update_sale_split_payment():
         if backdate_opt and not backdate_opt.editing and sale_date < today:
             return jsonify({"error": "You do not have permission to edit sales for previous dates"}), 403
         
-        if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and sale_date == today:
-            return jsonify({"error": "You do not have permission to edit sales for today"}), 403
+        # Note: current_editing permission does NOT block split payment updates in Daily Book Sales
         
         # Validate amounts
         total_amount = cash_amount + card_amount

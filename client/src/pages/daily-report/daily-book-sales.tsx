@@ -27,6 +27,7 @@ import { useBackdatePermissions, useDailyBookSalesPermissions } from "@/hooks/us
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
+import { useToast } from "@/hooks/use-toast";
 
 interface SalesEntry {
   id: number;
@@ -181,6 +182,7 @@ export default function DailyBookSales() {
 
   // Use formatForApi from useBusinessDate hook
 
+  const { toast } = useToast();
   const [paymentType, setPaymentType] = useState("All");
   const [userFilter, setUserFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -598,7 +600,7 @@ export default function DailyBookSales() {
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
     navigator.clipboard.writeText(tsv);
-    alert('Table copied to clipboard!');
+    toast({ title: "Copied", description: "Table copied to clipboard!" });
   };
 
   // Handle checkbox selection
@@ -626,7 +628,7 @@ export default function DailyBookSales() {
   // Update selected sales to cash payment
   const handleUpdateToCash = async () => {
     if (selectedSales.size === 0) {
-      alert('Please select at least one sale to update.');
+      toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
@@ -635,7 +637,7 @@ export default function DailyBookSales() {
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
-      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      toast({ title: "Error", description: `Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`, variant: "destructive" });
       return;
     }
 
@@ -655,12 +657,12 @@ export default function DailyBookSales() {
         paymentMethod: 'cash'
       });
 
-      alert(response.message);
+      toast({ title: "Success", description: response.message });
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
       console.error('Error updating payments:', error);
-      alert('Error updating payments. Please try again.');
+      toast({ title: "Error", description: "Error updating payments. Please try again.", variant: "destructive" });
     } finally {
       setIsUpdatingPayments(false);
     }
@@ -669,7 +671,7 @@ export default function DailyBookSales() {
   // Update selected sales to card payment
   const handleUpdateToCard = async () => {
     if (selectedSales.size === 0) {
-      alert('Please select at least one sale to update.');
+      toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
@@ -678,7 +680,7 @@ export default function DailyBookSales() {
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
-      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      toast({ title: "Error", description: `Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`, variant: "destructive" });
       return;
     }
 
@@ -698,12 +700,12 @@ export default function DailyBookSales() {
         paymentMethod: 'bank'
       });
 
-      alert(response.message);
+      toast({ title: "Success", description: response.message });
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
       console.error('Error updating payments:', error);
-      alert('Error updating payments. Please try again.');
+      toast({ title: "Error", description: "Error updating payments. Please try again.", variant: "destructive" });
     } finally {
       setIsUpdatingPayments(false);
     }
@@ -712,7 +714,7 @@ export default function DailyBookSales() {
   // Update selected sales to account payment
   const handleUpdateToAccount = async () => {
     if (selectedSales.size === 0) {
-      alert('Please select at least one sale to update.');
+      toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
@@ -721,7 +723,7 @@ export default function DailyBookSales() {
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
-      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      toast({ title: "Error", description: `Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`, variant: "destructive" });
       return;
     }
 
@@ -741,12 +743,12 @@ export default function DailyBookSales() {
         paymentMethod: 'account'
       });
 
-      alert(response.message);
+      toast({ title: "Success", description: response.message });
       setSelectedSales(new Set()); // Clear selection
       refetchSales(); // Refresh the data
     } catch (error) {
       console.error('Error updating to account payment:', error);
-      alert('Failed to update some sales to account payment. Check console for details.');
+      toast({ title: "Error", description: "Failed to update some sales to account payment.", variant: "destructive" });
     } finally {
       setIsUpdatingPayments(false);
     }
@@ -755,7 +757,7 @@ export default function DailyBookSales() {
   // Update selected sales to bank transfer payment
   const handleUpdateToBankTransfer = async () => {
     if (selectedSales.size === 0) {
-      alert('Please select at least one sale to update.');
+      toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
@@ -764,7 +766,7 @@ export default function DailyBookSales() {
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
-      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      toast({ title: "Error", description: `Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`, variant: "destructive" });
       return;
     }
 
@@ -784,12 +786,12 @@ export default function DailyBookSales() {
         paymentMethod: 'bank_transfer'
       });
 
-      alert(response.message);
+      toast({ title: "Success", description: response.message });
       setSelectedSales(new Set());
       refetchSales();
     } catch (error) {
       console.error('Error updating payments:', error);
-      alert('Error updating payments. Please try again.');
+      toast({ title: "Error", description: "Error updating payments. Please try again.", variant: "destructive" });
     } finally {
       setIsUpdatingPayments(false);
     }
@@ -798,7 +800,7 @@ export default function DailyBookSales() {
   // Update selected sales to cheque payment
   const handleUpdateToCheque = async () => {
     if (selectedSales.size === 0) {
-      alert('Please select at least one sale to update.');
+      toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
@@ -807,7 +809,7 @@ export default function DailyBookSales() {
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
-      alert(`Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`);
+      toast({ title: "Error", description: `Cannot update payment method for ${customerPaymentSales.length} invoice(s) that were paid via Customer Payment page. Please use the Customer Payment page to modify these payments.`, variant: "destructive" });
       return;
     }
 
@@ -827,12 +829,12 @@ export default function DailyBookSales() {
         paymentMethod: 'cheque'
       });
 
-      alert(response.message);
+      toast({ title: "Success", description: response.message });
       setSelectedSales(new Set());
       refetchSales();
     } catch (error) {
       console.error('Error updating payments:', error);
-      alert('Error updating payments. Please try again.');
+      toast({ title: "Error", description: "Error updating payments. Please try again.", variant: "destructive" });
     } finally {
       setIsUpdatingPayments(false);
     }
@@ -841,17 +843,15 @@ export default function DailyBookSales() {
   // Helper for WhatsApp and Email
   const sendInvoiceEmail = async (sale: SalesEntry) => {
     try {
-      // Call backend endpoint to send invoice email for this sale
       await apiRequest('POST', `/api/sales/${sale.invoiceNo}/send`, {
         customerId: sale.customerId
       });
-      alert('Invoice email sent!');
+      toast({ title: "Success", description: "Invoice email sent!" });
     } catch (e) {
-      alert('Failed to send invoice email.');
+      toast({ title: "Error", description: "Failed to send invoice email.", variant: "destructive" });
     }
   };
   const sendWhatsApp = async (sale: SalesEntry) => {
-    // You need to get the phone number and invoice URL (assume invoice PDF is at `/print/invoice/:invoiceNo`)
     const phone = prompt('Enter WhatsApp number (E.164 format, e.g. +441234567890):');
     if (!phone) return;
     const invoiceUrl = `${window.location.origin}/print/invoice/${sale.invoiceNo}`;
@@ -861,16 +861,15 @@ export default function DailyBookSales() {
         invoiceUrl,
         message: 'Your invoice is attached.'
       });
-      alert('WhatsApp message sent!');
+      toast({ title: "Success", description: "WhatsApp message sent!" });
     } catch (e) {
-      alert('Failed to send WhatsApp message.');
+      toast({ title: "Error", description: "Failed to send WhatsApp message.", variant: "destructive" });
     }
   };
   const pay = async (sale: SalesEntry, mode: 'cash' | 'bank' | 'bank_transfer' | 'cheque') => {
     try {
-      // Check if this sale was paid via customer payment page
       if (sale.isPaidViaCustomerPayment) {
-        alert('Cannot update payment method for invoices paid via Customer Payment page. Please use the Customer Payment page to modify this payment.');
+        toast({ title: "Error", description: "Cannot update payment method for invoices paid via Customer Payment page. Please use the Customer Payment page to modify this payment.", variant: "destructive" });
         return;
       }
 
@@ -879,17 +878,16 @@ export default function DailyBookSales() {
           mode === 'bank_transfer' ? 'Bank Transfer' :
             mode === 'cheque' ? 'Cheque' : mode;
 
-      // Use the new dedicated endpoint for updating payment methods
-      const response = await apiRequest('POST', '/api/sales/update-payment-method', {
+      await apiRequest('POST', '/api/sales/update-payment-method', {
         saleIds: [sale.id],
         paymentMethod: mode
       });
 
-      alert(`Payment updated to ${modeDisplayName} successfully!`);
+      toast({ title: "Success", description: `Payment updated to ${modeDisplayName} successfully!` });
       refetchSales();
     } catch (e) {
       console.error('Payment failed:', e);
-      alert('Payment failed. Please try again.');
+      toast({ title: "Error", description: "Payment failed. Please try again.", variant: "destructive" });
     }
   };
 
@@ -913,12 +911,12 @@ export default function DailyBookSales() {
 
     // Validate amounts
     if (cashAmount + cardAmount !== totalAmount) {
-      alert(`Total split amount (£${(cashAmount + cardAmount).toFixed(2)}) must equal the invoice total (£${totalAmount.toFixed(2)})`);
+      toast({ title: "Error", description: `Total split amount (£${(cashAmount + cardAmount).toFixed(2)}) must equal the invoice total (£${totalAmount.toFixed(2)})`, variant: "destructive" });
       return;
     }
 
     if (cashAmount < 0 || cardAmount < 0) {
-      alert('Payment amounts cannot be negative');
+      toast({ title: "Error", description: "Payment amounts cannot be negative", variant: "destructive" });
       return;
     }
 
@@ -932,13 +930,13 @@ export default function DailyBookSales() {
         cardAmount: cardAmount
       });
 
-      alert('Split payment applied successfully!');
+      toast({ title: "Success", description: "Split payment applied successfully!" });
       setSplitPaymentDialog({ isOpen: false, sale: null });
       refetchSales();
 
     } catch (error) {
       console.error('Error applying split payment:', error);
-      alert('Error applying split payment. Please try again.');
+      toast({ title: "Error", description: "Error applying split payment. Please try again.", variant: "destructive" });
     } finally {
       setIsUpdatingPayments(false);
     }
