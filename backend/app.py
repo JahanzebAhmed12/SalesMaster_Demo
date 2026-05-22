@@ -240,6 +240,23 @@ with app.app_context():
     
     create_admin_user()  # Create admin user if it doesn't exist
 
+    # Run migration for system_settings table to add till_float column
+    try:
+        from sqlalchemy import text
+        result = db.session.execute(text("PRAGMA table_info(system_settings)"))
+        columns = [row[1] for row in result.fetchall()]
+        if 'till_float' not in columns:
+            print("Adding till_float column to system_settings table...")
+            db.session.execute(text("""
+                ALTER TABLE system_settings
+                ADD COLUMN till_float NUMERIC(10, 2) NOT NULL DEFAULT 0
+            """))
+            db.session.commit()
+            print("Successfully added till_float column")
+    except Exception as e:
+        print(f"Migration warning (till_float): {str(e)}")
+        db.session.rollback()
+
 # Print Queue API Routes for Mobile Print Proxy
 @app.route('/api/print-queue/add', methods=['POST'])
 @jwt_required()
@@ -2598,6 +2615,8 @@ def update_settings():
             data['invoice_print_format'] = data.pop('invoicePrintFormat')
         if 'lockInvoices' in data:
             data['lock_invoices'] = data.pop('lockInvoices')
+        if 'tillFloat' in data:
+            data['till_float'] = data.pop('tillFloat')
         # Print all incoming fields and types
         for k, v in data.items():
             print(f'[DEBUG] Field: {k}, Value: {v}, Type: {type(v)}')
@@ -2783,6 +2802,15 @@ def get_expense(id):
     except Exception as e:
         return jsonify({'message': str(e)}), 404
 
+@app.route('/api/expenses/<int:id>/has-entries', methods=['GET'])
+def expense_has_entries(id):
+    """Check if an expense has any expense entries"""
+    try:
+        count = ExpenseEntry.query.filter_by(expense_id=id).count()
+        return jsonify({'hasEntries': count > 0, 'count': count})
+    except Exception as e:
+        return jsonify({'message': str(e)}), 500
+
 @app.route('/api/expenses', methods=['POST'])
 def create_expense():
     data = request.get_json()
@@ -2807,7 +2835,16 @@ def update_expense(id):
     try:
         expense_data = ExpenseSchema(**data)
         expense = Expense.query.get_or_404(id)
-        
+
+        # If expense name is being changed, check if it has any entries
+        new_name = expense_data.dict().get('expense_name') or data.get('expenseName')
+        if new_name and new_name != expense.expense_name:
+            entry_count = ExpenseEntry.query.filter_by(expense_id=id).count()
+            if entry_count > 0:
+                return jsonify({
+                    'message': f'Cannot rename this expense — it has {entry_count} existing entr{"y" if entry_count == 1 else "ies"}. Only the status can be changed.'
+                }), 400
+
         # Update expense fields
         for key, value in expense_data.dict().items():
             setattr(expense, key, value)
@@ -11720,6 +11757,7 @@ def daily_summary_report():
     # EXCLUDE split payments from Daily Book Sales
     customer_payments = db.session.query(
         Customer.customer_name,
+        Customer.id.label('customer_id'),
         Payment.id,
         Payment.batch_id,
         Payment.payment_mode,
@@ -11752,6 +11790,7 @@ def daily_summary_report():
         if key not in payment_groups:
             payment_groups[key] = {
                 'customer_name': payment.customer_name,
+                'customer_id': payment.customer_id,
                 'payment_id': payment_id,  # Use batch_id directly
                 'cash_amount': 0,
                 'card_amount': 0,
@@ -11840,15 +11879,60 @@ def daily_summary_report():
             'date': expense.date.isoformat()
         })
 
-    # 5. Cash Carry Forward
-    cash_cf = db.session.query(CashCarryForward).filter(
-        CashCarryForward.date == report_date
-    ).first()
-    
+    # 5. Till Float (automatic — from system settings, carries forward from previous business day)
+    settings = SystemSettings.query.first()
+    till_float_amount = float(settings.till_float) if settings and settings.till_float else 0
+
+    # Determine the previous business date (the last date that has any sales/banking activity)
+    from sqlalchemy import func as sqlfunc
+    prev_business_date = db.session.query(sqlfunc.max(Sale.date)).filter(
+        sqlfunc.date(Sale.date) < report_date
+    ).scalar()
+    prev_business_date = prev_business_date.date() if prev_business_date else None
+
+    # Till float logic:
+    # - Every day: subtract current till float (cash kept in drawer)
+    # - Every day except the very first: add back previous day's till float as carry forward
+    # Net effect after day 1 = zero. Only day 1 has a real deduction.
+    if prev_business_date is not None:
+        # Get the till float that was active on the previous business day
+        # (use the till_float stored in settings at that time — we store history via CashCarryForward)
+        prev_cf = db.session.query(CashCarryForward).filter(
+            CashCarryForward.date == prev_business_date
+        ).first()
+        prev_till_float = float(prev_cf.pounds + prev_cf.coins) if prev_cf else till_float_amount
+        carry_forward = prev_till_float  # add back previous day's float
+    else:
+        carry_forward = 0  # first ever business day — no carry forward
+
+    # Net till float impact = carry_forward - till_float_amount
+    # (positive carry_forward cancels out the deduction on day 2+)
+    net_till_float = carry_forward - till_float_amount
+
+    # Save today's till float to CashCarryForward so tomorrow can carry it forward
+    existing_cf = CashCarryForward.query.filter_by(date=report_date).first()
+    if not existing_cf:
+        new_cf = CashCarryForward(date=report_date, pounds=till_float_amount, coins=0)
+        db.session.add(new_cf)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+    elif float(existing_cf.pounds) != till_float_amount:
+        # Update if the till float setting changed
+        existing_cf.pounds = till_float_amount
+        existing_cf.coins = 0
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
     cash_cf_data = {
-        'pounds': float(cash_cf.pounds) if cash_cf else 0,
-        'coins': float(cash_cf.coins) if cash_cf else 0,
-        'total': float(cash_cf.pounds + cash_cf.coins) if cash_cf else 0,
+        'pounds': till_float_amount,
+        'coins': 0,
+        'total': net_till_float,  # net impact shown in banking total
+        'till_float': till_float_amount,
+        'carry_forward': carry_forward,
         'date': report_date.isoformat()
     }
 
@@ -11912,15 +11996,18 @@ def daily_summary_report():
     )
     
     # Calculate Total Banking using the specified formula:
-    # Total Cash Sales + Total Cheque + Account Paid Cash(Backdate) + Till/Float(C/F) 
+    # Total Cash Sales + Total Cheque + Account Paid Cash(Backdate) + net_till_float
     # - Total Supplier Payment (Paid Out) - Total Expense (Paid Out)
+    # net_till_float = carry_forward - till_float_amount
+    # Day 1: 0 - 150 = -150 (deducted)
+    # Day 2+: 150 - 150 = 0 (no impact)
     calculated_banking_total = (
         cash_total +  # Total Cash Sales
         cheque_total +  # Total Cheque
         customer_cash_payments +  # Account Paid Cash(Backdate)
-        cash_cf_data['total'] -  # Till/Float(C/F)
-        supplier_payments_paid_out -  # Total Supplier Payment (Paid Out)
-        expense_payments_paid_out  # Total Expense (Paid Out)
+        cash_cf_data['total'] +  # net Till/Float impact (already signed: negative on day 1, zero after)
+        supplier_payments_paid_out * -1 +  # Total Supplier Payment (Paid Out)
+        expense_payments_paid_out * -1  # Total Expense (Paid Out)
     )
     
     totals = {
@@ -11937,7 +12024,7 @@ def daily_summary_report():
         'supplier_payments_paid_out': supplier_payments_paid_out,
         'expense_total': sum(float(e.amount) for e in expense_entries),
         'expense_payments_paid_out': expense_payments_paid_out,
-        'cash_cf_total': cash_cf_data['total'],
+        'cash_cf_total': cash_cf_data['total'],  # net impact (negative day 1, zero after)
         'banking_total': calculated_banking_total,  # Use calculated value instead of database value
         'bank_transfer_payments': sum(
             float(p.amount) for p in customer_payments 
@@ -12164,15 +12251,33 @@ def daily_summary_pdf():
             if e.payment_mode.lower() in ['cash', 'bank']
         )
         
-        # 5. Cash Carry Forward
-        cash_cf = db.session.query(CashCarryForward).filter(
-            CashCarryForward.date == report_date
-        ).first()
-        
+        # 5. Till Float (automatic — same logic as main daily summary)
+        settings = SystemSettings.query.first()
+        till_float_amount = float(settings.till_float) if settings and settings.till_float else 0
+
+        from sqlalchemy import func as sqlfunc
+        prev_business_date = db.session.query(sqlfunc.max(Sale.date)).filter(
+            sqlfunc.date(Sale.date) < report_date
+        ).scalar()
+        prev_business_date = prev_business_date.date() if prev_business_date else None
+
+        if prev_business_date is not None:
+            prev_cf = db.session.query(CashCarryForward).filter(
+                CashCarryForward.date == prev_business_date
+            ).first()
+            prev_till_float = float(prev_cf.pounds + prev_cf.coins) if prev_cf else till_float_amount
+            carry_forward = prev_till_float
+        else:
+            carry_forward = 0
+
+        net_till_float = carry_forward - till_float_amount
+
         cash_cf_data = {
-            'pounds': float(cash_cf.pounds) if cash_cf else 0,
-            'coins': float(cash_cf.coins) if cash_cf else 0,
-            'total': float(cash_cf.pounds + cash_cf.coins) if cash_cf else 0,
+            'pounds': till_float_amount,
+            'coins': 0,
+            'total': net_till_float,
+            'till_float': till_float_amount,
+            'carry_forward': carry_forward,
             'date': report_date.isoformat()
         }
         
@@ -12214,16 +12319,14 @@ def daily_summary_pdf():
             if p.payment_mode.lower() in ['cash', 'bank']
         )
         
-        # Calculate Total Banking using the specified formula:
-        # Total Cash Sales + Total Cheque + Account Paid Cash(Backdate) + Till/Float(C/F) 
-        # - Total Supplier Payment (Paid Out) - Total Expense (Paid Out)
+        # Calculate Total Banking using the specified formula (net till float already signed)
         calculated_banking_total = (
             cash_total +  # Total Cash Sales
             cheque_total +  # Total Cheque
             customer_cash_payments +  # Account Paid Cash(Backdate)
-            cash_cf_data['total'] -  # Till/Float(C/F)
-            supplier_payments_paid_out -  # Total Supplier Payment (Paid Out)
-            expense_payments_paid_out  # Total Expense (Paid Out)
+            cash_cf_data['total'] +  # net Till/Float impact
+            supplier_payments_paid_out * -1 +  # Total Supplier Payment (Paid Out)
+            expense_payments_paid_out * -1  # Total Expense (Paid Out)
         )
         
         # Check if stock and purchase data should be included

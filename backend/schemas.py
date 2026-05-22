@@ -241,6 +241,7 @@ class SystemSettingsSchema(BaseModel):
     porterage_charge: float = Field(default=0)
     invoice_print_format: str = Field(default="A4")
     lock_invoices: bool = Field(default=False)
+    till_float: float = Field(default=0)
 
 class AttendanceSchema(BaseModel):
     employee_id: int

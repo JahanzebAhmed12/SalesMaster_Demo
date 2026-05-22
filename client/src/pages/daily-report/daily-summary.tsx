@@ -110,6 +110,7 @@ interface DailySummaryData {
   }>;
   customer_payments: Array<{
     customer_name: string;
+    customer_id: number;
     payment_id: string; // Changed to payment_id for customer payments
     cash_amount: number;
     card_amount: number;
@@ -494,14 +495,30 @@ export default function DailySummary() {
     };
 
     // ── Page 1 header ────────────────────────────────────────────────────
+    // Company name from company details
+    if (companyDetails?.companyName) {
+      doc.setFontSize(13);
+      doc.setFont('helvetica', 'normal');
+      doc.text(companyDetails.companyName, 14, y);
+      y += 8;
+    }
+
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.text('Daily Summary Report', 14, y);
     doc.setFont('helvetica', 'normal');
     y += 12;
 
-    // 1. Daily Sales Summary
-    section(`Daily Sales Summary - ${format(selectedDate, "dd/MM/yyyy")}`);
+    // 1. Daily Sales Summary — with "stand 100" on the right
+    const pageWidth = doc.internal.pageSize.width;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Daily Sales Summary - ${format(selectedDate, "dd/MM/yyyy")}`, 14, y);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('stand 100', pageWidth - 14, y, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    y += 8;
     tbl(
       [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
       [
@@ -1058,7 +1075,16 @@ export default function DailySummary() {
                                 </span>
                               )}
                             </TableCell>
-                            <TableCell className="border">{sale.invoice_no || '-'}</TableCell>
+                            <TableCell className="border">
+                              {sale.invoice_no ? (
+                                <button
+                                  className="text-blue-600 underline hover:text-blue-800 cursor-pointer"
+                                  onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}&readonly=true`, '_self')}
+                                >
+                                  {sale.invoice_no}
+                                </button>
+                              ) : '-'}
+                            </TableCell>
                             <TableCell className="border text-right">
                               {sale.cash_sales > 0 ? sale.cash_sales.toFixed(2) : '-'}
                             </TableCell>
@@ -1153,7 +1179,14 @@ export default function DailySummary() {
                             }
                             rows.push(
                               <TableRow key={payment.payment_id}>
-                                <TableCell className="border">{payment.customer_name}</TableCell>
+                                <TableCell className="border">
+                                  <button
+                                    className="text-blue-600 underline hover:text-blue-800 cursor-pointer text-left"
+                                    onClick={() => window.open(`/payments/customer-payment-history?customerId=${payment.customer_id}`, '_self')}
+                                  >
+                                    {payment.customer_name}
+                                  </button>
+                                </TableCell>
                                 <TableCell className="border">{payment.payment_id}</TableCell>
                                 <TableCell className="border text-right">
                                   {payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-'}

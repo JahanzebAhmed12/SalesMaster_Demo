@@ -42,6 +42,15 @@ export default function ExpenseForm() {
     enabled: isEditing,
   });
 
+  // Check if this expense has any entries (prevents name editing)
+  const { data: entryCheck } = useQuery<{ hasEntries: boolean; count: number }>({
+    queryKey: ["expense-has-entries", params?.id],
+    queryFn: () => apiRequest("GET", `/api/expenses/${params!.id}/has-entries`),
+    enabled: isEditing,
+  });
+
+  const nameIsLocked = isEditing && (entryCheck?.hasEntries ?? false);
+
   const { data: expenses = [] } = useQuery<Expense[]>({
     queryKey: ["expenses", ""],
     queryFn: async () => apiRequest("GET", "/api/expenses"),
@@ -167,14 +176,22 @@ export default function ExpenseForm() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="expenseName">Expense Name</Label>
+                <Label htmlFor="expenseName">
+                  Expense Name
+                  {nameIsLocked && (
+                    <span className="ml-2 text-xs text-amber-600 font-normal">
+                      (locked — {entryCheck?.count} {entryCheck?.count === 1 ? 'entry' : 'entries'} exist)
+                    </span>
+                  )}
+                </Label>
                 <Input
                   id="expenseName"
                   value={formData.expenseName}
                   onChange={(e) => setFormData({ ...formData, expenseName: e.target.value })}
                   placeholder="Enter expense name"
                   required
-                  disabled={isViewMode}
+                  disabled={isViewMode || nameIsLocked}
+                  className={nameIsLocked ? "bg-gray-100 cursor-not-allowed" : ""}
                 />
               </div>
 

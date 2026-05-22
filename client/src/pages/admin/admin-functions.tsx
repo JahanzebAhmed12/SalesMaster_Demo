@@ -254,6 +254,9 @@ const AdminFunctions = () => {
   const [lockInvoices, setLockInvoices] = useState(false);
   const [savingLockInvoices, setSavingLockInvoices] = useState(false);
 
+  const [tillFloat, setTillFloat] = useState<number>(0);
+  const [savingTillFloat, setSavingTillFloat] = useState(false);
+
   const [companyAddress, setCompanyAddress] = useState("");
   const [savingCompanyAddress, setSavingCompanyAddress] = useState(false);
 
@@ -580,13 +583,22 @@ const AdminFunctions = () => {
   };
 
   useEffect(() => {
-    apiRequest("GET", "/api/settings").then(settings => setLockInvoices(!!settings.lockInvoices));
+    apiRequest("GET", "/api/settings").then(settings => {
+      setLockInvoices(!!settings.lockInvoices);
+      setTillFloat(settings.tillFloat || 0);
+    });
   }, []);
 
   const saveLockInvoices = async () => {
     setSavingLockInvoices(true);
     await apiRequest("PUT", "/api/settings", { lockInvoices });
     setSavingLockInvoices(false);
+  };
+
+  const saveTillFloat = async () => {
+    setSavingTillFloat(true);
+    await apiRequest("PUT", "/api/settings", { tillFloat });
+    setSavingTillFloat(false);
   };
 
   useEffect(() => {
@@ -1466,6 +1478,44 @@ const AdminFunctions = () => {
                   </div>
                   <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveLockInvoices} disabled={savingLockInvoices}>
                     {savingLockInvoices ? "Saving..." : "Save"}
+                  </Button>
+                </CardContent>
+              </CollapsibleContent>
+            </Collapsible>
+          </Card>
+
+          {/* Till Float */}
+          <Card className="shadow-sm border border-gray-200">
+            <Collapsible>
+              <CollapsibleTrigger asChild>
+                <CardHeader className="cursor-pointer bg-blue-500 text-white">
+                  <CardTitle className="flex items-center justify-between text-sm">
+                    Till Float
+                    <ChevronDown className="h-4 w-4" />
+                  </CardTitle>
+                </CardHeader>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <CardContent className="p-4">
+                  <div className="mb-4">
+                    <div className="text-sm font-medium mb-2">Till Float Amount</div>
+                    <div className="text-xs text-gray-600 mb-4">
+                      The cash kept in the drawer at all times. Set once — it is automatically subtracted from Total Banking each day and carried forward, so the net effect after day 1 is zero.
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">£</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={tillFloat}
+                        onChange={(e) => setTillFloat(parseFloat(e.target.value) || 0)}
+                        className="border rounded px-2 py-1 text-sm w-32"
+                      />
+                    </div>
+                  </div>
+                  <Button className="bg-green-600 hover:bg-green-700 text-white text-xs px-4 py-1" onClick={saveTillFloat} disabled={savingTillFloat}>
+                    {savingTillFloat ? "Saving..." : "Save"}
                   </Button>
                 </CardContent>
               </CollapsibleContent>

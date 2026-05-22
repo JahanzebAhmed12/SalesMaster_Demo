@@ -2659,7 +2659,7 @@ const SalesInvoice = () => {
                 <Button onClick={handleHoldInvoice} variant="outline" size="sm" disabled={isReadOnly} className="w-full sm:w-auto">
                   Hold Invoice
                 </Button>
-                <Button variant="destructive" size="sm" onClick={handleCloseInvoice} disabled={isReadOnly} className="w-full sm:w-auto">
+                <Button variant="destructive" size="sm" onClick={handleCloseInvoice} className="w-full sm:w-auto">
                   Cancel Ticket
                 </Button>
               </div>

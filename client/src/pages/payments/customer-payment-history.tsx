@@ -68,6 +68,7 @@ export default function CustomerPaymentHistory() {
     const urlToDate = urlParams.get('toDate');
     const urlPaymentMode = urlParams.get('paymentMode');
     const urlPaymentType = urlParams.get('paymentType');
+    const urlCustomerId = urlParams.get('customerId');
 
     if (urlFromDate) {
       setFromDate(new Date(urlFromDate));
@@ -80,6 +81,14 @@ export default function CustomerPaymentHistory() {
     }
     if (urlPaymentType && urlPaymentType !== 'All') {
       setSelectedPaymentType(urlPaymentType);
+    }
+    // Pre-select customer from URL param
+    if (urlCustomerId) {
+      apiRequest("GET", `/api/customers/${urlCustomerId}`)
+        .then((customer: Customer) => {
+          if (customer) handleCustomerSelect(customer);
+        })
+        .catch(() => {/* ignore if customer not found */});
     }
   }, []);
 

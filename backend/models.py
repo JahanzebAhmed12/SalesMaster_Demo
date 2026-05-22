@@ -443,6 +443,8 @@ class SystemSettings(db.Model):
     invoice_print_format = db.Column(db.String(20), nullable=False, default='A4')
     # Invoice lock setting
     lock_invoices = db.Column(db.Boolean, nullable=False, default=False)
+    # Till float — cash kept in drawer, set once by admin
+    till_float = db.Column(db.Numeric(10, 2), nullable=False, default=0)
 
     def to_dict(self):
         return {
@@ -461,9 +463,9 @@ class SystemSettings(db.Model):
             'withPorterage': self.with_porterage,
             'porterageCharge': float(self.porterage_charge) if self.porterage_charge else 0,
             'invoicePrintFormat': self.invoice_print_format,
-            'lockInvoices': self.lock_invoices
+            'lockInvoices': self.lock_invoices,
+            'tillFloat': float(self.till_float) if self.till_float else 0,
         }
-
 class Attendance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
