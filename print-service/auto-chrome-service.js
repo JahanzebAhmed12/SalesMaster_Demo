@@ -10,9 +10,10 @@ class AutoChromePrintService {
   constructor() {
     this.vpsUrl = 'https://tropifruituk.net';
     this.pollInterval = 10000;
-    this.printerName = 'Microdoft Print to PDF';
+    this.printerName = 'EPSON LQ-350 ESC/P2';
     this.customPaperSize = 'DOT MATRIX (18.6x20)';
     this.isProcessing = false;
+    this.chromeUserDataDir = path.join(__dirname, 'chrome-profile');
     this.tempDir = path.join(__dirname, 'temp');
     this.startTime = new Date();
     this.jobsProcessed = 0;
@@ -118,7 +119,7 @@ class AutoChromePrintService {
   }
 
   async printWithPuppeteer(htmlFilePath) {
-    console.log('🖨️  Printing with Chrome (off-screen, no visible window)...');
+    console.log(`🖨️  Printing with Chrome...`);
     console.log(`📄 Using printer: ${this.printerName}`);
 
     const browser = await puppeteer.launch({
@@ -126,16 +127,16 @@ class AutoChromePrintService {
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--window-position=-32000,-32000',
-        '--window-size=1,1',
         '--disable-gpu',
+        `--user-data-dir=${this.chromeUserDataDir}`,
+        '--window-position=-2000,-2000',
+        '--window-size=1200,900',
         '--kiosk-printing',
       ]
     });
 
     try {
       const page = await browser.newPage();
-
       page.on('pageerror', err => console.error('❌ Page error:', err.message));
 
       console.log(`📂 Loading file: ${htmlFilePath}`);
@@ -143,45 +144,10 @@ class AutoChromePrintService {
         waitUntil: 'networkidle0',
         timeout: 30000
       });
+      console.log('✅ Page loaded, triggering print...');
 
-      console.log('✅ Page loaded');
-
-      // Use target().createCDPSession() — compatible with older puppeteer versions
-      let cdpSession = null;
-      try {
-        cdpSession = await page.target().createCDPSession();
-      } catch (e) {
-        console.log('⚠️  CDP session not available, using window.print() only');
-      }
-
-      if (cdpSession) {
-        try {
-          // Generate a test PDF to verify layout
-          const result = await cdpSession.send('Page.printToPDF', {
-            paperWidth: 7.32,   // 186mm in inches (186/25.4)
-            paperHeight: 7.87,  // 200mm in inches (200/25.4)
-            marginTop: 0,
-            marginBottom: 0,
-            marginLeft: 0,
-            marginRight: 0,
-            printBackground: true,
-            preferCSSPageSize: true,
-          });
-
-          const pdfPath = htmlFilePath.replace('.html', '_preview.pdf');
-          fs.writeFileSync(pdfPath, Buffer.from(result.data, 'base64'));
-          const sizeKB = (fs.statSync(pdfPath).size / 1024).toFixed(1);
-          console.log(`✅ Preview PDF saved: ${pdfPath} (${sizeKB} KB)`);
-          console.log('💡 Open the preview PDF to verify layout before using real printer');
-        } catch (pdfErr) {
-          console.warn('⚠️  Could not generate preview PDF:', pdfErr.message);
-        }
-      }
-
-      // Send to printer via window.print() — kiosk-printing auto-confirms
-      console.log('🖨️  Sending to printer...');
       await page.evaluate(() => window.print());
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 8000));
       console.log('✅ Print command sent');
 
     } catch (err) {
