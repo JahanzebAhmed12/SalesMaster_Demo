@@ -29,9 +29,9 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '1mm' },
-  customerName: { top: '35mm', left: '1mm' },
-  customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
+  accountNo: { top: '27mm', left: '4mm' },
+  customerName: { top: '35mm', left: '4mm' },
+  customerAddress: { top: '40mm', left: '4mm', width: '50mm' },
   ticketNo: { top: '77mm', left: '23mm' },
   date: { top: '77mm', left: '48mm' },
   pageNumber: { top: '77mm', left: '118mm' },
@@ -39,8 +39,8 @@ const FIELD_POSITIONS = {
   itemsRowHeight: '6mm',
   maxItemsPerPage: 10,
   columns: {
-    quantity: { left: '1mm', width: '15mm' } as ColumnConfig,
-    description: { left: '10mm', width: '75mm' } as ColumnConfig,
+    quantity: { left: '4mm', width: '12mm' } as ColumnConfig,
+    description: { left: '10mm', width: '72mm' } as ColumnConfig,
     price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
   },
@@ -769,10 +769,8 @@ export default function DotMatrixInvoicePrintPage() {
       </div>
 
       {/* Dot Matrix Content - only this shows during print */}
-      <div className={`print-content ${isServerPDF ? 'server-pdf-mode' : ''}`}>
+      <div className={`print-content ${isServerPDF ? 'server-pdf-mode' : ''}`} style={{ margin: 0, padding: 0 }}>
         {pages.map((page, pageIndex) => {
-          console.log(`Rendering page ${page.pageNumber} with ${page.items.length} items`);
-
           return (
             <div
               key={pageIndex}
@@ -781,15 +779,19 @@ export default function DotMatrixInvoicePrintPage() {
                 position: 'relative',
                 width: '186mm',
                 height: '200mm',
-                margin: '0 auto',
-                padding: '0mm',
+                margin: '0',
+                padding: '0',
                 boxSizing: 'border-box',
                 fontFamily: 'monospace',
                 color: '#000',
                 backgroundColor: '#fff',
                 pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
+                breakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'page',
                 pageBreakInside: 'avoid',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                display: 'block',
+                top: 0,
+                left: 0,
               }}
             >
               {/* Account Number (Customer ID) */}
@@ -875,11 +877,7 @@ export default function DotMatrixInvoicePrintPage() {
 
               {/* Product Rows for this page - CORRECTED POSITIONING */}
               {page.items.map((item, itemIndex) => {
-                // Each page should start items at the itemsStartTop position
-                // itemIndex goes from 0 to maxItemsPerPage-1 on each page
                 const topPosition = parseInt(fieldPositions.itemsStartTop) + itemIndex * parseInt(fieldPositions.itemsRowHeight);
-
-                console.log(`Page ${page.pageNumber}, Item ${itemIndex}: ${item.product_name || item.productName} at ${topPosition}mm`);
 
                 return (
                   <React.Fragment key={itemIndex}>

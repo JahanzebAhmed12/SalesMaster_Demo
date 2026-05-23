@@ -11873,6 +11873,7 @@ def daily_summary_report():
             'ref_number': expense.ref_number,
             'invoice_number': expense.invoice_number,
             'supplier_name': expense.supplier_name,
+            'supplier_invoice_date': expense.date.isoformat() if expense.date else None,
             'expense_name': expense.expense_name,
             'amount': float(expense.amount),
             'payment_mode': expense.payment_mode,

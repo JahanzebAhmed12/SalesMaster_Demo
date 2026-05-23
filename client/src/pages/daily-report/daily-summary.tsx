@@ -131,6 +131,7 @@ interface DailySummaryData {
     ref_number: string;
     invoice_number: string;
     supplier_name: string;
+    supplier_invoice_date: string;
     expense_name: string;
     amount: number;
     payment_mode: string;
@@ -597,12 +598,17 @@ export default function DailySummary() {
     if (summaryData.expense_entries.length > 0) {
       section('Expense Entries');
       tbl(
-        [['Supplier Invoice No', 'Supplier Name', 'Expense Name', 'Amount', 'Payment Mode']],
+        [['Supplier Name', 'Supplier Invoice No', 'Supplier Invoice Date', 'Expense Name', 'Amount', 'Payment Mode']],
         [
           ...summaryData.expense_entries.map(e => [
-            e.invoice_number || '-', e.supplier_name, e.expense_name, e.amount.toFixed(2), e.payment_mode,
+            e.supplier_name,
+            e.invoice_number || '-',
+            e.supplier_invoice_date ? format(new Date(e.supplier_invoice_date), 'dd/MM/yyyy') : '-',
+            e.expense_name,
+            e.amount.toFixed(2),
+            e.payment_mode,
           ]),
-          ['TOTAL', '', '', summaryData.expense_entries.reduce((s, e) => s + e.amount, 0).toFixed(2), ''],
+          ['TOTAL', '', '', '', summaryData.expense_entries.reduce((s, e) => s + e.amount, 0).toFixed(2), ''],
         ]
       );
     }
@@ -1303,8 +1309,9 @@ export default function DailySummary() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50">
-                          <TableHead className="font-semibold border">Supplier Invoice No</TableHead>
                           <TableHead className="font-semibold border">Supplier Name</TableHead>
+                          <TableHead className="font-semibold border">Supplier Invoice No</TableHead>
+                          <TableHead className="font-semibold border">Supplier Invoice Date</TableHead>
                           <TableHead className="font-semibold border">Expense Name</TableHead>
                           <TableHead className="font-semibold border text-right">Amount</TableHead>
                           <TableHead className="font-semibold border">Payment Mode</TableHead>
@@ -1313,8 +1320,9 @@ export default function DailySummary() {
                       <TableBody>
                         {summaryData.expense_entries.map((expense, index) => (
                           <TableRow key={index}>
-                            <TableCell className="border">{expense.invoice_number || '-'}</TableCell>
                             <TableCell className="border">{expense.supplier_name}</TableCell>
+                            <TableCell className="border">{expense.invoice_number || '-'}</TableCell>
+                            <TableCell className="border">{expense.supplier_invoice_date ? format(new Date(expense.supplier_invoice_date), 'dd/MM/yyyy') : '-'}</TableCell>
                             <TableCell className="border">{expense.expense_name}</TableCell>
                             <TableCell className="border text-right">{expense.amount.toFixed(2)}</TableCell>
                             <TableCell className="border capitalize">{expense.payment_mode}</TableCell>
@@ -1322,14 +1330,14 @@ export default function DailySummary() {
                         ))}
                         {summaryData.expense_entries.length === 0 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
+                            <TableCell colSpan={6} className="border text-center text-gray-500 py-4">
                               No expense entries found
                             </TableCell>
                           </TableRow>
                         )}
                         {summaryData.expense_entries.length > 0 && (
                           <TableRow className="bg-gray-100 font-semibold">
-                            <TableCell className="border" colSpan={3}>TOTAL</TableCell>
+                            <TableCell className="border" colSpan={4}>TOTAL</TableCell>
                             <TableCell className="border text-right">{summaryData.expense_entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}</TableCell>
                             <TableCell className="border"></TableCell>
                           </TableRow>
