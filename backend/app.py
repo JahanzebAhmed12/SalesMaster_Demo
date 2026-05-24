@@ -3639,6 +3639,29 @@ def add_porterage_columns():
 with app.app_context():
     add_porterage_columns()
 
+def add_is_company_columns():
+    """Add is_company column to customer and suppliers tables if they don't exist"""
+    try:
+        result = db.session.execute(db.text("PRAGMA table_info(customer)")).fetchall()
+        columns = [row[1] for row in result]
+        if 'is_company' not in columns:
+            db.session.execute(db.text("ALTER TABLE customer ADD COLUMN is_company BOOLEAN DEFAULT 0"))
+            print("Added is_company column to customer table")
+
+        result = db.session.execute(db.text("PRAGMA table_info(suppliers)")).fetchall()
+        columns = [row[1] for row in result]
+        if 'is_company' not in columns:
+            db.session.execute(db.text("ALTER TABLE suppliers ADD COLUMN is_company BOOLEAN DEFAULT 0"))
+            print("Added is_company column to suppliers table")
+
+        db.session.commit()
+    except Exception as e:
+        print(f"Migration warning (is_company): {str(e)}")
+        db.session.rollback()
+
+with app.app_context():
+    add_is_company_columns()
+
 # Employee Document routes
 @app.route('/api/employees/<int:employee_id>/documents', methods=['POST'])
 @jwt_required()
@@ -5505,7 +5528,8 @@ def daily_book_sales():
             'paymentSource': payment_source,
             'isPaidViaCustomerPayment': is_paid_via_customer_payment,
             'isFullyPaid': is_fully_paid,
-            'totalPaid': total_paid
+            'totalPaid': total_paid,
+            'isCompany': bool(sale.customer.is_company) if sale.customer else False,
         })
     return jsonify(result)
 
@@ -11323,12 +11347,15 @@ def daily_accounts_report():
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
     def sum_payment(mode, on_account=False):
-        query = db.session.query(func.sum(Payment.amount)).filter(
-            Payment.payment_mode.ilike(mode),
-            Payment.payment_date >= from_dt.date(),
-            Payment.payment_date < to_dt.date(),
-            or_(Payment.payment_source.is_(None), Payment.payment_source != 'daily_book_sales')
-        )
+        query = db.session.query(func.sum(Payment.amount))\
+            .join(Customer, Payment.customer_id == Customer.id)\
+            .filter(
+                Customer.is_company == False,
+                Payment.payment_mode.ilike(mode),
+                Payment.payment_date >= from_dt.date(),
+                Payment.payment_date < to_dt.date(),
+                or_(Payment.payment_source.is_(None), Payment.payment_source != 'daily_book_sales')
+            )
         if on_account:
             query = query.filter(Payment.payment_type == 'on-account')
         else:
@@ -11608,12 +11635,15 @@ def daily_summary_report():
         if negative_items or float(sale.total_amount) < 0:
             # This is a negative invoice, show in account credits
             account_credits = abs(float(sale.total_amount or 0))
-        
-        cash_total += cash_amount
-        card_total += card_amount
-        bank_transfer_total += bank_transfer_amount
-        cheque_total += cheque_amount
-        account_total += account_amount
+
+        # Only add to financial totals if customer is NOT a company
+        is_company_customer = bool(sale.customer.is_company) if sale.customer else False
+        if not is_company_customer:
+            cash_total += cash_amount
+            card_total += card_amount
+            bank_transfer_total += bank_transfer_amount
+            cheque_total += cheque_amount
+            account_total += account_amount
         
         sales_summary.append({
             'customer_name': sale.customer_name,

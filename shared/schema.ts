@@ -66,6 +66,7 @@ export const customerSchema = z.object({
   others: z.string().nullable(),
   runningBalance: z.number().default(0),
   is_active: z.string(),
+  is_company: z.boolean().default(false).optional(),
   created_at: z.string(),
   updated_at: z.string()
 });
@@ -227,6 +228,7 @@ export const supplierSchema = z.object({
   account_no: z.string().nullable(),
   eec_group: z.string(),
   is_active: z.string(),
+  is_company: z.boolean().default(false).optional(),
   created_at: z.string(),
   updated_at: z.string()
 });

@@ -197,6 +197,7 @@ class CustomerSchema(BaseModel):
     others: Optional[str] = None
     running_balance: float = 0
     is_active: str = 'yes'
+    is_company: bool = False
 
     class Config:
         from_attributes = True
@@ -225,6 +226,7 @@ class SupplierSchema(BaseModel):
     account_no: Optional[str] = None
     eec_group: str = 'No'
     is_active: str = 'Yes'
+    is_company: bool = False
 
     class Config:
         from_attributes = True

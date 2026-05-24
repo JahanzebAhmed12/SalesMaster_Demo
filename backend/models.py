@@ -292,6 +292,7 @@ class Customer(db.Model):
     web_address = db.Column(db.String(200))
     others = db.Column(db.String(100))  # Others/Gate field for sales entry
     is_active = db.Column(db.String(3), default='yes')
+    is_company = db.Column(db.Boolean, default=False)
     running_balance = db.Column(db.Numeric(12, 2), default=0)  # Running balance field
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -322,6 +323,7 @@ class Customer(db.Model):
             'web_address': self.web_address,
             'others': self.others,
             'is_active': self.is_active,
+            'is_company': bool(self.is_company),
             'runningBalance': float(self.running_balance) if self.running_balance else 0,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat()
@@ -387,6 +389,7 @@ class Supplier(db.Model):
     account_no = db.Column(db.String(50))
     eec_group = db.Column(db.String(3), default='No')
     is_active = db.Column(db.String(3), default='Yes')
+    is_company = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -419,6 +422,7 @@ class Supplier(db.Model):
             'account_no': self.account_no,
             'eec_group': self.eec_group,
             'is_active': self.is_active,
+            'is_company': bool(self.is_company),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

@@ -53,6 +53,7 @@ interface SalesEntry {
   isFullyPaid?: boolean;
   totalPaid?: number;
   customerType?: string; // Add this to help identify cash customers
+  isCompany?: boolean;
 }
 
 // Helper function to determine display name for cash customers
@@ -333,12 +334,12 @@ export default function DailyBookSales() {
 
   const totalBoxes = useMemo(() => salesData.reduce((sum, item) => sum + item.boxes, 0), [salesData]);
   const totalVAT = useMemo(() => salesData.reduce((sum, item) => sum + item.vat, 0), [salesData]);
-  const totalAmount = useMemo(() => salesData.reduce((sum, item) => sum + item.amount, 0), [salesData]);
-  const totalCash = useMemo(() => salesData.reduce((sum, item) => sum + item.cash, 0), [salesData]);
-  const totalBank = useMemo(() => salesData.reduce((sum, item) => sum + (item.bank || 0), 0), [salesData]);
-  const totalBankTransfer = useMemo(() => salesData.reduce((sum, item) => sum + (item.bankTransfer || 0), 0), [salesData]);
-  const totalCheque = useMemo(() => salesData.reduce((sum, item) => sum + (item.cheque || 0), 0), [salesData]);
-  const totalCredit = useMemo(() => salesData.reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
+  const totalAmount = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + item.amount, 0), [salesData]);
+  const totalCash = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + item.cash, 0), [salesData]);
+  const totalBank = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bank || 0), 0), [salesData]);
+  const totalBankTransfer = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bankTransfer || 0), 0), [salesData]);
+  const totalCheque = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cheque || 0), 0), [salesData]);
+  const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();

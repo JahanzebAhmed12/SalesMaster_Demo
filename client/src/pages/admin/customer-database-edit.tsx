@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { insertCustomerSchema } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
@@ -81,6 +82,7 @@ export default function CustomerAdd() {
       web_address: "",
       others: "",
       is_active: "yes",
+      is_company: false,
     },
     mode: "onChange",
   });
@@ -571,16 +573,32 @@ export default function CustomerAdd() {
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name="is_company"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value ?? false}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormLabel className="font-normal">Is Company</FormLabel>
+                    </FormItem>
+                  )}
+                />
+
                 <div className="flex justify-end space-x-2 pt-6">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
+                  <Button
+                    type="button"
+                    variant="outline"
                     onClick={() => setLocation("/admin/customer-database")}
                   >
                     Cancel
                   </Button>
-                  <Button 
-                    type="submit" 
+                  <Button
+                    type="submit"
                     className="tropifruit-success hover:bg-green-600"
                     disabled={customerMutation.isPending}
                   >

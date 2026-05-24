@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { insertSupplierSchema } from "@shared/schema";
 import type { Supplier, InsertSupplier } from "@shared/schema";
 import { z } from "zod";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const formSchema = insertSupplierSchema.extend({
   supplier_code: z.string().min(1, "Supplier code is required"),
@@ -102,6 +103,7 @@ export default function SupplierForm() {
       account_no: "",
       eec_group: "No",
       is_active: "Yes",
+      is_company: false,
     },
   });
 
@@ -131,6 +133,7 @@ export default function SupplierForm() {
         account_no: supplier.account_no || "",
         eec_group: supplier.eec_group || "",
         is_active: supplier.is_active,
+        is_company: supplier.is_company ?? false,
       });
     }
   }, [supplier, form]);
@@ -594,6 +597,23 @@ export default function SupplierForm() {
               />
             </div>
           </div>
+
+          {/* Is Company checkbox */}
+          <FormField
+            control={form.control}
+            name="is_company"
+            render={({ field }) => (
+              <FormItem className="flex flex-row items-center space-x-3 space-y-0 pt-2">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value ?? false}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormLabel className="font-normal">Is Company</FormLabel>
+              </FormItem>
+            )}
+          />
 
           {/* Form Actions */}
           <div className="flex items-center justify-end space-x-4 pt-6">
