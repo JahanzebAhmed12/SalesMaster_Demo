@@ -1219,6 +1219,10 @@ export default function DailyBookSales() {
                     <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div>
                     <span>Paid (Daily Book)</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-amber-100 border border-amber-300 rounded"></div>
+                    <span>Company Customer</span>
+                  </div>
                 </div>
 
                 {/* Search */}
@@ -1282,12 +1286,11 @@ export default function DailyBookSales() {
                       <TableRow
                         key={sale.id}
                         className={cn(
-                          // Base row styling
                           '',
-                          // Conditional payment status styling
-                          !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200', // Unpaid invoices - red highlight
-                          sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200', // Paid via customer payment - green highlight
-                          sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200' // Paid via daily book - blue highlight
+                          sale.isCompany && 'bg-amber-50 border-amber-200',
+                          !sale.isCompany && !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200',
+                          !sale.isCompany && sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200',
+                          !sale.isCompany && sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200'
                         )}
                       >
                         <TableCell>
@@ -1305,11 +1308,10 @@ export default function DailyBookSales() {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
-                                <span>
+                                <span className="flex items-center gap-1">
                                   {getDisplayCustomerName(sale)}
-                                  {/* Only show gate number in parentheses if we're NOT already showing it as the main name */}
                                   {shouldShowGateInParentheses(sale) && (
-                                    <span className="text-xs text-gray-500 font-normal ml-2">
+                                    <span className="text-xs text-gray-500 font-normal ml-1">
                                       ({sale.gateNumber})
                                     </span>
                                   )}

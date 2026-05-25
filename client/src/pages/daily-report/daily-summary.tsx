@@ -105,8 +105,9 @@ interface DailySummaryData {
     account_paid_cash: number;
     account_paid_cheque: number;
     account_credits: number;
-    customer_type?: string; // Add customer type for cash customer detection
-    gate_number?: string; // Add gate number field
+    customer_type?: string;
+    gate_number?: string;
+    is_company?: boolean;
   }>;
   customer_payments: Array<{
     customer_name: string;
@@ -1072,9 +1073,14 @@ export default function DailySummary() {
                       </TableHeader>
                       <TableBody>
                         {summaryData?.sales_summary.map((sale, index) => (
-                          <TableRow key={index}>
+                          <TableRow key={index} className={sale.is_company ? 'bg-amber-50' : ''}>
                             <TableCell className="border">
-                              {getDisplayCustomerName(sale)}
+                              <span className="flex items-center gap-1">
+                                {getDisplayCustomerName(sale)}
+                                {sale.is_company && (
+                                  <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 py-0 font-medium">CO</span>
+                                )}
+                              </span>
                               {shouldShowGateInParentheses(sale) && (
                                 <span className="text-xs text-gray-500 font-normal ml-2">
                                   ({sale.gate_number})

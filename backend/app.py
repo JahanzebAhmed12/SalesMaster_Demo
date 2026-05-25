@@ -6931,10 +6931,12 @@ def daily_book_purchase():
             PurchaseInvoice.supplier_id,
             PurchaseInvoice.purchase_id,
             Purchase.supplier_name,
+            Supplier.is_company,
             func.sum(PurchaseInvoiceItem.total_price).label('invoice_amount')
         )
         .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
         .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
+        .outerjoin(Supplier, PurchaseInvoice.supplier_id == Supplier.id)
     )
     
     # Filter by date range
@@ -6960,7 +6962,8 @@ def daily_book_purchase():
         PurchaseInvoice.id,
         PurchaseInvoice.date,
         PurchaseInvoice.purchase_id,
-        Purchase.supplier_name
+        Purchase.supplier_name,
+        Supplier.is_company
     )
     
     # Order by date descending
@@ -6978,7 +6981,8 @@ def daily_book_purchase():
             'supplier': row.supplier_name,
             'supplierId': row.supplier_id,
             'invNo': row.id,
-            'invoiceAmt': float(row.invoice_amount) if row.invoice_amount else 0
+            'invoiceAmt': float(row.invoice_amount) if row.invoice_amount else 0,
+            'isCompany': bool(row.is_company) if row.is_company is not None else False,
         })
     
     return jsonify(purchase_data)
@@ -11650,7 +11654,8 @@ def daily_summary_report():
             'account_paid_cheque': 0,  # Will be calculated separately
             'account_credits': account_credits,
             'customer_type': sale.customer_type,
-            'gate_number': sale.gate_number
+            'gate_number': sale.gate_number,
+            'is_company': bool(sale.is_company) if sale.is_company is not None else False,
         })
     
     # Add customer returns as separate entries

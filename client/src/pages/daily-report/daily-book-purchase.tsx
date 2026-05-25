@@ -29,6 +29,7 @@ interface PurchaseEntry {
   supplierId: number; 
   invNo: number;
   invoiceAmt: number;
+  isCompany?: boolean;
 }
 
 export default function DailyBookPurchase() {
@@ -522,6 +523,12 @@ export default function DailyBookPurchase() {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="flex items-center gap-4 text-xs mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-amber-100 border border-amber-300 rounded"></div>
+                <span>Company Supplier</span>
+              </div>
+            </div>
             <div className="overflow-x-auto" ref={tableRef}>
               <Table>
                 <TableHeader>
@@ -553,15 +560,25 @@ export default function DailyBookPurchase() {
                     filteredPurchaseData.map((item) => {
                       console.log('Purchase item:', item); // Debug supplierId presence
                       return (
-                        <TableRow key={item.id}>
+                        <TableRow key={item.id} className={item.isCompany ? 'bg-amber-50 border-amber-200' : ''}>
                           <TableCell>{item.date}</TableCell>
                           <TableCell>
                             {item.supplierId ? (
                               <Button variant="link" className="p-0 text-blue-600 underline" onClick={() => navigate(`/daily-report/supplier-purchase-history/${item.supplierId}`)}>
-                                {item.supplier}
+                                <span className="flex items-center gap-1">
+                                  {item.supplier}
+                                  {item.isCompany && (
+                                    <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                                  )}
+                                </span>
                               </Button>
                             ) : (
-                              <span>{item.supplier}</span>
+                              <span className="flex items-center gap-1">
+                                {item.supplier}
+                                {item.isCompany && (
+                                  <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                                )}
+                              </span>
                             )}
                           </TableCell>
                           <TableCell className="text-center">
