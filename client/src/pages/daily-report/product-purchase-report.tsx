@@ -124,7 +124,7 @@ export default function ProductPurchaseReport() {
   }, [businessDate, isLoadingBusinessDate]);
 
   // Fetch purchase data
-  const { data: purchaseData = [], isLoading, isError, error, refetch } = useQuery<PurchaseItem[]>({
+  const { data: purchaseResponse = { data: [], nonCompanyTotal: 0 }, isLoading, isError, error, refetch } = useQuery<{ data: PurchaseItem[], nonCompanyTotal: number }>({
     queryKey: ["/api/reports/product-purchase", filters, trigger],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -137,6 +137,9 @@ export default function ProductPurchaseReport() {
     },
     enabled: !!(filters.fromDate && filters.toDate && trigger > 0), // Only run when dates are set and trigger is positive
   });
+
+  const purchaseData = purchaseResponse.data ?? [];
+  const nonCompanyTotal = purchaseResponse.nonCompanyTotal ?? 0;
 
   const { data: companyDetails } = useQuery<any>({
     queryKey: ['/api/company-details'],
@@ -178,8 +181,8 @@ export default function ProductPurchaseReport() {
   };
 
   const totalQuantity = purchaseData.reduce((sum, item) => sum + item.quantity, 0);
-  const totalAmount = purchaseData.reduce((sum, item) => sum + item.total, 0);
-  const averagePrice = purchaseData.length > 0 ? totalAmount / totalQuantity : 0;
+  const totalAmount = nonCompanyTotal;
+  const averagePrice = totalQuantity > 0 ? totalAmount / totalQuantity : 0;
 
   const tableRef = useRef<HTMLDivElement>(null);
 

@@ -7075,6 +7075,27 @@ def product_purchase_report():
     
     results = query.all()
     
+    # Calculate total excluding company suppliers
+    non_company_total = (
+        db.session.query(func.sum(PurchaseInvoiceItem.total_price))
+        .join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)
+        .outerjoin(Supplier, PurchaseInvoice.supplier_id == Supplier.id)
+        .filter(or_(Supplier.is_company == False, Supplier.is_company.is_(None)))
+    )
+    if from_date:
+        try:
+            from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+            non_company_total = non_company_total.filter(func.date(PurchaseInvoice.date) >= from_dt.date())
+        except Exception:
+            pass
+    if to_date:
+        try:
+            to_dt = datetime.strptime(to_date, "%Y-%m-%d")
+            non_company_total = non_company_total.filter(func.date(PurchaseInvoice.date) <= to_dt.date())
+        except Exception:
+            pass
+    non_company_total_value = float(non_company_total.scalar() or 0)
+    
     # Format for frontend
     purchase_data = []
     for idx, row in enumerate(results, 1):
@@ -7087,7 +7108,10 @@ def product_purchase_report():
             'total': float(row.total) if row.total else 0
         })
     
-    return jsonify(purchase_data)
+    return jsonify({
+        'data': purchase_data,
+        'nonCompanyTotal': non_company_total_value
+    })
 
 @app.route('/api/reports/product-purchase-history', methods=['GET'])
 @jwt_required()
@@ -11324,8 +11348,8 @@ def profit_loss_report():
         if to_dt:
             purchase_query = purchase_query.filter(PurchaseInvoice.date < to_dt)
         purchase_qty, purchase_total = purchase_query.first()
-        purchase_qty = purchase_qty or 0
-        purchase_total = purchase_total or 0
+        purchase_qty = float(purchase_qty or 0)
+        purchase_total = float(purchase_total or 0)
         avg_purchase = (purchase_total / purchase_qty) if purchase_qty else 0
 
         # Sales — quantity from ALL customers, amount from NON-COMPANY customers only
@@ -11355,7 +11379,7 @@ def profit_loss_report():
         if to_dt:
             sales_amt_query = sales_amt_query.filter(Sale.date < to_dt)
         sales_amt_query = sales_amt_query.filter(Sale.status == 'finalized', Customer.is_company == False)
-        sales_total = sales_amt_query.scalar() or 0
+        sales_total = float(sales_amt_query.scalar() or 0)
         avg_sales = (sales_total / float(sales_qty)) if sales_qty else 0
 
         # Profit/Loss

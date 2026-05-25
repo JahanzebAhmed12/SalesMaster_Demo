@@ -210,7 +210,7 @@ export default function DailyBookPurchase() {
     refetch();
   };
 
-  const totalInvoiceAmount = purchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0);
+  const totalInvoiceAmount = purchaseData.filter(item => !item.isCompany).reduce((sum, item) => sum + item.invoiceAmt, 0);
 
   const tableRef = useRef<HTMLDivElement>(null);
 
@@ -607,7 +607,7 @@ export default function DailyBookPurchase() {
                     <TableCell></TableCell>
                     <TableCell className="font-bold">{filteredPurchaseData.length} Items</TableCell>
                     <TableCell className="text-center font-bold"></TableCell>
-                    <TableCell className="text-center font-bold">£{filteredPurchaseData.reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{filteredPurchaseData.filter(item => !item.isCompany).reduce((sum, item) => sum + item.invoiceAmt, 0).toFixed(2)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
