@@ -6022,82 +6022,109 @@ def product_sales_report():
     search = request.args.get('search', '')
     
     # Build base query for SaleItems joined with Sale, RegularProduct, NonProduct
-    query = (
+    # Quantity: all customers (including company)
+    # Total/AvgPrice: non-company customers only
+
+    # Subquery 1: total quantity per product (all customers)
+    qty_query = (
         db.session.query(
-            SaleItem.id,
-            SaleItem.product_id,
-            SaleItem.non_product_id,
-            func.coalesce(RegularProduct.sage_code, NonProduct.sage_code, '').label('sage_code'),
-            func.coalesce(RegularProduct.description, NonProduct.description, '').label('product_description'),
-            func.sum(SaleItem.quantity).label('quantity'),
-            func.sum(SaleItem.total_price).label('total'),
-            (func.sum(SaleItem.total_price) / func.nullif(func.sum(SaleItem.quantity), 0)).label('avg_price')
+            SaleItem.product_id.label('product_id'),
+            SaleItem.non_product_id.label('non_product_id'),
+            func.sum(SaleItem.quantity).label('total_qty')
         )
         .join(Sale, SaleItem.sale_id == Sale.id)
-        .outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id)
-        .outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id)
+        .join(Customer, Sale.customer_id == Customer.id)
+        .filter(Sale.status == 'finalized')
     )
 
-    # Filter by date range
+    # Subquery 2: total amount per product (non-company customers only)
+    amt_query = (
+        db.session.query(
+            SaleItem.product_id.label('product_id'),
+            SaleItem.non_product_id.label('non_product_id'),
+            func.sum(SaleItem.total_price).label('total_amt'),
+            func.sum(SaleItem.quantity).label('non_co_qty')
+        )
+        .join(Sale, SaleItem.sale_id == Sale.id)
+        .join(Customer, Sale.customer_id == Customer.id)
+        .filter(Sale.status == 'finalized', Customer.is_company == False)
+    )
+
+    # Apply date filters to both
     if from_date:
-        # Handle both date-only and datetime formats
         try:
             from_dt = datetime.strptime(from_date, "%Y-%m-%d %H:%M:%S")
         except ValueError:
             try:
                 from_dt = datetime.strptime(from_date, "%Y-%m-%d")
             except ValueError:
-                # If still fails, try to extract just the date part
                 from_dt = datetime.strptime(from_date.split()[0], "%Y-%m-%d")
-        query = query.filter(Sale.date >= from_dt)
+        qty_query = qty_query.filter(Sale.date >= from_dt)
+        amt_query = amt_query.filter(Sale.date >= from_dt)
     if to_date:
-        # Handle both date-only and datetime formats
         try:
             to_dt = datetime.strptime(to_date, "%Y-%m-%d %H:%M:%S")
         except ValueError:
             try:
                 to_dt = datetime.strptime(to_date, "%Y-%m-%d")
             except ValueError:
-                # If still fails, try to extract just the date part
                 to_dt = datetime.strptime(to_date.split()[0], "%Y-%m-%d")
         to_dt = to_dt + timedelta(days=1)
-        query = query.filter(Sale.date < to_dt)
-    # Only finalized sales
-    query = query.filter(Sale.status == 'finalized')
-    # Search by product description or sage code
+        qty_query = qty_query.filter(Sale.date < to_dt)
+        amt_query = amt_query.filter(Sale.date < to_dt)
+
     if search:
-        query = query.filter(
-            or_(
-                RegularProduct.description.ilike(f'%{search}%'),
-                NonProduct.description.ilike(f'%{search}%'),
-                RegularProduct.sage_code.ilike(f'%{search}%'),
-                NonProduct.sage_code.ilike(f'%{search}%')
-            )
+        from sqlalchemy import or_
+        qty_query = qty_query.outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id).outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id).filter(
+            or_(RegularProduct.description.ilike(f'%{search}%'), NonProduct.description.ilike(f'%{search}%'))
         )
-    # Group by product
-    query = query.group_by(
-        SaleItem.product_id,
-        SaleItem.non_product_id,
-        RegularProduct.sage_code,
-        NonProduct.sage_code,
-        RegularProduct.description,
-        NonProduct.description
+        amt_query = amt_query.outerjoin(RegularProduct, SaleItem.product_id == RegularProduct.id).outerjoin(NonProduct, SaleItem.non_product_id == NonProduct.id).filter(
+            or_(RegularProduct.description.ilike(f'%{search}%'), NonProduct.description.ilike(f'%{search}%'))
+        )
+
+    qty_query = qty_query.group_by(SaleItem.product_id, SaleItem.non_product_id)
+    amt_query = amt_query.group_by(SaleItem.product_id, SaleItem.non_product_id)
+
+    qty_sq = qty_query.subquery()
+    amt_sq = amt_query.subquery()
+
+    # Main query: join both subqueries with product info
+    query = (
+        db.session.query(
+            func.coalesce(qty_sq.c.product_id, amt_sq.c.product_id).label('product_id'),
+            func.coalesce(qty_sq.c.non_product_id, amt_sq.c.non_product_id).label('non_product_id'),
+            func.coalesce(RegularProduct.sage_code, NonProduct.sage_code, '').label('sage_code'),
+            func.coalesce(RegularProduct.description, NonProduct.description, '').label('product_description'),
+            func.coalesce(qty_sq.c.total_qty, 0).label('quantity'),
+            func.coalesce(amt_sq.c.total_amt, 0).label('total'),
+            func.coalesce(amt_sq.c.non_co_qty, 0).label('non_co_qty'),
+        )
+        .select_from(qty_sq)
+        .outerjoin(amt_sq, and_(
+            func.coalesce(qty_sq.c.product_id, -1) == func.coalesce(amt_sq.c.product_id, -1),
+            func.coalesce(qty_sq.c.non_product_id, -1) == func.coalesce(amt_sq.c.non_product_id, -1)
+        ))
+        .outerjoin(RegularProduct, qty_sq.c.product_id == RegularProduct.id)
+        .outerjoin(NonProduct, qty_sq.c.non_product_id == NonProduct.id)
     )
-    # Order by total desc
-    query = query.order_by(func.sum(SaleItem.total_price).desc())
+    query = query.order_by(func.coalesce(amt_sq.c.total_amt, 0).desc())
     results = query.all()
+
     # Format for frontend
     sales_data = []
     for idx, row in enumerate(results, 1):
-        product_id = row.product_id  if row.product_id else row.non_product_id
+        product_id = row.product_id if row.product_id else row.non_product_id
+        non_co_qty = float(row.non_co_qty) if row.non_co_qty else 0
+        total_amt = float(row.total) if row.total else 0
+        avg_price = (total_amt / non_co_qty) if non_co_qty > 0 else 0
         sales_data.append({
             'id': product_id,
             'slNo': idx,
             'sageCode': row.sage_code,
             'productDescription': row.product_description,
             'quantity': float(row.quantity) if row.quantity else 0,
-            'avgPrice': float(row.avg_price) if row.avg_price else 0,
-            'total': float(row.total) if row.total else 0
+            'avgPrice': avg_price,
+            'total': total_amt
         })
     return jsonify(sales_data)
 
@@ -7266,8 +7293,8 @@ def sales_analysis_report():
     total_purchase = total_account = total_cash = total_sales = 0
     for idx, d in enumerate(date_list, 1):
         day_purchases = sum(float(item.total_price) for item in purchases_by_date[d])
-        day_account_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'account')
-        day_cash_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'cash')
+        day_account_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'account' and not (sale.customer and sale.customer.is_company))
+        day_cash_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'cash' and not (sale.customer and sale.customer.is_company))
         day_total_sales = day_account_sales + day_cash_sales
         print(f"[DEBUG] {d}: purchase={day_purchases}, accountSales={day_account_sales}, cashSales={day_cash_sales}, totalSales={day_total_sales}")
         rows.append({
@@ -9876,7 +9903,8 @@ def all_supplier_history():
             'discountAdj': discount_adj,
             'balanceOutstanding': balance_outstanding,
             'creditLimit': credit_limit,
-            'currency': currency
+            'currency': currency,
+            'isCompany': bool(supplier.is_company),
         })
         sl_no += 1
     return jsonify(result)
@@ -10066,6 +10094,7 @@ def product_history_report():
             Sale.date,
             Sale.invoice_number,
             Customer.customer_name,
+            Customer.is_company,
             SaleItem.product_id,
             SaleItem.non_product_id,
             SaleItem.quantity,
@@ -10106,7 +10135,8 @@ def product_history_report():
             'product': row.regular_product_desc or row.non_product_desc or '',
             'quantity': float(row.quantity) if row.quantity else 0,
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
-            'total': float(row.total_price) if row.total_price else 0
+            'total': float(row.total_price) if row.total_price else 0,
+            'isCompany': bool(row.is_company) if row.is_company is not None else False,
         }
         for row in sales
     ]
@@ -10692,6 +10722,9 @@ def prod_customer_history():
     # Apply customer filter
     if customer_id:
         query = query.filter(Sale.customer_id == customer_id)
+    else:
+        # When "All Customers" selected, exclude company customers from totals
+        query = query.join(Customer, Sale.customer_id == Customer.id).filter(Customer.is_company == False)
     
     # Apply product filter
     if product_id and product_type:
@@ -10793,10 +10826,10 @@ def date_wise_sales():
     result = []
     sl_no = 1
     for group, group_sales in sorted(grouped.items()):
-        total_sales = sum(float(s.total_amount) for s in group_sales)
-        account_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'account')
-        cash_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'cash')
-        total_invoices = len(group_sales)
+        total_sales = sum(float(s.total_amount) for s in group_sales if not (s.customer and s.customer.is_company))
+        account_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'account' and not (s.customer and s.customer.is_company))
+        cash_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'cash' and not (s.customer and s.customer.is_company))
+        total_invoices = len([s for s in group_sales if not (s.customer and s.customer.is_company)])
         average_sale = total_sales / total_invoices if total_invoices else 0
         # Top product
         product_counter = {}
@@ -11019,7 +11052,8 @@ def daily_book_history():
             'customerName': sale.customer.customer_name if sale.customer else '',
             'account': float(sale.total_amount) if sale.customer_type.lower() == 'account' else 0,
             'accountPaid': account_paid,
-            'cash': total_cash
+            'cash': total_cash,
+            'isCompany': bool(sale.customer.is_company) if sale.customer else False,
         })
     return jsonify(result)
 
@@ -11059,19 +11093,25 @@ def full_analysis():
             m_end = datetime(year+1, 1, 1)
         else:
             m_end = datetime(year, month+1, 1)
-        # Sales
-        sales = db.session.query(func.sum(Sale.total_amount)).filter(
-            Sale.date >= m_start, Sale.date < m_end, Sale.status == 'finalized'
+        # Sales — exclude company customers
+        sales = db.session.query(func.sum(Sale.total_amount)).join(
+            Customer, Sale.customer_id == Customer.id
+        ).filter(
+            Sale.date >= m_start, Sale.date < m_end, Sale.status == 'finalized',
+            Customer.is_company == False
         )
         if search:
-            sales = sales.join(Customer).filter(Customer.customer_name.ilike(f'%{search}%'))
+            sales = sales.filter(Customer.customer_name.ilike(f'%{search}%'))
         sales = sales.scalar() or 0
-        # Customer Returns
-        returns = db.session.query(func.sum(CustomerReturn.total_value)).filter(
-            CustomerReturn.date >= m_start, CustomerReturn.date < m_end
+        # Customer Returns — exclude company customers
+        returns = db.session.query(func.sum(CustomerReturn.total_value)).join(
+            Customer, CustomerReturn.customer_id == Customer.id
+        ).filter(
+            CustomerReturn.date >= m_start, CustomerReturn.date < m_end,
+            Customer.is_company == False
         )
         if search:
-            returns = returns.join(Customer).filter(Customer.customer_name.ilike(f'%{search}%'))
+            returns = returns.filter(Customer.customer_name.ilike(f'%{search}%'))
         returns = returns.scalar() or 0
         net_sales = sales - returns
         # Purchases - calculate from PurchaseInvoiceItem total_price joined with PurchaseInvoice
@@ -11288,24 +11328,35 @@ def profit_loss_report():
         purchase_total = purchase_total or 0
         avg_purchase = (purchase_total / purchase_qty) if purchase_qty else 0
 
-        # Sales
-        sales_query = db.session.query(
-            func.sum(SaleItem.quantity),
-            func.sum(SaleItem.total_price)
+        # Sales — quantity from ALL customers, amount from NON-COMPANY customers only
+        sales_qty_query = db.session.query(
+            func.sum(SaleItem.quantity)
         ).join(Sale, SaleItem.sale_id == Sale.id)
         if prod.type == 'regular':
-            sales_query = sales_query.filter(SaleItem.product_id == prod.id)
+            sales_qty_query = sales_qty_query.filter(SaleItem.product_id == prod.id)
         else:
-            sales_query = sales_query.filter(SaleItem.non_product_id == prod.id)
+            sales_qty_query = sales_qty_query.filter(SaleItem.non_product_id == prod.id)
         if from_dt:
-            sales_query = sales_query.filter(Sale.date >= from_dt)
+            sales_qty_query = sales_qty_query.filter(Sale.date >= from_dt)
         if to_dt:
-            sales_query = sales_query.filter(Sale.date < to_dt)
-        sales_query = sales_query.filter(Sale.status == 'finalized')
-        sales_qty, sales_total = sales_query.first()
-        sales_qty = sales_qty or 0
-        sales_total = sales_total or 0
-        avg_sales = (sales_total / sales_qty) if sales_qty else 0
+            sales_qty_query = sales_qty_query.filter(Sale.date < to_dt)
+        sales_qty_query = sales_qty_query.filter(Sale.status == 'finalized')
+        sales_qty = sales_qty_query.scalar() or 0
+
+        sales_amt_query = db.session.query(
+            func.sum(SaleItem.total_price)
+        ).join(Sale, SaleItem.sale_id == Sale.id).join(Customer, Sale.customer_id == Customer.id)
+        if prod.type == 'regular':
+            sales_amt_query = sales_amt_query.filter(SaleItem.product_id == prod.id)
+        else:
+            sales_amt_query = sales_amt_query.filter(SaleItem.non_product_id == prod.id)
+        if from_dt:
+            sales_amt_query = sales_amt_query.filter(Sale.date >= from_dt)
+        if to_dt:
+            sales_amt_query = sales_amt_query.filter(Sale.date < to_dt)
+        sales_amt_query = sales_amt_query.filter(Sale.status == 'finalized', Customer.is_company == False)
+        sales_total = sales_amt_query.scalar() or 0
+        avg_sales = (sales_total / float(sales_qty)) if sales_qty else 0
 
         # Profit/Loss
         avg_profit = avg_sales - avg_purchase
@@ -13248,7 +13299,7 @@ def all_customer_history():
             'id': customer.id,
             'slNo': sl_no,
             'customerName': customer.customer_name,
-            'accountInvoice': round(account_invoice, 2),  # Changed from creditInvoice to accountInvoice
+            'accountInvoice': round(account_invoice, 2),
             'cashInvoice': round(cash_invoice, 2),
             'amountReceived': round(amount_received, 2),
             'returnsDiscount': round(returns_discount, 2),
@@ -13257,6 +13308,7 @@ def all_customer_history():
             'creditLimit': credit_limit,
             'currency': customer.customer_currency or 'GBP',
             'isBadDebt': is_bad_debt,
+            'isCompany': bool(customer.is_company),
             'customerCode': customer.customer_code,
             'address': customer.address,
             'telephone': customer.telephone,
@@ -13267,14 +13319,15 @@ def all_customer_history():
     # Sort by customer name
     result.sort(key=lambda x: x['customerName'])
     
-    # Calculate totals
+    # Calculate totals — exclude company customers
+    non_company = [item for item in result if not item.get('isCompany')]
     totals = {
-        'accountInvoice': sum(item['accountInvoice'] for item in result),  # Changed from creditInvoice
-        'cashInvoice': sum(item['cashInvoice'] for item in result),
-        'amountReceived': sum(item['amountReceived'] for item in result),
-        'returnsDiscount': sum(item['returnsDiscount'] for item in result),
-        'onAccount': sum(item['onAccount'] for item in result),
-        'balanceOutstanding': sum(item['balanceOutstanding'] for item in result)
+        'accountInvoice': sum(item['accountInvoice'] for item in non_company),
+        'cashInvoice': sum(item['cashInvoice'] for item in non_company),
+        'amountReceived': sum(item['amountReceived'] for item in non_company),
+        'returnsDiscount': sum(item['returnsDiscount'] for item in non_company),
+        'onAccount': sum(item['onAccount'] for item in non_company),
+        'balanceOutstanding': sum(item['balanceOutstanding'] for item in non_company)
     }
     
     # Group by currency
@@ -13285,16 +13338,17 @@ def all_customer_history():
             currency_groups[currency] = []
         currency_groups[currency].append(item)
     
-    # Calculate currency-wise totals
+    # Calculate currency-wise totals — exclude company customers
     currency_totals = {}
     for currency, items in currency_groups.items():
+        nc_items = [i for i in items if not i.get('isCompany')]
         currency_totals[currency] = {
-            'accountInvoice': sum(item['accountInvoice'] for item in items),  # Changed from creditInvoice
-            'cashInvoice': sum(item['cashInvoice'] for item in items),
-            'amountReceived': sum(item['amountReceived'] for item in items),
-            'returnsDiscount': sum(item['returnsDiscount'] for item in items),
-            'onAccount': sum(item['onAccount'] for item in items),
-            'balanceOutstanding': sum(item['balanceOutstanding'] for item in items)
+            'accountInvoice': sum(item['accountInvoice'] for item in nc_items),
+            'cashInvoice': sum(item['cashInvoice'] for item in nc_items),
+            'amountReceived': sum(item['amountReceived'] for item in nc_items),
+            'returnsDiscount': sum(item['returnsDiscount'] for item in nc_items),
+            'onAccount': sum(item['onAccount'] for item in nc_items),
+            'balanceOutstanding': sum(item['balanceOutstanding'] for item in nc_items)
         }
     
     # Pagination

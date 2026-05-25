@@ -22,7 +22,7 @@ interface CustomerData {
   id: number;
   slNo: number;
   customerName: string;
-  accountInvoice: number;  // Changed from creditInvoice to accountInvoice
+  accountInvoice: number;
   cashInvoice: number;
   amountReceived: number;
   returnsDiscount: number;
@@ -31,6 +31,7 @@ interface CustomerData {
   creditLimit: number;
   currency: string;
   isBadDebt: boolean;
+  isCompany: boolean;
   customerCode: string;
   address?: string;
   telephone?: string;
@@ -773,13 +774,19 @@ export default function AllCustomerHistory() {
                         key={customer.id} 
                         className={cn(
                           "hover:bg-gray-50",
-                          customer.isBadDebt && "bg-red-50"
+                          customer.isBadDebt && "bg-red-50",
+                          customer.isCompany && "bg-amber-50"
                         )}
                       >
                         <TableCell>{customer.slNo}</TableCell>
                         <TableCell>
                           <div>
-                            <div className="font-medium">{customer.customerName}</div>
+                            <div className="font-medium flex items-center gap-1">
+                              {customer.customerName}
+                              {customer.isCompany && (
+                                <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                              )}
+                            </div>
                             <div className="text-sm text-gray-500">{customer.customerCode}</div>
                           </div>
                         </TableCell>

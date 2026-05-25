@@ -28,6 +28,7 @@ interface SupplierData {
   balanceOutstanding: number;
   creditLimit: number;
   currency: string;
+  isCompany?: boolean;
 }
 
 interface CompanyDetails {
@@ -535,9 +536,14 @@ export default function AllSupplierHistory() {
                       );
                     })
                     .map((supplier) => (
-                      <TableRow key={supplier.id} className="hover:bg-gray-50">
+                      <TableRow key={supplier.id} className={cn("hover:bg-gray-50", supplier.isCompany && "bg-amber-50")}>
                         <TableCell>{supplier.slNo}</TableCell>
-                        <TableCell>{supplier.supplierName}</TableCell>
+                        <TableCell className="flex items-center gap-1">
+                          {supplier.supplierName}
+                          {supplier.isCompany && (
+                            <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-center">{supplier.purchaseInvoice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">{supplier.amountPaid.toFixed(2)}</TableCell>
                         <TableCell className="text-center">{supplier.creditAdj.toFixed(2)}</TableCell>

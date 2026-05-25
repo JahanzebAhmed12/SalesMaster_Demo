@@ -24,6 +24,7 @@ interface DailyBookData {
   account: number;
   accountPaid: number;
   cash: number;
+  isCompany?: boolean;
 }
 
 interface CompanyDetails {
@@ -88,9 +89,9 @@ export default function DailyBookHistory() {
   });
 
   const totals = {
-    account: dailyBookData.reduce((sum, item) => sum + (item.account || 0), 0),
-    accountPaid: dailyBookData.reduce((sum, item) => sum + (item.accountPaid || 0), 0),
-    cash: dailyBookData.reduce((sum, item) => sum + (item.cash || 0), 0)
+    account: dailyBookData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.account || 0), 0),
+    accountPaid: dailyBookData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.accountPaid || 0), 0),
+    cash: dailyBookData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cash || 0), 0)
   };
 
   const { data: companyDetails } = useQuery<CompanyDetails>({
@@ -459,7 +460,7 @@ export default function DailyBookHistory() {
                       <TableCell colSpan={8} className="text-center py-8">No data available</TableCell>
                     </TableRow>
                   ) : dailyBookData.map((item) => (
-                    <TableRow key={item.slNo}>
+                    <TableRow key={item.slNo} className={cn(item.isCompany && "bg-amber-50")}>
                       <TableCell className="text-center">{item.slNo}</TableCell>
                       <TableCell className="text-center">{format(new Date(item.date), "dd-MM-yyyy")}</TableCell>
                       <TableCell className="text-center">{item.user}</TableCell>
@@ -473,7 +474,14 @@ export default function DailyBookHistory() {
                           {item.invoiceNo}
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">{item.customerName}</TableCell>
+                      <TableCell className="text-center">
+                        <span className="flex items-center gap-1 justify-center">
+                          {item.customerName}
+                          {item.isCompany && (
+                            <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-center">£ {(item.account || 0).toFixed(2)}</TableCell>
                       <TableCell className="text-center">£ {(item.accountPaid || 0).toFixed(2)}</TableCell>
                       <TableCell className="text-center">£ {(item.cash || 0).toFixed(2)}</TableCell>

@@ -471,8 +471,8 @@ export default function DailySummary() {
         head, body,
         startY: y,
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
-        headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.3 },
+        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
+        headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
         bodyStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number] },
         alternateRowStyles: { fillColor: [255, 255, 255] as [number, number, number] },
         ...restOpts,
@@ -657,7 +657,7 @@ export default function DailySummary() {
       ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`],
       ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`],
     ], {
-      styles: { fontSize: 10, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+      styles: { fontSize: 10, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
       columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } },
       didParseCell: (data: any) => {
         if (data.row.index === 6) {
@@ -716,8 +716,8 @@ export default function DailySummary() {
         processedData,
         {
           theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
-          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.3 },
+          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
+          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
           columnStyles: {
             0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 20 },
             3: { cellWidth: 35 }, 4: { cellWidth: 20 }, 5: { cellWidth: 25 }, 6: { cellWidth: 25 },
@@ -775,8 +775,8 @@ export default function DailySummary() {
         ],
         {
           theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
-          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.3 },
+          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
+          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
           columnStyles: {
             0: { cellWidth: 12 }, 1: { cellWidth: 38 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 },
             4: { cellWidth: 14 }, 5: { cellWidth: 14 }, 6: { cellWidth: 14 }, 7: { cellWidth: 14 },
