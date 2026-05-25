@@ -2836,18 +2836,10 @@ def update_expense(id):
         expense_data = ExpenseSchema(**data)
         expense = Expense.query.get_or_404(id)
 
-        # If expense name is being changed, check if it has any entries
-        new_name = expense_data.dict().get('expense_name') or data.get('expenseName')
-        if new_name and new_name != expense.expense_name:
-            entry_count = ExpenseEntry.query.filter_by(expense_id=id).count()
-            if entry_count > 0:
-                return jsonify({
-                    'message': f'Cannot rename this expense — it has {entry_count} existing entr{"y" if entry_count == 1 else "ies"}. Only the status can be changed.'
-                }), 400
-
-        # Update expense fields
-        for key, value in expense_data.dict().items():
-            setattr(expense, key, value)
+        # Update expense fields — map camelCase schema fields to snake_case model columns
+        expense.expense_name = expense_data.expenseName
+        expense.sage_code = expense_data.sageCode
+        expense.is_active = expense_data.isActive
         
         db.session.commit()
         return jsonify(expense.to_dict())
@@ -11530,6 +11522,7 @@ def daily_summary_report():
         Sale.id,
         Sale.invoice_number,
         Customer.customer_name,
+        Customer.is_company,
         Sale.total_amount,
         Sale.payment_status,
         Sale.customer_type,
@@ -11637,7 +11630,7 @@ def daily_summary_report():
             account_credits = abs(float(sale.total_amount or 0))
 
         # Only add to financial totals if customer is NOT a company
-        is_company_customer = bool(sale.customer.is_company) if sale.customer else False
+        is_company_customer = bool(sale.is_company) if sale.is_company is not None else False
         if not is_company_customer:
             cash_total += cash_amount
             card_total += card_amount

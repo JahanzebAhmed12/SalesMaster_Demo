@@ -49,7 +49,7 @@ export default function ExpenseForm() {
     enabled: isEditing,
   });
 
-  const nameIsLocked = isEditing && (entryCheck?.hasEntries ?? false);
+  const nameIsLocked = false;
 
   const { data: expenses = [] } = useQuery<Expense[]>({
     queryKey: ["expenses", ""],
