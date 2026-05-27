@@ -2304,7 +2304,8 @@ def create_customer():
             web_address=get_field_value(data, 'web_address', ''),
             others=get_field_value(data, 'others', ''),
             running_balance=get_field_value(data, 'running_balance', 0),
-            is_active=get_field_value(data, 'is_active', 'yes')
+            is_active=get_field_value(data, 'is_active', 'yes'),
+            is_company=data.get('is_company', False)
         )
         
         db.session.add(customer)
