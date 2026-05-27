@@ -97,12 +97,8 @@ export default function Expenses() {
       const businessDateObj = new Date(businessDate);
       setFromDate(businessDateObj);
       setToDate(businessDateObj);
-    } else {
-      const today = new Date();
-      setFromDate(today);
-      setToDate(today);
     }
-  }, []);
+  }, [businessDate]);
   useEffect(() => {
     if (dialogOpen && businessDateData?.business_date) {
       setNewExpense((prev) => ({

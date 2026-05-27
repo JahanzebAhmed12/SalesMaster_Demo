@@ -968,6 +968,11 @@ export default function DailySummary() {
         <div className="print-content">
           <Card>
             <CardHeader>
+              {companyDetails?.companyName && (
+                <div className="text-lg font-semibold mb-1">
+                  {companyDetails.companyName}
+                </div>
+              )}
               <div className="flex justify-between items-center">
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="w-5 h-5" />
@@ -1055,7 +1060,10 @@ export default function DailySummary() {
               {/* Daily Sales Summary */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Daily Sales Summary - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</CardTitle>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>Daily Sales Summary - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</span>
+                    <span className="hidden print:block text-sm font-normal text-gray-500">stand 100</span>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="overflow-x-auto">
