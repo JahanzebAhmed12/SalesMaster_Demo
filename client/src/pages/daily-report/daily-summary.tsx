@@ -90,6 +90,7 @@ interface PurchaseFullViewRow {
   total: number;
   isHeader?: boolean;
   isTotal?: boolean;
+  isCompany?: boolean;
 }
 
 interface DailySummaryData {
@@ -1542,9 +1543,16 @@ export default function DailySummary() {
                           productPurchaseData.map((row, idx) => {
                             if (row.isHeader) {
                               return (
-                                <TableRow key={idx} className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+                                <TableRow key={idx} className={cn("font-semibold border-t-2 border-gray-200", row.isCompany ? "bg-amber-50" : "bg-gray-50")}>
                                   <TableCell className="border py-1">{row.date}</TableCell>
-                                  <TableCell className="border py-1">{row.supplier}</TableCell>
+                                  <TableCell className="border py-1">
+                                    <span className="flex items-center gap-1">
+                                      {row.supplier}
+                                      {row.isCompany && (
+                                        <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                                      )}
+                                    </span>
+                                  </TableCell>
                                   <TableCell className="border py-1">{row.invNo}</TableCell>
                                   <TableCell className="border py-1" colSpan={3}></TableCell>
                                   <TableCell className="border py-1"></TableCell>
@@ -1552,7 +1560,7 @@ export default function DailySummary() {
                               );
                             } else if (row.isTotal) {
                               return (
-                                <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
+                                <TableRow key={idx} className={cn("font-bold border-b-2 border-gray-300", row.isCompany ? "bg-amber-50" : "bg-white")}>
                                   <TableCell className="border py-1" colSpan={3}></TableCell>
                                   <TableCell className="border text-right py-1">{row.product}</TableCell>
                                   <TableCell className="border text-right py-1">{formatQuantity(row.quantity)}</TableCell>
@@ -1562,7 +1570,7 @@ export default function DailySummary() {
                               );
                             } else {
                               return (
-                                <TableRow key={idx} className="bg-white">
+                                <TableRow key={idx} className={row.isCompany ? "bg-amber-50" : "bg-white"}>
                                   <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border py-1">

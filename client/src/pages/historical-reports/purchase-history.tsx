@@ -30,6 +30,7 @@ interface PurchaseHistoryData {
   unitPrice: number;
   totalAmount: number;
   paymentStatus: string;
+  isCompany?: boolean;
 }
 
 interface CompanyDetails {
@@ -734,10 +735,15 @@ export default function PurchaseHistory() {
                 </TableHeader>
                 <TableBody>
                   {(Array.isArray(purchaseData) ? purchaseData : []).map((purchase: PurchaseHistoryData) => (
-                    <TableRow key={purchase.id} className="hover:bg-gray-50">
+                    <TableRow key={purchase.id} className={cn("hover:bg-gray-50", purchase.isCompany && "bg-amber-50")}>
                       <TableCell>{purchase.slNo}</TableCell>
                       <TableCell>{format(new Date(purchase.date), "dd/MM/yyyy")}</TableCell>
-                      <TableCell>{purchase.supplierName}</TableCell>
+                      <TableCell className="flex items-center gap-1">
+                        {purchase.supplierName}
+                        {purchase.isCompany && (
+                          <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                        )}
+                      </TableCell>
                       <TableCell>{purchase.invoiceNo}</TableCell>
                       <TableCell>{purchase.productName}</TableCell>
                       <TableCell className="text-center">{formatQuantity(purchase.quantity)}</TableCell>

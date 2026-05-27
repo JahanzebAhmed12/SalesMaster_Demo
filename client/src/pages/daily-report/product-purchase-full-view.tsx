@@ -28,6 +28,7 @@ interface PurchaseFullViewRow {
   total: number;
   isHeader?: boolean;
   isTotal?: boolean;
+  isCompany?: boolean;
 }
 
 export default function ProductPurchaseFullView() {
@@ -511,9 +512,16 @@ export default function ProductPurchaseFullView() {
                     (data as PurchaseFullViewRow[]).map((row, idx) => {
                       if (row.isHeader) {
                         return (
-                          <TableRow key={idx} className="bg-gray-50 font-semibold border-t-2 border-gray-200">
+                          <TableRow key={idx} className={cn("font-semibold border-t-2 border-gray-200", row.isCompany ? "bg-amber-50" : "bg-gray-50")}>
                             <TableCell>{row.date}</TableCell>
-                            <TableCell>{row.supplier}</TableCell>
+                            <TableCell>
+                              <span className="flex items-center gap-1">
+                                {row.supplier}
+                                {row.isCompany && (
+                                  <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                                )}
+                              </span>
+                            </TableCell>
                             <TableCell>{row.invNo}</TableCell>
                             <TableCell>{row.awb}</TableCell>
                             <TableCell colSpan={4}></TableCell>
@@ -522,7 +530,7 @@ export default function ProductPurchaseFullView() {
                         );
                       } else if (row.isTotal) {
                         return (
-                          <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
+                          <TableRow key={idx} className={cn("font-bold border-b-2 border-gray-300", row.isCompany ? "bg-amber-50" : "bg-white")}>
                             <TableCell colSpan={4}></TableCell>
                             <TableCell className="text-right">{row.product}</TableCell>
                             <TableCell className="text-right">{row.quantity}</TableCell>
@@ -533,7 +541,7 @@ export default function ProductPurchaseFullView() {
                         );
                       } else {
                         return (
-                          <TableRow key={idx} className="bg-white">
+                          <TableRow key={idx} className={row.isCompany ? "bg-amber-50" : "bg-white"}>
                             <TableCell></TableCell>
                             <TableCell></TableCell>
                             <TableCell>

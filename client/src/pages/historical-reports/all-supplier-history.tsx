@@ -64,13 +64,13 @@ export default function AllSupplierHistory() {
     queryFn: () => apiRequest("GET", "/api/company-details"),
   });
 
-  // Calculate totals
+  // Calculate totals — exclude company suppliers
   const totals = {
-    purchaseInvoice: supplierData.reduce((sum, item) => sum + item.purchaseInvoice, 0),
-    amountPaid: supplierData.reduce((sum, item) => sum + item.amountPaid, 0),
-    creditAdj: supplierData.reduce((sum, item) => sum + item.creditAdj, 0),
-    discountAdj: supplierData.reduce((sum, item) => sum + item.discountAdj, 0),
-    balanceOutstanding: supplierData.reduce((sum, item) => sum + item.balanceOutstanding, 0)
+    purchaseInvoice: supplierData.filter(item => !item.isCompany).reduce((sum, item) => sum + item.purchaseInvoice, 0),
+    amountPaid: supplierData.filter(item => !item.isCompany).reduce((sum, item) => sum + item.amountPaid, 0),
+    creditAdj: supplierData.filter(item => !item.isCompany).reduce((sum, item) => sum + item.creditAdj, 0),
+    discountAdj: supplierData.filter(item => !item.isCompany).reduce((sum, item) => sum + item.discountAdj, 0),
+    balanceOutstanding: supplierData.filter(item => !item.isCompany).reduce((sum, item) => sum + item.balanceOutstanding, 0)
   };
 
   const handleSearch = async () => {

@@ -103,9 +103,9 @@ export default function ProfitLoss() {
 
   const totals = {
     totalQuantity: profitData.reduce((sum: number, item: any) => sum + (Number(item.totalQuantity) || 0), 0),
-    totPurchase: profitData.reduce((sum: number, item: any) => sum + (Number(item.totPurchase) || 0), 0),
+    totPurchase: profitData.reduce((sum: number, item: any) => sum + (Number(item.totPurchaseExCompany) || 0), 0),
     totSales: profitData.reduce((sum: number, item: any) => sum + (Number(item.totSales) || 0), 0),
-    totProfit: profitData.reduce((sum: number, item: any) => sum + (Number(item.totProfit) || 0), 0)
+    totProfit: profitData.reduce((sum: number, item: any) => sum + (Number(item.totProfitExCompany) || 0), 0)
   };
   const overallProfitPercent = totals.totPurchase ? (totals.totProfit / totals.totPurchase) * 100 : 0;
 

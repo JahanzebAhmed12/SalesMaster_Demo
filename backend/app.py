@@ -5708,7 +5708,8 @@ def product_purchase_full_view():
                 'sellingPrice': 0,
                 'total': 0,
                 'isHeader': True,
-                'isTotal': False
+                'isTotal': False,
+                'isCompany': bool(purchase.supplier.is_company) if purchase.supplier and purchase.supplier.is_company is not None else False,
             })
             total_qty = 0
             total_amt = 0
@@ -5746,7 +5747,8 @@ def product_purchase_full_view():
                     'sellingPrice': 0,  # Add if you have it
                     'total': total,
                     'isHeader': False,
-                    'isTotal': False
+                    'isTotal': False,
+                    'isCompany': bool(purchase.supplier.is_company) if purchase.supplier and purchase.supplier.is_company is not None else False,
                 })
             # Total row for this invoice
             result.append({
@@ -5760,7 +5762,8 @@ def product_purchase_full_view():
                 'sellingPrice': '',
                 'total': total_amt,
                 'isHeader': False,
-                'isTotal': True
+                'isTotal': True,
+                'isCompany': bool(purchase.supplier.is_company) if purchase.supplier and purchase.supplier.is_company is not None else False,
             })
     return jsonify(result)
 
@@ -9978,6 +9981,9 @@ def purchase_history_report():
         query = query.filter(PurchaseInvoice.date >= from_dt)
     if to_dt:
         query = query.filter(PurchaseInvoice.date <= to_dt)
+    # Join Supplier to get is_company flag
+    from models import Supplier as SupplierModel
+    query = query.join(SupplierModel, Purchase.supplier_id == SupplierModel.id).add_columns(SupplierModel.is_company)
     # Filter by supplier
     if supplier_id:
         query = query.filter(Purchase.supplier_id == supplier_id)
@@ -10012,11 +10018,14 @@ def purchase_history_report():
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
             'totalAmount': float(row.item_total) if row.item_total else 0,
             'paymentStatus': row.invoice_payment_status.capitalize() if row.invoice_payment_status else '',
+            'isCompany': bool(row.is_company) if row.is_company is not None else False,
         })
-    total_quantity = sum(item['quantity'] for item in purchase_data)
-    total_amount = sum(item['totalAmount'] for item in purchase_data)
-    paid_amount = sum(item['totalAmount'] for item in purchase_data if item['paymentStatus'] == 'Paid')
-    pending_amount = sum(item['totalAmount'] for item in purchase_data if item['paymentStatus'] == 'Pending')
+    # Totals exclude company suppliers
+    non_company = [item for item in purchase_data if not item['isCompany']]
+    total_quantity = sum(item['quantity'] for item in non_company)
+    total_amount = sum(item['totalAmount'] for item in non_company)
+    paid_amount = sum(item['totalAmount'] for item in non_company if item['paymentStatus'] == 'Paid')
+    pending_amount = sum(item['totalAmount'] for item in non_company if item['paymentStatus'] == 'Pending')
 
     return jsonify({
         "data": purchase_data,
@@ -10054,12 +10063,14 @@ def product_history_report():
             PurchaseInvoice.date,
             PurchaseInvoice.purchase_id,
             Purchase.supplier_name,
+            Supplier.is_company,
             PurchaseInvoiceItem.product_name,
             PurchaseInvoiceItem.quantity,
             PurchaseInvoiceItem.unit_price,
             PurchaseInvoiceItem.total_price
         )
         .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
+        .join(Supplier, Purchase.supplier_id == Supplier.id)
         .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
     )
     if from_dt:
@@ -10081,7 +10092,8 @@ def product_history_report():
             'quantity': float(row.quantity) if row.quantity else 0,
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
             'total': float(row.total_price) if row.total_price else 0,
-            'purchaseId': row.purchase_id
+            'purchaseId': row.purchase_id,
+            'isCompany': bool(row.is_company) if row.is_company is not None else False,
         }
         for row in purchases
     ]
@@ -10107,7 +10119,8 @@ def product_history_report():
             'product': r.description,
             'quantity': r.quantity,
             'unitPrice': float(r.unit_price),
-            'total': float(r.total_value)
+            'total': float(r.total_value),
+            'isCompany': bool(r.supplier.is_company) if r.supplier and r.supplier.is_company is not None else False,
         }
         for r in supplier_returns
     ]
@@ -11308,7 +11321,7 @@ add_pdf_routes(app, get_invoice_data_for_pdf)
 def profit_loss_report():
     from datetime import datetime, timedelta
     from models import (
-        PurchaseInvoice, PurchaseInvoiceItem, Sale, SaleItem,
+        PurchaseInvoice, PurchaseInvoiceItem, Purchase, Supplier, Sale, SaleItem,
         RegularProduct, NonProduct
     )
 
@@ -11334,7 +11347,7 @@ def profit_loss_report():
         # Optional search filter
         if search and search.lower() not in (prod.description or '').lower():
             continue
-        # Purchases
+        # Purchases — full amount for display, non-company amount for totals
         purchase_query = db.session.query(
             func.sum(PurchaseInvoiceItem.quantity),
             func.sum(PurchaseInvoiceItem.total_price)
@@ -11351,6 +11364,23 @@ def profit_loss_report():
         purchase_qty = float(purchase_qty or 0)
         purchase_total = float(purchase_total or 0)
         avg_purchase = (purchase_total / purchase_qty) if purchase_qty else 0
+
+        # Non-company purchase amount (for totals exclusion)
+        purchase_amt_nc_query = db.session.query(
+            func.sum(PurchaseInvoiceItem.total_price)
+        ).join(PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id)\
+         .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)\
+         .join(Supplier, Purchase.supplier_id == Supplier.id)
+        if prod.type == 'regular':
+            purchase_amt_nc_query = purchase_amt_nc_query.filter(PurchaseInvoiceItem.product_id == prod.id)
+        else:
+            purchase_amt_nc_query = purchase_amt_nc_query.filter(PurchaseInvoiceItem.product_id == prod.id)
+        if from_dt:
+            purchase_amt_nc_query = purchase_amt_nc_query.filter(PurchaseInvoice.date >= from_dt)
+        if to_dt:
+            purchase_amt_nc_query = purchase_amt_nc_query.filter(PurchaseInvoice.date < to_dt)
+        purchase_amt_nc_query = purchase_amt_nc_query.filter(Supplier.is_company == False)
+        purchase_total_nc = float(purchase_amt_nc_query.scalar() or 0)
 
         # Sales — quantity from ALL customers, amount from NON-COMPANY customers only
         sales_qty_query = db.session.query(
@@ -11382,9 +11412,10 @@ def profit_loss_report():
         sales_total = float(sales_amt_query.scalar() or 0)
         avg_sales = (sales_total / float(sales_qty)) if sales_qty else 0
 
-        # Profit/Loss
+        # Profit/Loss — use non-company purchase for profit calc
         avg_profit = avg_sales - avg_purchase
         tot_profit = sales_total - purchase_total
+        tot_profit_nc = sales_total - purchase_total_nc
         percent_profit = (tot_profit / purchase_total * 100) if purchase_total else 0
 
         result.append({
@@ -11396,8 +11427,10 @@ def profit_loss_report():
             'avgSales': avg_sales,
             'avgProfit': avg_profit,
             'totPurchase': purchase_total,
+            'totPurchaseExCompany': purchase_total_nc,
             'totSales': sales_total,
             'totProfit': tot_profit,
+            'totProfitExCompany': tot_profit_nc,
             'percentProfit': percent_profit,
             'isLoss': tot_profit < 0
         })

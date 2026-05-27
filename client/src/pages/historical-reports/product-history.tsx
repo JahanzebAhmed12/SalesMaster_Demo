@@ -755,10 +755,17 @@ export default function ProductHistory() {
                     </TableRow>
                   ) : (
                     purchases.map((purchase, idx) => (
-                      <TableRow key={`purchase-${idx}`}>
+                      <TableRow key={`purchase-${idx}`} className={cn(purchase.isCompany && "bg-amber-50")}>
                         <TableCell className="text-center">{idx + 1}</TableCell>
                         <TableCell className="text-center">{purchase.date}</TableCell>
-                        <TableCell className="text-center">{purchase.supplierName}</TableCell>
+                        <TableCell className="text-center">
+                          <span className="flex items-center gap-1 justify-center">
+                            {purchase.supplierName}
+                            {purchase.isCompany && (
+                              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                            )}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-center">{purchase.product}</TableCell>
                         <TableCell className="text-center">{formatQuantity(purchase.quantity)}</TableCell>
                         <TableCell className="text-center">£{Number(purchase.unitPrice).toFixed(2)}</TableCell>
@@ -771,14 +778,18 @@ export default function ProductHistory() {
                       <TableCell className="text-left">Total</TableCell>
                       <TableCell colSpan={3}></TableCell>
                       <TableCell className="text-center">
-                        {formatQuantity(purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0))}
+                        {formatQuantity(purchases.reduce((sum: number, p: any) => sum + (Number(p.quantity) || 0), 0))}
                       </TableCell>
                       <TableCell className="text-center">
-                        £{(purchases.reduce((sum, p) => sum + (Number(p.unitPrice) || 0) * (Number(p.quantity) || 0), 0) / 
-                         (purchases.reduce((sum, p) => sum + (Number(p.quantity) || 0), 0) || 1)).toFixed(2)}
+                        £{(() => {
+                          const nc = purchases.filter((p: any) => !p.isCompany);
+                          const totalQty = nc.reduce((sum: number, p: any) => sum + (Number(p.quantity) || 0), 0);
+                          const totalVal = nc.reduce((sum: number, p: any) => sum + (Number(p.unitPrice) || 0) * (Number(p.quantity) || 0), 0);
+                          return (totalVal / (totalQty || 1)).toFixed(2);
+                        })()}
                       </TableCell>
                       <TableCell className="text-center">
-                        £{purchases.reduce((sum, p) => sum + (Number(p.total) || 0), 0).toFixed(2)}
+                        £{purchases.filter((p: any) => !p.isCompany).reduce((sum: number, p: any) => sum + (Number(p.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -817,11 +828,18 @@ export default function ProductHistory() {
                     </TableRow>
                   ) : (
                     supplierReturns.map((returnItem, idx) => (
-                      <TableRow key={`return-${idx}`}>
+                      <TableRow key={`return-${idx}`} className={cn(returnItem.isCompany && "bg-amber-50")}>
                         <TableCell className="text-center">{idx + 1}</TableCell>
                         <TableCell className="text-center">{returnItem.date}</TableCell>
                         <TableCell className="text-center">{returnItem.invoice}</TableCell>
-                        <TableCell className="text-center">{returnItem.supplierName}</TableCell>
+                        <TableCell className="text-center">
+                          <span className="flex items-center gap-1 justify-center">
+                            {returnItem.supplierName}
+                            {returnItem.isCompany && (
+                              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                            )}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-center">{returnItem.product}</TableCell>
                         <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                         <TableCell className="text-center">£{Number(returnItem.unitPrice).toFixed(2)}</TableCell>
@@ -834,14 +852,18 @@ export default function ProductHistory() {
                       <TableCell className="text-left">Total</TableCell>
                       <TableCell colSpan={4}></TableCell>
                       <TableCell className="text-center">
-                        {formatQuantity(supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
+                        {formatQuantity(supplierReturns.reduce((sum: number, r: any) => sum + (Number(r.quantity) || 0), 0))}
                       </TableCell>
                       <TableCell className="text-center">
-                        £{(supplierReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
-                         (supplierReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)).toFixed(2)}
+                        £{(() => {
+                          const nc = supplierReturns.filter((r: any) => !r.isCompany);
+                          const totalQty = nc.reduce((sum: number, r: any) => sum + (Number(r.quantity) || 0), 0);
+                          const totalVal = nc.reduce((sum: number, r: any) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0);
+                          return (totalVal / (totalQty || 1)).toFixed(2);
+                        })()}
                       </TableCell>
                       <TableCell className="text-center">
-                        £{supplierReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
+                        £{supplierReturns.filter((r: any) => !r.isCompany).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
