@@ -111,15 +111,23 @@ export default function ProductSalesHistoryPage() {
     doc.text("Product Sales History", 105, 20, { align: "center" });
     autoTable(doc, {
       head: [["Invoice No", "Date", "Customer Name", "Product", "Quantity", "Unit Price", "Total"]],
-      body: sales.map((row: any) => [
-        row.invoiceNo,
-        row.date,
-        row.customerName,
-        row.productDescription,
-        formatQuantity(row.quantity),
-        `£${Number(row.unitPrice).toFixed(2)}`,
-        `£${Number(row.total).toFixed(2)}`
-      ]),
+      body: [
+        ...sales.map((row: any) => [
+          row.invoiceNo,
+          row.date,
+          row.customerName,
+          row.productDescription,
+          formatQuantity(row.quantity),
+          `£${Number(row.unitPrice).toFixed(2)}`,
+          `£${Number(row.total).toFixed(2)}`
+        ]),
+        sales.length > 0 ? [
+          '', '', '', { content: 'TOTAL (excl. company)', styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: formatQuantity(sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.quantity), 0)), styles: { fontStyle: 'bold', halign: 'right' } },
+          (() => { const q = sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.quantity), 0); const t = sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.total), 0); return { content: q > 0 ? `£${(t / q).toFixed(2)}` : '-', styles: { fontStyle: 'bold', halign: 'right' } }; })(),
+          { content: `£${sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.total), 0).toFixed(2)}`, styles: { fontStyle: 'bold', halign: 'right' } },
+        ] : [],
+      ],
       startY: 28,
       styles: { fontSize: 10 },
       headStyles: { fillColor: [240, 240, 240], textColor: 0 },
@@ -129,8 +137,12 @@ export default function ProductSalesHistoryPage() {
   };
 
   const handleExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(
-      sales.map((row: any) => ({
+    const nonCompanySales = sales.filter((r: any) => !r.isCompany);
+    const totalQty = nonCompanySales.reduce((s: number, r: any) => s + Number(r.quantity), 0);
+    const totalAmt = nonCompanySales.reduce((s: number, r: any) => s + Number(r.total), 0);
+    const avgPrice = totalQty > 0 ? totalAmt / totalQty : 0;
+    const ws = XLSX.utils.json_to_sheet([
+      ...sales.map((row: any) => ({
         "Invoice No": row.invoiceNo,
         "Date": row.date,
         "Customer Name": row.customerName,
@@ -138,8 +150,10 @@ export default function ProductSalesHistoryPage() {
         "Quantity": formatQuantity(row.quantity),
         "Unit Price": row.unitPrice,
         "Total": row.total,
-      }))
-    );
+      })),
+      {},
+      { "Invoice No": "TOTAL (excl. company)", "Quantity": formatQuantity(totalQty), "Unit Price": avgPrice.toFixed(2), "Total": totalAmt.toFixed(2) },
+    ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Product Sales History");
     XLSX.writeFile(wb, "product-sales-history.xlsx");
@@ -161,15 +175,23 @@ export default function ProductSalesHistoryPage() {
     
     autoTable(doc, {
       head: [["Invoice No", "Date", "Customer Name", "Product", "Quantity", "Unit Price", "Total"]],
-      body: sales.map((row: any) => [
-        row.invoiceNo,
-        row.date,
-        row.customerName,
-        row.productDescription,
-        formatQuantity(row.quantity),
-        `£${Number(row.unitPrice).toFixed(2)}`,
-        `£${Number(row.total).toFixed(2)}`
-      ]),
+      body: [
+        ...sales.map((row: any) => [
+          row.invoiceNo,
+          row.date,
+          row.customerName,
+          row.productDescription,
+          formatQuantity(row.quantity),
+          `£${Number(row.unitPrice).toFixed(2)}`,
+          `£${Number(row.total).toFixed(2)}`
+        ]),
+        sales.length > 0 ? [
+          '', '', '', { content: 'TOTAL (excl. company)', styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: formatQuantity(sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.quantity), 0)), styles: { fontStyle: 'bold', halign: 'right' } },
+          (() => { const q = sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.quantity), 0); const t = sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.total), 0); return { content: q > 0 ? `£${(t / q).toFixed(2)}` : '-', styles: { fontStyle: 'bold', halign: 'right' } }; })(),
+          { content: `£${sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.total), 0).toFixed(2)}`, styles: { fontStyle: 'bold', halign: 'right' } },
+        ] : [],
+      ],
       startY: productName ? 38 : 32,
       styles: { fontSize: 8 },
       headStyles: { fillColor: [240, 240, 240], textColor: 0 },
@@ -364,7 +386,7 @@ export default function ProductSalesHistoryPage() {
                     </tr>
                   ) : (
                     sales.map((row: any, idx: number) => (
-                      <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      <tr key={idx} className={`${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} ${row.isCompany ? 'bg-amber-50' : ''}`}>
                         <td className="border border-gray-200 px-3 py-2">
                           <Button 
                             variant="link" 
@@ -381,7 +403,14 @@ export default function ProductSalesHistoryPage() {
                           </Button>
                         </td>
                         <td className="border border-gray-200 px-3 py-2">{row.date}</td>
-                        <td className="border border-gray-200 px-3 py-2">{row.customerName}</td>
+                        <td className="border border-gray-200 px-3 py-2">
+                          <span className="flex items-center gap-1">
+                            {row.customerName}
+                            {row.isCompany && (
+                              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 py-0 font-medium">CO</span>
+                            )}
+                          </span>
+                        </td>
                         <td 
                           className={`border border-gray-200 px-3 py-2 ${productId ? 'cursor-pointer hover:bg-blue-50 hover:text-blue-600 transition-colors' : ''}`}
                           onClick={() => productId && handleProductClick(row)}
@@ -398,6 +427,16 @@ export default function ProductSalesHistoryPage() {
                     ))
                   )}
                 </tbody>
+                {sales.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-gray-100 font-semibold">
+                      <td colSpan={4} className="border border-gray-200 px-3 py-2 text-right">TOTAL (excluding company)</td>
+                      <td className="border border-gray-200 px-3 py-2 text-right">{formatQuantity(sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.quantity), 0))}</td>
+                      <td className="border border-gray-200 px-3 py-2 text-right">{(() => { const q = sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.quantity), 0); const t = sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.total), 0); return q > 0 ? `£${(t / q).toFixed(2)}` : '-'; })()}</td>
+                      <td className="border border-gray-200 px-3 py-2 text-right">£{sales.filter((r: any) => !r.isCompany).reduce((s: number, r: any) => s + Number(r.total), 0).toFixed(2)}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </CardContent>

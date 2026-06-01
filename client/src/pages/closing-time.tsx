@@ -28,6 +28,7 @@ export default function ClosingTime() {
   const { toast } = useToast();
   const [currentBusinessDate, setCurrentBusinessDate] = useState<string>("");
   const [nextBusinessDate, setNextBusinessDate] = useState<string>("");
+  const [heldInvoiceCount, setHeldInvoiceCount] = useState(0);
 
   // Get current business date from backend
   const { data: businessDate, isLoading, refetch } = useQuery<BusinessDate>({
@@ -66,6 +67,18 @@ export default function ClosingTime() {
     }
   }, [businessDate]);
 
+  // Check for held invoices in localStorage
+  useEffect(() => {
+    const checkHeldInvoices = () => {
+      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
+      setHeldInvoiceCount(held.length);
+    };
+
+    checkHeldInvoices();
+    window.addEventListener('storage', checkHeldInvoices);
+    return () => window.removeEventListener('storage', checkHeldInvoices);
+  }, []);
+
   // Refetch when window gains focus (user returns from admin page)
   useEffect(() => {
     const handleFocus = () => {
@@ -77,6 +90,14 @@ export default function ClosingTime() {
   }, [refetch]);
 
   const handleDateSwitch = () => {
+    if (heldInvoiceCount > 0) {
+      toast({
+        title: "Held Invoices Detected",
+        description: `Please clear ${heldInvoiceCount} held invoice(s) before switching the business date.`,
+        variant: "destructive",
+      });
+      return;
+    }
     switchDateMutation.mutate();
   };
 
@@ -241,13 +262,22 @@ export default function ClosingTime() {
                       <strong>Warning:</strong> This action will affect all new data entries. 
                       All sales, purchases, expenses, and other transactions will use the new business date.
                     </p>
+                    {heldInvoiceCount > 0 && (
+                      <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                          <strong>{heldInvoiceCount} held invoice(s) detected.</strong> You must clear all held invoices before switching the business date. Please go to Sales Entry and resolve all held invoices first.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction 
                     onClick={handleDateSwitch}
-                    className="bg-orange-600 hover:bg-orange-700"
+                    className={heldInvoiceCount > 0 ? "bg-gray-400 cursor-not-allowed" : "bg-orange-600 hover:bg-orange-700"}
+                    disabled={heldInvoiceCount > 0 || switchDateMutation.isPending}
                   >
                     Yes, Switch Date
                   </AlertDialogAction>

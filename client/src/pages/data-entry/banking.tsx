@@ -618,10 +618,9 @@ export default function Banking() {
                             required
                           />
                           <Input
-                            type="number"
-                            step="0.01"
-                            value={bag.amount}
-                            onChange={e => updateBagAmount(index, parseFloat(e.target.value) || 0)}
+                            type="text"
+                            value={bag.amount || ""}
+                            onChange={e => updateBagAmount(index, e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
                             placeholder="Amount"
                             className="w-32 text-right"
                             required
@@ -696,10 +695,9 @@ export default function Banking() {
                   <div>
                     <Label>AMOUNT</Label>
                     <Input
-                      type="number"
-                      step="0.01"
-                      value={newEntry.amount}
-                      onChange={(e) => setNewEntry({...newEntry, amount: parseFloat(e.target.value) || 0})}
+                      type="text"
+                      value={newEntry.amount || ""}
+                      onChange={(e) => setNewEntry({...newEntry, amount: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0})}
                       placeholder="0.00"
                       className="text-right"
                     />

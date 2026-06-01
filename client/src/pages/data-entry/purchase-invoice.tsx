@@ -588,6 +588,7 @@ export default function PurchaseInvoice() {
                   <div className="relative">
                     <Input
                       ref={productInputRef}
+                      className="h-7"
                       placeholder="Type to search products..."
                       value={productSearch}
                       onChange={e => {
@@ -653,7 +654,7 @@ export default function PurchaseInvoice() {
                       }
                     }}
                     onFocus={(e) => e.target.select()}
-                    className="mt-1"
+                    className="mt-1 h-7"
                   />
                 </div>
                 <div>
@@ -669,7 +670,7 @@ export default function PurchaseInvoice() {
                     onChange={e => setUnitPrice(e.target.value)}
                     onKeyDown={handlePriceKeyDown}
                     onFocus={(e) => e.target.select()}
-                    className="mt-1"
+                    className="mt-1 h-7"
                   />
                 </div>
                 <div>
@@ -682,13 +683,13 @@ export default function PurchaseInvoice() {
                     onChange={e => setProductRemarks(e.target.value)}
                     onKeyDown={handleRemarksKeyDown}
                     onFocus={(e) => e.target.select()}
-                    className="mt-1"
+                    className="mt-1 h-7"
                   />
                 </div>
                 <div className="flex items-end">
                   <Button
                     onClick={handleAddProduct}
-                    className="w-full"
+                    className="w-full h-7"
                     disabled={!selectedProductId || quantity <= 0 || !unitPrice || Number(unitPrice) < 0}
                   >
                     Add Product
@@ -710,7 +711,7 @@ export default function PurchaseInvoice() {
             {items.length > 0 && (
               <div>
                 <Label className="text-base font-medium">Invoice Items</Label>
-                <Table className="mt-4">
+                <Table className="mt-4 [&_th]:h-7 [&_th]:px-2 [&_th]:py-0 [&_td]:p-1 [&_tr]:m-0">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Product Name</TableHead>

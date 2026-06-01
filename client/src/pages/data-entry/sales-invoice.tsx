@@ -428,13 +428,8 @@ const SalesInvoice = () => {
   useEffect(() => {
     let list: (RegularProduct | NonProduct & { productType: 'regular' | 'non' })[] = [];
     if (selectedProductType === "regular") {
-      // Only show regular products with stock > 0
-      // Products with zero or negative stock should only appear in non-products section
+      // Show all regular products regardless of stock level (positive, zero, or negative)
       list = (regularProducts || [])
-        .filter((p: any) => {
-          const stock = currentStock.find(s => s.id === p.id && s.productType === 'regular');
-          return stock && stock.currentStock > 0;
-        })
         .map(p => ({ ...p, productType: 'regular' as const }));
     } else {
       // Show all regular and all non-regular products, tag with type
@@ -886,15 +881,7 @@ const SalesInvoice = () => {
     const totalRequestedQuantity = existingQuantity + Number(itemQuantity);
 
     // Block insufficient stock ONLY in regular product mode (non-product mode allows negative stock)
-    if (selectedProductType === 'regular' && totalRequestedQuantity > actualStockLevel) {
-      const availableStock = getCurrentStock(parseInt(selectedProductId), selectedProductType);
-      toast({
-        title: "Insufficient Stock",
-        description: `Only ${availableStock} units available in stock. You already have ${existingQuantity} in this invoice. Switch to Non-Products to sell beyond available stock.`,
-        variant: "destructive",
-      });
-      return;
-    }
+    // Stock validation removed — allow selling regardless of stock level in both modes
 
     let product: RegularProduct | NonProduct | undefined;
     let isRegular = false;
@@ -1485,6 +1472,9 @@ const SalesInvoice = () => {
 
     console.log('✅ Manual hold - Invoice saved with', saleItems.length, 'items');
     console.log('📊 Manual hold - Total held invoices now:', held.length);
+
+    // Clear draft from localStorage to prevent stale restore
+    localStorage.removeItem('currentInvoiceDraft');
 
     // Clear current form immediately after saving
     setSaleItems([]);
@@ -2284,12 +2274,24 @@ const SalesInvoice = () => {
       }
     };
 
-    // Only listen to beforeunload — tab switches (visibilitychange/blur) should NOT trigger auto-hold
+    // Handle tab switch (browser tab) — auto-hold and redirect to sales entry
+    const handleVisibilityChange = () => {
+      if (document.hidden && shouldAutoHold()) {
+        console.log('👁️ Tab hidden - auto-holding invoice');
+        if (autoHoldInvoice()) {
+          window.location.href = '/data-entry/sales-entry';
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Handle browser/tab close
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Cleanup: auto-hold on unmount (SPA route navigation away from invoice page)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
 
       // Auto-hold on component unmount (use refs for current state)
       const state = stateRef.current;
@@ -2346,7 +2348,7 @@ const SalesInvoice = () => {
           // Redirect to sales entry so user can resume from held invoices
           // Use a small timeout to let the current navigation complete first
           setTimeout(() => {
-            window.location.href = '/data-entry/sales-invoice';
+            window.location.href = '/data-entry/sales-entry';
           }, 50);
         } else {
           console.log('🚀 Duplicate detected during unmount, not auto-holding');
@@ -2879,7 +2881,7 @@ const SalesInvoice = () => {
               {/* Mobile Items List */}
               <div className="divide-y">
                 {saleItems.map((item, index) => (
-                  <div key={index} className="p-4">
+                  <div key={index} className="p-2">
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
                         <h4 className="font-medium text-sm">{item.productName}</h4>
@@ -2948,7 +2950,7 @@ const SalesInvoice = () => {
 
             {/* Desktop View */}
             <div className="hidden lg:block relative w-full overflow-visible">
-              <Table>
+              <Table className="[&_th]:h-7 [&_th]:px-2 [&_th]:py-0 [&_td]:p-1 [&_tr]:m-0">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Product</TableHead>
@@ -2974,7 +2976,7 @@ const SalesInvoice = () => {
                         {(editingIndex !== null || saleItems.some(item => item.notes)) && (
                           <TableCell className="text-center">
                             <Input
-                              className="text-center"
+                              className="text-center h-7"
                               placeholder="Notes"
                               value={editItem?.notes ?? item.notes ?? ""}
                               onChange={e => setEditItem({ ...item, notes: e.target.value, createdAt: item.createdAt })}
@@ -2983,26 +2985,29 @@ const SalesInvoice = () => {
                         )}
                         <TableCell className="text-center">
                           <Input
-                            type="number"
-                            value={editItem?.quantity ?? item.quantity}
-                            onChange={e => setEditItem({ ...item, quantity: parseFloat(e.target.value) || 0, createdAt: item.createdAt })}
+                            className="h-7"
+                            type="text"
+                            placeholder="Qty"
+                            value={editItem?.quantity === undefined ? item.quantity : editItem.quantity}
+                            onChange={e => setEditItem({ ...item, quantity: e.target.value, createdAt: item.createdAt })}
                           />
                         </TableCell>
                         <TableCell className="text-center">
                           <Input
-                            type="number"
-                            step="0.01"
-                            value={editItem?.unitPrice ?? item.unitPrice}
-                            onChange={e => setEditItem({ ...item, unitPrice: parseFloat(e.target.value) || 0, createdAt: item.createdAt })}
+                            className="h-7"
+                            type="text"
+                            placeholder="Price"
+                            value={editItem?.unitPrice === undefined ? item.unitPrice : editItem.unitPrice}
+                            onChange={e => setEditItem({ ...item, unitPrice: e.target.value, createdAt: item.createdAt })}
                           />
                         </TableCell>
                         <TableCell className="text-center">
-                          £{((editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice)).toFixed(2)}
+                          £{(Number(editItem?.quantity ?? item.quantity) * Number(editItem?.unitPrice ?? item.unitPrice)).toFixed(2)}
                         </TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" onClick={() => {
                             // Save changes locally only - don't auto-update backend
-                            const updatedItems = saleItems.map((it, i) => i === index ? { ...item, ...editItem, totalPrice: (editItem?.quantity ?? item.quantity) * (editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt } : it);
+                            const updatedItems = saleItems.map((it, i) => i === index ? { ...item, ...editItem, totalPrice: Number(editItem?.quantity ?? item.quantity) * Number(editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt } : it);
                             setSaleItems(updatedItems);
 
                             // Save draft items to localStorage for new invoices
@@ -3088,6 +3093,7 @@ const SalesInvoice = () => {
                       <div className="relative">
                         <Input
                           ref={productInputRef}
+                          className="h-7"
                           placeholder={`Type to search ${selectedProductType === 'regular' ? 'regular' : 'non'} products...`}
                           value={productSearch}
                           disabled={isReadOnly}
@@ -3155,7 +3161,7 @@ const SalesInvoice = () => {
                       <TableCell>
                         <Input
                           ref={notesInputRef}
-                          className="text-center"
+                          className="text-center h-7"
                           placeholder="Notes (optional)"
                           value={itemNotes}
                           disabled={isReadOnly}
@@ -3167,7 +3173,7 @@ const SalesInvoice = () => {
                     <TableCell>
                       <Input
                         ref={quantityInputRef}
-                        className="text-center"
+                        className="text-center h-7"
                         type="text"
                         placeholder="Qty"
                         value={itemQuantity}
@@ -3195,7 +3201,7 @@ const SalesInvoice = () => {
                     <TableCell>
                       <Input
                         ref={priceInputRef}
-                        className="text-center"
+                        className="text-center h-7"
                         type="number"
                         step="0.01"
                         placeholder="Price"
@@ -3211,7 +3217,7 @@ const SalesInvoice = () => {
                     <TableCell className="text-center">
                       <Button
                         size="sm"
-                        className="bg-green-600 hover:bg-green-700"
+                        className="bg-green-600 hover:bg-green-700 h-7"
                         disabled={isReadOnly}
                         onClick={() => {
                           handleAddItem();

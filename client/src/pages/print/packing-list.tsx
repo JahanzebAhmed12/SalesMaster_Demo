@@ -73,28 +73,28 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
         {customer?.vat_number && <div style={{ fontSize: 14 }}>VAT No: {customer.vat_number}</div>}
       </div>
       {/* Packing List Table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 14 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8, fontSize: 14 }}>
         <thead>
-          <tr style={{ background: "#f5f5f5" }}>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left", fontSize: 16, width: "80px" }}>Qty</th>
-            <th style={{ border: "1px solid #888", padding: 4, fontSize: 16 }}>Product</th>
+          <tr>
+            <th style={{ padding: "1px 4px", textAlign: "center", width: "80px", fontSize: 16 }}>Qty</th>
+            <th style={{ padding: "1px 4px", fontSize: 16 }}>Product</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item, idx) => (
             <tr key={idx}>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center", fontWeight: 600, fontSize: 16 }}>{item.qty}</td>
-              <td style={{ border: "1px solid #888", padding: 4, fontSize: 14 }}>
+              <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: 600, fontSize: 16 }}>{item.qty}</td>
+              <td style={{ padding: "1px 4px", fontSize: 14, textAlign: "center" }}>
                   {item.product}
                   {item.notes && (
-                    <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>{item.notes}</div>
+                    <div style={{ fontSize: "12px", fontStyle: "italic" }}>{item.notes}</div>
                   )}
                 </td>
             </tr>
           ))}
-          <tr style={{ fontWeight: "bold", background: "#f5f5f5" }}>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center", fontSize: 16 }}>{totalBoxes} Boxes</td>
-            <td style={{ border: "1px solid #888", padding: 4, fontSize: 14 }}>{totalItems} Items</td>
+          <tr style={{ fontWeight: "bold" }}>
+            <td style={{ padding: "1px 4px", textAlign: "center", fontSize: 16 }}>{totalBoxes} Boxes</td>
+            <td style={{ padding: "1px 4px", fontSize: 14 }}>{totalItems} Items</td>
           </tr>
         </tbody>
       </table>

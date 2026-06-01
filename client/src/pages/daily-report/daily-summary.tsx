@@ -143,6 +143,8 @@ interface DailySummaryData {
     pounds: number;
     coins: number;
     total: number;
+    till_float: number;
+    carry_forward: number;
     date: string;
   };
   banking_records: Array<{
@@ -653,7 +655,8 @@ export default function DailySummary() {
       ['Total Cash Sales', `£${summaryData.totals.cash_sales.toFixed(2)}`],
       ['Total Cheque', `£${(summaryData.totals.cheque_sales || 0).toFixed(2)}`],
       ['Account Paid Cash (Backdate)', `£${(summaryData.totals.customer_cash_payments || 0).toFixed(2)}`],
-      ['Till/Float(C/F)', `£${(summaryData.totals.cash_cf_total || 0).toFixed(2)}`],
+      ['Cash Held (From Previous Day)', `+£${(summaryData.cash_cf?.carry_forward || 0).toFixed(2)}`],
+      ['Till Float (Set Aside Today)', `-£${(summaryData.cash_cf?.till_float || 0).toFixed(2)}`],
       ['Total Supplier Payment (Paid Out)', `-£${(summaryData.totals.supplier_payments_paid_out || 0).toFixed(2)}`],
       ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`],
       ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`],
@@ -661,7 +664,7 @@ export default function DailySummary() {
       styles: { fontSize: 10, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
       columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } },
       didParseCell: (data: any) => {
-        if (data.row.index === 6) {
+        if (data.row.index === 7) {
           data.cell.styles.fillColor = [173, 216, 230];
           data.cell.styles.fontSize = 12;
           data.cell.styles.fontStyle = 'bold';
@@ -1057,6 +1060,14 @@ export default function DailySummary() {
             </Card>
           ) : summaryData ? (
             <div className="space-y-6">
+              {/* Print-only header: company name above the report title */}
+              <div className="hidden print:block">
+                {companyDetails?.companyName && (
+                  <div className="text-base text-gray-700 mb-1">{companyDetails.companyName}</div>
+                )}
+                <div className="text-xl font-bold mb-4">Daily Summary Report</div>
+              </div>
+
               {/* Daily Sales Summary */}
               <Card>
                 <CardHeader>
@@ -1439,9 +1450,13 @@ export default function DailySummary() {
                       <span className="font-medium">Account Paid Cash(Backdate):</span>
                       <span className="font-bold">£{(summaryData.totals.customer_cash_payments || 0).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <span className="font-medium">Till/Float(C/F):</span>
-                      <span className="font-bold">£{(summaryData.totals.cash_cf_total || 0).toFixed(2)}</span>
+                    <div className="flex justify-between items-center py-2 border-b text-green-700">
+                      <span className="font-medium">Cash Held (From Previous Day):</span>
+                      <span className="font-bold">+£{(summaryData.cash_cf?.carry_forward || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b text-red-600">
+                      <span className="font-medium">Till Float (Set Aside Today):</span>
+                      <span className="font-bold">-£{(summaryData.cash_cf?.till_float || 0).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b text-red-600">
                       <span className="font-medium">Total Supplier Payment (Paid Out):</span>

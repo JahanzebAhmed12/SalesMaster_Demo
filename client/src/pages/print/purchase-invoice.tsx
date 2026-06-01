@@ -72,32 +72,32 @@ function PurchaseInvoiceTemplate({ data }: { data: PurchaseInvoiceData }) {
         {supplier?.vat_number && <div style={{ fontSize: 14 }}>VAT No: {supplier.vat_number}</div>}
       </div>
       {/* Items Table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 15 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 13 }}>
         <thead>
           <tr style={{ background: "#f5f5f5" }}>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left" }}>Product</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Quantity</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Unit Price</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Total</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Remarks</th>
+            <th style={{ border: "1px solid #888", padding: "2px 4px", textAlign: "left" }}>Product</th>
+            <th style={{ border: "1px solid #888", padding: "2px 4px" }}>Quantity</th>
+            <th style={{ border: "1px solid #888", padding: "2px 4px" }}>Unit Price</th>
+            <th style={{ border: "1px solid #888", padding: "2px 4px" }}>Total</th>
+            <th style={{ border: "1px solid #888", padding: "2px 4px" }}>Remarks</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item, idx) => (
             <tr key={item.id || idx}>
-              <td style={{ border: "1px solid #888", padding: 4 }}>{item.productName || item.description || "-"}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{Number(item.unitPrice || 0).toFixed(2)}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{Number(item.totalPrice || 0).toFixed(2)}</td>
-              <td style={{ border: "1px solid #888", padding: 4 }}>{item.remarks || "-"}</td>
+              <td style={{ border: "1px solid #888", padding: "2px 4px" }}>{item.productName || item.description || "-"}</td>
+              <td style={{ border: "1px solid #888", padding: "2px 4px", textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
+              <td style={{ border: "1px solid #888", padding: "2px 4px", textAlign: "center" }}>£{Number(item.unitPrice || 0).toFixed(2)}</td>
+              <td style={{ border: "1px solid #888", padding: "2px 4px", textAlign: "center" }}>£{Number(item.totalPrice || 0).toFixed(2)}</td>
+              <td style={{ border: "1px solid #888", padding: "2px 4px" }}>{item.remarks || "-"}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
-            <td style={{ border: "1px solid #888", padding: 4 }}>TOTAL</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{formatQuantity(totalQuantity)}</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{Number(totalAmount).toFixed(2)}</td>
-            <td style={{ border: "1px solid #888", padding: 4 }}></td>
+            <td style={{ border: "1px solid #888", padding: "2px 4px" }}>TOTAL</td>
+            <td style={{ border: "1px solid #888", padding: "2px 4px", textAlign: "center" }}>{formatQuantity(totalQuantity)}</td>
+            <td style={{ border: "1px solid #888", padding: "2px 4px", textAlign: "center" }}>X</td>
+            <td style={{ border: "1px solid #888", padding: "2px 4px", textAlign: "center" }}>£{Number(totalAmount).toFixed(2)}</td>
+            <td style={{ border: "1px solid #888", padding: "2px 4px" }}></td>
           </tr>
         </tbody>
       </table>

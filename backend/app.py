@@ -257,6 +257,36 @@ with app.app_context():
         print(f"Migration warning (till_float): {str(e)}")
         db.session.rollback()
 
+    # Fix 6: migrate initial_stock from INTEGER to NUMERIC(10,3) on both product tables
+    for table_name in ('regular_products', 'non_products'):
+        try:
+            result = db.session.execute(db.text(f"PRAGMA table_info({table_name})")).fetchall()
+            col_types = {row[1]: row[2] for row in result}
+            if col_types.get('initial_stock', '').upper() == 'INTEGER':
+                print(f"Migrating {table_name}.initial_stock from INTEGER to NUMERIC(10,3)...")
+                # SQLite requires table recreate to change column type
+                cols_info = db.session.execute(db.text(f"PRAGMA table_info({table_name})")).fetchall()
+                col_defs = []
+                for col in cols_info:
+                    cname, ctype = col[1], col[2]
+                    if cname == 'initial_stock':
+                        ctype = 'NUMERIC(10,3)'
+                    notnull = 'NOT NULL' if col[3] else ''
+                    default = f"DEFAULT {col[4]}" if col[4] is not None else ''
+                    pk = 'PRIMARY KEY' if col[5] else ''
+                    col_defs.append(f"{cname} {ctype} {pk} {notnull} {default}".strip())
+                col_names = ', '.join(col[1] for col in cols_info)
+                tmp = f"{table_name}_tmp_fix6"
+                db.session.execute(db.text(f"CREATE TABLE {tmp} ({', '.join(col_defs)})"))
+                db.session.execute(db.text(f"INSERT INTO {tmp} SELECT {col_names} FROM {table_name}"))
+                db.session.execute(db.text(f"DROP TABLE {table_name}"))
+                db.session.execute(db.text(f"ALTER TABLE {tmp} RENAME TO {table_name}"))
+                db.session.commit()
+                print(f"Successfully migrated {table_name}.initial_stock to NUMERIC(10,3)")
+        except Exception as e:
+            print(f"Migration warning (initial_stock {table_name}): {str(e)}")
+            db.session.rollback()
+
 # Print Queue API Routes for Mobile Print Proxy
 @app.route('/api/print-queue/add', methods=['POST'])
 @jwt_required()
@@ -1189,6 +1219,20 @@ def create_sale():
                         )
                         
                         db.session.add(customer_return)
+                        db.session.flush()  # Get customer_return.id
+
+                        # Fix 4: update the StockMovement reference to point to the CustomerReturn
+                        # (was previously pointing to the sale, causing it to be missed in stock check C.RTN)
+                        cr_movement = StockMovement.query.filter_by(
+                            reference_id=new_sale.id,
+                            reference_type='sale',
+                            product_id=stock_update['product_id'],
+                            movement_type='customer_return'
+                        ).order_by(StockMovement.created_at.desc()).first()
+                        if cr_movement:
+                            cr_movement.reference_id = customer_return.id
+                            cr_movement.reference_type = 'customer_return'
+
                         customer_returns_created.append(ref_number)
                         
                     except Exception as e:
@@ -2633,6 +2677,8 @@ def update_settings():
                 from datetime import datetime
                 data['closing_time'] = datetime.strptime(data['closing_time'], "%H:%M").time()
             print('[DEBUG] closing_time after parsing:', data['closing_time'], type(data['closing_time']))
+        # Track which fields were actually provided (after camelCase→snake_case mapping)
+        provided_keys = set(data.keys())
         settings_data = SystemSettingsSchema(**data)
         print('[DEBUG] Parsed settings_data:', settings_data.dict())
         settings = SystemSettings.query.first()
@@ -2640,6 +2686,8 @@ def update_settings():
             settings = SystemSettings()
             db.session.add(settings)
         for key, value in settings_data.dict().items():
+            if key not in provided_keys:
+                continue  # only update fields the client actually sent
             print(f'[DEBUG] Setting attribute {key} = {value} ({type(value)})')
             setattr(settings, key, value)
         db.session.commit()
@@ -5664,7 +5712,8 @@ def product_sales_history():
             'productDescription': product_name,
             'quantity': item.quantity,
             'unitPrice': float(item.unit_price),
-            'total': float(item.total_price)
+            'total': float(item.total_price),
+            'isCompany': customer.is_company if customer else False
         })
     return jsonify(result)
 
@@ -7628,8 +7677,9 @@ def save_closing_stock_entries():
         date = datetime.strptime(date_str, "%Y-%m-%d").date()
         
         # Remove existing entries for this date
-        deleted_count = ClosingStock.query.filter_by(date=date).delete()
+        deleted_count = ClosingStock.query.filter_by(date=date).delete(synchronize_session=False)
         print(f"[DEBUG] Deleted {deleted_count} existing entries for date {date}")
+        db.session.commit()  # Commit the delete before adding new entries
         
         # Add new entries
         for item in items:
@@ -7902,7 +7952,7 @@ def stock_check_report():
         non_products = NonProduct.query.filter(NonProduct.status == 'active').all()
         
         stock_check_data = []
-        
+
         # Process regular products
         for product in regular_products:
             try:
@@ -7939,7 +7989,7 @@ def stock_check_report():
                 ).first()
                 
                 # If manual entry exists, use it; otherwise use 0
-                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else 0
+                actual_closing_stock = safe_float(closing_stock_entry.quantity) if closing_stock_entry else 0
                 
                 # Calculate difference
                 difference = actual_closing_stock - expected_stock
@@ -8015,7 +8065,7 @@ def stock_check_report():
                 ).first()
                 
                 # If manual entry exists, use it; otherwise use 0
-                actual_closing_stock = closing_stock_entry.quantity if closing_stock_entry else 0
+                actual_closing_stock = safe_float(closing_stock_entry.quantity) if closing_stock_entry else 0
                 
                 # Calculate difference
                 difference = actual_closing_stock - expected_stock
@@ -8069,49 +8119,22 @@ def stock_check_report():
         return jsonify({"error": str(e)}), 500
 
 def get_opening_stock(product_id, product_type, from_date):
-    """Get stock level at the beginning of from_date, preferring previous day's manual closing stock if available"""
+    """Get stock level at the beginning of from_date.
+    Rule A: if previous day has a manual closing stock entry, use it.
+    Rule B: if no closing stock entry exists for previous day, return 0.
+    """
     try:
-        # 1. Check for previous day's manual closing stock entry (prioritize manual entries)
         prev_date = (from_date - timedelta(days=1)).date()
         closing_entry = ClosingStock.query.filter_by(
             product_id=product_id,
             product_type=product_type,
             date=prev_date,
-            manual_entry=True  # Only consider manual entries
+            manual_entry=True
         ).first()
         if closing_entry:
             return safe_float(closing_entry.quantity)
-
-        # 2. Check for any closing stock entry from previous day (manual or automatic)
-        prev_date = (from_date - timedelta(days=1)).date()
-        any_closing_entry = ClosingStock.query.filter_by(
-            product_id=product_id,
-            product_type=product_type,
-            date=prev_date
-        ).order_by(ClosingStock.manual_entry.desc()).first()  # Prioritize manual entries
-        
-        if any_closing_entry:
-            return safe_float(any_closing_entry.quantity)
-
-        # 3. Fallback to last stock movement before from_date
-        last_movement = StockMovement.query.filter(
-            StockMovement.product_id == product_id,
-            StockMovement.product_type == product_type,
-            StockMovement.created_at < from_date
-        ).order_by(StockMovement.created_at.desc()).first()
-
-        if last_movement:
-            return safe_float(last_movement.new_stock)
-        else:
-            # If no movements, check if there's initial stock
-            if product_type == 'regular':
-                product = RegularProduct.query.get(product_id)
-            else:
-                product = NonProduct.query.get(product_id)
-
-            if product and hasattr(product, 'initial_stock') and product.initial_stock:
-                return safe_float(product.initial_stock)
-            return 0
+        # Rule B: no closing stock entered for previous day → start from zero
+        return 0
     except Exception as e:
         print(f"[ERROR] Error getting opening stock: {e}")
         import traceback
@@ -8188,21 +8211,16 @@ def get_sales_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
-    """Get customer returns between dates - filter by return date, not movement creation date"""
+    """Get customer returns between dates — query CustomerReturn directly (like get_sales_quantity)"""
     try:
-        # Join with CustomerReturn table to filter by actual return date
-        movements = db.session.query(StockMovement).join(
-            CustomerReturn, StockMovement.reference_id == CustomerReturn.id
-        ).filter(
-            StockMovement.product_id == product_id,
-            StockMovement.product_type == product_type,
-            StockMovement.movement_type == 'customer_return',
-            StockMovement.reference_type == 'customer_return',
+        returns = CustomerReturn.query.filter(
+            CustomerReturn.product_id == product_id,
+            CustomerReturn.product_type == product_type,
             CustomerReturn.date >= from_date.date(),
-            CustomerReturn.date <= to_date.date()
+            CustomerReturn.date <= to_date.date(),
+            CustomerReturn.status == 'completed'
         ).all()
-        
-        total = sum(safe_float(movement.quantity) for movement in movements if movement.quantity > 0)
+        total = sum(safe_float(ret.quantity) for ret in returns if ret.quantity > 0)
         return total
     except Exception as e:
         print(f"[ERROR] Error getting customer returns: {e}")
@@ -8211,24 +8229,16 @@ def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_dumps_quantity(product_id, product_type, from_date, to_date):
-    """Get dumps/wastage between dates - filter by dump date, not movement creation date"""
+    """Get dumps/wastage between dates — query DumpEntry directly"""
     try:
-        # Join with DumpEntry table to filter by actual dump date
-        movements = db.session.query(StockMovement).join(
-            DumpEntry, StockMovement.reference_id == DumpEntry.id
-        ).filter(
-            StockMovement.product_id == product_id,
-            StockMovement.product_type == product_type,
-            StockMovement.movement_type == 'dump',
-            StockMovement.reference_type == 'dump',
+        dumps = DumpEntry.query.filter(
+            DumpEntry.product_id == product_id,
+            DumpEntry.product_type == product_type,
             DumpEntry.date >= from_date.date(),
             DumpEntry.date <= to_date.date()
         ).all()
-        
-        from decimal import Decimal
-        total = sum(abs(float(movement.quantity) if isinstance(movement.quantity, Decimal) else movement.quantity) 
-                   for movement in movements if movement.quantity < 0)
-        return total
+        total = sum(abs(safe_float(d.quantity)) for d in dumps)
+        return max(0, total)
     except Exception as e:
         print(f"[ERROR] Error getting dumps quantity: {e}")
         import traceback
@@ -8236,23 +8246,15 @@ def get_dumps_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
-    """Get supplier returns between dates - filter by return date, not movement creation date"""
+    """Get supplier returns between dates — query SupplierReturn directly"""
     try:
-        # Join with SupplierReturn table to filter by actual return date
-        movements = db.session.query(StockMovement).join(
-            SupplierReturn, StockMovement.reference_id == SupplierReturn.id
-        ).filter(
-            StockMovement.product_id == product_id,
-            StockMovement.product_type == product_type,
-            StockMovement.movement_type == 'supplier_return',
-            StockMovement.reference_type == 'supplier_return',
+        returns = SupplierReturn.query.filter(
+            SupplierReturn.product_id == product_id,
+            SupplierReturn.product_type == product_type,
             SupplierReturn.date >= from_date.date(),
             SupplierReturn.date <= to_date.date()
         ).all()
-        
-        # Supplier returns are stored as negative quantities (stock reduction)
-        # But for stock check calculation, we need the absolute value
-        total = sum(abs(safe_float(movement.quantity)) for movement in movements if movement.quantity < 0)
+        total = sum(safe_float(r.quantity) for r in returns)
         return total
     except Exception as e:
         print(f"[ERROR] Error getting supplier returns: {e}")
@@ -8566,8 +8568,14 @@ def create_dump_entry():
     try:
         data = request.get_json()
         user_id = get_jwt_identity()
-        # Use business date
+        # Use provided date or fall back to business date
         business_date = get_business_date()
+        entry_date = business_date
+        if data.get('date'):
+            try:
+                entry_date = datetime.strptime(data['date'], "%Y-%m-%d").date()
+            except Exception:
+                entry_date = business_date
         # Generate reference number
         last_entry = DumpEntry.query.order_by(DumpEntry.id.desc()).first()
         ref_number = f"D{1 if not last_entry else last_entry.id + 1:04d}"
@@ -8579,11 +8587,11 @@ def create_dump_entry():
             **data,
             'refNumber': ref_number,
             'totalValue': total_value,
-            'date': business_date
+            'date': entry_date
         })
         dump_entry = DumpEntry(
             ref_number=ref_number,
-            date=business_date,
+            date=entry_date,
             supplier_id=dump_entry_data.supplierId,
             product_id=dump_entry_data.productId,
             product_type=dump_entry_data.productType,
@@ -8595,6 +8603,7 @@ def create_dump_entry():
             created_by=user_id
         )
         db.session.add(dump_entry)
+        db.session.flush()  # Get dump_entry.id before creating stock movement
 
         # Update stock movement
         success, result = update_product_stock(
@@ -8602,11 +8611,11 @@ def create_dump_entry():
             product_type=dump_entry_data.productType,
             quantity_change=-quantity,  # Negative for dumps
             movement_type='dump',
-            reference_id=None,  # or dump_entry.id if needed
+            reference_id=dump_entry.id,  # Fixed: was None, now correctly set
             reference_type='dump',
             remarks=f"Dump entry: {dump_entry_data.description}",
             user_id=user_id,
-            movement_date=business_date
+            movement_date=entry_date  # Use the actual entry date, not business_date
         )
 
         if not success:
@@ -8626,12 +8635,16 @@ def update_dump_entry(id):
     try:
         data = request.get_json()
         dump_entry = DumpEntry.query.get_or_404(id)
-        
+        user_id = get_jwt_identity()
+
+        # Store old quantity before updating
+        old_quantity = float(dump_entry.quantity)
+
         # Calculate total value
         quantity = float(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
-        
+
         # Update fields
         dump_entry.date = datetime.strptime(data['date'], "%Y-%m-%d").date()
         dump_entry.supplier_id = data.get('supplierId')
@@ -8642,7 +8655,25 @@ def update_dump_entry(id):
         dump_entry.quantity = quantity
         dump_entry.unit_price = unit_price
         dump_entry.total_value = total_value
-        
+
+        # Fix 3: apply stock movement for quantity difference
+        quantity_diff = quantity - old_quantity
+        if quantity_diff != 0:
+            success, result = update_product_stock(
+                product_id=dump_entry.product_id,
+                product_type=dump_entry.product_type,
+                quantity_change=-quantity_diff,  # negative = more dumped, positive = less dumped
+                movement_type='dump_adjustment',
+                reference_id=dump_entry.id,
+                reference_type='dump',
+                remarks=f"Dump quantity adjusted: {old_quantity} -> {quantity}",
+                user_id=user_id,
+                movement_date=dump_entry.date
+            )
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock update failed: {result}"}), 400
+
         db.session.commit()
         return jsonify(dump_entry.to_dict()), 200
     except Exception as e:
@@ -8804,7 +8835,8 @@ def create_customer_return():
             created_by=user_id
         )
         db.session.add(customer_return)
-        
+        db.session.flush()  # Ensure customer_return.id is assigned before creating stock movement
+
         # Create stock movement if status is completed
         if customer_return_data.status == 'completed':
             # Get current stock to calculate previous and new stock
@@ -8825,8 +8857,12 @@ def create_customer_return():
                 created_by=user_id
             )
             db.session.add(stock_movement)
+            print(f"[DEBUG] Customer return stock movement added: product_id={customer_return_data.productId}, product_type={customer_return_data.productType}, quantity={quantity}, movement_type=customer_return, reference_id={customer_return.id}")
         
         db.session.commit()
+        # Verify the stock movement was saved
+        sm = StockMovement.query.filter_by(reference_id=customer_return.id, reference_type='customer_return').first()
+        print(f"[DEBUG] Customer return stock movement after commit: {sm.id if sm else 'NOT FOUND'} (quantity={sm.quantity if sm else 'N/A'})")
         
         # If credit note is issued, update customer balance
         if customer_return_data.creditNoteIssued and customer_return_data.creditNoteAmount > 0:
@@ -9218,6 +9254,7 @@ def create_supplier_return():
     try:
         data = request.get_json()
         user_id = get_jwt_identity()
+        from datetime import datetime
         
         # Parse date string to date object first to check permissions
         business_date = get_business_date()
@@ -9233,7 +9270,6 @@ def create_supplier_return():
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
         
         # Get today's date
-        from datetime import datetime
         today = datetime.now().date()
         
         # Check permissions based on return date
@@ -9315,8 +9351,25 @@ def create_supplier_return():
         )
         
         db.session.add(supplier_return)
+        db.session.flush()  # Get supplier_return.id before commit
+
+        # Update stock immediately — supplier return reduces stock
+        success, result = update_product_stock(
+            product_id=supplier_return_data.productId,
+            product_type=supplier_return_data.productType,
+            quantity_change=-quantity,  # Negative: stock leaves when returned to supplier
+            movement_type='supplier_return',
+            reference_id=supplier_return.id,
+            reference_type='supplier_return',
+            remarks=f"Supplier return: {ref_number}",
+            user_id=user_id,
+            movement_date=parsed_date
+        )
+        if not success:
+            db.session.rollback()
+            return jsonify({"error": f"Stock update failed: {result}"}), 400
+
         db.session.commit()
-        # Note: Stock is NOT updated here - it will be updated when the return is approved
         
         # If credit note is issued, update supplier balance
         if supplier_return_data.creditNoteIssued and supplier_return_data.creditNoteAmount > 0:
