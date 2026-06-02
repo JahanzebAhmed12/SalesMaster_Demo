@@ -8194,14 +8194,14 @@ def get_sales_quantity(product_id, product_type, from_date, to_date):
                 Sale.status == 'finalized'  # Only count finalized sales
             ).all()
         
-        # Sum up quantities (use absolute value for positive sales quantity)
+        # Sum up quantities — count only positive sale items (gross sales)
+        # Negative quantity items (inline credit returns) are captured separately
+        # by get_customer_returns_quantity via Fix 4 (StockMovement reference updated)
         total = sum(abs(safe_float(item.quantity)) for item in sales_items if item.quantity > 0)
         
-        # Add customer returns that were processed as negative quantities in sales
-        negative_returns = sum(abs(safe_float(item.quantity)) for item in sales_items if item.quantity < 0)
-        
-        # Net sales = positive sales - returns processed as negative sales
-        net_sales = total - negative_returns
+        # Net sales = gross positive sales only (do NOT subtract negative items here)
+        # Negative items are counted as customer returns, not deducted from sales
+        net_sales = total
         
         return max(0, net_sales)  # Ensure non-negative result
     except Exception as e:
