@@ -7681,7 +7681,8 @@ def save_closing_stock_entries():
         print(f"[DEBUG] Deleted {deleted_count} existing entries for date {date}")
         db.session.commit()  # Commit the delete before adding new entries
         
-        # Add new entries
+        # Add new entries and update current_stock on the product to match
+        submitted_product_keys = set()
         for item in items:
             print(f"[DEBUG] Adding entry: product_id={item['productId']}, type={item['productType']}, quantity={item['quantity']}")
             entry = ClosingStock(
@@ -7692,6 +7693,79 @@ def save_closing_stock_entries():
                 manual_entry=True  # Mark as manual entry
             )
             db.session.add(entry)
+
+            # Update current_stock on the product so sales invoice shows the correct figure
+            qty = float(item['quantity'])
+            if item['productType'] == 'regular':
+                product = RegularProduct.query.get(item['productId'])
+            else:
+                product = NonProduct.query.get(item['productId'])
+            if product:
+                old_stock = float(product.current_stock or 0)
+                product.current_stock = qty
+                print(f"[DEBUG] Updated current_stock for product {item['productId']} ({item['productType']}): {old_stock} → {qty}")
+
+                # Create a stock adjustment movement so the history stays accurate
+                movement = StockMovement(
+                    product_id=item['productId'],
+                    product_type=item['productType'],
+                    movement_type='closing_stock_adjustment',
+                    quantity=qty - old_stock,
+                    reference_id=None,
+                    reference_type='closing_stock',
+                    previous_stock=old_stock,
+                    new_stock=qty,
+                    remarks=f"Closing stock override for {date}",
+                    created_by=None
+                )
+                db.session.add(movement)
+
+            submitted_product_keys.add((item['productId'], item['productType']))
+
+        # Zero out current_stock for all products NOT included in this closing stock save
+        # Rule B: no closing stock entry = zero stock for next day
+        all_regular = RegularProduct.query.filter(RegularProduct.status == 'active').all()
+        all_non = NonProduct.query.filter(NonProduct.status == 'active').all()
+
+        for product in all_regular:
+            if (product.id, 'regular') not in submitted_product_keys:
+                old_stock = float(product.current_stock or 0)
+                if old_stock != 0:
+                    product.current_stock = 0
+                    movement = StockMovement(
+                        product_id=product.id,
+                        product_type='regular',
+                        movement_type='closing_stock_adjustment',
+                        quantity=-old_stock,
+                        reference_id=None,
+                        reference_type='closing_stock',
+                        previous_stock=old_stock,
+                        new_stock=0,
+                        remarks=f"No closing stock entered for {date} — zeroed",
+                        created_by=None
+                    )
+                    db.session.add(movement)
+                    print(f"[DEBUG] Zeroed current_stock for regular product {product.id} ({product.description}): {old_stock} → 0")
+
+        for product in all_non:
+            if (product.id, 'non') not in submitted_product_keys:
+                old_stock = float(product.current_stock or 0)
+                if old_stock != 0:
+                    product.current_stock = 0
+                    movement = StockMovement(
+                        product_id=product.id,
+                        product_type='non',
+                        movement_type='closing_stock_adjustment',
+                        quantity=-old_stock,
+                        reference_id=None,
+                        reference_type='closing_stock',
+                        previous_stock=old_stock,
+                        new_stock=0,
+                        remarks=f"No closing stock entered for {date} — zeroed",
+                        created_by=None
+                    )
+                    db.session.add(movement)
+                    print(f"[DEBUG] Zeroed current_stock for non-product {product.id} ({product.description}): {old_stock} → 0")
         
         db.session.commit()
         print(f"[DEBUG] Successfully saved {len(items)} closing stock entries")
@@ -7991,10 +8065,9 @@ def stock_check_report():
                 # If manual entry exists, use it; otherwise use 0
                 actual_closing_stock = safe_float(closing_stock_entry.quantity) if closing_stock_entry else 0
                 
-                # Calculate difference
                 difference = actual_closing_stock - expected_stock
-                
-                # Determine status
+                difference = round(difference, 2)
+
                 if difference == 0:
                     result = "✓"
                     status = "correct"
@@ -8004,18 +8077,18 @@ def stock_check_report():
                 else:
                     result = f"extra {difference}"
                     status = "excess"
-                
+
                 stock_check_data.append({
                     'id': product.id,
                     'productDescription': product.description,
-                    'os': opening_stock,
-                    'ns': new_stock,
-                    'sales': sales,
-                    'crtn': customer_returns,
-                    'dmps': dumps,
-                    'srtn': supplier_returns,
-                    'stock': expected_stock,
-                    'clStock': actual_closing_stock,
+                    'os': round(opening_stock, 2),
+                    'ns': round(new_stock, 2),
+                    'sales': round(sales, 2),
+                    'crtn': round(customer_returns, 2),
+                    'dmps': round(dumps, 2),
+                    'srtn': round(supplier_returns, 2),
+                    'stock': round(expected_stock, 2),
+                    'clStock': round(actual_closing_stock, 2),
                     'result': result,
                     'status': status,
                     'productType': 'regular'
@@ -8067,10 +8140,9 @@ def stock_check_report():
                 # If manual entry exists, use it; otherwise use 0
                 actual_closing_stock = safe_float(closing_stock_entry.quantity) if closing_stock_entry else 0
                 
-                # Calculate difference
                 difference = actual_closing_stock - expected_stock
-                
-                # Determine status
+                difference = round(difference, 2)
+
                 if difference == 0:
                     result = "✓"
                     status = "correct"
@@ -8080,18 +8152,18 @@ def stock_check_report():
                 else:
                     result = f"extra {difference}"
                     status = "excess"
-                
+
                 stock_check_data.append({
                     'id': product.id,
                     'productDescription': product.description,
-                    'os': opening_stock,
-                    'ns': new_stock,
-                    'sales': sales,
-                    'crtn': customer_returns,
-                    'dmps': dumps,
-                    'srtn': supplier_returns,
-                    'stock': expected_stock,
-                    'clStock': actual_closing_stock,
+                    'os': round(opening_stock, 2),
+                    'ns': round(new_stock, 2),
+                    'sales': round(sales, 2),
+                    'crtn': round(customer_returns, 2),
+                    'dmps': round(dumps, 2),
+                    'srtn': round(supplier_returns, 2),
+                    'stock': round(expected_stock, 2),
+                    'clStock': round(actual_closing_stock, 2),
                     'result': result,
                     'status': status,
                     'productType': 'non'

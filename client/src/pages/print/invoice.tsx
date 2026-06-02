@@ -144,10 +144,10 @@ export default function InvoicePrintPage() {
           <div style={{ fontWeight: "bold", fontSize: 28, letterSpacing: 1 }}>INVOICE</div>
         </div>
       </div>
-      <hr style={{ margin: "16px 0" }} />
+      <hr style={{ margin: "4px 0" }} />
 
       {/* Bill To and Invoice Details Side by Side */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
         {/* Bill To Section - Left Side */}
         <div>
           <div style={{ fontWeight: "bold", marginBottom: 4 }}>Bill to :</div>
@@ -172,49 +172,49 @@ export default function InvoicePrintPage() {
         </div>
       </div>
       {/* Items Table */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 15 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8, fontSize: 14 }}>
         <thead>
-          <tr style={{ background: "#f5f5f5" }}>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left" }}>Product</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Qty</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>U.Price</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Total</th>
+          <tr>
+            <th style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "left" }}>Product</th>
+            <th style={{ border: "1px solid #888", padding: "1px 4px" }}>Qty</th>
+            <th style={{ border: "1px solid #888", padding: "1px 4px" }}>U.Price</th>
+            <th style={{ border: "1px solid #888", padding: "1px 4px" }}>Total</th>
           </tr>
         </thead>
         <tbody>
           {data.items.map((item, idx) => (
             <tr key={item.id || idx}>
-              <td style={{ border: "1px solid #888", padding: 4 }}>
-                <div>{item.productName || item.description || "-"}</div>
+              <td style={{ border: "1px solid #888", padding: "1px 4px" }}>
+                {item.productName || item.description || "-"}
                 {item.notes && (
-                  <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>{item.notes}</div>
+                  <div style={{ fontSize: "12px", fontStyle: "italic" }}>{item.notes}</div>
                 )}
               </td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>
+              <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
+              <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
+              <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
-            <td style={{ border: "1px solid #888", padding: 4 }}>SUB TOTAL</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + (b.quantity || 0), 0))}</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{data.sale?.subtotal?.toFixed(2) ?? "-"}</td>
+            <td style={{ border: "1px solid #888", padding: "1px 4px" }}>SUB TOTAL</td>
+            <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + (b.quantity || 0), 0))}</td>
+            <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>X</td>
+            <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>£{data.sale?.subtotal?.toFixed(2) ?? "-"}</td>
           </tr>
         </tbody>
       </table>
       {/* Notes and Totals */}
-      <div style={{ display: "flex", marginTop: 8 }}>
-        <div style={{ flex: 2, fontSize: 13, color: "#888", fontStyle: "italic", border: "1px solid #888", borderTop: "none", padding: 8 }}>
+      <div style={{ display: "flex", marginTop: 0 }}>
+        <div style={{ flex: 2, fontSize: 11, fontStyle: "italic", border: "1px solid #888", borderTop: "none", padding: 4 }}>
           {data.notes?.split("\n").map((line, i) => <div key={i}>{line}</div>)}
         </div>
-        <div style={{ flex: 1, border: "1px solid #888", borderLeft: "none", fontSize: 15 }}>
+        <div style={{ flex: 1, border: "1px solid #888", borderLeft: "none", borderTop: "none", fontSize: 13 }}>
           {(data.sale?.porterage ?? 0) > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between", padding: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 4px" }}>
               <span>Porterage</span><span>£{data.sale?.porterage?.toFixed(2) ?? "0.00"}</span>
             </div>
           )}
-          <div style={{ display: "flex", justifyContent: "space-between", padding: 4, fontWeight: "bold" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 4px", fontWeight: "bold" }}>
             <span>TOTAL</span>
             <span>£{(data.sale?.total_amount ?? data.sale?.totalAmount ?? 0).toFixed(2)}</span>
           </div>

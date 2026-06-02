@@ -62,14 +62,11 @@ export default function ClosingStock() {
   const { businessDate } = useBusinessDate();
   const [selectedDate, setSelectedDate] = useState("");
   
-  // Initialize with business date when available
   useEffect(() => {
-    if (businessDate) {
+    if (businessDate && !selectedDate) {
       setSelectedDate(format(new Date(businessDate), "yyyy-MM-dd"));
-    } else {
-      setSelectedDate(format(new Date(), "yyyy-MM-dd"));
     }
-  }, []);
+  }, [businessDate]);
   const [addProductId, setAddProductId] = useState("");
   const [addQuantity, setAddQuantity] = useState("");
   const [editRowId, setEditRowId] = useState<number | null>(null);
