@@ -59,6 +59,7 @@ export default function StockCheck() {
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   const [showZeroEntries, setShowZeroEntries] = useState(true);
+  const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
   const { toast } = useToast();
   const tableRef = useRef<HTMLDivElement>(null);
   const [, setLocation] = useLocation();
@@ -206,7 +207,7 @@ export default function StockCheck() {
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>Stock Check</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
+      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:10px;}th,td{border:1px solid #ccc;padding:2px;text-align:left;font-size:9px;}th{background-color:#f0f0f0;font-weight:bold;font-size:9px;}.header{text-align:center;margin-bottom:10px;}.company-details{text-align:center;margin-bottom:15px;line-height:1.2;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
       printWindow.document.write('</head><body>');
       
       // Add company details header following the specific structure
@@ -358,31 +359,31 @@ export default function StockCheck() {
       ]),
       startY: yPosition,
       styles: {
-        fontSize: 7,
-        cellPadding: 1
+        fontSize: 6,
+        cellPadding: 0.5
       },
       columnStyles: {
-        0: { cellWidth: 12 },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 12 },
-        3: { cellWidth: 12 },
-        4: { cellWidth: 12 },
-        5: { cellWidth: 12 },
-        6: { cellWidth: 12 },
-        7: { cellWidth: 12 },
-        8: { cellWidth: 12 },
-        9: { cellWidth: 12 },
-        10: { cellWidth: 12 }
+        0: { cellWidth: 10 },
+        1: { cellWidth: 38 },
+        2: { cellWidth: 10 },
+        3: { cellWidth: 10 },
+        4: { cellWidth: 10 },
+        5: { cellWidth: 10 },
+        6: { cellWidth: 10 },
+        7: { cellWidth: 10 },
+        8: { cellWidth: 10 },
+        9: { cellWidth: 10 },
+        10: { cellWidth: 10 }
       }
     });
     
     // Add clean summary at the bottom
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
-    doc.setFontSize(10);
-    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} | Filter: ${stockFilter}`, 14, finalY + 10);
-    doc.text(`All Data Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)} Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
+    doc.setFontSize(8);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} | Filter: ${stockFilter}`, 14, finalY + 6);
+    doc.text(`All Data Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)} Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 11);
     if (stockFilter !== "Show All" || !showZeroEntries) {
-      doc.text(`Displayed Totals - O.S: ${formatQuantity(filteredTotals.os)} N.S: ${formatQuantity(filteredTotals.ns)} Sales: ${formatQuantity(filteredTotals.sales)} Stock: ${formatQuantity(filteredTotals.stock)} Cl.Stock: ${formatQuantity(filteredTotals.clStock)}`, 14, finalY + 26);
+      doc.text(`Displayed Totals - O.S: ${formatQuantity(filteredTotals.os)} N.S: ${formatQuantity(filteredTotals.ns)} Sales: ${formatQuantity(filteredTotals.sales)} Stock: ${formatQuantity(filteredTotals.stock)} Cl.Stock: ${formatQuantity(filteredTotals.clStock)}`, 14, finalY + 16);
     }
     
     doc.save(`stock-check-${format(osDate, "yyyyMMdd")}-${format(toDate, "yyyyMMdd")}.pdf`);
@@ -475,31 +476,31 @@ export default function StockCheck() {
       ]),
       startY: yPosition,
       styles: {
-        fontSize: 7,
-        cellPadding: 1
+        fontSize: 6,
+        cellPadding: 0.5
       },
       columnStyles: {
-        0: { cellWidth: 12 },
-        1: { cellWidth: 40 },
-        2: { cellWidth: 12 },
-        3: { cellWidth: 12 },
-        4: { cellWidth: 12 },
-        5: { cellWidth: 12 },
-        6: { cellWidth: 12 },
-        7: { cellWidth: 12 },
-        8: { cellWidth: 12 },
-        9: { cellWidth: 12 },
-        10: { cellWidth: 12 }
+        0: { cellWidth: 10 },
+        1: { cellWidth: 38 },
+        2: { cellWidth: 10 },
+        3: { cellWidth: 10 },
+        4: { cellWidth: 10 },
+        5: { cellWidth: 10 },
+        6: { cellWidth: 10 },
+        7: { cellWidth: 10 },
+        8: { cellWidth: 10 },
+        9: { cellWidth: 10 },
+        10: { cellWidth: 10 }
       }
     });
     
     // Add clean summary at the bottom (same format as regular PDF)
     const finalY = (doc as any).lastAutoTable.finalY || yPosition;
-    doc.setFontSize(10);
-    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} | Filter: ${stockFilter}`, 14, finalY + 10);
-    doc.text(`All Data Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)} Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 18);
+    doc.setFontSize(8);
+    doc.text(`Date Range: ${format(osDate, 'dd/MM/yyyy')} to ${format(toDate, 'dd/MM/yyyy')} | Filter: ${stockFilter}`, 14, finalY + 6);
+    doc.text(`All Data Totals - O.S: ${formatQuantity(totals.os)} N.S: ${formatQuantity(totals.ns)} Sales: ${formatQuantity(totals.sales)} Stock: ${formatQuantity(totals.stock)} Cl.Stock: ${formatQuantity(totals.clStock)}`, 14, finalY + 11);
     if (stockFilter !== "Show All" || !showZeroEntries) {
-      doc.text(`Displayed Totals - O.S: ${formatQuantity(filteredTotals.os)} N.S: ${formatQuantity(filteredTotals.ns)} Sales: ${formatQuantity(filteredTotals.sales)} Stock: ${formatQuantity(filteredTotals.stock)} Cl.Stock: ${formatQuantity(filteredTotals.clStock)}`, 14, finalY + 26);
+      doc.text(`Displayed Totals - O.S: ${formatQuantity(filteredTotals.os)} N.S: ${formatQuantity(filteredTotals.ns)} Sales: ${formatQuantity(filteredTotals.sales)} Stock: ${formatQuantity(filteredTotals.stock)} Cl.Stock: ${formatQuantity(filteredTotals.clStock)}`, 14, finalY + 16);
     }
     
     return doc.output('blob');
@@ -861,7 +862,11 @@ export default function StockCheck() {
                   </TableHeader>
                   <TableBody>
                     {filteredData.map((item) => (
-                      <TableRow key={item.id}>
+                      <TableRow
+                        key={item.id}
+                        className={`hover:bg-blue-50 cursor-pointer transition-colors ${selectedRowId === item.id ? 'bg-blue-100' : ''}`}
+                        onClick={() => setSelectedRowId(selectedRowId === item.id ? null : item.id)}
+                      >
                         <TableCell>{item.slNo}</TableCell>
                         <TableCell>
                           <div>

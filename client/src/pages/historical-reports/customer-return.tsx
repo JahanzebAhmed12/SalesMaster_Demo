@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,12 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, RotateCcw, FileText, Download, Copy, Printer, Search } from "lucide-react";
+import { CalendarIcon, RotateCcw, Copy } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -25,6 +26,17 @@ import {
   DropdownMenuContent,
   DropdownMenuItem
 } from '@/components/ui/dropdown-menu';
+
+interface RegularProduct {
+  id: number;
+  productCode: string;
+  description: string;
+}
+interface NonProduct {
+  id: number;
+  productCode: string;
+  description: string;
+}
 
 interface CustomerReturnData {
   id: number;
@@ -64,12 +76,21 @@ function toLocalDateString(date: Date) {
 }
 
 export default function CustomerReturn() {
-  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
-  const [toDate, setToDate] = useState<Date>(new Date());
+  const { currentDate: businessDate } = useBusinessDate();
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(businessDate || new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(businessDate || new Date());
   const [customerFilter, setCustomerFilter] = useState("All Customer");
-  const [searchTerm, setSearchTerm] = useState("");
+
   const [searchClicked, setSearchClicked] = useState(false);
   const tableRef = React.useRef<HTMLDivElement>(null);
+
+  // Product search
+  const [productSearch, setProductSearch] = useState("");
+  const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct & { productType: 'regular' | 'non' })[]>([]);
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const productInputRef = useRef<HTMLInputElement>(null);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch customers from database
   const { data: customers = [], isLoading: loadingCustomers } = useQuery({
@@ -83,7 +104,7 @@ export default function CustomerReturn() {
       fromDate && toLocalDateString(fromDate),
       toDate && toLocalDateString(toDate),
       customerFilter,
-      searchTerm,
+      productSearch,
       searchClicked
     ],
     queryFn: async () => {
@@ -92,7 +113,10 @@ export default function CustomerReturn() {
       if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
       if (toDate) params.append("toDate", toLocalDateString(toDate));
       if (customerFilter && customerFilter !== "All Customer") params.append("customerId", customerFilter);
-      if (searchTerm) params.append("search", searchTerm);
+      if (productSearch) {
+        const selectedProductName = productSearch.includes(" - ") ? productSearch.split(" - ")[1] : productSearch;
+        params.append("search", selectedProductName);
+      }
       return apiRequest("GET", `/api/reports/customer-returns?${params.toString()}`);
     },
     enabled: !!searchClicked,
@@ -102,6 +126,57 @@ export default function CustomerReturn() {
     queryKey: ["/api/company-details"],
     queryFn: () => apiRequest("GET", "/api/company-details"),
   });
+
+  const { data: regularProducts } = useQuery<RegularProduct[]>({
+    queryKey: ["/api/regular_products"],
+    queryFn: () => apiRequest("GET", "/api/regular_products"),
+  });
+
+  const { data: nonProducts } = useQuery<NonProduct[]>({
+    queryKey: ["/api/non_products"],
+    queryFn: () => apiRequest("GET", "/api/non_products"),
+  });
+
+  useEffect(() => {
+    let list: (RegularProduct | NonProduct & { productType: 'regular' | 'non' })[] = [
+      ...(regularProducts || []).map(p => ({ ...p, productType: 'regular' as const })),
+      ...(nonProducts || []).map(p => ({ ...p, productType: 'non' as const }))
+    ];
+    if (productSearch) {
+      const term = productSearch.toLowerCase();
+      list = list.filter(
+        (p: any) =>
+          p.productCode?.toLowerCase().startsWith(term) ||
+          p.description?.toLowerCase().startsWith(term)
+      );
+    }
+    setProductOptions(list);
+    setHighlightedProduct(-1);
+  }, [productSearch, regularProducts, nonProducts]);
+
+  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showProductDropdown || productOptions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedProduct(prev => prev < productOptions.length - 1 ? prev + 1 : 0);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedProduct(prev => prev > 0 ? prev - 1 : productOptions.length - 1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedProduct >= 0 && highlightedProduct < productOptions.length) {
+        const p = productOptions[highlightedProduct];
+        setProductSearch(`${p.productCode} - ${p.description}`);
+        setShowProductDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowProductDropdown(false);
+    }
+  };
+
+  const handleProductBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    setTimeout(() => setShowProductDropdown(false), 100);
+  };
 
   const totals = {
     totalQuantity: returnData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
@@ -520,13 +595,40 @@ export default function CustomerReturn() {
                 </Button>
               </div>
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                 <Input
-                  placeholder="Search:"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-48"
+                  ref={productInputRef}
+                  placeholder="Search product..."
+                  value={productSearch}
+                  onChange={e => {
+                    setProductSearch(e.target.value);
+                    setShowProductDropdown(true);
+                  }}
+                  onFocus={() => setShowProductDropdown(!!productSearch)}
+                  onBlur={handleProductBlur}
+                  onKeyDown={handleProductKeyDown}
+                  autoComplete="off"
+                  className="w-64"
                 />
+                {showProductDropdown && productOptions.length > 0 && (
+                  <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                    {productOptions.map((p, idx) => (
+                      <div
+                        key={p.id}
+                        className={`p-2 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
+                        onMouseDown={() => {
+                          setProductSearch(`${p.productCode} - ${p.description}`);
+                          setShowProductDropdown(false);
+                        }}
+                        onMouseEnter={() => setHighlightedProduct(idx)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
+                        </div>
+                        <div className="text-sm">{p.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div ref={tableRef}>
@@ -556,7 +658,7 @@ export default function CustomerReturn() {
                       <TableCell>{returnItem.productName}</TableCell>
                       <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                       <TableCell>{returnItem.returnReason}</TableCell>
-                      <TableCell className="text-center">£{returnItem.returnAmount.toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{returnItem.returnAmount ? `£${returnItem.returnAmount.toFixed(2)}` : ""}</TableCell>
                       <TableCell className="text-center">
                         <span className={`px-2 py-1 rounded text-xs ${
                           returnItem.refundStatus === 'Processed' ? 'bg-green-100 text-green-800' :

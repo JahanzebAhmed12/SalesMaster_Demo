@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -285,6 +285,17 @@ export default function DailySummary() {
     refetchOnWindowFocus: true,
   });
 
+  // Sort sales summary by invoice number ascending
+  const sortedSalesSummary = useMemo(() => {
+    if (!summaryData?.sales_summary) return [];
+    return [...summaryData.sales_summary].sort((a, b) => {
+      const aNum = parseInt(a.invoice_no, 10);
+      const bNum = parseInt(b.invoice_no, 10);
+      if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+      return String(a.invoice_no).localeCompare(String(b.invoice_no), undefined, { numeric: true });
+    });
+  }, [summaryData?.sales_summary]);
+
   // Debug: Log the sales summary data to understand the structure
   useEffect(() => {
     if (summaryData?.sales_summary) {
@@ -527,7 +538,7 @@ export default function DailySummary() {
     tbl(
       [['Customer', 'Invoice No', 'Cash Sales', 'Card Paid', 'Bank Transfer', 'Cheque', 'Account Sales', 'Account Credits']],
       [
-        ...summaryData.sales_summary.map(s => [
+        ...sortedSalesSummary.map(s => [
           getDisplayCustomerName(s),
           s.invoice_no || '-',
           s.cash_sales > 0 ? s.cash_sales.toFixed(2) : '-',
@@ -1092,7 +1103,7 @@ export default function DailySummary() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {summaryData?.sales_summary.map((sale, index) => (
+                        {sortedSalesSummary.map((sale, index) => (
                           <TableRow key={index} className={sale.is_company ? 'bg-amber-50' : ''}>
                             <TableCell className="border">
                               <span className="flex items-center gap-1">

@@ -185,10 +185,10 @@ export default function InvoicePrintPage() {
           {data.items.map((item, idx) => (
             <tr key={item.id || idx}>
               <td style={{ border: "1px solid #888", padding: "1px 4px" }}>
-                {item.productName || item.description || "-"}
                 {item.notes && (
-                  <div style={{ fontSize: "12px", fontStyle: "italic" }}>{item.notes}</div>
+                  <span style={{ fontSize: "12px", fontStyle: "italic" }}>{item.notes} - </span>
                 )}
+                {item.productName || item.description || "-"}
               </td>
               <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
               <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>

@@ -105,7 +105,10 @@ function A5InvoiceTemplate({ data, showOutstandingBalance, invoiceFooter }: Invo
             {data.items?.map((item, index) => (
               <tr key={index} style={{ borderBottom: "1px solid #eee" }}>
                 <td style={{ padding: "4px" }}>{formatQuantity(item.quantity)}</td>
-                <td style={{ padding: "4px" }}>{item.product_name || item.productName || item.description}</td>
+                <td style={{ padding: "4px" }}>
+                  {item.notes && <span style={{ fontStyle: "italic" }}>{item.notes} - </span>}
+                  {item.product_name || item.productName || item.description}
+                </td>
                 <td style={{ padding: "4px", textAlign: "right" }}>£{(item.unit_price || item.unitPrice || 0).toFixed(2)}</td>
                 <td style={{ padding: "4px", textAlign: "right" }}>£{(item.total_price || item.totalPrice || 0).toFixed(2)}</td>
               </tr>

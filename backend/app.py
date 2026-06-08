@@ -123,113 +123,8 @@ with app.app_context():
         print("Warning: Database connection issues detected")
     
     db.create_all()
-    
-    # Run migration for closing_stock table
-    try:
-        # Check if manual_entry column exists
-        from sqlalchemy import text
-        result = db.session.execute(text("PRAGMA table_info(closing_stock)"))
-        columns = [row[1] for row in result.fetchall()]
-        
-        if 'manual_entry' not in columns:
-            print("Adding manual_entry column to closing_stock table...")
-            db.session.execute(text("""
-                ALTER TABLE closing_stock 
-                ADD COLUMN manual_entry BOOLEAN NOT NULL DEFAULT 1
-            """))
-            db.session.commit()
-            print("Successfully added manual_entry column")
-    except Exception as e:
-        print(f"Migration warning: {str(e)}")
-        db.session.rollback()
-    
-    # Run migration for supplier_payment table
-    try:
-        # Check if supplier_invoice_date column exists
-        from sqlalchemy import text
-        result = db.session.execute(text("PRAGMA table_info(supplier_payment)"))
-        columns = [row[1] for row in result.fetchall()]
-        
-        if 'supplier_invoice_date' not in columns:
-            print("Adding supplier_invoice_date column to supplier_payment table...")
-            db.session.execute(text("""
-                ALTER TABLE supplier_payment 
-                ADD COLUMN supplier_invoice_date DATE
-            """))
-            db.session.commit()
-            print("Successfully added supplier_invoice_date column")
-    except Exception as e:
-        print(f"Migration warning: {str(e)}")
-        db.session.rollback()
-    
-    # Run migration for payment table to add payment_source column
-    try:
-        # Check if payment_source column exists
-        from sqlalchemy import text
-        result = db.session.execute(text("PRAGMA table_info(payment)"))
-        columns = [row[1] for row in result.fetchall()]
-        
-        if 'payment_source' not in columns:
-            print("Adding payment_source column to payment table...")
-            db.session.execute(text("""
-                ALTER TABLE payment 
-                ADD COLUMN payment_source VARCHAR(50) DEFAULT 'customer_payment'
-            """))
-            db.session.commit()
-            print("Successfully added payment_source column")
-    except Exception as e:
-        print(f"Migration warning: {str(e)}")
-        db.session.rollback()
-    
-    # Run migration for stock_movement table to update decimal precision
-    try:
-        # Check current column types for stock_movement table
-        from sqlalchemy import text
-        result = db.session.execute(text("PRAGMA table_info(stock_movement)"))
-        columns = {row[1]: row[2] for row in result.fetchall()}
-        
-        # Check if previous_stock and new_stock are still INTEGER
-        if columns.get('previous_stock') == 'INTEGER' or columns.get('new_stock') == 'INTEGER':
-            print("Updating stock_movement table to support decimal precision...")
-            
-            # Create new table with correct types
-            db.session.execute(text("""
-                CREATE TABLE stock_movement_new (
-                    id INTEGER PRIMARY KEY,
-                    product_id INTEGER NOT NULL,
-                    product_type VARCHAR(20) NOT NULL,
-                    movement_type VARCHAR(20) NOT NULL,
-                    quantity NUMERIC(10, 3) NOT NULL,
-                    reference_id INTEGER,
-                    reference_type VARCHAR(20),
-                    previous_stock NUMERIC(10, 3) NOT NULL,
-                    new_stock NUMERIC(10, 3) NOT NULL,
-                    remarks TEXT,
-                    created_at DATETIME NOT NULL,
-                    created_by INTEGER,
-                    FOREIGN KEY (created_by) REFERENCES user (id)
-                )
-            """))
-            
-            # Copy data from old table to new table
-            db.session.execute(text("""
-                INSERT INTO stock_movement_new 
-                SELECT id, product_id, product_type, movement_type, quantity, 
-                       reference_id, reference_type, previous_stock, new_stock, 
-                       remarks, created_at, created_by
-                FROM stock_movement
-            """))
-            
-            # Drop old table and rename new table
-            db.session.execute(text("DROP TABLE stock_movement"))
-            db.session.execute(text("ALTER TABLE stock_movement_new RENAME TO stock_movement"))
-            
-            db.session.commit()
-            print("Successfully updated stock_movement table with decimal precision")
-    except Exception as e:
-        print(f"Migration warning for stock_movement: {str(e)}")
-        db.session.rollback()
-    
+    create_admin_user()
+
     # Create print_queue table if it doesn't exist
     try:
         db.session.execute(db.text("SELECT 1 FROM print_queue LIMIT 1"))
@@ -237,55 +132,6 @@ with app.app_context():
         print("Creating print_queue table...")
         db.create_all()
         print("Successfully created print_queue table")
-    
-    create_admin_user()  # Create admin user if it doesn't exist
-
-    # Run migration for system_settings table to add till_float column
-    try:
-        from sqlalchemy import text
-        result = db.session.execute(text("PRAGMA table_info(system_settings)"))
-        columns = [row[1] for row in result.fetchall()]
-        if 'till_float' not in columns:
-            print("Adding till_float column to system_settings table...")
-            db.session.execute(text("""
-                ALTER TABLE system_settings
-                ADD COLUMN till_float NUMERIC(10, 2) NOT NULL DEFAULT 0
-            """))
-            db.session.commit()
-            print("Successfully added till_float column")
-    except Exception as e:
-        print(f"Migration warning (till_float): {str(e)}")
-        db.session.rollback()
-
-    # Fix 6: migrate initial_stock from INTEGER to NUMERIC(10,3) on both product tables
-    for table_name in ('regular_products', 'non_products'):
-        try:
-            result = db.session.execute(db.text(f"PRAGMA table_info({table_name})")).fetchall()
-            col_types = {row[1]: row[2] for row in result}
-            if col_types.get('initial_stock', '').upper() == 'INTEGER':
-                print(f"Migrating {table_name}.initial_stock from INTEGER to NUMERIC(10,3)...")
-                # SQLite requires table recreate to change column type
-                cols_info = db.session.execute(db.text(f"PRAGMA table_info({table_name})")).fetchall()
-                col_defs = []
-                for col in cols_info:
-                    cname, ctype = col[1], col[2]
-                    if cname == 'initial_stock':
-                        ctype = 'NUMERIC(10,3)'
-                    notnull = 'NOT NULL' if col[3] else ''
-                    default = f"DEFAULT {col[4]}" if col[4] is not None else ''
-                    pk = 'PRIMARY KEY' if col[5] else ''
-                    col_defs.append(f"{cname} {ctype} {pk} {notnull} {default}".strip())
-                col_names = ', '.join(col[1] for col in cols_info)
-                tmp = f"{table_name}_tmp_fix6"
-                db.session.execute(db.text(f"CREATE TABLE {tmp} ({', '.join(col_defs)})"))
-                db.session.execute(db.text(f"INSERT INTO {tmp} SELECT {col_names} FROM {table_name}"))
-                db.session.execute(db.text(f"DROP TABLE {table_name}"))
-                db.session.execute(db.text(f"ALTER TABLE {tmp} RENAME TO {table_name}"))
-                db.session.commit()
-                print(f"Successfully migrated {table_name}.initial_stock to NUMERIC(10,3)")
-        except Exception as e:
-            print(f"Migration warning (initial_stock {table_name}): {str(e)}")
-            db.session.rollback()
 
 # Print Queue API Routes for Mobile Print Proxy
 @app.route('/api/print-queue/add', methods=['POST'])
@@ -1371,6 +1217,9 @@ def update_sale(id):
         # Initialize stock warnings list
         stock_warnings = []
 
+        # Delete existing customer return entries for this sale — they will be re-created below
+        CustomerReturn.query.filter_by(sale_id=sale.id).delete()
+
         # Store old status and items to check changes
         old_status = sale.status
         new_status = sale_data.status
@@ -1491,38 +1340,6 @@ def update_sale(id):
                             user_id=user_id
                         )
                         
-                        # Create customer return entry for negative quantity
-                        try:
-                            product = RegularProduct.query.get(item_data.product_id)
-                            product_description = product.description if product else f"Product ID: {item_data.product_id}"
-                            
-                            # Generate customer return reference number
-                            last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
-                            ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
-
-                            customer_return = CustomerReturn(
-                                ref_number=ref_number,
-                                date=sale.date.date() if hasattr(sale.date, 'date') else sale.date,
-                                customer_id=sale.customer_id,
-                                sale_id=sale.id,
-                                product_id=item_data.product_id,
-                                product_type='regular',
-                                description=product_description,
-                                invoice_number=sale.invoice_number,
-                                remarks=f"Customer return via negative quantity in updated sale invoice {sale.invoice_number}",
-                                quantity=abs(item_data.quantity),
-                                unit_price=abs(item_data.unit_price),
-                                total_value=abs(item_data.total_price),
-                                return_reason="Return via negative quantity sale",
-                                credit_note_issued=False,
-                                credit_note_amount=0,
-                                status='completed',
-                                created_by=user_id
-                            )
-                            db.session.add(customer_return)
-                        except Exception as e:
-                            print(f"Warning: Failed to create customer return entry: {str(e)}")
-                    
                     if not success:
                         if 'Insufficient stock' in result:
                             stock_warnings.append(f"Insufficient stock for product ID {item_data.product_id}: {result}")
@@ -1558,38 +1375,6 @@ def update_sale(id):
                             movement_date=sale.date
                         )
                         
-                        # Create customer return entry for negative quantity
-                        try:
-                            product = NonProduct.query.get(item_data.non_product_id)
-                            product_description = product.description if product else f"Non-Product ID: {item_data.non_product_id}"
-                            
-                            # Generate customer return reference number
-                            last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
-                            ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
-                            
-                            customer_return = CustomerReturn(
-                                ref_number=ref_number,
-                                date=sale.date.date() if hasattr(sale.date, 'date') else sale.date,
-                                customer_id=sale.customer_id,
-                                sale_id=sale.id,
-                                product_id=item_data.non_product_id,
-                                product_type='non',
-                                description=product_description,
-                                invoice_number=sale.invoice_number,
-                                remarks=f"Customer return via negative quantity in updated sale invoice {sale.invoice_number}",
-                                quantity=abs(item_data.quantity),
-                                unit_price=abs(item_data.unit_price),
-                                total_value=abs(item_data.total_price),
-                                return_reason="Return via negative quantity sale",
-                                credit_note_issued=False,
-                                credit_note_amount=0,
-                                status='completed',
-                                created_by=user_id
-                            )
-                            db.session.add(customer_return)
-                        except Exception as e:
-                            print(f"Warning: Failed to create customer return entry: {str(e)}")
-                    
                     if not success:
                         if 'Insufficient stock' in result:
                             stock_warnings.append(f"Insufficient stock for non-product ID {item_data.non_product_id}: {result}")
@@ -1770,8 +1555,47 @@ def update_sale(id):
                         else:
                             return jsonify({"error": f"Stock update failed: {result}"}), 400
         
-        # No need for cleanup since we're updating existing movements instead of creating duplicates
-        
+        # Re-create customer return entries for any negative-quantity items
+        customer_returns_created = []
+        for item in sale_data.items:
+            if safe_float(item.quantity) < 0:
+                try:
+                    product_id = item.product_id or item.non_product_id
+                    product_type = 'regular' if item.product_id else 'non'
+                    product_description = None
+                    if item.product_id:
+                        product = RegularProduct.query.get(item.product_id)
+                    else:
+                        product = NonProduct.query.get(item.non_product_id)
+                    product_description = product.description if product else f"Product ID: {product_id}"
+
+                    last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
+                    ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
+
+                    customer_return = CustomerReturn(
+                        ref_number=ref_number,
+                        date=sale.date.date() if hasattr(sale.date, 'date') else sale.date,
+                        customer_id=sale.customer_id,
+                        sale_id=sale.id,
+                        product_id=product_id,
+                        product_type=product_type,
+                        description=product_description,
+                        invoice_number=sale.invoice_number,
+                        remarks=f"Customer return via negative quantity in sale invoice {sale.invoice_number}",
+                        quantity=abs(item.quantity),
+                        unit_price=abs(item.unit_price),
+                        total_value=abs(item.total_price),
+                        return_reason="Return via negative quantity sale",
+                        credit_note_issued=False,
+                        credit_note_amount=0,
+                        status='completed',
+                        created_by=user_id
+                    )
+                    db.session.add(customer_return)
+                    customer_returns_created.append(ref_number)
+                except Exception as e:
+                    print(f"Warning: Failed to create customer return entry: {str(e)}")
+
         db.session.commit()
         # Mail invoice if requested
         if request.json.get('mailInvoice'):
@@ -1876,6 +1700,14 @@ def patch_sale(id):
 def delete_sale(id):
     sale = Sale.query.get_or_404(id)
     try:
+        # Delete associated customer return records (and their stock movements)
+        customer_returns = CustomerReturn.query.filter_by(sale_id=sale.id).all()
+        for cr in customer_returns:
+            StockMovement.query.filter_by(
+                reference_id=cr.id,
+                reference_type='customer_return'
+            ).delete()
+            db.session.delete(cr)
         # Delete all related sale items first
         for item in sale.items:
             db.session.delete(item)
@@ -3622,86 +3454,7 @@ def get_employee_entitlement(employee_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Database migration for entitlement_days field
-def add_entitlement_days_column():
-    """Add entitlement_days column to employees table if it doesn't exist"""
-    try:
-        # Check if column exists
-        result = db.session.execute(db.text("PRAGMA table_info(employees)")).fetchall()
-        columns = [row[1] for row in result]
-        
-        if 'entitlement_days' not in columns:
-            # Add the column with default value of 25
-            db.session.execute(db.text("ALTER TABLE employees ADD COLUMN entitlement_days INTEGER DEFAULT 25"))
-            db.session.commit()
-            print("Added entitlement_days column to employees table")
-        else:
-            print("entitlement_days column already exists")
-    except Exception as e:
-        print(f"Error adding entitlement_days column: {str(e)}")
-        db.session.rollback()
 
-# Run migration when app starts
-with app.app_context():
-    add_entitlement_days_column()
-
-def add_employee_email_column():
-    """Add email column to employees table if it doesn't exist"""
-    try:
-        result = db.session.execute(db.text("PRAGMA table_info(employees)")).fetchall()
-        columns = [row[1] for row in result]
-        if 'email' not in columns:
-            db.session.execute(db.text("ALTER TABLE employees ADD COLUMN email VARCHAR(200)"))
-            db.session.commit()
-            print("Added email column to employees table")
-    except Exception as e:
-        print(f"Error adding email column: {str(e)}")
-        db.session.rollback()
-
-with app.app_context():
-    add_employee_email_column()
-
-def add_porterage_columns():
-    """Add porterage_type and porterage_rate columns to sale table if they don't exist"""
-    try:
-        result = db.session.execute(db.text("PRAGMA table_info(sale)")).fetchall()
-        columns = [row[1] for row in result]
-        if 'porterage_type' not in columns:
-            db.session.execute(db.text("ALTER TABLE sale ADD COLUMN porterage_type VARCHAR(10) DEFAULT 'per_unit'"))
-            print("Added porterage_type column to sale table")
-        if 'porterage_rate' not in columns:
-            db.session.execute(db.text("ALTER TABLE sale ADD COLUMN porterage_rate NUMERIC(10,4) DEFAULT 0"))
-            print("Added porterage_rate column to sale table")
-        db.session.commit()
-    except Exception as e:
-        print(f"Error adding porterage columns: {str(e)}")
-        db.session.rollback()
-
-with app.app_context():
-    add_porterage_columns()
-
-def add_is_company_columns():
-    """Add is_company column to customer and suppliers tables if they don't exist"""
-    try:
-        result = db.session.execute(db.text("PRAGMA table_info(customer)")).fetchall()
-        columns = [row[1] for row in result]
-        if 'is_company' not in columns:
-            db.session.execute(db.text("ALTER TABLE customer ADD COLUMN is_company BOOLEAN DEFAULT 0"))
-            print("Added is_company column to customer table")
-
-        result = db.session.execute(db.text("PRAGMA table_info(suppliers)")).fetchall()
-        columns = [row[1] for row in result]
-        if 'is_company' not in columns:
-            db.session.execute(db.text("ALTER TABLE suppliers ADD COLUMN is_company BOOLEAN DEFAULT 0"))
-            print("Added is_company column to suppliers table")
-
-        db.session.commit()
-    except Exception as e:
-        print(f"Migration warning (is_company): {str(e)}")
-        db.session.rollback()
-
-with app.app_context():
-    add_is_company_columns()
 
 # Employee Document routes
 @app.route('/api/employees/<int:employee_id>/documents', methods=['POST'])
@@ -3965,9 +3718,8 @@ def view_employee_document(document_id):
 def debug_employee_documents(employee_id):
     """Debug route to check what's in the database"""
     try:
-        # Show which database file is being used
+        # Show which database is being used
         db_path = app.config['SQLALCHEMY_DATABASE_URI']
-        actual_db_file = db_path.replace('sqlite:///', '')
         
         documents = EmployeeDocument.query.filter_by(employee_id=employee_id).all()
         result = []
@@ -11743,7 +11495,7 @@ def daily_accounts_report():
 @jwt_required()
 def daily_summary_report():
     from datetime import datetime, timedelta
-    from sqlalchemy import func, and_, or_
+    from sqlalchemy import func, and_, or_, cast, Integer
     
     date_str = request.args.get('date')
     if not date_str:
@@ -12345,7 +12097,7 @@ def daily_summary_pdf():
             Customer, Sale.customer_id == Customer.id
         ).filter(
             func.date(Sale.date) == report_date
-        ).order_by(Sale.invoice_number).all()
+    ).order_by(cast(Sale.invoice_number, Integer)).all()
         
         sales_summary = []
         cash_total = 0
