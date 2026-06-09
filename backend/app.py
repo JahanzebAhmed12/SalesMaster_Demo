@@ -2494,6 +2494,8 @@ def update_settings():
             data['lock_invoices'] = data.pop('lockInvoices')
         if 'tillFloat' in data:
             data['till_float'] = data.pop('tillFloat')
+        if 'invoiceFooter' in data:
+            data['invoice_footer'] = data.pop('invoiceFooter')
         # Print all incoming fields and types
         for k, v in data.items():
             print(f'[DEBUG] Field: {k}, Value: {v}, Type: {type(v)}')

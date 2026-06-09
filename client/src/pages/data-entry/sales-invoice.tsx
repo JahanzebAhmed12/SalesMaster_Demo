@@ -144,6 +144,7 @@ const SalesInvoice = () => {
   const [fixedPorterageAmount, setFixedPorterageAmount] = useState<string>('0.00'); // New: fixed porterage amount
   const [invoiceDataLoaded, setInvoiceDataLoaded] = useState(false);
   const [invoicePrintFormat, setInvoicePrintFormat] = useState("A4");
+  const [invoiceFooter, setInvoiceFooter] = useState("");
   const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false);
   const [isEditGateNumberOpen, setIsEditGateNumberOpen] = useState(false);
   const [editGateNumberValue, setEditGateNumberValue] = useState("");
@@ -1527,19 +1528,23 @@ const SalesInvoice = () => {
         // Header Section - Company Details (Left) and Logo/Invoice Title (Right)
         doc.setFontSize(18);
         doc.setFont("helvetica", "bold");
-        doc.text(invoiceData.company?.companyName || "TROPIFRUIT UK LTD", 20, 25);
+        doc.text(invoiceData.company?.companyName || "TROPIFRUIT UK LTD", 20, 22);
 
-        doc.setFontSize(14);
+        doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
-        doc.text(invoiceData.company?.address1 || "3 Dolphin Way, Purfleet, RM19 1NZ", 20, 35);
+        doc.text(invoiceData.company?.address1 || "3 Dolphin Way, Purfleet, RM19 1NZ", 20, 28);
 
         if (invoiceData.company?.compRegNo) {
-          doc.setFontSize(12);
-          doc.text(`Company Reg No: ${invoiceData.company.compRegNo}`, 20, 45);
+          doc.setFontSize(10);
+          doc.text(`Company Reg No: ${invoiceData.company.compRegNo}`, 20, 34);
         }
         if (invoiceData.company?.vatNo) {
-          doc.setFontSize(12);
-          doc.text(`VAT No: ${invoiceData.company.vatNo}`, 20, 55);
+          doc.setFontSize(10);
+          doc.text(`VAT No: ${invoiceData.company.vatNo}`, 20, 40);
+        }
+        if (invoiceData.company?.email) {
+          doc.setFontSize(10);
+          doc.text(invoiceData.company.email, 20, 46);
         }
 
         // Logo and INVOICE title on the right (matching print page)
@@ -1552,13 +1557,9 @@ const SalesInvoice = () => {
           // Add the actual logo image
           doc.addImage(logo, 'PNG', logoX, logoY, logoWidth, logoHeight);
 
-          // INVOICE title below logo
-          doc.setFontSize(28);
-          doc.setFont("helvetica", "bold");
-          doc.text("INVOICE", pageWidth - 40, logoY + logoHeight + 15, { align: 'center' });
         } catch (error) {
           console.log('Logo loading failed, using fallback');
-          // Fallback: Logo placeholder and INVOICE title
+          // Fallback: Logo placeholder
           const logoX = pageWidth - 80;
           const logoY = 15;
           const logoWidth = 60;
@@ -1570,19 +1571,20 @@ const SalesInvoice = () => {
           doc.setTextColor(100, 100, 100);
           doc.text("LOGO", logoX + logoWidth / 2, logoY + logoHeight / 2 + 2, { align: 'center' });
           doc.setTextColor(0, 0, 0);
-
-          // INVOICE title below logo
-          doc.setFontSize(28);
-          doc.setFont("helvetica", "bold");
-          doc.text("INVOICE", pageWidth - 40, logoY + logoHeight + 10, { align: 'center' });
         }
 
-        // Horizontal line
+        // Horizontal line (positioned below all header text)
         doc.setLineWidth(0.5);
-        doc.line(20, 65, pageWidth - 20, 65);
+        doc.setDrawColor(204, 204, 204);
+        doc.line(20, 54, pageWidth - 20, 54);
+
+        // INVOICE title below separator
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "normal");
+        doc.text("INVOICE", pageWidth - 20, 65, { align: 'right' });
 
         // Bill To and Invoice Details Section (Side by Side)
-        let yPos = 80;
+        let yPos = 76;
 
         // Bill To Section (Left)
         doc.setFontSize(14);
@@ -1617,31 +1619,32 @@ const SalesInvoice = () => {
 
         // Invoice Details (Right Side)
         const rightX = pageWidth - 50;
-        doc.setFontSize(12);
+        doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
         doc.text(`Date: ${format(new Date(), "dd/MM/yyyy")}`, rightX, yPos);
 
-        doc.setFontSize(14);
+        doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(26, 35, 126); // Blue color for invoice number
-        doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, yPos + 12);
+        doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, yPos + 8);
 
-        doc.setFontSize(12);
+        doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0); // Reset to black
-        doc.text(`Cust.type: ${invoiceData.sale?.customer_type || "account"}`, rightX, yPos + 24);
+        doc.text(`Cust_type: ${invoiceData.sale?.paymentMode || invoiceData.sale?.payment_mode || invoiceData.sale?.customer_type || "account"}`, rightX, yPos + 16);
 
         // Items Table
-        yPos = 140;
+        yPos = 110;
 
         // Table setup
         const tableStartX = 20;
         const tableWidth = pageWidth - 40;
-        const colWidths = [100, 25, 25, 25]; // Product, Qty, U.Price, Total
+        const colWidths = [90, 20, 35, 35]; // Product, Qty, U.Price, Total
         const rowHeight = 8;
 
         // Table header with background
         doc.setFillColor(245, 245, 245);
+        doc.setDrawColor(204, 204, 204);
         doc.rect(tableStartX, yPos, tableWidth, rowHeight, 'F');
 
         // Header borders
@@ -1652,9 +1655,9 @@ const SalesInvoice = () => {
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.text("Product", tableStartX + 2, yPos + 6);
-        doc.text("Qty", tableStartX + colWidths[0] + 8, yPos + 6, { align: 'center' });
-        doc.text("U.Price", tableStartX + colWidths[0] + colWidths[1] + 8, yPos + 6, { align: 'center' });
-        doc.text("Total", tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + 8, yPos + 6, { align: 'center' });
+        doc.text("Qty", tableStartX + colWidths[0] + colWidths[1] / 2, yPos + 6, { align: 'center' });
+        doc.text("U.Price", tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, yPos + 6, { align: 'center' });
+        doc.text("Total", tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, yPos + 6, { align: 'center' });
 
         // Vertical lines for header
         let headerX = tableStartX;
@@ -1678,27 +1681,22 @@ const SalesInvoice = () => {
           // Row border
           doc.rect(tableStartX, yPos, tableWidth, rowHeight);
 
-          // Product name
-          doc.setFontSize(11);
-          doc.text(item.productName || item.description || "-", tableStartX + 2, yPos + 6);
-
-          // Notes (if any) - smaller text below product name
-          if (item.notes) {
-            doc.setFontSize(9);
-            doc.setTextColor(102, 102, 102);
-            doc.text(item.notes, tableStartX + 2, yPos + 6 + 3);
-            doc.setTextColor(0, 0, 0);
-          }
+          // Product name with notes in front
+          doc.setFontSize(10);
+          const productLabel = item.notes
+            ? `${item.productName || item.description || "-"} - ${item.notes}`
+            : (item.productName || item.description || "-");
+          doc.text(productLabel, tableStartX + 2, yPos + 6);
 
           // Quantity (centered)
           doc.setFontSize(11);
-          doc.text(formatQuantity(item.quantity || 0), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
+          doc.text(formatQuantity(item.quantity || 0), tableStartX + colWidths[0] + colWidths[1] / 2, yPos + 6, { align: 'center' });
 
           // Unit Price (centered)
-          doc.text(`${(item.unitPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + 12, yPos + 6, { align: 'center' });
+          doc.text(`${(item.unitPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, yPos + 6, { align: 'center' });
 
           // Total (centered)
-          doc.text(`£${(item.totalPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + 12, yPos + 6, { align: 'center' });
+          doc.text(`£${(item.totalPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, yPos + 6, { align: 'center' });
 
           // Vertical lines
           let rowX = tableStartX;
@@ -1719,9 +1717,9 @@ const SalesInvoice = () => {
 
         doc.setFont("helvetica", "bold");
         doc.text("SUB TOTAL", tableStartX + 2, yPos + 6);
-        doc.text(formatQuantity(invoiceData.items.reduce((a: number, b: any) => a + (b.quantity || 0), 0)), tableStartX + colWidths[0] + 12, yPos + 6, { align: 'center' });
-        doc.text("X", tableStartX + colWidths[0] + colWidths[1] + 12, yPos + 6, { align: 'center' });
-        doc.text(`£${(invoiceData.sale?.subtotal || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + 12, yPos + 6, { align: 'center' });
+        doc.text(formatQuantity(invoiceData.items.reduce((a: number, b: any) => a + (b.quantity || 0), 0)), tableStartX + colWidths[0] + colWidths[1] / 2, yPos + 6, { align: 'center' });
+        doc.text("X", tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, yPos + 6, { align: 'center' });
+        doc.text(`£${(invoiceData.sale?.subtotal || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, yPos + 6, { align: 'center' });
 
         // Vertical lines for subtotal
         let subtotalX = tableStartX;
@@ -1746,8 +1744,8 @@ const SalesInvoice = () => {
         doc.setFont("helvetica", "italic");
         doc.setTextColor(136, 136, 136);
 
-        if (invoiceData.notes) {
-          const noteLines = doc.splitTextToSize(invoiceData.notes, notesWidth - 4);
+        if (invoiceFooter) {
+          const noteLines = doc.splitTextToSize(invoiceFooter, notesWidth - 4);
           doc.text(noteLines, tableStartX + 2, yPos + 8);
         }
 
@@ -1795,8 +1793,8 @@ const SalesInvoice = () => {
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(68, 68, 68);
-        doc.text(`Invoice Time: ${invoiceData.sale?.date ? new Date(invoiceData.sale.date).toLocaleString() : "-"}`, 20, yPos);
-        doc.text(`Current Time: ${new Date().toLocaleString()}`, 20, yPos + 10);
+        doc.text(`Invoice Time: ${invoiceData.sale?.date ? new Date(invoiceData.sale.date).toLocaleString() : "-"}`, pageWidth - 20, yPos, { align: 'right' });
+        doc.text(`Current Time: ${new Date().toLocaleString()}`, pageWidth - 20, yPos + 10, { align: 'right' });
 
         // Save the PDF
         doc.save(`invoice-${currentSale.invoiceNumber}.pdf`);
@@ -2095,6 +2093,7 @@ const SalesInvoice = () => {
       }
 
       setInvoicePrintFormat(settings.invoicePrintFormat || "A4");
+      setInvoiceFooter(settings.invoiceFooter || "");
     });
   }, [invoiceDataLoaded]);
 
@@ -2890,9 +2889,9 @@ const SalesInvoice = () => {
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-medium">£{item.totalPrice.toFixed(2)}</div>
+                        <div className="text-sm font-medium">£{Number(item.totalPrice).toFixed(2)}</div>
                         <div className="text-xs text-gray-500">
-                          {formatQuantity(item.quantity)} × £{item.unitPrice.toFixed(2)}
+                          {formatQuantity(item.quantity)} × £{Number(item.unitPrice).toFixed(2)}
                         </div>
                       </div>
                     </div>
@@ -2979,7 +2978,7 @@ const SalesInvoice = () => {
                               className="text-center h-7"
                               placeholder="Notes"
                               value={editItem?.notes ?? item.notes ?? ""}
-                              onChange={e => setEditItem({ ...item, notes: e.target.value, createdAt: item.createdAt })}
+                              onChange={e => setEditItem((prev: any) => ({ ...prev, notes: e.target.value }))}
                             />
                           </TableCell>
                         )}
@@ -2989,7 +2988,7 @@ const SalesInvoice = () => {
                             type="text"
                             placeholder="Qty"
                             value={editItem?.quantity === undefined ? item.quantity : editItem.quantity}
-                            onChange={e => setEditItem({ ...item, quantity: e.target.value, createdAt: item.createdAt })}
+                            onChange={e => setEditItem((prev: any) => ({ ...prev, quantity: e.target.value }))}
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -2998,7 +2997,7 @@ const SalesInvoice = () => {
                             type="text"
                             placeholder="Price"
                             value={editItem?.unitPrice === undefined ? item.unitPrice : editItem.unitPrice}
-                            onChange={e => setEditItem({ ...item, unitPrice: e.target.value, createdAt: item.createdAt })}
+                            onChange={e => setEditItem((prev: any) => ({ ...prev, unitPrice: e.target.value }))}
                           />
                         </TableCell>
                         <TableCell className="text-center">
@@ -3049,8 +3048,8 @@ const SalesInvoice = () => {
                           </TableCell>
                         )}
                         <TableCell className="text-center">{formatQuantity(item.quantity)}</TableCell>
-                        <TableCell className="text-center">£{item.unitPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{item.totalPrice.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(item.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(item.totalPrice).toFixed(2)}</TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" variant="outline" disabled={isReadOnly} onClick={() => {
                             setEditingIndex(index);

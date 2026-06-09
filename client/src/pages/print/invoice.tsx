@@ -37,6 +37,7 @@ interface Company {
   address2?: string;
   compRegNo?: string;
   vatNo?: string;
+  email?: string;
 }
 interface Customer {
   customer_name?: string;
@@ -137,21 +138,22 @@ export default function InvoicePrintPage() {
           <div style={{ fontSize: 14 }}>{data.company?.address1}{data.company?.address2 ? ", " + data.company.address2 : ""}</div>
           {data.company?.compRegNo && <div style={{ fontSize: 14 }}>Company Reg No: {data.company.compRegNo}</div>}
           {data.company?.vatNo && <div style={{ fontSize: 14 }}>VAT No: {data.company.vatNo}</div>}
+          {data.company?.email && <div style={{ fontSize: 14 }}>{data.company.email}</div>}
         </div>
         {/* Logo on Right */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
           <img src={logo} alt="Logo" style={{ height: 80, marginBottom: 8 }} />
-          <div style={{ fontWeight: "bold", fontSize: 28, letterSpacing: 1 }}>INVOICE</div>
         </div>
       </div>
       <hr style={{ margin: "4px 0" }} />
+      <div style={{ fontWeight: 400, fontSize: 16, textAlign: "right", marginBottom: 8 }}>INVOICE</div>
 
       {/* Bill To and Invoice Details Side by Side */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
         {/* Bill To Section - Left Side */}
         <div>
           <div style={{ fontWeight: "bold", marginBottom: 4 }}>Bill to :</div>
-          <div style={{ border: "1px solid #888", padding: 8, minWidth: 200 }}>
+          <div style={{ border: "1px solid #ccc", padding: 8, minWidth: 200 }}>
             <div style={{ fontWeight: "bold" }}>{data.customer?.customer_name || "CUSTOMER"}</div>
             {data.customer?.address && <div style={{ fontSize: 14, marginTop: 2 }}>{data.customer.address}</div>}
           </div>
@@ -165,7 +167,7 @@ export default function InvoicePrintPage() {
           <div style={{ fontWeight: "bold", fontSize: 18, color: '#1a237e', marginTop: 4 }}>
             Invoice No: {data.sale?.invoice_number || data.sale?.invoiceNumber || "-"}
           </div>
-          <div style={{ fontSize: 14, marginTop: 4 }}>Cust.type: {data.sale?.customer_type || "account"}</div>
+          <div style={{ fontSize: 14, marginTop: 4 }}>Cust_type: {data.sale?.paymentMode || data.sale?.payment_mode || data.sale?.customer_type || "account"}</div>
           {backdate && (
             <div style={{ fontSize: 14, color: '#1a237e', fontWeight: 'bold', marginTop: 4 }}>Backdate payment for {backdate}</div>
           )}
@@ -175,40 +177,40 @@ export default function InvoicePrintPage() {
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8, fontSize: 14 }}>
         <thead>
           <tr>
-            <th style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "left" }}>Product</th>
-            <th style={{ border: "1px solid #888", padding: "1px 4px" }}>Qty</th>
-            <th style={{ border: "1px solid #888", padding: "1px 4px" }}>U.Price</th>
-            <th style={{ border: "1px solid #888", padding: "1px 4px" }}>Total</th>
+            <th style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "left" }}>Product</th>
+            <th style={{ border: "1px solid #ccc", padding: "1px 4px", width: 50 }}>Qty</th>
+            <th style={{ border: "1px solid #ccc", padding: "1px 4px", width: 60 }}>U.Price</th>
+            <th style={{ border: "1px solid #ccc", padding: "1px 4px", width: 60 }}>Total</th>
           </tr>
         </thead>
         <tbody>
           {data.items.map((item, idx) => (
             <tr key={item.id || idx}>
-              <td style={{ border: "1px solid #888", padding: "1px 4px" }}>
-                {item.notes && (
-                  <span style={{ fontSize: "12px", fontStyle: "italic" }}>{item.notes} - </span>
-                )}
+              <td style={{ border: "1px solid #ccc", padding: "1px 4px" }}>
                 {item.productName || item.description || "-"}
+                {item.notes && (
+                  <span style={{ fontSize: "12px", fontStyle: "italic" }}> - {item.notes}</span>
+                )}
               </td>
-              <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
-              <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
-              <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>
+              <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
+              <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
+              <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
-            <td style={{ border: "1px solid #888", padding: "1px 4px" }}>SUB TOTAL</td>
-            <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + (b.quantity || 0), 0))}</td>
-            <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>X</td>
-            <td style={{ border: "1px solid #888", padding: "1px 4px", textAlign: "center" }}>£{data.sale?.subtotal?.toFixed(2) ?? "-"}</td>
+            <td style={{ border: "1px solid #ccc", padding: "1px 4px" }}>SUB TOTAL</td>
+            <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + (b.quantity || 0), 0))}</td>
+            <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>X</td>
+            <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>£{data.sale?.subtotal?.toFixed(2) ?? "-"}</td>
           </tr>
         </tbody>
       </table>
       {/* Notes and Totals */}
       <div style={{ display: "flex", marginTop: 0 }}>
-        <div style={{ flex: 2, fontSize: 11, fontStyle: "italic", border: "1px solid #888", borderTop: "none", padding: 4 }}>
-          {data.notes?.split("\n").map((line, i) => <div key={i}>{line}</div>)}
+        <div style={{ flex: 2, fontSize: 11, fontStyle: "italic", border: "1px solid #ccc", borderTop: "none", padding: 4 }}>
+          {invoiceFooter ? invoiceFooter.split("\n").map((line, i) => <div key={i}>{line}</div>) : ""}
         </div>
-        <div style={{ flex: 1, border: "1px solid #888", borderLeft: "none", borderTop: "none", fontSize: 13 }}>
+        <div style={{ flex: 1, border: "1px solid #ccc", borderLeft: "none", borderTop: "none", fontSize: 13 }}>
           {(data.sale?.porterage ?? 0) > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 4px" }}>
               <span>Porterage</span><span>£{data.sale?.porterage?.toFixed(2) ?? "0.00"}</span>
@@ -220,12 +222,6 @@ export default function InvoicePrintPage() {
           </div>
         </div>
       </div>
-      {/* Dynamic Invoice Footer */}
-      {invoiceFooter && (
-        <div style={{ fontSize: 15, color: '#1a237e', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'center' }}>
-          {invoiceFooter}
-        </div>
-      )}
       {showCashPaid && (
         <div style={{ fontSize: 15, color: '#1a237e', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Cash Paid: £{Number(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}</div>
       )}
@@ -233,20 +229,20 @@ export default function InvoicePrintPage() {
         <div style={{ fontSize: 15, color: '#1976d2', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Bank Paid: £{Number(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}</div>
       )}
       {/* Footer */}
-      <div style={{ marginTop: 16, fontSize: 13, color: "#444" }}>
+      <div style={{ marginTop: 16, fontSize: 13, color: "#444", textAlign: "right" }}>
         <div>Invoice Time: {data.sale?.date ? new Date(data.sale.date).toLocaleString() : "-"}</div>
         <div>Current Time: {new Date().toLocaleString()}</div>
       </div>
       <button
         onClick={() => window.print()}
-        style={{ marginTop: 24, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+        style={{ marginTop: 24, padding: "6px 18px", fontSize: 16, border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer" }}
         className="no-print"
       >
         Print
       </button>
       <button
         onClick={() => window.close()}
-        style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+        style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer" }}
         className="no-print"
       >
         Close

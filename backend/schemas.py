@@ -244,6 +244,7 @@ class SystemSettingsSchema(BaseModel):
     invoice_print_format: str = Field(default="A4")
     lock_invoices: bool = Field(default=False)
     till_float: float = Field(default=0)
+    invoice_footer: str = Field(default="NO COMPLAINTS OR RETURN")
 
 class AttendanceSchema(BaseModel):
     employee_id: int

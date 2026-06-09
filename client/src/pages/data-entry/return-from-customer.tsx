@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -79,7 +79,7 @@ export default function ReturnFromCustomer() {
   const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
   
   // State management
-  const [searchFromDate, setSearchFromDate] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [searchFromDate, setSearchFromDate] = useState<string>(format(subDays(businessDate || new Date(), 30), "yyyy-MM-dd"));
   const [customerSearched, setCustomerSearched] = useState(false);
   const [selectedProductType, setSelectedProductType] = useState<"regular" | "non">("regular");
   const [invoicesFetched, setInvoicesFetched] = useState(false);
@@ -87,14 +87,25 @@ export default function ReturnFromCustomer() {
   const form = useForm<ReturnFormData>({
     resolver: zodResolver(returnSchema),
     defaultValues: {
-      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
       customerId: 0,
       productId: 0,
       productType: "regular",
-      quantity: 1,
-      unitPrice: 0,
     },
   });
+
+  // Product search state
+  const [productSearch, setProductSearch] = useState("");
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const productInputRef = useRef<HTMLInputElement>(null);
+
+  // Set date field to business date when it becomes available
+  useEffect(() => {
+    if (businessDate) {
+      form.setValue("date", format(new Date(businessDate), "yyyy-MM-dd"));
+    }
+  }, [businessDate, form]);
 
   // Update form when customer changes
   React.useEffect(() => {
@@ -122,7 +133,7 @@ export default function ReturnFromCustomer() {
   const canDeleteReturn = (returnDate: string) => {
     if (!userPermissions) return false;
     
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = businessDate ? format(new Date(businessDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
     const returnDateFormatted = format(new Date(returnDate), 'yyyy-MM-dd');
     
     if (returnDateFormatted === today) {
@@ -149,7 +160,7 @@ export default function ReturnFromCustomer() {
     queryKey: ['customer-invoices', customerId, searchFromDate],
     queryFn: async () => {
       if (!customerId) return [];
-      const toDate = format(new Date(), "yyyy-MM-dd");
+      const toDate = businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
       
       // Use searchFromDate as the fromDate parameter to filter invoices
       const invoices = await apiRequest('GET', `/api/customers/${customerId}/invoices?fromDate=${searchFromDate}&toDate=${toDate}`);
@@ -191,12 +202,10 @@ export default function ReturnFromCustomer() {
     onSuccess: () => {
       refetchReturns();
       form.reset({
-        date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+        date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
         customerId: selectedCustomer?.id || 0,
         productId: 0,
         productType: selectedProductType,
-        quantity: 1,
-        unitPrice: 0,
       });
       toast({
         title: "Success",
@@ -399,10 +408,49 @@ export default function ReturnFromCustomer() {
     }
   };
 
-  // Get filtered products based on type
-  const filteredProducts = selectedProductType === 'regular' 
+  // Get filtered products based on type and search
+  const allFilteredProducts = selectedProductType === 'regular' 
     ? (products?.regularProducts || [])
     : (products?.nonProducts || []);
+
+  const filteredProducts = allFilteredProducts.filter((p: any) => {
+    if (!productSearch) return true;
+    const term = productSearch.toLowerCase();
+    return (p.productCode?.toLowerCase().startsWith(term) ||
+            p.description?.toLowerCase().startsWith(term));
+  });
+
+  // Keyboard navigation for product search
+  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showProductDropdown || filteredProducts.length === 0) {
+      if (e.key === "Enter" && form.watch("productId")) {
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev < filteredProducts.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedProduct((prev) => (prev > 0 ? prev - 1 : filteredProducts.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedProduct >= 0 && highlightedProduct < filteredProducts.length) {
+        const p = filteredProducts[highlightedProduct];
+        form.setValue("productId", p.id);
+        form.setValue("productType", selectedProductType);
+        setProductSearch(`${p.productCode || ""} - ${p.description}`);
+        setShowProductDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowProductDropdown(false);
+    }
+  };
+
+  const handleProductBlur = () => {
+    setTimeout(() => setShowProductDropdown(false), 150);
+  };
 
   const onSubmit = (data: ReturnFormData) => {
     const selectedProduct = filteredProducts.find(p => p.id === data.productId);
@@ -520,23 +568,45 @@ export default function ReturnFromCustomer() {
                   
                   <div>
                     <Label>Product:</Label>
-                    <Select
-                      value={form.watch("productId").toString()}
-                      onValueChange={handleProductSelect}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredProducts
-                          .sort((a, b) => a.description.localeCompare(b.description))
-                          .map((product: RegularProduct | NonProduct) => (
-                            <SelectItem key={product.id} value={product.id.toString()}>
-                              {product.description}
-                            </SelectItem>
+                    <div className="relative">
+                      <Input
+                        ref={productInputRef}
+                        value={productSearch}
+                        onChange={(e) => {
+                          setProductSearch(e.target.value);
+                          setShowProductDropdown(true);
+                          setHighlightedProduct(-1);
+                          form.setValue("productId", 0);
+                        }}
+                        onFocus={() => setShowProductDropdown(true)}
+                        onKeyDown={handleProductKeyDown}
+                        onBlur={handleProductBlur}
+                        placeholder="Search product by code or name..."
+                      />
+                      {showProductDropdown && filteredProducts.length > 0 && (
+                        <div
+                          className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                        >
+                          {filteredProducts.map((product: RegularProduct | NonProduct, idx: number) => (
+                            <div
+                              key={product.id}
+                              className={`px-3 py-2 cursor-pointer text-sm ${
+                                idx === highlightedProduct ? "bg-blue-100" : "hover:bg-gray-100"
+                              }`}
+                              onMouseDown={() => {
+                                form.setValue("productId", product.id);
+                                form.setValue("productType", selectedProductType);
+                                setProductSearch(`${(product as any).productCode || ""} - ${product.description}`);
+                                setShowProductDropdown(false);
+                              }}
+                            >
+                              <div className="font-medium">{(product as any).productCode || ""}</div>
+                              <div className="text-gray-600">{product.description}</div>
+                            </div>
                           ))}
-                      </SelectContent>
-                    </Select>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -589,8 +659,7 @@ export default function ReturnFromCustomer() {
                       type="number"
                       step="0.001"
                       {...form.register("quantity")}
-                      min="0.001"
-                      placeholder="Enter quantity (e.g., 1.2)"
+                      placeholder="Enter quantity"
                     />
                     {form.formState.errors.quantity && (
                       <p className="text-sm text-red-600 mt-1">
@@ -605,7 +674,7 @@ export default function ReturnFromCustomer() {
                       type="number"
                       step="0.01"
                       {...form.register("unitPrice")}
-                      min="0"
+                      placeholder="Enter unit price"
                     />
                   </div>
                 </div>
@@ -623,12 +692,10 @@ export default function ReturnFromCustomer() {
                     type="button"
                     variant="outline"
                     onClick={() => form.reset({
-                      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+                      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
                       customerId: selectedCustomer?.id || 0,
                       productId: 0,
                       productType: selectedProductType,
-                      quantity: 1,
-                      unitPrice: 0,
                     })}
                   >
                     Reset

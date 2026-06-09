@@ -41,7 +41,9 @@ export default function PurchaseInvoice() {
 
   // Extract purchaseId from URL on component mount and URL changes
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    // Read params from wouter's locationStr (reliable on all devices including tablets)
+    const search = locationStr.includes('?') ? locationStr.split('?')[1] : window.location.search.slice(1);
+    const params = new URLSearchParams(search);
     const id = params.get("purchaseId");
     const invId = params.get("invoiceId");
     const editMode = params.get("edit");
@@ -49,6 +51,8 @@ export default function PurchaseInvoice() {
 
     if (invId && !id) {
       // Opened directly by invoiceId (e.g. from daily book purchase link)
+      // Set invoiceId immediately from URL so it's available right away
+      setInvoiceId(invId);
       // Fetch purchase info via the invoice
       apiRequest("GET", `/api/purchase-invoices/by-invoice/${invId}`).then((response: any) => {
         if (response.purchase) {
@@ -71,18 +75,14 @@ export default function PurchaseInvoice() {
       }).catch(console.error);
     } else {
       setPurchaseId(id);
+      if (invId) setInvoiceId(invId);
       if (editMode === "true" && id) {
         fetchExistingInvoiceData(id);
       }
     }
   }, [locationStr]);
 
-  // Extract invoiceId from URL on mount and URL changes — handled in purchaseId effect above
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const invId = params.get("invoiceId");
-    if (invId) setInvoiceId(invId);
-  }, [locationStr]);
+  // NOTE: second useEffect for invoiceId removed — handled above to avoid race condition
 
   // Function to fetch existing invoice data for editing
   const fetchExistingInvoiceData = async (purchaseId: string) => {

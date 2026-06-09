@@ -46,9 +46,9 @@ export default function Banking() {
     date: businessDate ? new Date(businessDate) : new Date(),
     remarks: "",
     paymentType: "CASH",
-    amount: 0,
+    amount: "",
     payingNumber: "",
-    bags: [{ number: "", payingNumber: "", amount: 0 }],
+    bags: [{ number: "", payingNumber: "", amount: "" }],
     chequeNumber: "",
     bagNumber: "",
     chequePayingNumber: ""
@@ -67,9 +67,9 @@ export default function Banking() {
   // Calculate total amount for CASH and COINS payments (sum of all bag amounts)
   const totalAmount = useMemo(() => {
     if (newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") {
-      return newEntry.bags.reduce((sum, bag) => sum + (bag.amount || 0), 0);
+      return newEntry.bags.reduce((sum, bag) => sum + (parseFloat(bag.amount as string) || 0), 0);
     }
-    return newEntry.amount;
+    return parseFloat(newEntry.amount as string) || 0;
   }, [newEntry.paymentType, newEntry.bags, newEntry.amount]);
 
   // Fetch banking entries for date range
@@ -100,9 +100,9 @@ export default function Banking() {
         date: businessDate ? new Date(businessDate) : new Date(), 
         remarks: "", 
         paymentType: "CASH", 
-        amount: 0, 
+        amount: "", 
         payingNumber: "", 
-        bags: [{ number: "", payingNumber: "", amount: 0 }], // Reset to single empty bag
+        bags: [{ number: "", payingNumber: "", amount: "" }], // Reset to single empty bag
         chequeNumber: "",
         bagNumber: "",
         chequePayingNumber: ""
@@ -137,7 +137,7 @@ export default function Banking() {
     if (totalAmount <= 0) {
       return toast({ title: "Enter a valid amount" });
     }
-    if ((newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && newEntry.bags.every(bag => !bag.number.trim() || !bag.payingNumber.trim() || bag.amount <= 0)) {
+    if ((newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") && newEntry.bags.every(bag => !bag.number.trim() || !bag.payingNumber.trim() || !bag.amount || parseFloat(bag.amount as string) <= 0)) {
       return toast({ title: "At least one bag with number, paying number and amount are required for CASH/COINS payments" });
     }
     if (newEntry.paymentType === "CHEQUE" && (!newEntry.chequeNumber || !newEntry.bagNumber || !newEntry.chequePayingNumber)) {
@@ -150,7 +150,7 @@ export default function Banking() {
       amount: totalAmount,
       payingNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequePayingNumber : undefined,
       bags: (newEntry.paymentType === "CASH" || newEntry.paymentType === "COINS") ? 
-        newEntry.bags.filter(bag => bag.number.trim() && bag.payingNumber.trim()) : undefined,
+        newEntry.bags.filter(bag => bag.number.trim() && bag.payingNumber.trim() && bag.amount).map(bag => ({ ...bag, amount: parseFloat(bag.amount as string) || 0 })) : undefined,
       chequeNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequeNumber : undefined,
       bagNumber: newEntry.paymentType === "CHEQUE" ? newEntry.bagNumber : undefined,
       chequePayingNumber: newEntry.paymentType === "CHEQUE" ? newEntry.chequePayingNumber : undefined
@@ -162,7 +162,7 @@ export default function Banking() {
   const addBag = () => {
     setNewEntry(prev => ({
       ...prev,
-      bags: [...prev.bags, { number: "", payingNumber: "", amount: 0 }]
+      bags: [...prev.bags, { number: "", payingNumber: "", amount: "" }]
     }));
   };
 
@@ -193,7 +193,7 @@ export default function Banking() {
   };
 
   // Update bag amount
-  const updateBagAmount = (index: number, value: number) => {
+  const updateBagAmount = (index: number, value: string) => {
     setNewEntry(prev => ({
       ...prev,
       bags: prev.bags.map((bag, i) => i === index ? { ...bag, amount: value } : bag)
@@ -619,8 +619,8 @@ export default function Banking() {
                           />
                           <Input
                             type="text"
-                            value={bag.amount || ""}
-                            onChange={e => updateBagAmount(index, e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                            value={bag.amount}
+                            onChange={e => updateBagAmount(index, e.target.value)}
                             placeholder="Amount"
                             className="w-32 text-right"
                             required
@@ -696,8 +696,8 @@ export default function Banking() {
                     <Label>AMOUNT</Label>
                     <Input
                       type="text"
-                      value={newEntry.amount || ""}
-                      onChange={(e) => setNewEntry({...newEntry, amount: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0})}
+                      value={newEntry.amount}
+                      onChange={(e) => setNewEntry({...newEntry, amount: e.target.value})}
                       placeholder="0.00"
                       className="text-right"
                     />

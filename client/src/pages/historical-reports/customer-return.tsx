@@ -77,12 +77,21 @@ function toLocalDateString(date: Date) {
 
 export default function CustomerReturn() {
   const { currentDate: businessDate } = useBusinessDate();
-  const [fromDate, setFromDate] = useState<Date>(subWeeks(businessDate || new Date(), 1));
-  const [toDate, setToDate] = useState<Date>(businessDate || new Date());
+  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [customerFilter, setCustomerFilter] = useState("All Customer");
+  const fromDateChanged = useRef(false);
+  const toDateChanged = useRef(false);
 
   const [searchClicked, setSearchClicked] = useState(false);
   const tableRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (businessDate) {
+      if (!fromDateChanged.current) setFromDate(subWeeks(new Date(businessDate), 1));
+      if (!toDateChanged.current) setToDate(new Date(businessDate));
+    }
+  }, [businessDate]);
 
   // Product search
   const [productSearch, setProductSearch] = useState("");
@@ -508,18 +517,18 @@ export default function CustomerReturn() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={(date) => date && setFromDate(date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              
-              <div>
-                <Label>To:</Label>
+                      <Calendar
+                        mode="single"
+                        selected={fromDate}
+                        onSelect={(date) => { fromDateChanged.current = true; date && setFromDate(date); }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                <div>
+                  <Label>To:</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -534,12 +543,12 @@ export default function CustomerReturn() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
-                      initialFocus
-                    />
+                      <Calendar
+                        mode="single"
+                        selected={toDate}
+                        onSelect={(date) => { toDateChanged.current = true; date && setToDate(date); }}
+                        initialFocus
+                      />
                   </PopoverContent>
                 </Popover>
               </div>

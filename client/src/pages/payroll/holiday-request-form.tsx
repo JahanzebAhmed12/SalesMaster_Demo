@@ -48,6 +48,18 @@ const HolidayRequestForm = () => {
     mode: "onChange",
   });
 
+  // Auto-calculate total days from date range
+  const lastDate = form.watch("lastDateAtWork");
+  const returnDate = form.watch("returnDateToWork");
+  useEffect(() => {
+    if (lastDate && returnDate) {
+      const start = new Date(lastDate);
+      const end = new Date(returnDate);
+      const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      form.setValue("totalDaysRequested", diff > 0 ? diff : 1);
+    }
+  }, [lastDate, returnDate, form]);
+
   // Fetch employees for dropdown
   const { data: employees = [] } = useQuery({
     queryKey: ["employees"],
@@ -262,8 +274,9 @@ const HolidayRequestForm = () => {
                       id="totalDaysRequested" 
                       type="number"
                       min="1"
-                      placeholder="Number of days" 
-                      {...form.register("totalDaysRequested", { valueAsNumber: true })}
+                      value={form.watch("totalDaysRequested") || 1}
+                      readOnly
+                      className="bg-gray-50 cursor-not-allowed"
                     />
                     {form.formState.errors.totalDaysRequested && (
                       <p className="text-red-500 text-xs mt-1">{form.formState.errors.totalDaysRequested.message}</p>
