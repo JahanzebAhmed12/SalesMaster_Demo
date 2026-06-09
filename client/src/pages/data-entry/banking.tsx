@@ -35,12 +35,8 @@ export default function Banking() {
       const businessDateObj = new Date(businessDate);
       setFromDate(businessDateObj);
       setToDate(businessDateObj);
-    } else {
-      const today = new Date();
-      setFromDate(today);
-      setToDate(today);
     }
-  }, []);
+  }, [businessDate]);
 
   const [newEntry, setNewEntry] = useState({
     date: businessDate ? new Date(businessDate) : new Date(),
@@ -217,7 +213,7 @@ export default function Banking() {
   const canDeleteEntry = (entryDate: string) => {
     if (!userPermissions) return false;
     
-    const today = format(new Date(), 'yyyy-MM-dd');
+    const today = businessDate ? format(new Date(businessDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
     const entryDateFormatted = format(new Date(entryDate), 'yyyy-MM-dd');
     
     if (entryDateFormatted === today) {
