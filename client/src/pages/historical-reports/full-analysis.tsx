@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -9,6 +9,7 @@ import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -52,10 +53,21 @@ function toLocalDateString(date: Date) {
 }
 
 export default function FullAnalysis() {
-  const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
-  const [toDate, setToDate] = useState<Date>(new Date());
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [searchClicked, setSearchClicked] = useState(false);
+  const { businessDate } = useBusinessDate();
+  const initialSet = useRef(false);
+
+  useEffect(() => {
+    if (businessDate && !initialSet.current) {
+      const bd = new Date(businessDate);
+      setToDate(bd);
+      setFromDate(subWeeks(bd, 1));
+      initialSet.current = true;
+    }
+  }, [businessDate]);
 
   const { data: analysisData = [], isLoading } = useQuery<AnalysisData[]>({
     queryKey: [

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { CalendarIcon, Building, FileText, Download, Copy, Printer, Search, Prin
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -51,13 +52,24 @@ interface CompanyDetails {
 }
 
 export default function AllSupplierHistory() {
-  const [fromDate, setFromDate] = useState<Date>(new Date());
-  const [toDate, setToDate] = useState<Date>(new Date());
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
   const [supplierFilter, setSupplierFilter] = useState("All Suppliers");
   const [searchTerm, setSearchTerm] = useState("");
   const [supplierData, setSupplierData] = useState<SupplierData[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { businessDate } = useBusinessDate();
+  const initialSet = useRef(false);
+
+  useEffect(() => {
+    if (businessDate && !initialSet.current) {
+      const bd = new Date(businessDate);
+      setFromDate(bd);
+      setToDate(bd);
+      initialSet.current = true;
+    }
+  }, [businessDate]);
 
   const { data: companyDetails } = useQuery<CompanyDetails>({
     queryKey: ["/api/company-details"],
@@ -74,6 +86,7 @@ export default function AllSupplierHistory() {
   };
 
   const handleSearch = async () => {
+    if (!fromDate || !toDate) return;
     setLoading(true);
     setError(null);
     try {
@@ -90,6 +103,7 @@ export default function AllSupplierHistory() {
 
   // Export handlers
   const handlePrint = () => {
+    if (!fromDate || !toDate) return;
     const printWindow = window.open('', '', 'height=600,width=900');
     if (printWindow) {
       printWindow.document.write('<html><head><title>All Supplier History</title>');
@@ -148,6 +162,7 @@ export default function AllSupplierHistory() {
   };
 
   const handleExcel = () => {
+    if (!fromDate || !toDate) return;
     const wb = XLSX.utils.book_new();
     
     // Prepare the data for the main sheet
@@ -299,6 +314,7 @@ export default function AllSupplierHistory() {
   };
 
   const handlePDF = () => {
+    if (!fromDate || !toDate) return;
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text('ALL SUPPLIER HISTORY', 105, 20, { align: 'center' });

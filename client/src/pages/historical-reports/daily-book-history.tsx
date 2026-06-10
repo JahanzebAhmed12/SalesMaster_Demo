@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,6 +10,7 @@ import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import type { User } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -52,12 +53,23 @@ function toLocalDateString(date: Date) {
 }
 
 export default function DailyBookHistory() {
-  const [fromDate, setFromDate] = useState<Date>(subDays(new Date(), 7));
-  const [toDate, setToDate] = useState<Date>(new Date());
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
   const [user, setUser] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [reportType, setReportType] = useState<string>("All");
   const [searchClicked, setSearchClicked] = useState(false);
+  const { businessDate } = useBusinessDate();
+  const initialSet = useRef(false);
+
+  useEffect(() => {
+    if (businessDate && !initialSet.current) {
+      const bd = new Date(businessDate);
+      setToDate(bd);
+      setFromDate(subDays(bd, 7));
+      initialSet.current = true;
+    }
+  }, [businessDate]);
 
   // Fetch users for dropdown
   const { data: users = [], isLoading: loadingUsers, error: usersError } = useQuery<User[]>({
