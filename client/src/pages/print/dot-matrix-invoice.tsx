@@ -423,7 +423,6 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important; 
             padding: 0 !important;
             width: 186mm !important;
-            height: auto !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
             overflow: visible !important;
@@ -432,8 +431,8 @@ export default function DotMatrixInvoicePrintPage() {
           .print-content {
             margin: 0 !important;
             padding: 0 !important;
-            display: block !important;
           }
+          /* CRITICAL: Each page must be EXACTLY 200mm with NO margin collapse */
           .dot-matrix-print { 
             background: white !important; 
             box-shadow: none !important;
@@ -443,18 +442,17 @@ export default function DotMatrixInvoicePrintPage() {
             width: 186mm !important;
             height: 200mm !important;
             box-sizing: border-box !important;
-            overflow: hidden !important;
+            overflow: visible !important;
             position: relative !important;
-            display: flex !important;
-            flex-direction: column !important;
+            display: block !important;
             font-family: "Courier New", "Courier", monospace !important;
-            /* CRITICAL: Force exact page boundaries */
+            /* Force page breaks with maximum compatibility */
             page-break-after: always !important;
-            page-break-before: auto !important;
             page-break-inside: avoid !important;
             break-after: page !important;
-            break-before: auto !important;
             break-inside: avoid !important;
+            /* CRITICAL: Prevent margin collapse */
+            border-top: 0.1px solid transparent !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
@@ -464,13 +462,13 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
-          /* CRITICAL: Inner content wrapper for true positioning reset */
+          /* Inner wrapper positions from 0,0 of parent */
           .page-content-wrapper {
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
+            width: 186mm !important;
+            height: 200mm !important;
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -802,6 +800,10 @@ export default function DotMatrixInvoicePrintPage() {
           // Get appropriate field positions for this page
           const fieldPositions = getFieldPositions(page.pageNumber);
           
+          // CRITICAL FIX: Apply negative margin to compensate for cumulative print drift
+          // Each page after the first needs to be "pulled up" by accumulated drift
+          const marginTopCorrection = pageIndex === 0 ? 0 : -(pageIndex * 5); // 5mm per page
+          
           return (
             <div
               key={pageIndex}
@@ -811,6 +813,7 @@ export default function DotMatrixInvoicePrintPage() {
                 width: '186mm',
                 height: '200mm',
                 margin: '0',
+                marginTop: `${marginTopCorrection}mm`,
                 padding: '0',
                 boxSizing: 'border-box',
                 fontFamily: 'monospace',
