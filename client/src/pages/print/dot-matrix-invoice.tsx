@@ -372,71 +372,9 @@ export default function DotMatrixInvoicePrintPage() {
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
   const vatAmount = sale?.vat_amount || 0;
 
-  // Get appropriate field positions based on page number and mode
-  // Apply cumulative drift correction for pages 2+
+  // Get appropriate field positions based on mode (no drift correction needed with wrapper approach)
   const getFieldPositions = (pageNumber: number) => {
-    const basePositions = (isMobile && isServerPDF) ? MOBILE_PDF_POSITIONS : FIELD_POSITIONS;
-    
-    // No correction needed for page 1
-    if (pageNumber === 1) {
-      return basePositions;
-    }
-    
-    // Calculate cumulative drift: (pageNumber - 1) * 5mm shift needs correction
-    const driftCorrection = (pageNumber - 1) * PAGE_DRIFT_CORRECTION_MM;
-    
-    // Create corrected positions by subtracting the drift
-    return {
-      accountNo: { 
-        top: `${parseInt(basePositions.accountNo.top) - driftCorrection}mm`, 
-        left: basePositions.accountNo.left 
-      },
-      customerName: { 
-        top: `${parseInt(basePositions.customerName.top) - driftCorrection}mm`, 
-        left: basePositions.customerName.left 
-      },
-      customerAddress: { 
-        top: `${parseInt(basePositions.customerAddress.top) - driftCorrection}mm`, 
-        left: basePositions.customerAddress.left,
-        width: basePositions.customerAddress.width 
-      },
-      ticketNo: { 
-        top: `${parseInt(basePositions.ticketNo.top) - driftCorrection}mm`, 
-        left: basePositions.ticketNo.left 
-      },
-      date: { 
-        top: `${parseInt(basePositions.date.top) - driftCorrection}mm`, 
-        left: basePositions.date.left 
-      },
-      pageNumber: { 
-        top: `${parseInt(basePositions.pageNumber.top) - driftCorrection}mm`, 
-        left: basePositions.pageNumber.left 
-      },
-      itemsStartTop: `${parseInt(basePositions.itemsStartTop) - driftCorrection}mm`,
-      itemsRowHeight: basePositions.itemsRowHeight,
-      maxItemsPerPage: basePositions.maxItemsPerPage,
-      columns: basePositions.columns,
-      totals: {
-        goods: {
-          top: `${parseInt(basePositions.totals.goods.top) - driftCorrection}mm`,
-          left: basePositions.totals.goods.left,
-          width: basePositions.totals.goods.width,
-          align: basePositions.totals.goods.align
-        },
-        vat: {
-          top: `${parseInt(basePositions.totals.vat.top) - driftCorrection}mm`,
-          left: basePositions.totals.vat.left,
-          width: basePositions.totals.vat.width,
-          align: basePositions.totals.vat.align
-        },
-        total: {
-          top: `${parseInt(basePositions.totals.total.top) - driftCorrection}mm`,
-          left: basePositions.totals.total.left,
-          width: basePositions.totals.total.width,
-          align: basePositions.totals.total.align
-        }
-      }
-    };
+    return (isMobile && isServerPDF) ? MOBILE_PDF_POSITIONS : FIELD_POSITIONS;
   };
 
   // Calculate pagination - use base positions to get itemsPerPage
@@ -478,56 +416,45 @@ export default function DotMatrixInvoicePrintPage() {
         @media print and (min-device-width: 769px) {
           @page { 
             size: 186mm 200mm; 
-            margin: 0;
-            padding: 0;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           html, body { 
             margin: 0 !important; 
             padding: 0 !important;
             width: 186mm !important;
             height: auto !important;
-            min-height: unset !important;
-            max-height: unset !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
             overflow: visible !important;
             font-family: "Courier New", "Courier", monospace !important;
-            zoom: 1 !important;
-            transform: scale(1) !important;
-            -webkit-transform: scale(1) !important;
           }
           .print-content {
             margin: 0 !important;
             padding: 0 !important;
-            zoom: 1 !important;
-            transform: scale(1) !important;
-            -webkit-transform: scale(1) !important;
+            display: block !important;
           }
           .dot-matrix-print { 
             background: white !important; 
             box-shadow: none !important;
             border: none !important;
             margin: 0 !important;
-            padding: 0mm !important;
+            padding: 0 !important;
             width: 186mm !important;
             height: 200mm !important;
-            min-height: 200mm !important;
-            max-height: 200mm !important;
             box-sizing: border-box !important;
-            page-break-inside: avoid !important;
-            page-break-after: always !important;
-            page-break-before: always !important;
-            break-inside: avoid !important;
-            break-after: page !important;
-            break-before: page !important;
             overflow: hidden !important;
             position: relative !important;
-            display: block !important;
+            display: flex !important;
+            flex-direction: column !important;
             font-family: "Courier New", "Courier", monospace !important;
-            zoom: 1 !important;
-            transform: translateZ(0) !important;
-            -webkit-transform: translateZ(0) !important;
-            isolation: isolate !important;
+            /* CRITICAL: Force exact page boundaries */
+            page-break-after: always !important;
+            page-break-before: auto !important;
+            page-break-inside: avoid !important;
+            break-after: page !important;
+            break-before: auto !important;
+            break-inside: avoid !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
@@ -537,13 +464,20 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
+          /* CRITICAL: Inner content wrapper for true positioning reset */
+          .page-content-wrapper {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
           .field-text {
             font-family: "Courier New", "Courier", monospace !important;
             color: black !important;
             background: transparent !important;
-            zoom: 1 !important;
-            transform: scale(1) !important;
-            -webkit-transform: scale(1) !important;
           }
         }
         
@@ -876,8 +810,6 @@ export default function DotMatrixInvoicePrintPage() {
                 position: 'relative',
                 width: '186mm',
                 height: '200mm',
-                minHeight: '200mm',
-                maxHeight: '200mm',
                 margin: '0',
                 padding: '0',
                 boxSizing: 'border-box',
@@ -886,18 +818,24 @@ export default function DotMatrixInvoicePrintPage() {
                 backgroundColor: '#fff',
                 pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
                 breakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'page',
-                pageBreakBefore: pageIndex === 0 ? 'avoid' : 'always',
-                breakBefore: pageIndex === 0 ? 'avoid' : 'page',
+                pageBreakBefore: pageIndex === 0 ? 'avoid' : 'auto',
+                breakBefore: pageIndex === 0 ? 'avoid' : 'auto',
                 pageBreakInside: 'avoid',
                 breakInside: 'avoid',
                 overflow: 'hidden',
                 display: 'block',
-                top: 0,
-                left: 0,
-                transform: 'translateZ(0)',
-                isolation: 'isolate',
               }}
             >
+              {/* CRITICAL: Wrapper to reset positioning context for each page */}
+              <div className="page-content-wrapper" style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                margin: 0,
+                padding: 0,
+              }}>
               {/* Account Number (Customer ID) */}
               <div className="field-text" style={{
                 position: 'absolute',
@@ -1108,6 +1046,7 @@ export default function DotMatrixInvoicePrintPage() {
                   </div>
                 </>
               )}
+              </div>{/* End page-content-wrapper */}
             </div>
           );
         })}
