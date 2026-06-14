@@ -802,7 +802,7 @@ export default function DotMatrixInvoicePrintPage() {
           
           // CRITICAL FIX: Apply negative margin to compensate for cumulative print drift
           // Each page after the first needs to be "pulled up" by accumulated drift
-          const marginTopCorrection = pageIndex === 0 ? 0 : -(pageIndex * 5); // 5mm per page
+          const marginTopCorrection = pageIndex === 0 ? 0 : -(pageIndex * 8); // 5mm per page
           
           return (
             <div
