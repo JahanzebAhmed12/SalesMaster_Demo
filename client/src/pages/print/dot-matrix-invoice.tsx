@@ -29,9 +29,9 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '4mm' },
-  customerName: { top: '35mm', left: '4mm' },
-  customerAddress: { top: '40mm', left: '4mm', width: '50mm' },
+  accountNo: { top: '27mm', left: '3mm' },
+  customerName: { top: '35mm', left: '3mm' },
+  customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
   ticketNo: { top: '77mm', left: '23mm' },
   date: { top: '77mm', left: '48mm' },
   pageNumber: { top: '77mm', left: '118mm' },
@@ -39,7 +39,7 @@ const FIELD_POSITIONS = {
   itemsRowHeight: '6mm',
   maxItemsPerPage: 10,
   columns: {
-    quantity: { left: '4mm', width: '12mm' } as ColumnConfig,
+    quantity: { left: '3mm', width: '12mm' } as ColumnConfig,
     description: { left: '10mm', width: '72mm' } as ColumnConfig,
     price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
@@ -448,19 +448,31 @@ export default function DotMatrixInvoicePrintPage() {
             padding: 0mm !important;
             width: 186mm !important;
             height: 200mm !important;
+            min-height: 200mm !important;
+            max-height: 200mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
-            page-break-before: auto !important;
+            page-break-after: always !important;
+            page-break-before: always !important;
+            break-inside: avoid !important;
+            break-after: page !important;
+            break-before: page !important;
             overflow: hidden !important;
             position: relative !important;
             display: block !important;
             font-family: "Courier New", "Courier", monospace !important;
             zoom: 1 !important;
-            transform: scale(1) !important;
-            -webkit-transform: scale(1) !important;
+            transform: translateZ(0) !important;
+            -webkit-transform: translateZ(0) !important;
+            isolation: isolate !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
+            break-before: avoid !important;
+          }
+          .dot-matrix-print:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
           .field-text {
             font-family: "Courier New", "Courier", monospace !important;
@@ -537,23 +549,35 @@ export default function DotMatrixInvoicePrintPage() {
             padding: 0mm !important;
             width: 186mm !important;
             height: 200mm !important;
+            min-height: 200mm !important;
+            max-height: 200mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
-            page-break-before: auto !important;
+            page-break-after: always !important;
+            page-break-before: always !important;
+            break-inside: avoid !important;
+            break-after: page !important;
+            break-before: page !important;
             overflow: hidden !important;
             position: relative !important;
             display: block !important;
             font-family: "Courier New", "Courier", monospace !important;
-            /* CRITICAL: Prevent mobile scaling */
+            /* CRITICAL: Prevent mobile scaling and create isolated stacking context */
             zoom: 1 !important;
-            transform: scale(1) !important;
-            -webkit-transform: scale(1) !important;
+            transform: translateZ(0) !important;
+            -webkit-transform: translateZ(0) !important;
             -webkit-text-size-adjust: 100% !important;
             -ms-text-size-adjust: 100% !important;
             text-size-adjust: 100% !important;
+            isolation: isolate !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
+            break-before: avoid !important;
+          }
+          .dot-matrix-print:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
           .field-text {
             font-family: "Courier New", "Courier", monospace !important;
@@ -632,12 +656,19 @@ export default function DotMatrixInvoicePrintPage() {
           /* Page break rules */
           .dot-matrix-print {
             page-break-after: always !important;
-          }
-          .dot-matrix-print:last-child {
-            page-break-after: avoid !important;
+            page-break-before: always !important;
+            page-break-inside: avoid !important;
+            break-after: page !important;
+            break-before: page !important;
+            break-inside: avoid !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
+            break-before: avoid !important;
+          }
+          .dot-matrix-print:last-child {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
           
           /* Ensure consistent positioning across pages */
@@ -779,6 +810,8 @@ export default function DotMatrixInvoicePrintPage() {
                 position: 'relative',
                 width: '186mm',
                 height: '200mm',
+                minHeight: '200mm',
+                maxHeight: '200mm',
                 margin: '0',
                 padding: '0',
                 boxSizing: 'border-box',
@@ -787,11 +820,16 @@ export default function DotMatrixInvoicePrintPage() {
                 backgroundColor: '#fff',
                 pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
                 breakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'page',
+                pageBreakBefore: pageIndex === 0 ? 'avoid' : 'always',
+                breakBefore: pageIndex === 0 ? 'avoid' : 'page',
                 pageBreakInside: 'avoid',
+                breakInside: 'avoid',
                 overflow: 'hidden',
                 display: 'block',
                 top: 0,
                 left: 0,
+                transform: 'translateZ(0)',
+                isolation: 'isolate',
               }}
             >
               {/* Account Number (Customer ID) */}
