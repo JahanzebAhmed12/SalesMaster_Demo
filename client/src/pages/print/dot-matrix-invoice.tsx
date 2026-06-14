@@ -29,9 +29,9 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '2mm' },
-  customerName: { top: '35mm', left: '2mm' },
-  customerAddress: { top: '40mm', left: '2mm', width: '50mm' },
+  accountNo: { top: '27mm', left: '3mm' },
+  customerName: { top: '35mm', left: '3mm' },
+  customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
   ticketNo: { top: '77mm', left: '23mm' },
   date: { top: '77mm', left: '48mm' },
   pageNumber: { top: '77mm', left: '118mm' },
@@ -39,7 +39,7 @@ const FIELD_POSITIONS = {
   itemsRowHeight: '6mm',
   maxItemsPerPage: 10,
   columns: {
-    quantity: { left: '2mm', width: '12mm' } as ColumnConfig,
+    quantity: { left: '3mm', width: '12mm' } as ColumnConfig,
     description: { left: '10mm', width: '72mm' } as ColumnConfig,
     price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
@@ -51,8 +51,13 @@ const FIELD_POSITIONS = {
   }
 };
 
-// Cumulative shift correction: each page after the first drifts down by ~5mm
-const PAGE_DRIFT_CORRECTION_MM = 5;
+// Cumulative shift correction: Match printer's 8" (203.2mm) page length setting
+// Printer setting: page length 8" = 203.2mm
+// CSS setting: 200mm
+// Drift per page: 203.2 - 200 = 3.2mm
+const PRINTER_PAGE_LENGTH_MM = 203.2; // 8 inches as set in printer
+const CSS_PAGE_LENGTH_MM = 200; // Our current CSS setting  
+const PAGE_DRIFT_PER_PAGE = PRINTER_PAGE_LENGTH_MM - CSS_PAGE_LENGTH_MM; // 3.2mm per page
 
 // Mobile PDF positions - same as PC for now, but separate for future customization
 const MOBILE_PDF_POSITIONS = {
@@ -415,7 +420,7 @@ export default function DotMatrixInvoicePrintPage() {
         /* PC Print Styles - Optimized for dot matrix printing */
         @media print and (min-device-width: 769px) {
           @page { 
-            size: 186mm 200mm; 
+            size: 186mm 203.2mm; /* Match printer setting: 8 inches = 203.2mm */
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -432,7 +437,7 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 0 !important;
           }
-          /* CRITICAL: Each page must be EXACTLY 200mm with NO margin collapse */
+          /* CRITICAL: Each page must be EXACTLY 203.2mm (8") to match printer setting */
           .dot-matrix-print { 
             background: white !important; 
             box-shadow: none !important;
@@ -440,7 +445,7 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 0 !important;
             width: 186mm !important;
-            height: 200mm !important;
+            height: 203.2mm !important; /* Match printer: 8 inches */
             box-sizing: border-box !important;
             overflow: visible !important;
             position: relative !important;
@@ -468,7 +473,7 @@ export default function DotMatrixInvoicePrintPage() {
             top: 0 !important;
             left: 0 !important;
             width: 186mm !important;
-            height: 200mm !important;
+            height: 203.2mm !important; /* Match printer: 8 inches */
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -802,7 +807,8 @@ export default function DotMatrixInvoicePrintPage() {
           
           // CRITICAL FIX: Apply negative margin to compensate for cumulative print drift
           // Each page after the first needs to be "pulled up" by accumulated drift
-          const marginTopCorrection = pageIndex === 0 ? 0 : -(pageIndex * 8); // 5mm per page
+          // Based on printer settings: page length 8" (203.2mm) vs CSS 200mm = 3.2mm drift per page
+          const marginTopCorrection = pageIndex === 0 ? 0 : -(pageIndex * PAGE_DRIFT_PER_PAGE);
           
           return (
             <div
@@ -811,7 +817,7 @@ export default function DotMatrixInvoicePrintPage() {
               style={{
                 position: 'relative',
                 width: '186mm',
-                height: '200mm',
+                height: '203.2mm', // Match printer: 8 inches = 203.2mm
                 margin: '0',
                 marginTop: `${marginTopCorrection}mm`,
                 padding: '0',
