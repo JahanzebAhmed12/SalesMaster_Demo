@@ -29,9 +29,9 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '3mm' },
-  customerName: { top: '35mm', left: '3mm' },
-  customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
+  accountNo: { top: '27mm', left: '2mm' },
+  customerName: { top: '35mm', left: '2mm' },
+  customerAddress: { top: '40mm', left: '2mm', width: '50mm' },
   ticketNo: { top: '77mm', left: '23mm' },
   date: { top: '77mm', left: '48mm' },
   pageNumber: { top: '77mm', left: '118mm' },
@@ -39,7 +39,7 @@ const FIELD_POSITIONS = {
   itemsRowHeight: '6mm',
   maxItemsPerPage: 10,
   columns: {
-    quantity: { left: '3mm', width: '12mm' } as ColumnConfig,
+    quantity: { left: '2mm', width: '12mm' } as ColumnConfig,
     description: { left: '10mm', width: '72mm' } as ColumnConfig,
     price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
@@ -50,6 +50,9 @@ const FIELD_POSITIONS = {
     total: { top: '186mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
+
+// Cumulative shift correction: each page after the first drifts down by ~5mm
+const PAGE_DRIFT_CORRECTION_MM = 5;
 
 // Mobile PDF positions - same as PC for now, but separate for future customization
 const MOBILE_PDF_POSITIONS = {
@@ -369,15 +372,75 @@ export default function DotMatrixInvoicePrintPage() {
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
   const vatAmount = sale?.vat_amount || 0;
 
-  // Get appropriate field positions based on mode
-  const getFieldPositions = () => {
-    return (isMobile && isServerPDF) ? MOBILE_PDF_POSITIONS : FIELD_POSITIONS;
+  // Get appropriate field positions based on page number and mode
+  // Apply cumulative drift correction for pages 2+
+  const getFieldPositions = (pageNumber: number) => {
+    const basePositions = (isMobile && isServerPDF) ? MOBILE_PDF_POSITIONS : FIELD_POSITIONS;
+    
+    // No correction needed for page 1
+    if (pageNumber === 1) {
+      return basePositions;
+    }
+    
+    // Calculate cumulative drift: (pageNumber - 1) * 5mm shift needs correction
+    const driftCorrection = (pageNumber - 1) * PAGE_DRIFT_CORRECTION_MM;
+    
+    // Create corrected positions by subtracting the drift
+    return {
+      accountNo: { 
+        top: `${parseInt(basePositions.accountNo.top) - driftCorrection}mm`, 
+        left: basePositions.accountNo.left 
+      },
+      customerName: { 
+        top: `${parseInt(basePositions.customerName.top) - driftCorrection}mm`, 
+        left: basePositions.customerName.left 
+      },
+      customerAddress: { 
+        top: `${parseInt(basePositions.customerAddress.top) - driftCorrection}mm`, 
+        left: basePositions.customerAddress.left,
+        width: basePositions.customerAddress.width 
+      },
+      ticketNo: { 
+        top: `${parseInt(basePositions.ticketNo.top) - driftCorrection}mm`, 
+        left: basePositions.ticketNo.left 
+      },
+      date: { 
+        top: `${parseInt(basePositions.date.top) - driftCorrection}mm`, 
+        left: basePositions.date.left 
+      },
+      pageNumber: { 
+        top: `${parseInt(basePositions.pageNumber.top) - driftCorrection}mm`, 
+        left: basePositions.pageNumber.left 
+      },
+      itemsStartTop: `${parseInt(basePositions.itemsStartTop) - driftCorrection}mm`,
+      itemsRowHeight: basePositions.itemsRowHeight,
+      maxItemsPerPage: basePositions.maxItemsPerPage,
+      columns: basePositions.columns,
+      totals: {
+        goods: {
+          top: `${parseInt(basePositions.totals.goods.top) - driftCorrection}mm`,
+          left: basePositions.totals.goods.left,
+          width: basePositions.totals.goods.width,
+          align: basePositions.totals.goods.align
+        },
+        vat: {
+          top: `${parseInt(basePositions.totals.vat.top) - driftCorrection}mm`,
+          left: basePositions.totals.vat.left,
+          width: basePositions.totals.vat.width,
+          align: basePositions.totals.vat.align
+        },
+        total: {
+          top: `${parseInt(basePositions.totals.total.top) - driftCorrection}mm`,
+          left: basePositions.totals.total.left,
+          width: basePositions.totals.total.width,
+          align: basePositions.totals.total.align
+        }
+      }
+    };
   };
 
-  const fieldPositions = getFieldPositions();
-
-  // Calculate pagination
-  const itemsPerPage = fieldPositions.maxItemsPerPage;
+  // Calculate pagination - use base positions to get itemsPerPage
+  const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const pages = [];
 
@@ -802,6 +865,9 @@ export default function DotMatrixInvoicePrintPage() {
       {/* Dot Matrix Content - only this shows during print */}
       <div className={`print-content ${isServerPDF ? 'server-pdf-mode' : ''}`} style={{ margin: 0, padding: 0 }}>
         {pages.map((page, pageIndex) => {
+          // Get appropriate field positions for this page
+          const fieldPositions = getFieldPositions(page.pageNumber);
+          
           return (
             <div
               key={pageIndex}
