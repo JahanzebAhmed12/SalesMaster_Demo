@@ -437,7 +437,7 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 0 !important;
           }
-          /* CRITICAL: Each page must be EXACTLY 203.2mm (8") to match printer setting */
+          /* CRITICAL: Each page must be EXACTLY 203mm (slightly less than 8" to prevent extra blank page) */
           .dot-matrix-print { 
             background: white !important; 
             box-shadow: none !important;
@@ -445,7 +445,7 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 0 !important;
             width: 186mm !important;
-            height: 203.2mm !important; /* Match printer: 8 inches */
+            height: 203mm !important; /* 203mm instead of 203.2mm to prevent blank page */
             box-sizing: border-box !important;
             overflow: visible !important;
             position: relative !important;
@@ -456,8 +456,6 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-inside: avoid !important;
             break-after: page !important;
             break-inside: avoid !important;
-            /* CRITICAL: Prevent margin collapse */
-            border-top: 0.1px solid transparent !important;
           }
           .dot-matrix-print:first-child {
             page-break-before: avoid !important;
@@ -473,7 +471,7 @@ export default function DotMatrixInvoicePrintPage() {
             top: 0 !important;
             left: 0 !important;
             width: 186mm !important;
-            height: 203.2mm !important; /* Match printer: 8 inches */
+            height: 203mm !important; /* Match page height */
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -487,7 +485,7 @@ export default function DotMatrixInvoicePrintPage() {
         /* Mobile Print Styles - ANTI-SCALING FIXES */
         @media print and (max-device-width: 768px) {
           @page { 
-            size: 186mm 200mm; 
+            size: 186mm 203.2mm; /* Match printer setting: 8 inches = 203.2mm */
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -548,9 +546,9 @@ export default function DotMatrixInvoicePrintPage() {
             margin: 0 !important;
             padding: 0mm !important;
             width: 186mm !important;
-            height: 200mm !important;
-            min-height: 200mm !important;
-            max-height: 200mm !important;
+            height: 203.2mm !important; /* Match printer: 8 inches */
+            min-height: 203.2mm !important;
+            max-height: 203.2mm !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
             page-break-after: always !important;
@@ -805,11 +803,6 @@ export default function DotMatrixInvoicePrintPage() {
           // Get appropriate field positions for this page
           const fieldPositions = getFieldPositions(page.pageNumber);
           
-          // CRITICAL FIX: Apply negative margin to compensate for cumulative print drift
-          // Each page after the first needs to be "pulled up" by accumulated drift
-          // Based on printer settings: page length 8" (203.2mm) vs CSS 200mm = 3.2mm drift per page
-          const marginTopCorrection = pageIndex === 0 ? 0 : -(pageIndex * PAGE_DRIFT_PER_PAGE);
-          
           return (
             <div
               key={pageIndex}
@@ -817,9 +810,9 @@ export default function DotMatrixInvoicePrintPage() {
               style={{
                 position: 'relative',
                 width: '186mm',
-                height: '203.2mm', // Match printer: 8 inches = 203.2mm
+                height: '203mm',
                 margin: '0',
-                marginTop: `${marginTopCorrection}mm`,
+                padding: '0',
                 padding: '0',
                 boxSizing: 'border-box',
                 fontFamily: 'monospace',
