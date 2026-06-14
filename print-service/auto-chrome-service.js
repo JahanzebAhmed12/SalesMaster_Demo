@@ -163,23 +163,93 @@ class AutoChromePrintService {
     const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
     const vatAmount = sale?.vat_amount || 0;
 
-    const itemsHTML = items?.map((item, index) => {
-      const topPosition = 95 + (index * 6);
+    // Format quantity function - matches React component
+    const formatQuantity = (quantity) => {
+      if (quantity === null || quantity === undefined || quantity === '') return '0';
+      const num = typeof quantity === 'string' ? parseFloat(quantity) : quantity;
+      if (isNaN(num)) return '0';
+      // If it's a whole number, return without decimals
+      if (num % 1 === 0) {
+        return num.toString();
+      }
+      // Otherwise, format with up to 3 decimals and remove trailing zeros
+      return parseFloat(num.toFixed(3)).toString();
+    };
+
+    // Pagination logic
+    const itemsPerPage = 11;
+    const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
+    const pages = [];
+
+    for (let i = 0; i < totalPages; i++) {
+      const startIndex = i * itemsPerPage;
+      const endIndex = Math.min(startIndex + itemsPerPage, items?.length || 0);
+      pages.push({
+        pageNumber: i + 1,
+        items: items?.slice(startIndex, endIndex) || [],
+        isLastPage: i === totalPages - 1
+      });
+    }
+
+    // Generate HTML for all pages
+    const pagesHTML = pages.map(page => {
+      const itemsHTML = page.items.map((item, index) => {
+        const topPosition = 95 + (index * 4);
+        return `
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 3mm; width: 12mm; font-size: 9pt; font-weight: bold; line-height: 1;">
+            ${formatQuantity(item.quantity)}
+          </div>
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 10mm; width: 72mm; font-size: 9pt; font-weight: bold; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${item.product_name || item.productName || item.description || ''}
+          </div>
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 77mm; width: 20mm; text-align: right; font-size: 9pt; font-weight: bold; line-height: 1;">
+            ${(item.unit_price || item.unitPrice || 0).toFixed(2)}
+          </div>
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 95mm; width: 25mm; text-align: right; font-size: 9pt; font-weight: bold; line-height: 1;">
+            £${(item.total_price || item.totalPrice || 0).toFixed(2)}
+          </div>
+        `;
+      }).join('');
+
+      const totalsHTML = page.isLastPage ? `
+        <div class="field-text" style="position: absolute; top: 167mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+          £${totalAmount.toFixed(2)}
+        </div>
+        <div class="field-text" style="position: absolute; top: 177mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+          £${vatAmount.toFixed(2)}
+        </div>
+        <div class="field-text" style="position: absolute; top: 186mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+          £${(totalAmount + vatAmount).toFixed(2)}
+        </div>
+      ` : '';
+
       return `
-        <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 1mm; width: 15mm; font-size: 10pt; line-height: 1;">
-          ${item.quantity || 0}
-        </div>
-        <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 10mm; width: 75mm; font-size: 10pt; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-          ${item.product_name || item.productName || item.description || ''}
-        </div>
-        <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 77mm; width: 20mm; text-align: right; font-size: 10pt; line-height: 1;">
-          ${(item.unit_price || item.unitPrice || 0).toFixed(2)}
-        </div>
-        <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 95mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
-          £${(item.total_price || item.totalPrice || 0).toFixed(2)}
+        <div class="dot-matrix-print" style="position: relative; width: 186mm; height: 203mm; margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; display: block; page-break-after: ${page.pageNumber === totalPages ? 'avoid' : 'always'}; page-break-inside: avoid;">
+          <div class="page-content-wrapper" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; margin: 0; padding: 0;">
+            <div class="field-text" style="position: absolute; top: 27mm; left: 3mm; font-size: 10pt; font-weight: bold; line-height: 1;">
+              C-${customer?.id || sale?.customer_id || ''}
+            </div>
+            <div class="field-text" style="position: absolute; top: 35mm; left: 3mm; font-size: 10pt; line-height: 1;">
+              ${customer?.customer_name || customer?.customerName || ''}
+            </div>
+            <div class="field-text" style="position: absolute; top: 40mm; left: 3mm; width: 50mm; font-size: 8pt; white-space: pre-wrap; word-wrap: break-word; line-height: 1.2;">
+              ${customer?.address || ''}
+            </div>
+            <div class="field-text" style="position: absolute; top: 77mm; left: 23mm; font-size: 10pt; line-height: 1;">
+              ${sale?.invoice_number || sale?.invoiceNumber || ''}
+            </div>
+            <div class="field-text" style="position: absolute; top: 77mm; left: 48mm; font-size: 10pt; line-height: 1;">
+              ${sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}
+            </div>
+            <div class="field-text" style="position: absolute; top: 77mm; left: 118mm; font-size: 10pt; line-height: 1;">
+              ${page.pageNumber} of ${totalPages}
+            </div>
+            ${itemsHTML}
+            ${totalsHTML}
+          </div>
         </div>
       `;
-    }).join('') || '';
+    }).join('');
 
     return `<!DOCTYPE html>
 <html>
@@ -188,13 +258,53 @@ class AutoChromePrintService {
   <title>Invoice ${sale?.invoice_number || sale?.invoiceNumber || ''}</title>
   <style>
     @page { 
-      size: 186mm 200mm; 
+      size: 186mm 203.2mm; 
       margin: 0; 
     }
     @media print {
       @page {
-        size: 186mm 200mm;
+        size: 186mm 203.2mm;
         margin: 0;
+      }
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 186mm !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        overflow: visible !important;
+        font-family: "Courier New", "Courier", monospace !important;
+      }
+      .dot-matrix-print {
+        background: white !important;
+        box-shadow: none !important;
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 186mm !important;
+        height: 203mm !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+        position: relative !important;
+        display: block !important;
+        font-family: "Courier New", "Courier", monospace !important;
+        page-break-after: always !important;
+        page-break-inside: avoid !important;
+      }
+      .dot-matrix-print:first-child {
+        page-break-before: avoid !important;
+      }
+      .dot-matrix-print:last-child {
+        page-break-after: avoid !important;
+      }
+      .page-content-wrapper {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 186mm !important;
+        height: 203mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
     }
     * { 
@@ -204,17 +314,28 @@ class AutoChromePrintService {
     }
     html, body { 
       width: 186mm; 
-      height: 200mm; 
       font-family: "Courier New", monospace; 
-      overflow: hidden;
+      overflow: visible;
       print-color-adjust: exact;
       -webkit-print-color-adjust: exact;
     }
     .dot-matrix-print { 
       position: relative; 
       width: 186mm; 
-      height: 200mm; 
-      overflow: hidden; 
+      height: 203mm; 
+      overflow: hidden;
+      page-break-after: always;
+      page-break-inside: avoid;
+    }
+    .dot-matrix-print:last-child {
+      page-break-after: avoid;
+    }
+    .page-content-wrapper {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
     }
     .field-text { 
       position: absolute; 
@@ -225,36 +346,7 @@ class AutoChromePrintService {
   </style>
 </head>
 <body>
-  <div class="dot-matrix-print">
-    <div class="field-text" style="position: absolute; top: 27mm; left: 1mm; font-size: 10pt; font-weight: bold; line-height: 1;">
-      C-${customer?.id || sale?.customer_id || ''}
-    </div>
-    <div class="field-text" style="position: absolute; top: 35mm; left: 1mm; font-size: 10pt; line-height: 1;">
-      ${customer?.customer_name || customer?.customerName || ''}
-    </div>
-    <div class="field-text" style="position: absolute; top: 40mm; left: 3mm; width: 50mm; font-size: 8pt; white-space: pre-wrap; word-wrap: break-word; line-height: 1.2;">
-      ${customer?.address || ''}
-    </div>
-    <div class="field-text" style="position: absolute; top: 77mm; left: 23mm; font-size: 10pt; line-height: 1;">
-      ${sale?.invoice_number || sale?.invoiceNumber || ''}
-    </div>
-    <div class="field-text" style="position: absolute; top: 77mm; left: 48mm; font-size: 10pt; line-height: 1;">
-      ${sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}
-    </div>
-    <div class="field-text" style="position: absolute; top: 77mm; left: 118mm; font-size: 10pt; line-height: 1;">
-      1 of 1
-    </div>
-    ${itemsHTML}
-    <div class="field-text" style="position: absolute; top: 167mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
-      £${totalAmount.toFixed(2)}
-    </div>
-    <div class="field-text" style="position: absolute; top: 177mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
-      £${vatAmount.toFixed(2)}
-    </div>
-    <div class="field-text" style="position: absolute; top: 186mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
-      £${(totalAmount + vatAmount).toFixed(2)}
-    </div>
-  </div>
+  ${pagesHTML}
 </body>
 </html>`;
   }
