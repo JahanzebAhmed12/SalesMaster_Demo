@@ -32,8 +32,10 @@ const FIELD_POSITIONS = {
   accountNo: { top: '27mm', left: '3mm' },
   customerName: { top: '35mm', left: '3mm' },
   customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
+  salesId: { top: '77mm', left: '3mm' },
   ticketNo: { top: '77mm', left: '23mm' },
   date: { top: '77mm', left: '48mm' },
+  time: { top: '77mm', left: '90mm' },
   pageNumber: { top: '77mm', left: '118mm' },
   itemsStartTop: '95mm',
   itemsRowHeight: '4mm',
@@ -64,8 +66,10 @@ const MOBILE_PDF_POSITIONS = {
   accountNo: { top: '25mm', left: '1mm' },
   customerName: { top: '35mm', left: '1mm' },
   customerAddress: { top: '40mm', left: '1mm', width: '50mm' },
+  salesId: { top: '75mm', left: '1mm' },
   ticketNo: { top: '75mm', left: '23mm' },
   date: { top: '75mm', left: '50mm' },
+  time: { top: '75mm', left: '78mm' },
   pageNumber: { top: '75mm', left: '118mm' },
   itemsStartTop: '95mm',
   itemsRowHeight: '4mm',
@@ -376,6 +380,8 @@ export default function DotMatrixInvoicePrintPage() {
   console.log('Invoice number for display:', sale?.invoice_number);
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
   const vatAmount = sale?.vat_amount || 0;
+  const porterage = sale?.porterage || 0;
+  const totalQuantity = items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
 
   // Get appropriate field positions based on mode (no drift correction needed with wrapper approach)
   const getFieldPositions = (pageNumber: number) => {
@@ -813,7 +819,6 @@ export default function DotMatrixInvoicePrintPage() {
                 height: '203mm',
                 margin: '0',
                 padding: '0',
-                padding: '0',
                 boxSizing: 'border-box',
                 fontFamily: 'monospace',
                 color: '#000',
@@ -880,6 +885,19 @@ export default function DotMatrixInvoicePrintPage() {
                 {customer?.address || ''}
               </div>
 
+              {/* Sales ID */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.salesId,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                {sale?.createdBy || ''}
+              </div>
+
               {/* Ticket No (Invoice Number) */}
               <div className="field-text" style={{
                 position: 'absolute',
@@ -904,6 +922,19 @@ export default function DotMatrixInvoicePrintPage() {
                 padding: '0'
               }}>
                 {sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}
+              </div>
+
+              {/* Time */}
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...fieldPositions.time,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                {sale?.date ? new Date(sale.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''}
               </div>
 
               {/* Page Number */}
@@ -959,6 +990,11 @@ export default function DotMatrixInvoicePrintPage() {
                       textOverflow: 'ellipsis'
                     }}>
                       {item.product_name || item.productName || item.description}
+                      {(item.notes || item.remarks) && (
+                        <span style={{ fontStyle: 'italic', fontWeight: 'normal' }}>
+                          {' '}({item.notes || item.remarks})
+                        </span>
+                      )}
                     </div>
 
                     {/* Unit Price */}
@@ -994,11 +1030,71 @@ export default function DotMatrixInvoicePrintPage() {
                       padding: '0',
                       whiteSpace: 'nowrap'
                     }}>
-                      £{(item.total_price || item.totalPrice || 0).toFixed(2)}
+                      {(item.total_price || item.totalPrice || 0).toFixed(2)}
                     </div>
                   </React.Fragment>
                 );
               })}
+
+              {/* Porterage - on last page */}
+              {page.isLastPage && porterage > 0 && (
+                <>
+                  <div className="field-text" style={{
+                    position: 'absolute',
+                    top: `${parseInt(fieldPositions.itemsStartTop) + page.items.length * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                    left: fieldPositions.columns.description.left,
+                    width: fieldPositions.columns.description.width,
+                    fontFamily: '"Courier New", "Courier", monospace',
+                    fontSize: '9pt',
+                    fontWeight: 'bold',
+                    lineHeight: '1',
+                    margin: '0',
+                    padding: '0',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}>
+                    Porterage
+                  </div>
+                  <div className="field-text" style={{
+                    position: 'absolute',
+                    top: `${parseInt(fieldPositions.itemsStartTop) + page.items.length * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                    left: fieldPositions.columns.value.left,
+                    width: fieldPositions.columns.value.width,
+                    textAlign: fieldPositions.columns.value.align,
+                    fontFamily: '"Courier New", "Courier", monospace',
+                    fontSize: '9pt',
+                    fontWeight: 'bold',
+                    lineHeight: '1',
+                    margin: '0',
+                    padding: '0',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    £{porterage.toFixed(2)}
+                  </div>
+                </>
+              )}
+
+              {/* Packages line - on last page */}
+              {page.isLastPage && (
+                <div className="field-text" style={{
+                  position: 'absolute',
+                  top: `${parseInt(fieldPositions.itemsStartTop) + (page.items.length + (porterage > 0 ? 1 : 0)) * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                  left: fieldPositions.columns.description.left,
+                  width: fieldPositions.columns.description.width,
+                  fontFamily: '"Courier New", "Courier", monospace',
+                  fontSize: '9pt',
+                  fontWeight: 'bold',
+                  lineHeight: '1',
+                  margin: '0',
+                  padding: '0',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  ({formatQuantity(totalQuantity)} packages)
+                </div>
+              )}
 
               {/* Totals - only show on last page */}
               {page.isLastPage && (
@@ -1048,7 +1144,7 @@ export default function DotMatrixInvoicePrintPage() {
                     padding: '0',
                     whiteSpace: 'nowrap'
                   }}>
-                    £{(totalAmount + vatAmount).toFixed(2)}
+                    £{(totalAmount + vatAmount + porterage).toFixed(2)}
                   </div>
                 </>
               )}

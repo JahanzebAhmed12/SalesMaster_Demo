@@ -27,46 +27,58 @@ class InvoiceExcelGenerator:
         wb = Workbook()
         ws = wb.active
         ws.title = "Invoice"
-        
+
+        def get_sale(key_snake, key_camel, default=''):
+            sale_data = invoice_data.get('sale', {})
+            return sale_data.get(key_snake) or sale_data.get(key_camel, default)
+
         # Company header
         ws['A1'] = "TROPIFRUIT UK LTD"
         ws['A1'].font = self.title_font
         ws['A2'] = "3 Dolphin Way, Purfleet, RM19 1NZ"
-        
+
         # Invoice details
         row = 4
         ws[f'A{row}'] = "INVOICE"
         ws[f'A{row}'].font = self.title_font
-        
+
         row += 2
         ws[f'A{row}'] = "Invoice Number:"
-        ws[f'B{row}'] = invoice_data.get('sale', {}).get('invoice_number', 'N/A')
+        ws[f'B{row}'] = get_sale('invoice_number', 'invoiceNumber', 'N/A')
         ws[f'A{row}'].font = self.header_font
-        
+
         row += 1
         ws[f'A{row}'] = "Date:"
-        ws[f'B{row}'] = invoice_data.get('sale', {}).get('date', datetime.now().strftime('%Y-%m-%d'))
+        raw_date = get_sale('date', 'date', '')
+        if raw_date:
+            try:
+                raw_date = datetime.fromisoformat(raw_date.replace('Z', '+00:00')).strftime('%Y-%m-%d')
+            except:
+                pass
+        ws[f'B{row}'] = raw_date or datetime.now().strftime('%Y-%m-%d')
         ws[f'A{row}'].font = self.header_font
-        
+
         row += 1
         ws[f'A{row}'] = "Customer:"
         customer_name = invoice_data.get('customer', {}).get('customer_name') or invoice_data.get('customer', {}).get('customerName', 'N/A')
         ws[f'B{row}'] = customer_name
         ws[f'A{row}'].font = self.header_font
-        
+
         # Vehicle and gate details if present
-        if invoice_data.get('sale', {}).get('vehicle_details'):
+        vehicle_details = get_sale('vehicle_details', 'vehicleDetails')
+        if vehicle_details:
             row += 1
             ws[f'A{row}'] = "Vehicle Details:"
-            ws[f'B{row}'] = invoice_data.get('sale', {}).get('vehicle_details')
+            ws[f'B{row}'] = vehicle_details
             ws[f'A{row}'].font = self.header_font
-            
-        if invoice_data.get('sale', {}).get('gate_number'):
+
+        gate_number = get_sale('gate_number', 'gateNumber')
+        if gate_number:
             row += 1
             ws[f'A{row}'] = "Gate Number:"
-            ws[f'B{row}'] = invoice_data.get('sale', {}).get('gate_number')
+            ws[f'B{row}'] = gate_number
             ws[f'A{row}'].font = self.header_font
-        
+
         # Items table
         row += 3
         headers = ['Product', 'Notes', 'Quantity', 'Unit Price', 'Total Price']
@@ -76,7 +88,7 @@ class InvoiceExcelGenerator:
             cell.fill = self.header_fill
             cell.border = self.border
             cell.alignment = Alignment(horizontal='center')
-        
+
         # Items data
         items = invoice_data.get('items', [])
         for item in items:
@@ -86,37 +98,36 @@ class InvoiceExcelGenerator:
             quantity = item.get('quantity', 0)
             unit_price = item.get('unit_price') or item.get('unitPrice', 0)
             total_price = item.get('total_price') or item.get('totalPrice', 0)
-            
+
             ws.cell(row=row, column=1, value=product_name).border = self.border
             ws.cell(row=row, column=2, value=notes).border = self.border
             ws.cell(row=row, column=3, value=quantity).border = self.border
             ws.cell(row=row, column=4, value=f"£{float(unit_price):.2f}").border = self.border
             ws.cell(row=row, column=5, value=f"£{float(total_price):.2f}").border = self.border
-        
+
         # Totals
         row += 2
-        sale_data = invoice_data.get('sale', {})
-        subtotal = sale_data.get('subtotal', 0)
-        vat_amount = sale_data.get('vat_amount', 0)
-        porterage = sale_data.get('porterage', 0)
-        total_amount = sale_data.get('total_amount', 0)
-        
+        subtotal = get_sale('subtotal', 'subtotal', 0)
+        vat_amount = get_sale('vat_amount', 'vatAmount', 0)
+        porterage = get_sale('porterage', 'porterage', 0)
+        total_amount = get_sale('total_amount', 'totalAmount', 0)
+
         ws[f'D{row}'] = "Sub Total:"
         ws[f'D{row}'].font = self.header_font
         ws[f'E{row}'] = f"£{float(subtotal):.2f}"
-        
-        if porterage > 0:
+
+        if float(porterage) > 0:
             row += 1
             ws[f'D{row}'] = "Porterage:"
             ws[f'D{row}'].font = self.header_font
             ws[f'E{row}'] = f"£{float(porterage):.2f}"
-        
-        if vat_amount > 0:
+
+        if float(vat_amount) > 0:
             row += 1
             ws[f'D{row}'] = "VAT:"
             ws[f'D{row}'].font = self.header_font
             ws[f'E{row}'] = f"£{float(vat_amount):.2f}"
-        
+
         row += 1
         ws[f'D{row}'] = "Total Amount:"
         ws[f'D{row}'].font = self.title_font

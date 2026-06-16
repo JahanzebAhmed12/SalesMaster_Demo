@@ -34,6 +34,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from flask import render_template
 from mail_utils import init_mail, send_invoice_email, send_customer_statement_email, send_customer_history_email, send_purchase_invoice_email, send_supplier_statement_email, load_email_config, save_email_config
 from invoice_pdf_routes import add_pdf_routes
+from export_routes import add_export_routes
 from datetime import datetime, timedelta
 from sqlalchemy import func, and_, or_
 from flask import make_response
@@ -11196,6 +11197,7 @@ def get_invoice_data_for_pdf(invoice_number):
         return None
 
 add_pdf_routes(app, get_invoice_data_for_pdf)
+add_export_routes(app, get_invoice_data_for_pdf)
 @app.route('/api/reports/profit-loss', methods=['GET'])
 @jwt_required()
 def profit_loss_report():
