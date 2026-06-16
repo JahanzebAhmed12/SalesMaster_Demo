@@ -77,17 +77,17 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
         <thead>
           <tr>
             <th style={{ padding: "1px 4px", textAlign: "center", width: "80px", fontSize: 16 }}>Qty</th>
-            <th style={{ padding: "1px 4px", fontSize: 16 }}>Product</th>
+            <th style={{ padding: "1px 4px", textAlign: "left", fontSize: 16 }}>Product</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item, idx) => (
             <tr key={idx}>
               <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: 600, fontSize: 16 }}>{item.qty}</td>
-              <td style={{ padding: "1px 4px", fontSize: 14, textAlign: "center" }}>
+              <td style={{ padding: "1px 4px", fontSize: 14, textAlign: "left" }}>
                   {item.product}
                   {item.notes && (
-                    <div style={{ fontSize: "12px", fontStyle: "italic" }}>{item.notes}</div>
+                    <span style={{ fontSize: "12px", fontStyle: "italic" }}> ({item.notes})</span>
                   )}
                 </td>
             </tr>
