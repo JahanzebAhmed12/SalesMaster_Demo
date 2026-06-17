@@ -85,19 +85,9 @@ const getDisplayCustomerName = (sale: SalesEntry): string => {
   return sale.customerName || 'Unknown Customer';
 };
 
-// Helper function to check if we should show gate number in parentheses
-const shouldShowGateInParentheses = (sale: SalesEntry): boolean => {
-  const isCashCustomer = sale.customerType === 'cash';
-  const cashSalePatterns = [
-    'cash sale', 'cash sales', 'cash customer', 'walk-in customer', 
-    'walk in customer', 'cash', 'walk-in', 'walkin'
-  ];
-  const customerNameLower = (sale.customerName || '').toLowerCase().trim();
-  const isCashByName = cashSalePatterns.includes(customerNameLower);
-  
-  // Don't show in parentheses if we're already showing it as the main name
-  return Boolean(sale.gateNumber && !((isCashCustomer || isCashByName) && sale.gateNumber.trim()));
-};
+// Gate numbers only show for cash customers (handled by getDisplayCustomerName)
+// Saved customers' gate numbers are hidden — unsaved means zero stock next day
+const shouldShowGateInParentheses = (_sale: SalesEntry): boolean => false;
 
 export default function DailyBookSales() {
   // Get business date with formatting utilities

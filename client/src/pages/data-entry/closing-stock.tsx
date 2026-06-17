@@ -1,15 +1,11 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
-import { Package, Calendar, FileText, Download, Copy, Printer, Search, Save, Plus, AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
 import { jsPDF } from 'jspdf';
@@ -33,26 +29,6 @@ interface StockItem {
   location: string | null;
 }
 
-interface StockAdjustment {
-  productId: number;
-  productType: 'regular' | 'non';
-  adjustmentType: 'increase' | 'decrease' | 'set';
-  quantity: number;
-  reason: string;
-  remarks?: string;
-  adjustmentDate: string;
-}
-
-interface ClosingStockData {
-  date: string;
-  items: {
-    [key: string]: {
-      regular: { [key: number]: number };
-      non: { [key: number]: number };
-    };
-  };
-}
-
 export default function ClosingStock() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -67,16 +43,12 @@ export default function ClosingStock() {
       setSelectedDate(format(new Date(businessDate), "yyyy-MM-dd"));
     }
   }, [businessDate]);
-  const [addProductId, setAddProductId] = useState("");
-  const [addQuantity, setAddQuantity] = useState("");
-  const [editRowId, setEditRowId] = useState<number | null>(null);
-  const [editQuantity, setEditQuantity] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const [editItems, setEditItems] = useState<any[]>([]);
+  const initializedRef = useRef(false);
+  const [showAllProducts, setShowAllProducts] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
 
   // Fetch all products
   const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
@@ -91,216 +63,119 @@ export default function ClosingStock() {
     enabled: !!selectedDate,
   });
 
-  // Add new closing stock entry
-  const handleAddEntry = async () => {
-    // Check backdate permissions
+  // Reset initialization when date changes
+  useEffect(() => {
+    initializedRef.current = false;
+  }, [selectedDate]);
+
+  // Populate editItems when data is ready (only once per date) — includes ALL products
+  useEffect(() => {
+    if (!selectedDate || currentStock.length === 0) return;
+    if (initializedRef.current) return;
+
+    const savedMap = new Map<number, { quantity: number }>();
+    closingStockEntries.forEach((e: any) => {
+      savedMap.set(e.productId, { quantity: e.quantity });
+    });
+
+    const items = currentStock.map(p => {
+      const saved = savedMap.get(p.id);
+      return {
+        productId: p.id,
+        productType: p.productType,
+        quantity: saved ? saved.quantity : p.currentStock,
+        description: p.description,
+        productCode: p.productCode,
+        currentStock: p.currentStock,
+      };
+    });
+
+    setEditItems(items);
+    initializedRef.current = true;
+  }, [selectedDate, currentStock, closingStockEntries]);
+
+  // Derived display list based on filter
+  const displayItems = showAllProducts
+    ? editItems
+    : editItems.filter(item => item.currentStock > 0);
+
+  const savedProductIds = new Set(closingStockEntries.map((e: any) => e.productId));
+
+  const handleQuantityChange = (productId: number, value: string) => {
+    if (value === "") {
+      setEditItems(prev =>
+        prev.map(item =>
+          item.productId === productId ? { ...item, quantity: "" } : item
+        )
+      );
+      return;
+    }
+    const qty = parseFloat(value);
+    if (isNaN(qty)) return;
+    setEditItems(prev =>
+      prev.map(item =>
+        item.productId === productId ? { ...item, quantity: qty } : item
+      )
+    );
+  };
+
+  const handleSaveEntry = async (productId: number, productType: string, qty: number | string) => {
     if (isPastDate(selectedDate) && !canEditBackdate) {
-      toast({ title: "Error", description: "You don't have permission to add entries for past dates.", variant: "destructive" });
+      toast({ title: "Error", description: "You don't have permission to edit past dates.", variant: "destructive" });
       return;
     }
-    
-    if (!addProductId || !addQuantity) {
-      toast({ title: "Error", description: "Select a product and enter quantity.", variant: "destructive" });
-      return;
-    }
+    const quantity = qty === "" ? 0 : qty;
     try {
       const items = [
-        ...closingStockEntries.filter((e: any) => e.productId !== parseInt(addProductId)),
-        {
-          productId: parseInt(addProductId),
-          productType: currentStock.find((p) => p.id === parseInt(addProductId))?.productType || "regular",
-          quantity: parseFloat(addQuantity),
-        },
+        ...closingStockEntries.filter((e: any) => e.productId !== productId),
+        { productId, productType, quantity },
       ];
       await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
       toast({ title: "Saved", description: "Closing stock entry saved." });
-      setAddProductId("");
-      setAddQuantity("");
+      initializedRef.current = false;
       refetch();
     } catch (error) {
       toast({ title: "Error", description: "Failed to save entry.", variant: "destructive" });
     }
   };
 
-  // Edit closing stock entry
-  const handleEditSave = async (entry: any) => {
-    // Check backdate permissions
-    if (isPastDate(selectedDate) && !canEditBackdate) {
-      toast({ title: "Error", description: "You don't have permission to edit past date stock entries.", variant: "destructive" });
-      return;
-    }
-    
-    if (!editQuantity) {
-      toast({ title: "Error", description: "Enter a valid quantity.", variant: "destructive" });
-      return;
-    }
-    try {
-      const items = closingStockEntries.map((e: any) =>
-        e.productId === entry.productId
-          ? { ...e, quantity: parseFloat(editQuantity) }
-          : e
-      );
-      await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
-      toast({ title: "Updated", description: "Closing stock entry updated." });
-      setEditRowId(null);
-      setEditQuantity("");
-      refetch();
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to update entry.", variant: "destructive" });
-    }
-  };
-
-  // Delete closing stock entry
   const handleDeleteEntry = async (productId: number) => {
-    // Check backdate permissions
     if (isPastDate(selectedDate) && !canDeleteBackdate) {
-      toast({ title: "Error", description: "You don't have permission to delete past date stock entries.", variant: "destructive" });
+      toast({ title: "Error", description: "You don't have permission to delete past date entries.", variant: "destructive" });
       return;
     }
-    
     try {
       const items = closingStockEntries
         .filter((e: any) => e.productId !== productId)
         .map((e: any) => ({
           productId: e.productId,
           productType: e.productType,
-          quantity: e.quantity
+          quantity: e.quantity,
         }));
-      
-      console.log('Sending delete request:', { date: selectedDate, items });
-      
       await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
       toast({ title: "Deleted", description: "Closing stock entry deleted." });
       setDeleteConfirm(null);
+      initializedRef.current = false;
       refetch();
     } catch (error: any) {
-      console.error('Delete error:', error);
       toast({ title: "Error", description: error?.error || "Failed to delete entry.", variant: "destructive" });
     }
   };
 
-  // Only allow products not already entered in the add row
-  const enteredProductIds = closingStockEntries.map((e: any) => e.productId);
-  const availableProducts = currentStock.filter((p) => !enteredProductIds.includes(p.id));
-
-  // Filter products based on search term - only show when user starts typing
-  const filteredProducts = searchTerm.trim() === "" 
-    ? [] 
-    : availableProducts.filter(product => 
-        product.description.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        product.productCode.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-
-  // Keyboard navigation for product dropdown (from sales invoice)
-  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showProductDropdown || filteredProducts.length === 0) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedProduct((prev) => (prev < filteredProducts.length - 1 ? prev + 1 : 0));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedProduct((prev) => (prev > 0 ? prev - 1 : filteredProducts.length - 1));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (highlightedProduct >= 0 && highlightedProduct < filteredProducts.length) {
-        const p = filteredProducts[highlightedProduct];
-        setAddProductId(p.id.toString());
-        setSearchTerm(`${p.productCode} - ${p.description}`);
-        setShowProductDropdown(false);
-      }
-    } else if (e.key === "Escape") {
-      setShowProductDropdown(false);
-    }
-  };
-
-  // Close dropdown on blur (with delay to allow click)
-  const handleProductBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    setTimeout(() => setShowProductDropdown(false), 100);
-  };
-
-  // Fetch company details for dynamic address
-  const { data: companyDetails } = useQuery({
-    queryKey: ["company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
-
-  // Stock adjustment mutation
-  const adjustStockMutation = useMutation({
-    mutationFn: (adjustment: StockAdjustment) => 
-      apiRequest('POST', '/api/stock/adjust', adjustment),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock', 'current'] });
-      toast({
-        title: "Success",
-        description: "Stock adjusted successfully",
-      });
-      // setAdjustmentDialog({ open: false, product: null, adjustment: {} }); // This line was removed
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to adjust stock",
-        variant: "destructive",
-      });
-    }
-  });
-
-  // For linter: explicitly type filteredData for export handlers
-  // const filteredDataTyped: StockItem[] = filteredData; // This line was removed
-
-  // const handleAdjustment = (product: StockItem) => { // This function was removed
-  //   setAdjustmentDialog({
-  //     open: true,
-  //     product,
-  //     adjustment: {
-  //       productId: product.id,
-  //       productType: product.productType,
-  //       adjustmentType: 'set',
-  //       quantity: product.currentStock,
-  //       reason: '',
-  //       adjustmentDate: selectedDate
-  //     }
-  //   });
-  // };
-
-  // const saveAdjustment = () => { // This function was removed
-  //   if (!adjustmentDialog.product || !adjustmentDialog.adjustment.reason) {
-  //     toast({
-  //       title: "Error",
-  //       description: "Please fill in all required fields",
-  //       variant: "destructive",
-  //     });
-  //     return;
-  //   }
-
-  //   adjustStockMutation.mutate(adjustmentDialog.adjustment as StockAdjustment);
-  // };
-
-  // const totalItems = filteredData.length; // This line was removed
-  // const totalQuantity = filteredData.reduce((sum: number, item: StockItem) => sum + item.currentStock, 0); // This line was removed
-  // const lowStockItems = filteredData.filter((item: StockItem) => item.currentStock <= item.reorderLevel); // This line was removed
-
   // Print handler
   const handlePrint = () => {
+    const items = editItems.length > 0 ? editItems : closingStockEntries;
     const printWindow = window.open('', '', 'height=600,width=900');
-    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>Current Stock</div>`;
+    let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>Closing Stock</div>`;
     html += `<table style='width:100%;border-collapse:collapse;'>`;
-    html += `<thead><tr>`;
-    const headers = ['Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'];
-    headers.forEach(h => {
-      html += `<th style='border:1px solid #ccc;padding:8px;'>${h}</th>`;
+    html += `<thead><tr><th style='border:1px solid #ccc;padding:8px;'>Product</th><th style='border:1px solid #ccc;padding:8px;'>Current Stock</th><th style='border:1px solid #ccc;padding:8px;'>Closing Quantity</th></tr></thead><tbody>`;
+    items.forEach((item: any) => {
+      html += '<tr>';
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description || item.productId}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.currentStock ?? '-'}</td>`;
+      html += `<td style='border:1px solid #ccc;padding:8px;'>${item.quantity}</td>`;
+      html += '</tr>';
     });
-    html += `</tr></thead><tbody>`;
-    // filteredDataTyped.forEach((item) => { // This line was removed
-    //   html += '<tr>';
-    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.description} (${item.productCode})</td>`;
-    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.productType}</td>`;
-    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.currentStock}</td>`;
-    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.reorderLevel}</td>`;
-    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.unitOfSale || '-'}</td>`;
-    //   html += `<td style='border:1px solid #ccc;padding:8px;'>${item.location || '-'}</td>`;
-    //   html += '</tr>';
-    // });
     html += '</tbody></table>';
     if (printWindow) {
       printWindow.document.write('<html><head><title>Print Table</title>');
@@ -319,16 +194,14 @@ export default function ClosingStock() {
 
   // Excel handler
   const handleExcel = () => {
+    const items = editItems.length > 0 ? editItems : closingStockEntries;
     const wsData = [
-      ['Current Stock'],
-      ['Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'],
-      ...closingStockEntries.map((item: any) => ([ // Changed to closingStockEntries
-        `${item.productId}`, // Changed to item.productId
-        item.productType,
+      ['Closing Stock'],
+      ['Product', 'Current Stock', 'Closing Quantity'],
+      ...items.map((item: any) => ([
+        item.description || item.productId,
+        item.currentStock ?? '-',
         item.quantity,
-        // item.reorderLevel, // Removed as per new_code
-        // item.unitOfSale || '-', // Removed as per new_code
-        // item.location || '-', // Removed as per new_code
       ])),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
@@ -339,19 +212,15 @@ export default function ClosingStock() {
 
   // PDF handler
   const handlePDF = () => {
+    const items = editItems.length > 0 ? editItems : closingStockEntries;
     const doc = new jsPDF();
-    doc.text('Current Stock', 14, 16);
+    doc.text('Closing Stock', 14, 16);
     autoTable(doc, {
-      head: [[
-        'Product', 'Type', 'Current Stock', 'Reorder Level', 'Unit', 'Location'
-      ]],
-      body: closingStockEntries.map((item: any) => [ // Changed to closingStockEntries
-        `${item.productId}`, // Changed to item.productId
-        item.productType,
+      head: [['Product', 'Current Stock', 'Closing Quantity']],
+      body: items.map((item: any) => [
+        item.description || item.productId,
+        item.currentStock ?? '-',
         item.quantity,
-        // item.reorderLevel, // Removed as per new_code
-        // item.unitOfSale || '-', // Removed as per new_code
-        // item.location || '-', // Removed as per new_code
       ]),
       startY: 22,
     });
@@ -454,144 +323,95 @@ export default function ClosingStock() {
           />
         </div>
 
+        {/* Filter Toggle */}
+        <div className="flex items-center gap-2 mb-4">
+          <Button
+            variant={showAllProducts ? "outline" : "default"}
+            onClick={() => setShowAllProducts(false)}
+            size="sm"
+          >
+            Positive Stock
+          </Button>
+          <Button
+            variant={showAllProducts ? "default" : "outline"}
+            onClick={() => setShowAllProducts(true)}
+            size="sm"
+          >
+            All Products
+          </Button>
+        </div>
+
         {/* Closing Stock Table */}
-        <Table id="closing-stock-table" className="w-full border border-gray-300 rounded-lg shadow-sm" style={{ overflow: 'visible' }}>
+        <Table id="closing-stock-table" className="w-full border border-gray-300 rounded-lg shadow-sm">
           <TableHeader>
             <TableRow className="bg-gray-100 border-b border-gray-300">
               <TableHead className="font-bold text-gray-700 text-base py-3 px-4 border-r border-gray-300">Product</TableHead>
-              <TableHead className="font-bold text-gray-700 text-base py-3 px-4 border-r border-gray-300">Quantity</TableHead>
+              <TableHead className="font-bold text-gray-700 text-base py-3 px-4 border-r border-gray-300">Current Stock</TableHead>
+              <TableHead className="font-bold text-gray-700 text-base py-3 px-4 border-r border-gray-300">Closing Quantity</TableHead>
               <TableHead className="font-bold text-gray-700 text-base py-3 px-4">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {/* Inline Add Row */}
-            <TableRow className="bg-blue-50 border-b border-gray-300" style={{ overflow: 'visible' }}>
-              <TableCell className="py-2 px-4 border-r border-gray-200 overflow-visible">
-                <div className="relative">
-                  <Input
-                    placeholder="Type to search products..."
-                    value={searchTerm}
-                    onChange={e => {
-                      setSearchTerm(e.target.value);
-                      setShowProductDropdown(true);
-                      setAddProductId("");
-                    }}
-                    onFocus={() => setShowProductDropdown(!!searchTerm)}
-                    onBlur={handleProductBlur}
-                    onKeyDown={handleProductKeyDown}
-                    autoComplete="off"
-                    className="w-full border-gray-300 focus:border-blue-500 focus:ring-blue-500"
-                  />
-                  {showProductDropdown && filteredProducts.length > 0 && (
-                    <div className="absolute z-[9999] bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg border-gray-300" style={{ zIndex: 9999 }}>
-                      {filteredProducts.map((p, idx) => (
-                        <div
-                          key={p.id}
-                          className={`p-2 cursor-pointer flex items-center ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
-                          onMouseDown={() => {
-                            setAddProductId(p.id.toString());
-                            setSearchTerm(`${p.productCode} - ${p.description}`);
-                            setShowProductDropdown(false);
-                          }}
-                          onMouseEnter={() => setHighlightedProduct(idx)}
-                        >
-                          <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
-                          <span className="ml-2">{p.description}</span>
-                          <span className="ml-auto text-xs text-gray-500">Stock: {p.currentStock}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell className="py-2 px-4 border-r border-gray-200">
-                <Input
-                  type="number"
-                  placeholder="Quantity"
-                  value={addQuantity}
-                  onChange={(e) => setAddQuantity(e.target.value)}
-                  min="0"
-                />
-              </TableCell>
-              <TableCell className="py-2 px-4">
-                {(!isPastDate(selectedDate) || canEditBackdate) ? (
-                  <Button onClick={() => { handleAddEntry(); setSearchTerm(""); }}>Save</Button>
-                ) : (
-                  <Button disabled className="opacity-50">Save</Button>
-                )}
-              </TableCell>
-            </TableRow>
-            {/* Existing Entries */}
-            {closingStockEntries.length === 0 ? (
+            {displayItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={3} className="text-center text-gray-500 py-4">No entries for this date.</TableCell>
+                <TableCell colSpan={4} className="text-center text-gray-500 py-4">
+                  {isLoadingStock || isLoadingClosing ? 'Loading...' : 'No products found.'}
+                </TableCell>
               </TableRow>
             ) : (
-              closingStockEntries.map((entry: any, idx: number) => {
-                const product = currentStock.find((p) => p.id === entry.productId);
-                const isEditing = editRowId === entry.productId;
-                return isEditing ? (
-                  <TableRow key={entry.productId} className="border-b border-gray-200 bg-yellow-50">
-                    <TableCell className="py-2 px-4 font-medium border-r border-gray-200">{product ? `${product.description} (${product.productCode})` : entry.productId}</TableCell>
-                    <TableCell className="py-2 px-4 border-r border-gray-200">
-                                              <Input
-                          type="number"
-                          value={editQuantity}
-                          onChange={(e) => setEditQuantity(e.target.value)}
-                          className="w-24"
-                          min="0"
-                        />
-                    </TableCell>
-                    <TableCell className="py-2 px-4 flex gap-2">
-                      <Button onClick={() => handleEditSave(entry)} size="sm">Save</Button>
-                      <Button variant="outline" onClick={() => { setEditRowId(null); setEditQuantity(""); }} size="sm">Cancel</Button>
-                    </TableCell>
-                  </TableRow>
-                ) : (
+              displayItems.map((item: any, idx: number) => {
+                const isSaved = savedProductIds.has(item.productId);
+                return (
                   <TableRow
-                    key={entry.productId}
+                    key={item.productId}
                     className={
                       idx % 2 === 0
                         ? "bg-white border-b border-gray-200 hover:bg-gray-50"
                         : "bg-gray-50 border-b border-gray-200 hover:bg-gray-100"
                     }
                   >
-                    <TableCell className="py-2 px-4 font-medium border-r border-gray-200">{product ? `${product.description} (${product.productCode})` : entry.productId}</TableCell>
-                    <TableCell className="py-2 px-4 border-r border-gray-200 font-semibold">{formatQuantity(entry.quantity)}</TableCell>
+                    <TableCell className="py-2 px-4 font-medium border-r border-gray-200">
+                      {item.description} ({item.productCode})
+                    </TableCell>
+                    <TableCell className="py-2 px-4 border-r border-gray-200 font-semibold">
+                      {formatQuantity(item.currentStock)}
+                    </TableCell>
+                    <TableCell className="py-2 px-4 border-r border-gray-200">
+                      <Input
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) => handleQuantityChange(item.productId, e.target.value)}
+                        className="w-24"
+                        min="0"
+                        step="any"
+                        disabled={isPastDate(selectedDate) && !canEditBackdate}
+                      />
+                    </TableCell>
                     <TableCell className="py-2 px-4">
                       <div className="flex gap-2">
-                        {(!isPastDate(selectedDate) || canEditBackdate) && (
-                          <Button size="sm" variant="outline" onClick={() => { setEditRowId(entry.productId); setEditQuantity(entry.quantity.toString()); }}>
-                            Edit
+                        {(!isPastDate(selectedDate) || canEditBackdate) ? (
+                          <Button size="sm" onClick={() => handleSaveEntry(item.productId, item.productType, item.quantity)}>
+                            Save
                           </Button>
-                        )}
-                        {deleteConfirm === entry.productId ? (
-                          <div className="flex gap-1">
-                            <Button 
-                              size="sm" 
-                              variant="destructive" 
-                              onClick={() => handleDeleteEntry(entry.productId)}
-                            >
-                              Confirm
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => setDeleteConfirm(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </div>
                         ) : (
-                          (!isPastDate(selectedDate) || canDeleteBackdate) && (
-                            <Button 
-                              size="sm" 
-                              variant="outline" 
-                              onClick={() => setDeleteConfirm(entry.productId)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                          <Button size="sm" disabled className="opacity-50">Save</Button>
+                        )}
+                        {isSaved && (
+                          deleteConfirm === item.productId ? (
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="destructive" onClick={() => handleDeleteEntry(item.productId)}>
+                                Confirm
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => setDeleteConfirm(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            (!isPastDate(selectedDate) || canDeleteBackdate) && (
+                              <Button size="sm" variant="outline" className="text-red-600" onClick={() => setDeleteConfirm(item.productId)}>
+                                Delete
+                              </Button>
+                            )
                           )
                         )}
                       </div>
