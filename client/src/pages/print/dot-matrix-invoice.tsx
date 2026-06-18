@@ -427,7 +427,7 @@ export default function DotMatrixInvoicePrintPage() {
         @media print and (min-device-width: 769px) {
           @page { 
             size: 189mm 203.2mm; /* Match printer setting: 8 inches = 203.2mm */
-            margin: 0 !important;
+            margin: 0 0 0 -8mm !important; /* Negative left margin to compensate for printer's physical margin */
             padding: 0 !important;
           }
           html, body { 
@@ -492,7 +492,7 @@ export default function DotMatrixInvoicePrintPage() {
         @media print and (max-device-width: 768px) {
           @page { 
             size: 189mm 203.2mm; /* Match printer setting: 8 inches = 203.2mm */
-            margin: 0 !important;
+            margin: 0 0 0 -8mm !important; /* Negative left margin to compensate for printer's physical margin */
             padding: 0 !important;
           }
           html {
