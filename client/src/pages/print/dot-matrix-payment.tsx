@@ -36,9 +36,9 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '3mm' },
-  customerName: { top: '35mm', left: '3mm' },
-  customerAddress: { top: '40mm', left: '3mm', width: '50mm' },
+  accountNo: { top: '27mm', left: '1mm' },
+  customerName: { top: '35mm', left: '1mm' },
+  customerAddress: { top: '40mm', left: '1mm', width: '50mm' },
   ticketNo: { top: '77mm', left: '23mm' },
   date: { top: '77mm', left: '48mm' },
   pageNumber: { top: '77mm', left: '118mm' },
@@ -46,7 +46,7 @@ const FIELD_POSITIONS = {
   itemsRowHeight: '4mm',
   maxItemsPerPage: 11,
   columns: {
-    quantity: { left: '3mm', width: '12mm' } as ColumnConfig,
+    quantity: { left: '1mm', width: '10mm' } as ColumnConfig,
     description: { left: '10mm', width: '72mm' } as ColumnConfig,
     price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
@@ -285,14 +285,14 @@ export default function DotMatrixPaymentPrintPage() {
       <style>{`
         @media print {
           @page { 
-            size: 186mm 203.2mm; 
+            size: 189mm 203.2mm; 
             margin: 0 !important;
             padding: 0 !important;
           }
           html, body { 
             margin: 0 !important;
             padding: 0 !important;
-            width: 186mm !important;
+            width: 189mm !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
             overflow: visible !important;
@@ -311,7 +311,7 @@ export default function DotMatrixPaymentPrintPage() {
             border: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 186mm !important;
+            width: 189mm !important;
             height: 203mm !important;
             box-sizing: border-box !important;
             overflow: visible !important;
@@ -335,7 +335,7 @@ export default function DotMatrixPaymentPrintPage() {
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
-            width: 186mm !important;
+            width: 189mm !important;
             height: 203mm !important;
             margin: 0 !important;
             padding: 0 !important;
@@ -391,7 +391,7 @@ export default function DotMatrixPaymentPrintPage() {
       {pages.map((page, pageIndex) => (
         <div key={pageIndex} className="dot-matrix-print" style={{
           position: 'relative',
-          width: '186mm',
+          width: '189mm',
           height: '203mm',
           margin: '0',
           padding: '0',
