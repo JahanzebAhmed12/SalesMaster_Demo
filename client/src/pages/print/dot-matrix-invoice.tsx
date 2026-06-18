@@ -42,7 +42,7 @@ const FIELD_POSITIONS = {
   maxItemsPerPage: 11,
   columns: {
     quantity: { left: '1mm', width: '7mm' } as ColumnConfig,
-    description: { left: '12mm', width: '72mm' } as ColumnConfig,
+    description: { left: '16mm', width: '72mm' } as ColumnConfig,
     price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
   },
