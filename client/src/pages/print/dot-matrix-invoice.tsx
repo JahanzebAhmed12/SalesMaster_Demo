@@ -185,11 +185,11 @@ export default function DotMatrixInvoicePrintPage() {
     const originalViewport = viewport?.getAttribute('content') || '';
     
     if (viewport) {
-      viewport.setAttribute('content', 'width=153mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
+      viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
     } else {
       viewport = document.createElement('meta');
       viewport.setAttribute('name', 'viewport');
-      viewport.setAttribute('content', 'width=153mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
+      viewport.setAttribute('content', 'width=186mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no');
       document.head.appendChild(viewport);
     }
 
@@ -313,7 +313,7 @@ export default function DotMatrixInvoicePrintPage() {
             }
           }, 2000);
 
-          setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 15300);
+          setTimeout(() => window.URL.revokeObjectURL(pdfUrl), 15000);
         } else {
           console.log('Popup blocked - downloading PDF...');
           const a = document.createElement('a');
@@ -426,14 +426,14 @@ export default function DotMatrixInvoicePrintPage() {
         /* PC Print Styles - Optimized for dot matrix printing */
         @media print and (min-device-width: 769px) {
           @page { 
-            size: 153mm 203.2mm; /* Actual printable width: 15.4cm x 8" height */
+            size: 189mm 203.2mm; /* Match printer setting: 8 inches = 203.2mm */
             margin: 0 !important;
             padding: 0 !important;
           }
           html, body { 
             margin: 0 !important; 
             padding: 0 !important;
-            width: 153mm !important;
+            width: 189mm !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
             overflow: visible !important;
@@ -450,7 +450,7 @@ export default function DotMatrixInvoicePrintPage() {
             border: none !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 153mm !important;
+            width: 189mm !important;
             height: 203mm !important; /* 203mm instead of 203.2mm to prevent blank page */
             box-sizing: border-box !important;
             overflow: visible !important;
@@ -476,7 +476,7 @@ export default function DotMatrixInvoicePrintPage() {
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
-            width: 153mm !important;
+            width: 189mm !important;
             height: 203mm !important; /* Match page height */
             margin: 0 !important;
             padding: 0 !important;
@@ -491,14 +491,14 @@ export default function DotMatrixInvoicePrintPage() {
         /* Mobile Print Styles - ANTI-SCALING FIXES */
         @media print and (max-device-width: 768px) {
           @page { 
-            size: 177mm 203.2mm; /* Match actual paper: 17.7cm width x 8" height */
+            size: 189mm 203.2mm; /* Match printer setting: 8 inches = 203.2mm */
             margin: 0 !important;
             padding: 0 !important;
           }
           html {
             margin: 0 !important; 
             padding: 0 !important;
-            width: 177mm !important;
+            width: 189mm !important;
             height: auto !important;
             min-height: unset !important;
             max-height: unset !important;
@@ -517,7 +517,7 @@ export default function DotMatrixInvoicePrintPage() {
           body { 
             margin: 0 !important; 
             padding: 0 !important;
-            width: 153mm !important;
+            width: 189mm !important;
             height: auto !important;
             min-height: unset !important;
             max-height: unset !important;
@@ -536,7 +536,7 @@ export default function DotMatrixInvoicePrintPage() {
           .print-content {
             margin: 0 !important;
             padding: 0 !important;
-            width: 153mm !important;
+            width: 189mm !important;
             /* CRITICAL: Prevent mobile scaling */
             zoom: 1 !important;
             transform: scale(1) !important;
@@ -551,7 +551,7 @@ export default function DotMatrixInvoicePrintPage() {
             border: none !important;
             margin: 0 !important;
             padding: 0mm !important;
-            width: 153mm !important;
+            width: 189mm !important;
             height: 203.2mm !important; /* Match printer: 8 inches */
             min-height: 203.2mm !important;
             max-height: 203.2mm !important;
@@ -617,7 +617,7 @@ export default function DotMatrixInvoicePrintPage() {
         
         /* Server PDF specific styles */
         .server-pdf-mode .dot-matrix-print {
-          width: 153mm !important;
+          width: 189mm !important;
           height: 200mm !important;
           padding: 0mm !important;
           font-size: 10pt !important;
@@ -815,7 +815,7 @@ export default function DotMatrixInvoicePrintPage() {
               className="dot-matrix-print"
               style={{
                 position: 'relative',
-                width: '153mm',
+                width: '189mm',
                 height: '203mm',
                 margin: '0',
                 padding: '0',
