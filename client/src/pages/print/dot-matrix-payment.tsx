@@ -54,7 +54,7 @@ const FIELD_POSITIONS = {
     value: { left: '105mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
+    goods: { top: '185mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
     vat: { top: '177mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
     total: { top: '185mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
   },
@@ -615,6 +615,7 @@ export default function DotMatrixPaymentPrintPage() {
                 ...FIELD_POSITIONS.totals.goods,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '10pt',
+                fontWeight: 'bold',
                 textAlign: FIELD_POSITIONS.totals.goods.align as TextAlign
               }}>
                 £{totalAmount.toFixed(2)}
