@@ -63,27 +63,27 @@ const PAGE_DRIFT_PER_PAGE = PRINTER_PAGE_LENGTH_MM - CSS_PAGE_LENGTH_MM; // 3.2m
 
 // Mobile PDF positions - same as PC for now, but separate for future customization
 const MOBILE_PDF_POSITIONS = {
-  accountNo: { top: '25mm', left: '1mm' },
-  customerName: { top: '35mm', left: '1mm' },
-  customerAddress: { top: '40mm', left: '1mm', width: '50mm' },
-  salesId: { top: '75mm', left: '1mm' },
-  ticketNo: { top: '75mm', left: '23mm' },
-  date: { top: '75mm', left: '50mm' },
-  time: { top: '75mm', left: '78mm' },
-  pageNumber: { top: '75mm', left: '118mm' },
+  accountNo: { top: '27mm', left: '12mm' },
+  customerName: { top: '35mm', left: '5mm' },
+  customerAddress: { top: '40mm', left: '5mm', width: '50mm' },
+  salesId: { top: '77mm', left: '10mm' },
+  ticketNo: { top: '77mm', left: '30mm' },
+  date: { top: '77mm', left: '60mm' },
+  time: { top: '77mm', left: '95mm' },
+  pageNumber: { top: '77mm', left: '125mm' },
   itemsStartTop: '95mm',
   itemsRowHeight: '4mm',
   maxItemsPerPage: 11,
   columns: {
-    quantity: { left: '1mm', width: '15mm' } as ColumnConfig,
-    description: { left: '13mm', width: '75mm' } as ColumnConfig,
-    price: { left: '80mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
+    quantity: { left: '4mm', width: '7mm' } as ColumnConfig,
+    description: { left: '24mm', width: '72mm' } as ColumnConfig,
+    price: { left: '88mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '105mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '167mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '177mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '186mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '177mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '185mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
