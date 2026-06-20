@@ -196,52 +196,58 @@ class AutoChromePrintService {
       const itemsHTML = page.items.map((item, index) => {
         const topPosition = 95 + (index * 4);
         return `
-          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 3mm; width: 12mm; font-size: 9pt; font-weight: bold; line-height: 1;">
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 4mm; width: 7mm; font-size: 9pt; font-weight: bold; line-height: 1;">
             ${formatQuantity(item.quantity)}
           </div>
-          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 10mm; width: 72mm; font-size: 9pt; font-weight: bold; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 24mm; width: 72mm; font-size: 9pt; font-weight: bold; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             ${item.product_name || item.productName || item.description || ''}
           </div>
-          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 77mm; width: 20mm; text-align: right; font-size: 9pt; font-weight: bold; line-height: 1;">
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 88mm; width: 20mm; text-align: right; font-size: 9pt; font-weight: bold; line-height: 1;">
             ${(item.unit_price || item.unitPrice || 0).toFixed(2)}
           </div>
-          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 95mm; width: 25mm; text-align: right; font-size: 9pt; font-weight: bold; line-height: 1;">
+          <div class="field-text" style="position: absolute; top: ${topPosition}mm; left: 105mm; width: 25mm; text-align: right; font-size: 9pt; font-weight: bold; line-height: 1;">
             £${(item.total_price || item.totalPrice || 0).toFixed(2)}
           </div>
         `;
       }).join('');
 
       const totalsHTML = page.isLastPage ? `
-        <div class="field-text" style="position: absolute; top: 167mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+        <div class="field-text" style="position: absolute; top: 167mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
           £${totalAmount.toFixed(2)}
         </div>
-        <div class="field-text" style="position: absolute; top: 177mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+        <div class="field-text" style="position: absolute; top: 177mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
           £${vatAmount.toFixed(2)}
         </div>
-        <div class="field-text" style="position: absolute; top: 186mm; left: 96mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+        <div class="field-text" style="position: absolute; top: 185mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
           £${(totalAmount + vatAmount).toFixed(2)}
         </div>
       ` : '';
 
       return `
-        <div class="dot-matrix-print" style="position: relative; width: 186mm; height: 203mm; margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; display: block; page-break-after: ${page.pageNumber === totalPages ? 'avoid' : 'always'}; page-break-inside: avoid;">
+        <div class="dot-matrix-print" style="position: relative; width: 189mm; height: 203mm; margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; display: block; page-break-after: ${page.pageNumber === totalPages ? 'avoid' : 'always'}; page-break-inside: avoid;">
           <div class="page-content-wrapper" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; margin: 0; padding: 0;">
-            <div class="field-text" style="position: absolute; top: 27mm; left: 3mm; font-size: 10pt; font-weight: bold; line-height: 1;">
+            <div class="field-text" style="position: absolute; top: 27mm; left: 12mm; font-size: 10pt; font-weight: bold; line-height: 1;">
               C-${customer?.id || sale?.customer_id || ''}
             </div>
-            <div class="field-text" style="position: absolute; top: 35mm; left: 3mm; font-size: 10pt; line-height: 1;">
+            <div class="field-text" style="position: absolute; top: 35mm; left: 5mm; font-size: 10pt; line-height: 1;">
               ${customer?.customer_name || customer?.customerName || ''}
             </div>
-            <div class="field-text" style="position: absolute; top: 40mm; left: 3mm; width: 50mm; font-size: 8pt; white-space: pre-wrap; word-wrap: break-word; line-height: 1.2;">
+            <div class="field-text" style="position: absolute; top: 40mm; left: 5mm; width: 50mm; font-size: 8pt; white-space: pre-wrap; word-wrap: break-word; line-height: 1.2;">
               ${customer?.address || ''}
             </div>
-            <div class="field-text" style="position: absolute; top: 77mm; left: 23mm; font-size: 10pt; line-height: 1;">
+            <div class="field-text" style="position: absolute; top: 77mm; left: 10mm; font-size: 10pt; line-height: 1;">
+              ${sale?.id || ''}
+            </div>
+            <div class="field-text" style="position: absolute; top: 77mm; left: 30mm; font-size: 10pt; line-height: 1;">
               ${sale?.invoice_number || sale?.invoiceNumber || ''}
             </div>
-            <div class="field-text" style="position: absolute; top: 77mm; left: 48mm; font-size: 10pt; line-height: 1;">
+            <div class="field-text" style="position: absolute; top: 77mm; left: 60mm; font-size: 10pt; line-height: 1;">
               ${sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}
             </div>
-            <div class="field-text" style="position: absolute; top: 77mm; left: 118mm; font-size: 10pt; line-height: 1;">
+            <div class="field-text" style="position: absolute; top: 77mm; left: 95mm; font-size: 10pt; line-height: 1;">
+              ${sale?.time || new Date(sale.created_at || sale.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+            </div>
+            <div class="field-text" style="position: absolute; top: 77mm; left: 125mm; font-size: 10pt; line-height: 1;">
               ${page.pageNumber} of ${totalPages}
             </div>
             ${itemsHTML}
@@ -258,18 +264,18 @@ class AutoChromePrintService {
   <title>Invoice ${sale?.invoice_number || sale?.invoiceNumber || ''}</title>
   <style>
     @page { 
-      size: 186mm 203.2mm; 
+      size: 189mm 203.2mm; 
       margin: 0; 
     }
     @media print {
       @page {
-        size: 186mm 203.2mm;
+        size: 189mm 203.2mm;
         margin: 0;
       }
       html, body {
         margin: 0 !important;
         padding: 0 !important;
-        width: 186mm !important;
+        width: 189mm !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
         overflow: visible !important;
@@ -281,7 +287,7 @@ class AutoChromePrintService {
         border: none !important;
         margin: 0 !important;
         padding: 0 !important;
-        width: 186mm !important;
+        width: 189mm !important;
         height: 203mm !important;
         box-sizing: border-box !important;
         overflow: visible !important;
@@ -301,7 +307,7 @@ class AutoChromePrintService {
         position: absolute !important;
         top: 0 !important;
         left: 0 !important;
-        width: 186mm !important;
+        width: 189mm !important;
         height: 203mm !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -313,7 +319,7 @@ class AutoChromePrintService {
       padding: 0;
     }
     html, body { 
-      width: 186mm; 
+      width: 189mm; 
       font-family: "Courier New", monospace; 
       overflow: visible;
       print-color-adjust: exact;
@@ -321,7 +327,7 @@ class AutoChromePrintService {
     }
     .dot-matrix-print { 
       position: relative; 
-      width: 186mm; 
+      width: 189mm; 
       height: 203mm; 
       overflow: hidden;
       page-break-after: always;

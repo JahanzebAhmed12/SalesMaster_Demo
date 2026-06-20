@@ -36,27 +36,29 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '1mm' },
-  customerName: { top: '35mm', left: '1mm' },
-  customerAddress: { top: '40mm', left: '1mm', width: '50mm' },
-  ticketNo: { top: '77mm', left: '23mm' },
-  date: { top: '77mm', left: '48mm' },
-  pageNumber: { top: '77mm', left: '118mm' },
+  accountNo: { top: '27mm', left: '12mm' },
+  customerName: { top: '35mm', left: '5mm' },
+  customerAddress: { top: '40mm', left: '5mm', width: '50mm' },
+  salesId: { top: '77mm', left: '10mm' },
+  ticketNo: { top: '77mm', left: '30mm' },
+  date: { top: '77mm', left: '60mm' },
+  time: { top: '77mm', left: '95mm' },
+  pageNumber: { top: '77mm', left: '125mm' },
   itemsStartTop: '95mm',
   itemsRowHeight: '4mm',
   maxItemsPerPage: 11,
   columns: {
-    quantity: { left: '1mm', width: '10mm' } as ColumnConfig,
-    description: { left: '10mm', width: '72mm' } as ColumnConfig,
-    price: { left: '77mm', width: '20mm', align: 'right' } as ColumnConfig,
-    value: { left: '95mm', width: '25mm', align: 'right' } as ColumnConfig
+    quantity: { left: '4mm', width: '7mm' } as ColumnConfig,
+    description: { left: '24mm', width: '72mm' } as ColumnConfig,
+    price: { left: '88mm', width: '20mm', align: 'right' } as ColumnConfig,
+    value: { left: '105mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '167mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '177mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '186mm', left: '96mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '177mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '185mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
   },
-  remarks: { left: '3mm', width: '110mm' } // Positioned dynamically after last item
+  remarks: { left: '5mm', width: '110mm' } // Positioned dynamically after last item
 };
 
 export default function DotMatrixPaymentPrintPage() {
@@ -216,6 +218,12 @@ export default function DotMatrixPaymentPrintPage() {
   if (error) return <div className="p-4 print:hidden text-red-500">Error: {error}</div>;
   if (!data) return <div className="p-4 print:hidden">No payment found.</div>;
 
+  // Get first payment to extract common data
+  const firstPayment = data.payments?.[0];
+  const paymentDate = firstPayment?.paymentDate;
+  const paymentTime = firstPayment?.paymentDate ? new Date(firstPayment.paymentDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+  const createdBy = firstPayment?.createdBy || ''; // Assuming payments have createdBy field
+
   // Process payments to group by payment method and sort by invoice number
   const processedPayments = [...(data.payments || [])].sort((a, b) => {
     // First sort by payment method (cash, card, bank_transfer, cheque, others)
@@ -249,7 +257,6 @@ export default function DotMatrixPaymentPrintPage() {
   });
 
   const { totalAmount, customer } = data;
-  const paymentDate = processedPayments[0]?.paymentDate;
 
   // Calculate pagination with processed payments
   const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
@@ -451,12 +458,24 @@ export default function DotMatrixPaymentPrintPage() {
             {customer?.address || ''}
           </div>
 
-          {/* Payment ID */}
+          {/* Sales ID (User who created the payment) */}
+          <div style={{
+            position: 'absolute',
+            ...FIELD_POSITIONS.salesId,
+            fontFamily: '"Courier New", "Courier", monospace',
+            fontSize: '10pt',
+            lineHeight: '1'
+          }}>
+            {createdBy || ''}
+          </div>
+
+          {/* Payment ID (Batch ID) */}
           <div style={{
             position: 'absolute',
             ...FIELD_POSITIONS.ticketNo,
             fontFamily: '"Courier New", "Courier", monospace',
-            fontSize: '10pt'
+            fontSize: '10pt',
+            lineHeight: '1'
           }}>
             {batchId}
           </div>
@@ -466,9 +485,21 @@ export default function DotMatrixPaymentPrintPage() {
             position: 'absolute',
             ...FIELD_POSITIONS.date,
             fontFamily: '"Courier New", "Courier", monospace',
-            fontSize: '10pt'
+            fontSize: '10pt',
+            lineHeight: '1'
           }}>
             {paymentDate ? new Date(paymentDate).toLocaleDateString('en-GB') : '-'}
+          </div>
+
+          {/* Time */}
+          <div style={{
+            position: 'absolute',
+            ...FIELD_POSITIONS.time,
+            fontFamily: '"Courier New", "Courier", monospace',
+            fontSize: '10pt',
+            lineHeight: '1'
+          }}>
+            {paymentTime}
           </div>
 
           {/* Page Number */}
@@ -476,7 +507,8 @@ export default function DotMatrixPaymentPrintPage() {
             position: 'absolute',
             ...FIELD_POSITIONS.pageNumber,
             fontFamily: '"Courier New", "Courier", monospace',
-            fontSize: '10pt'
+            fontSize: '10pt',
+            lineHeight: '1'
           }}>
             {page.pageNumber} of {totalPages}
           </div>
