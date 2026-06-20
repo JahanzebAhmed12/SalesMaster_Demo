@@ -29,12 +29,12 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '8mm' },
+  accountNo: { top: '27mm', left: '12mm' },
   customerName: { top: '35mm', left: '5mm' },
   customerAddress: { top: '40mm', left: '5mm', width: '50mm' },
-  salesId: { top: '77mm', left: '8mm' },
+  salesId: { top: '77mm', left: '10mm' },
   ticketNo: { top: '77mm', left: '30mm' },
-  date: { top: '77mm', left: '62mm' },
+  date: { top: '77mm', left: '60mm' },
   time: { top: '77mm', left: '95mm' },
   pageNumber: { top: '77mm', left: '125mm' },
   itemsStartTop: '95mm',
@@ -49,7 +49,7 @@ const FIELD_POSITIONS = {
   totals: {
     goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
     vat: { top: '177mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '186mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
+    total: { top: '185mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
