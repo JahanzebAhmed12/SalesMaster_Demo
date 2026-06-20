@@ -98,11 +98,19 @@ class AutoChromePrintService {
       fs.writeFileSync(tempHtmlPath, htmlContent);
 
       console.log(`📄 HTML file created: ${tempHtmlPath}`);
+      console.log(`📝 HTML file saved for debugging - will NOT be deleted`);
+      
+      // DEBUGGING: Also save a copy with timestamp for later inspection
+      const debugHtmlPath = path.join(this.tempDir, `invoice_${job.id}_${Date.now()}.html`);
+      fs.writeFileSync(debugHtmlPath, htmlContent);
+      console.log(`🐛 Debug copy saved: ${debugHtmlPath}`);
 
       // Use Puppeteer to automatically print
       await this.printWithPuppeteer(tempHtmlPath);
 
-      this.cleanupTempFiles(tempHtmlPath);
+      // DON'T cleanup temp files for debugging
+      // this.cleanupTempFiles(tempHtmlPath);
+      console.log(`⚠️  Temp file kept for debugging: ${tempHtmlPath}`);
 
       await this.updateJobStatus(job.id, 'completed');
       this.jobsProcessed = (this.jobsProcessed || 0) + 1;
@@ -119,8 +127,9 @@ class AutoChromePrintService {
   }
 
   async printWithPuppeteer(htmlFilePath) {
-    console.log(`🖨️  Printing with Chrome...`);
-    console.log(`📄 Using printer: ${this.printerName}`);
+    console.log(`🖨️  DEBUG MODE — Opening Chrome for visual inspection...`);
+    console.log(`📄 HTML ready at: ${htmlFilePath}`);
+    console.log(`🔍 Browser will remain open. Press Ctrl+C in terminal to close.`);
 
     const browser = await puppeteer.launch({
       headless: false,
@@ -129,9 +138,8 @@ class AutoChromePrintService {
         '--disable-setuid-sandbox',
         '--disable-gpu',
         `--user-data-dir=${this.chromeUserDataDir}`,
-        '--window-position=-2000,-2000',
+        '--window-position=0,0',
         '--window-size=1200,900',
-        '--kiosk-printing',
       ]
     });
 
@@ -144,11 +152,18 @@ class AutoChromePrintService {
         waitUntil: 'networkidle0',
         timeout: 30000
       });
-      console.log('✅ Page loaded, triggering print...');
+      console.log('✅ Page loaded successfully');
+      console.log('⚠️  Print command NOT sent — debug mode only');
+      
+      // DEV NOTE on blank pages:
+      // window.print() uses Chrome's default paper (A4/Letter) regardless of @page CSS.
+      // The --kiosk-printing flag auto-confirms but with wrong paper size,
+      // so content designed for 189x203mm overflows onto extra pages.
+      // Fix: Use Page.printToPDF to generate PDF with correct dimensions,
+      // then send PDF to printer via OS command (SumatraPDF, etc.)
 
-      await page.evaluate(() => window.print());
-      await new Promise(resolve => setTimeout(resolve, 8000));
-      console.log('✅ Print command sent');
+      // Keep browser open indefinitely for debugging
+      await new Promise(() => {});
 
     } catch (err) {
       console.error('❌ Print failed:', err.message);
@@ -162,6 +177,8 @@ class AutoChromePrintService {
 
     const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
     const vatAmount = sale?.vat_amount || 0;
+    const porterage = sale?.porterage || 0;
+    const totalQuantity = items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
 
     // Format quantity function - matches React component
     const formatQuantity = (quantity) => {
@@ -211,14 +228,31 @@ class AutoChromePrintService {
         `;
       }).join('');
 
+      // Porterage on last page
+      const porterageHTML = (page.isLastPage && porterage > 0) ? `
+        <div class="field-text" style="position: absolute; top: ${95 + page.items.length * 4}mm; left: 24mm; width: 72mm; font-size: 9pt; font-weight: bold; line-height: 1;">
+          Porterage
+        </div>
+        <div class="field-text" style="position: absolute; top: ${95 + page.items.length * 4}mm; left: 105mm; width: 25mm; text-align: right; font-size: 9pt; font-weight: bold; line-height: 1;">
+          £${porterage.toFixed(2)}
+        </div>
+      ` : '';
+
+      // Packages line on last page
+      const packagesHTML = page.isLastPage ? `
+        <div class="field-text" style="position: absolute; top: ${95 + (page.items.length + (porterage > 0 ? 1 : 0)) * 4}mm; left: 24mm; width: 72mm; font-size: 9pt; font-weight: bold; line-height: 1;">
+          (${formatQuantity(totalQuantity)} packages)
+        </div>
+      ` : '';
+
       const totalsHTML = page.isLastPage ? `
-        <div class="field-text" style="position: absolute; top: 167mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+        <div class="field-text" style="position: absolute; top: 167mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; font-weight: bold; line-height: 1;">
           £${totalAmount.toFixed(2)}
         </div>
-        <div class="field-text" style="position: absolute; top: 177mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+        <div class="field-text" style="position: absolute; top: 177mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; font-weight: bold; line-height: 1;">
           £${vatAmount.toFixed(2)}
         </div>
-        <div class="field-text" style="position: absolute; top: 185mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; line-height: 1;">
+        <div class="field-text" style="position: absolute; top: 185mm; left: 108mm; width: 25mm; text-align: right; font-size: 10pt; font-weight: bold; line-height: 1;">
           £${(totalAmount + vatAmount).toFixed(2)}
         </div>
       ` : '';
@@ -251,6 +285,8 @@ class AutoChromePrintService {
               ${page.pageNumber} of ${totalPages}
             </div>
             ${itemsHTML}
+            ${porterageHTML}
+            ${packagesHTML}
             ${totalsHTML}
           </div>
         </div>
