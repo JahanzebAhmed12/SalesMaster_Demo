@@ -29,12 +29,12 @@ interface TotalConfig {
 }
 
 const FIELD_POSITIONS = {
-  accountNo: { top: '27mm', left: '5mm' },
+  accountNo: { top: '27mm', left: '8mm' },
   customerName: { top: '35mm', left: '5mm' },
   customerAddress: { top: '40mm', left: '5mm', width: '50mm' },
-  salesId: { top: '77mm', left: '4mm' },
+  salesId: { top: '77mm', left: '8mm' },
   ticketNo: { top: '77mm', left: '30mm' },
-  date: { top: '77mm', left: '55mm' },
+  date: { top: '77mm', left: '62mm' },
   time: { top: '77mm', left: '95mm' },
   pageNumber: { top: '77mm', left: '125mm' },
   itemsStartTop: '95mm',
@@ -42,14 +42,14 @@ const FIELD_POSITIONS = {
   maxItemsPerPage: 11,
   columns: {
     quantity: { left: '4mm', width: '7mm' } as ColumnConfig,
-    description: { left: '27mm', width: '72mm' } as ColumnConfig,
+    description: { left: '24mm', width: '72mm' } as ColumnConfig,
     price: { left: '88mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '105mm', width: '25mm', align: 'right' } as ColumnConfig
   },
   totals: {
-    goods: { top: '167mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig,
-    vat: { top: '177mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '186mm', left: '110mm', width: '25mm', align: 'right' } as TotalConfig
+    goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
+    vat: { top: '177mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
+    total: { top: '186mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
