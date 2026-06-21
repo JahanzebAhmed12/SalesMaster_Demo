@@ -64,7 +64,6 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontWeight: "bold", marginBottom: 4 }}>Customer :</div>
         <div style={{ border: "1px solid #888", padding: 8, minWidth: 200, fontWeight: "bold", fontSize: 18 }}>{customer?.customer_name || customer?.customerName || "CUSTOMER"}</div>
-        {customer?.address && <div style={{ fontSize: 16, marginTop: 2 }}>{customer.address}</div>}
         {gateNumber && (
           <div style={{ fontSize: 16, marginTop: 2, fontWeight: "bold" }}>
             Gate No: {gateNumber}
