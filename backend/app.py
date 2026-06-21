@@ -143,15 +143,9 @@ def add_print_job():
     user_id = get_jwt_identity()
     
     try:
-        # Check if request is from mobile device
+        # Detect device type for logging purposes only
         user_agent = request.headers.get('User-Agent', '').lower()
         is_mobile = any(mobile in user_agent for mobile in ['mobile', 'android', 'iphone', 'ipad'])
-        
-        if not is_mobile:
-            # For desktop, return error - they should use direct printing
-            return jsonify({
-                'error': 'Print proxy is only available for mobile devices. Please use direct printing on desktop.'
-            }), 400
         
         job_id = str(uuid.uuid4())
         
@@ -162,7 +156,7 @@ def add_print_job():
             print_type=data.get('print_type', 'dot_matrix'),
             print_data=json.dumps(data.get('print_data')),
             created_by=user_id,
-            device_type='mobile'
+            device_type='mobile' if is_mobile else 'desktop'
         )
         
         db.session.add(print_job)
