@@ -340,11 +340,13 @@ class Payment(db.Model):
     payment_type = db.Column(db.String(20), default=None) # 'direct', 'on-account', or NULL for legacy payments
     payment_source = db.Column(db.String(50), default='customer_payment') # 'customer_payment', 'daily_book_sales'
     remarks = db.Column(db.Text)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # User who created the payment
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     customer = db.relationship('Customer', backref='payments')
     sale = db.relationship('Sale', backref='payments')
+    creator = db.relationship('User', foreign_keys=[created_by], backref='payments_created')
 
     def to_dict(self):
         return {
@@ -358,6 +360,8 @@ class Payment(db.Model):
             'paymentType': self.payment_type,
             'paymentSource': self.payment_source,
             'remarks': self.remarks,
+            'createdBy': self.created_by,
+            'createdByUsername': self.creator.username if self.creator else None,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }

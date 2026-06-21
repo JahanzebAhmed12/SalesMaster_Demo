@@ -4266,6 +4266,7 @@ def create_payment():
         
         payment_data = PaymentSchema(**data)
         print("Validated payment data:", payment_data.dict())  # Debug log
+        user_id = get_jwt_identity()
 
         customer = Customer.query.get(payment_data.customer_id)
         if not customer:
@@ -4333,7 +4334,8 @@ def create_payment():
                         payment_date=payment_data.payment_date,
                         payment_type='on-account',
                         remarks=payment_data.remarks,
-                        batch_id=batch_id
+                        batch_id=batch_id,
+                        created_by=user_id
                     )
                     db.session.add(new_payment)
         else:
@@ -4345,7 +4347,8 @@ def create_payment():
                 payment_mode=payment_data.payment_mode,
                 payment_date=payment_data.payment_date,
                 payment_type='on-account',
-                remarks=payment_data.remarks
+                remarks=payment_data.remarks,
+                created_by=user_id
             )
             print("Created payment object:", new_payment.to_dict())  # Debug log
             db.session.add(new_payment)
@@ -4810,7 +4813,8 @@ def create_bulk_payment():
                         batch_id=batch_id,
                         payment_type='on-account',
                         payment_source='customer_payment',
-                        remarks=remarks
+                        remarks=remarks,
+                        created_by=user_id
                     )
                 else:
                     # Invoice payment
@@ -4823,7 +4827,8 @@ def create_bulk_payment():
                         batch_id=batch_id,
                         payment_type='direct',
                         payment_source='customer_payment',
-                        remarks=remarks
+                        remarks=remarks,
+                        created_by=user_id
                     )
                     
                     # Update sale payment status
@@ -4919,7 +4924,8 @@ def create_bulk_payment():
                                 payment_date=payment_date_obj,
                                 batch_id=batch_id,
                                 payment_type='direct',
-                                remarks=remarks
+                                remarks=remarks,
+                                created_by=user_id
                             )
                             db.session.add(payment)
                             payments_created.append(payment)
@@ -4949,7 +4955,8 @@ def create_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='on-account',
-                        remarks=remarks
+                        remarks=remarks,
+                        created_by=user_id
                     )
                     db.session.add(payment)
                     payments_created.append(payment)
@@ -5043,10 +5050,12 @@ def get_payments_by_batch(batch_id):
                 'amount': float(payment.amount),
                 'paymentDate': payment.payment_date.isoformat(),
                 'invoiceNumber': invoice_number,
-                'invoiceId': payment.sale_id,  # Add the sale_id for frontend to use
+                'invoiceId': payment.sale_id,
                 'invoiceAmount': float(payment.amount),
                 'customerName': customer.customer_name if customer else 'Unknown',
-                'remarks': payment.remarks or ''
+                'remarks': payment.remarks or '',
+                'createdBy': payment.created_by,
+                'createdByUsername': payment.creator.username if payment.creator else None,
             })
         
         return jsonify({
@@ -14517,7 +14526,8 @@ def create_customer_bulk_payment():
                             batch_id=batch_id,
                             payment_type='on-account',  # Keep as on-account for tracking
                             payment_source='customer_payment',
-                            remarks=remarks
+                            remarks=remarks,
+                            created_by=user_id
                         )
                         db.session.add(payment)
                         payments_created.append(payment)
@@ -14549,7 +14559,8 @@ def create_customer_bulk_payment():
                             batch_id=batch_id,
                             payment_type='on-account',
                             payment_source='customer_payment',
-                            remarks=remarks
+                            remarks=remarks,
+                            created_by=user_id
                         )
                         db.session.add(payment)
                         payments_created.append(payment)
@@ -14575,7 +14586,8 @@ def create_customer_bulk_payment():
                                 batch_id=batch_id,
                                 payment_type='direct',
                                 payment_source='customer_payment',
-                                remarks=remarks
+                                remarks=remarks,
+                                created_by=user_id
                             )
                             db.session.add(payment)
                             payments_created.append(payment)
@@ -14609,7 +14621,8 @@ def create_customer_bulk_payment():
                                     batch_id=batch_id,
                                     payment_type='direct',
                                     payment_source='customer_payment',
-                                    remarks=remarks
+                                    remarks=remarks,
+                                    created_by=user_id
                                 )
                                 db.session.add(payment)
                                 payments_created.append(payment)
@@ -14632,7 +14645,8 @@ def create_customer_bulk_payment():
                                     batch_id=batch_id,
                                     payment_type='on-account',
                                     payment_source='customer_payment',
-                                    remarks=f"{remarks} (Overpayment credit from invoice {sale.invoice_number})" if remarks else f"Overpayment credit from invoice {sale.invoice_number}"
+                                    remarks=f"{remarks} (Overpayment credit from invoice {sale.invoice_number})" if remarks else f"Overpayment credit from invoice {sale.invoice_number}",
+                                    created_by=user_id
                                 )
                                 db.session.add(overpay_payment)
                                 payments_created.append(overpay_payment)
@@ -14716,7 +14730,8 @@ def create_customer_bulk_payment():
                                 payment_date=payment_date_obj,
                                 batch_id=batch_id,
                                 payment_type='direct',
-                                remarks=remarks
+                                remarks=remarks,
+                                created_by=user_id
                             )
                             db.session.add(payment)
                             payments_created.append(payment)
@@ -14755,7 +14770,8 @@ def create_customer_bulk_payment():
                         payment_date=payment_date_obj,
                         batch_id=batch_id,
                         payment_type='on-account',
-                        remarks=remarks
+                        remarks=remarks,
+                        created_by=user_id
                     )
                     db.session.add(payment)
                     payments_created.append(payment)

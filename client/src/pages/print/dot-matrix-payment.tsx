@@ -222,7 +222,7 @@ export default function DotMatrixPaymentPrintPage() {
   const firstPayment = data.payments?.[0];
   const paymentDate = firstPayment?.paymentDate;
   const paymentTime = firstPayment?.paymentDate ? new Date(firstPayment.paymentDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
-  const createdBy = firstPayment?.createdBy || ''; // Assuming payments have createdBy field
+  const createdBy = firstPayment?.createdByUsername || firstPayment?.createdBy || '';
 
   // Process payments to group by payment method and sort by invoice number
   const processedPayments = [...(data.payments || [])].sort((a, b) => {
