@@ -95,8 +95,13 @@ export default function DotMatrixInvoicePrintPage() {
   const [error, setError] = useState<string | null>(null);
   const [isServerPDF, setIsServerPDF] = useState(false);
 
-  // Mobile detection
-  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  // Mobile/tablet detection
+  // - Standard mobile: Mobi/Android/iPhone in UA
+  // - iPadOS 13+: dropped "iPad" from UA, now reports as Mac — detect via touch + platform
+  // - Android tablets: may not have "Mobi" but have "Android"
+  const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || // iPadOS 13+
+    (typeof window !== 'undefined' && window.screen.width <= 1024 && navigator.maxTouchPoints > 0);
 
   useEffect(() => {
     if (!invoiceNumber) {
@@ -290,7 +295,8 @@ export default function DotMatrixInvoicePrintPage() {
 
       console.log('PDF generated successfully, opening print window...');
 
-      const isMobileSafari = /iPhone|iPad/.test(navigator.userAgent);
+      const isMobileSafari = /iPhone|iPad/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS 13+
       const isAndroid = /Android/.test(navigator.userAgent);
 
       if (isMobileSafari) {
