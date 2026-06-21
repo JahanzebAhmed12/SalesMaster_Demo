@@ -83,7 +83,7 @@ export default function ClosingStock() {
       return {
         productId: p.id,
         productType: p.productType,
-        quantity: saved ? Number(saved.quantity) : p.currentStock,
+        quantity: saved ? saved.quantity : p.currentStock,
         description: p.description,
         productCode: p.productCode,
         currentStock: p.currentStock,

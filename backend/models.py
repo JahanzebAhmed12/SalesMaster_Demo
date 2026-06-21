@@ -1121,7 +1121,7 @@ class ClosingStock(db.Model):
             'productId': self.product_id,
             'productType': self.product_type,
             'date': self.date.isoformat(),
-            'quantity': float(self.quantity) if self.quantity is not None else 0,
+            'quantity': self.quantity,
             'manualEntry': self.manual_entry,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
