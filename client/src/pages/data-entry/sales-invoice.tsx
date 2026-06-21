@@ -591,6 +591,16 @@ const SalesInvoice = () => {
     }
   };
 
+  // Scroll highlighted product into view when navigating with keyboard
+  useEffect(() => {
+    if (showProductDropdown && highlightedProduct >= 0 && productDropdownRef.current) {
+      const item = productDropdownRef.current.children[highlightedProduct] as HTMLElement;
+      if (item) {
+        item.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [highlightedProduct, showProductDropdown]);
+
   // Close dropdown on blur (with delay to allow click)
   const handleProductBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     setTimeout(() => setShowProductDropdown(false), 100);

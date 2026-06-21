@@ -863,6 +863,7 @@ export default function DotMatrixInvoicePrintPage() {
                 ...fieldPositions.customerName,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '10pt',
+                fontWeight: 'bold',
                 lineHeight: '1',
                 margin: '0',
                 padding: '0'
@@ -876,6 +877,7 @@ export default function DotMatrixInvoicePrintPage() {
                 ...fieldPositions.customerAddress,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '8pt',
+                fontWeight: 'bold',
                 whiteSpace: 'pre-wrap',
                 wordWrap: 'break-word',
                 lineHeight: '1.2',
@@ -891,6 +893,7 @@ export default function DotMatrixInvoicePrintPage() {
                 ...fieldPositions.salesId,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '10pt',
+                fontWeight: 'bold',
                 lineHeight: '1',
                 margin: '0',
                 padding: '0'
@@ -904,6 +907,7 @@ export default function DotMatrixInvoicePrintPage() {
                 ...fieldPositions.ticketNo,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '10pt',
+                fontWeight: 'bold',
                 lineHeight: '1',
                 margin: '0',
                 padding: '0'
@@ -917,6 +921,7 @@ export default function DotMatrixInvoicePrintPage() {
                 ...fieldPositions.date,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '10pt',
+                fontWeight: 'bold',
                 lineHeight: '1',
                 margin: '0',
                 padding: '0'
@@ -930,6 +935,7 @@ export default function DotMatrixInvoicePrintPage() {
                 ...fieldPositions.time,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '10pt',
+                fontWeight: 'bold',
                 lineHeight: '1',
                 margin: '0',
                 padding: '0'
@@ -943,6 +949,7 @@ export default function DotMatrixInvoicePrintPage() {
                 ...fieldPositions.pageNumber,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '10pt',
+                fontWeight: 'bold',
                 lineHeight: '1',
                 margin: '0',
                 padding: '0'

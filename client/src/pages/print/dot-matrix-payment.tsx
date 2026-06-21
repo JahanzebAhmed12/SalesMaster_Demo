@@ -440,7 +440,8 @@ export default function DotMatrixPaymentPrintPage() {
             position: 'absolute',
             ...FIELD_POSITIONS.customerName,
             fontFamily: '"Courier New", "Courier", monospace',
-            fontSize: '10pt'
+            fontSize: '10pt',
+            fontWeight: 'bold'
           }}>
             {customer?.customer_name || customer?.customerName || processedPayments[0]?.customerName || ''}
           </div>
@@ -451,6 +452,7 @@ export default function DotMatrixPaymentPrintPage() {
             ...FIELD_POSITIONS.customerAddress,
             fontFamily: '"Courier New", "Courier", monospace',
             fontSize: '8pt',
+            fontWeight: 'bold',
             whiteSpace: 'pre-wrap',
             wordWrap: 'break-word',
             lineHeight: '1.2'
@@ -464,6 +466,7 @@ export default function DotMatrixPaymentPrintPage() {
             ...FIELD_POSITIONS.salesId,
             fontFamily: '"Courier New", "Courier", monospace',
             fontSize: '10pt',
+            fontWeight: 'bold',
             lineHeight: '1'
           }}>
             {createdBy || ''}
@@ -475,6 +478,7 @@ export default function DotMatrixPaymentPrintPage() {
             ...FIELD_POSITIONS.ticketNo,
             fontFamily: '"Courier New", "Courier", monospace',
             fontSize: '10pt',
+            fontWeight: 'bold',
             lineHeight: '1'
           }}>
             {batchId}
@@ -486,6 +490,7 @@ export default function DotMatrixPaymentPrintPage() {
             ...FIELD_POSITIONS.date,
             fontFamily: '"Courier New", "Courier", monospace',
             fontSize: '10pt',
+            fontWeight: 'bold',
             lineHeight: '1'
           }}>
             {paymentDate ? new Date(paymentDate).toLocaleDateString('en-GB') : '-'}
@@ -497,6 +502,7 @@ export default function DotMatrixPaymentPrintPage() {
             ...FIELD_POSITIONS.time,
             fontFamily: '"Courier New", "Courier", monospace',
             fontSize: '10pt',
+            fontWeight: 'bold',
             lineHeight: '1'
           }}>
             {paymentTime}
@@ -508,6 +514,7 @@ export default function DotMatrixPaymentPrintPage() {
             ...FIELD_POSITIONS.pageNumber,
             fontFamily: '"Courier New", "Courier", monospace',
             fontSize: '10pt',
+            fontWeight: 'bold',
             lineHeight: '1'
           }}>
             {page.pageNumber} of {totalPages}
@@ -599,6 +606,7 @@ export default function DotMatrixPaymentPrintPage() {
               width: FIELD_POSITIONS.remarks.width,
               fontFamily: '"Courier New", "Courier", monospace',
               fontSize: '8pt',
+              fontWeight: 'bold',
               lineHeight: '1.2',
               whiteSpace: 'pre-wrap',
               wordWrap: 'break-word'

@@ -532,7 +532,7 @@ export default function DailySummary() {
     doc.text(`Daily Sales Summary - ${format(selectedDate, "dd/MM/yyyy")}`, 14, y);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('stand 100', pageWidth - 14, y, { align: 'right' });
+    doc.text('Stand-100', pageWidth - 14, y, { align: 'right' });
     doc.setFont('helvetica', 'normal');
     y += 8;
     tbl(
@@ -805,7 +805,7 @@ export default function DailySummary() {
     const ph = doc.internal.pageSize.height;
     const pw = doc.internal.pageSize.width;
     doc.setFontSize(8);
-    doc.text('stand 100', pw - 30, ph - 10, { align: 'right' });
+    doc.text('Stand-100', pw - 30, ph - 10, { align: 'right' });
 
     return doc;
   };
@@ -1071,20 +1071,12 @@ export default function DailySummary() {
             </Card>
           ) : summaryData ? (
             <div className="space-y-6">
-              {/* Print-only header: company name above the report title */}
-              <div className="hidden print:block">
-                {companyDetails?.companyName && (
-                  <div className="text-base text-gray-700 mb-1">{companyDetails.companyName}</div>
-                )}
-                <div className="text-xl font-bold mb-4">Daily Summary Report</div>
-              </div>
-
               {/* Daily Sales Summary */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>Daily Sales Summary - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</span>
-                    <span className="hidden print:block text-sm font-normal text-gray-500">stand 100</span>
+                    <span className="hidden print:block text-sm font-normal text-gray-500">Stand-100</span>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1713,7 +1705,7 @@ export default function DailySummary() {
       </div>
 
       {/* Footer text for print */}
-      <div className="footer-text">stand 100</div>
+      <div className="footer-text">Stand-100</div>
     </PageLayout>
   );
 }

@@ -468,34 +468,34 @@ class AutoChromePrintService {
         const top = fp.itemsStartTop + extraRowOffset * fp.itemsRowHeight;
         extraRowOffset++;
         return `
-          <div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};">Porterage</div>
-          <div class="ft" style="top:${top}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;">£${porterage.toFixed(2)}</div>`;
+          <div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">Porterage</div>
+          <div class="ft" style="top:${top}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;font-weight:bold;">£${porterage.toFixed(2)}</div>`;
       })() : '';
 
       // Packages line — last page only
       const packagesHTML = page.isLastPage ? (() => {
         const top = fp.itemsStartTop + extraRowOffset * fp.itemsRowHeight;
-        return `<div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};">(${formatQty(totalQuantity)} packages)</div>`;
+        return `<div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">(${formatQty(totalQuantity)} packages)</div>`;
       })() : '';
 
       // Totals — last page only
       const totalsHTML = page.isLastPage ? `
-        <div class="ft" style="top:${fp.totals.goods.top};left:${fp.totals.goods.left};width:${fp.totals.goods.width};text-align:right;font-size:10pt;">£${totalAmount.toFixed(2)}</div>
-        <div class="ft" style="top:${fp.totals.vat.top};left:${fp.totals.vat.left};width:${fp.totals.vat.width};text-align:right;font-size:10pt;">£${vatAmount.toFixed(2)}</div>
-        <div class="ft" style="top:${fp.totals.total.top};left:${fp.totals.total.left};width:${fp.totals.total.width};text-align:right;font-size:10pt;">£${(totalAmount + vatAmount + porterage).toFixed(2)}</div>` : '';
+        <div class="ft" style="top:${fp.totals.goods.top};left:${fp.totals.goods.left};width:${fp.totals.goods.width};text-align:right;font-size:10pt;font-weight:bold;">£${totalAmount.toFixed(2)}</div>
+        <div class="ft" style="top:${fp.totals.vat.top};left:${fp.totals.vat.left};width:${fp.totals.vat.width};text-align:right;font-size:10pt;font-weight:bold;">£${vatAmount.toFixed(2)}</div>
+        <div class="ft" style="top:${fp.totals.total.top};left:${fp.totals.total.left};width:${fp.totals.total.width};text-align:right;font-size:10pt;font-weight:bold;">£${(totalAmount + vatAmount + porterage).toFixed(2)}</div>` : '';
 
       const isLast = page.pageNumber === totalPages;
       return `
       <div class="page"${isLast ? ' style="page-break-after:avoid;break-after:avoid;"' : ''}>
         <div class="page-wrapper">
         <div class="ft" style="top:${fp.accountNo.top};left:${fp.accountNo.left};font-size:10pt;font-weight:bold;">C-${customer?.id || sale?.customer_id || ''}</div>
-        <div class="ft" style="top:${fp.customerName.top};left:${fp.customerName.left};font-size:10pt;">${customer?.customer_name || customer?.customerName || ''}</div>
-        <div class="ft" style="top:${fp.customerAddress.top};left:${fp.customerAddress.left};width:${fp.customerAddress.width};font-size:8pt;white-space:pre-wrap;word-wrap:break-word;line-height:1.2;">${customer?.address || ''}</div>
-        <div class="ft" style="top:${fp.salesId.top};left:${fp.salesId.left};font-size:10pt;">${sale?.createdBy || sale?.id || ''}</div>
-        <div class="ft" style="top:${fp.ticketNo.top};left:${fp.ticketNo.left};font-size:10pt;">${sale?.invoice_number || sale?.invoiceNumber || ''}</div>
-        <div class="ft" style="top:${fp.date.top};left:${fp.date.left};font-size:10pt;">${sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}</div>
-        <div class="ft" style="top:${fp.time.top};left:${fp.time.left};font-size:10pt;">${sale?.date ? new Date(sale.date).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : ''}</div>
-        <div class="ft" style="top:${fp.pageNumber.top};left:${fp.pageNumber.left};font-size:10pt;">${page.pageNumber} of ${totalPages}</div>
+        <div class="ft" style="top:${fp.customerName.top};left:${fp.customerName.left};font-size:10pt;font-weight:bold;">${customer?.customer_name || customer?.customerName || ''}</div>
+        <div class="ft" style="top:${fp.customerAddress.top};left:${fp.customerAddress.left};width:${fp.customerAddress.width};font-size:8pt;font-weight:bold;white-space:pre-wrap;word-wrap:break-word;line-height:1.2;">${customer?.address || ''}</div>
+        <div class="ft" style="top:${fp.salesId.top};left:${fp.salesId.left};font-size:10pt;font-weight:bold;">${sale?.createdBy || sale?.id || ''}</div>
+        <div class="ft" style="top:${fp.ticketNo.top};left:${fp.ticketNo.left};font-size:10pt;font-weight:bold;">${sale?.invoice_number || sale?.invoiceNumber || ''}</div>
+        <div class="ft" style="top:${fp.date.top};left:${fp.date.left};font-size:10pt;font-weight:bold;">${sale?.date ? new Date(sale.date).toLocaleDateString('en-GB') : '-'}</div>
+        <div class="ft" style="top:${fp.time.top};left:${fp.time.left};font-size:10pt;font-weight:bold;">${sale?.date ? new Date(sale.date).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : ''}</div>
+        <div class="ft" style="top:${fp.pageNumber.top};left:${fp.pageNumber.left};font-size:10pt;font-weight:bold;">${page.pageNumber} of ${totalPages}</div>
         ${itemRowsHTML}
         ${porterageHTML}
         ${packagesHTML}
