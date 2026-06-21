@@ -176,10 +176,9 @@ def add_print_job():
 def get_pending_print_jobs():
     """Get pending print jobs for PC Print Service"""
     try:
-        # Only return jobs that are pending and from mobile devices
+        # Return all pending jobs (from any device type)
         jobs = PrintQueue.query.filter(
-            PrintQueue.status == 'pending',
-            PrintQueue.device_type == 'mobile'
+            PrintQueue.status == 'pending'
         ).order_by(PrintQueue.created_at.asc()).all()
         
         return jsonify([{
