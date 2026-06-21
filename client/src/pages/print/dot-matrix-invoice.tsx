@@ -705,102 +705,21 @@ export default function DotMatrixInvoicePrintPage() {
             onClick={handlePrint}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            {isMobile ? '📱 Send to Office Printer' : '🖥️ Direct Print'}
+            🖥️ Direct Print
+          </button>
+          <button
+            onClick={handleMobilePrint}
+            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            📱 Send to Office Printer
           </button>
           <button
             onClick={handleServerPDF}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500"
-          >
-            {isMobile ? 'Generate PDF & Print' : 'Server PDF Print'}
-          </button>
-          {isMobile && (
-            <button
-              onClick={() => {
-                // Create a standalone HTML file for mobile download
-                const htmlContent = `
-                  <!DOCTYPE html>
-                  <html>
-                  <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=189mm, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-                    <title>Invoice ${invoiceNumber}</title>
-                    <style>
-                      @page { size: 189mm 200mm; margin: 0; }
-                      * { 
-                        box-sizing: border-box; 
-                        zoom: 1 !important;
-                        transform: scale(1) !important;
-                        -webkit-transform: scale(1) !important;
-                        -webkit-text-size-adjust: 100% !important;
-                      }
-                      html, body { 
-                        margin: 0; padding: 0; 
-                        width: 189mm; height: 200mm;
-                        font-family: "Courier New", monospace;
-                        zoom: 1 !important;
-                      }
-                      .dot-matrix-print { 
-                        position: relative; width: 189mm; height: 200mm; 
-                        margin: 0; padding: 0; overflow: hidden;
-                        zoom: 1 !important;
-                      }
-                      .field-text { 
-                        position: absolute; 
-                        font-family: "Courier New", monospace; 
-                        font-size: 10pt; line-height: 1;
-                        zoom: 1 !important;
-                      }
-                    </style>
-                  </head>
-                  <body>
-                    ${document.querySelector('.dot-matrix-print')?.outerHTML || ''}
-                  </body>
-                  </html>
-                `;
-                
-                const blob = new Blob([htmlContent], { type: 'text/html' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `invoice-${invoiceNumber}.html`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                
-                alert('HTML file downloaded. Open it in your browser and print with custom size 189mm x 200mm');
-              }}
-              className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              Download HTML
-            </button>
-          )}
-          <button
-            onClick={() => {
-              handleServerPDF().catch(() => {
-                console.log('Server PDF failed, creating browser-based download...');
-                const printWindow = window.open('', '_blank');
-                if (printWindow) {
-                  printWindow.document.write(`
-                    <html>
-                      <head><title>Invoice ${invoiceNumber}</title></head>
-                      <body>
-                        <p>Server PDF generation is currently unavailable.</p>
-                        <p>Please use the "Browser Print" option and save as PDF from your browser's print dialog.</p>
-                        <button onclick="window.close()">Close</button>
-                      </body>
-                    </html>
-                  `);
-                  printWindow.document.close();
-                }
-              });
-            }}
             className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
           >
-            Download PDF
+            ⬇️ Download PDF
           </button>
         </div>
-
       </div>
 
       {/* Dot Matrix Content - only this shows during print */}

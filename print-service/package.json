@@ -1,6 +1,7 @@
 {
   "name": "salesmaster-print-service",
   "version": "1.0.0",
+  "type": "commonjs",
   "description": "SalesMaster Dot Matrix Print Service — polls VPS for jobs and prints via Chrome/SumatraPDF",
   "main": "auto-chrome-service.js",
   "scripts": {
