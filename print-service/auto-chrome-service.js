@@ -268,7 +268,10 @@ class AutoChromePrintService {
     console.log('─────────────────────────────────────────────');
 
     const browser = await puppeteer.launch({
-      headless: false,
+      // Config mode needs a visible window so you can interact with the print dialog.
+      // Normal mode (service) runs headless — no window needed since we use CDP
+      // to generate the PDF and SumatraPDF to send it to the printer.
+      headless: !isConfigMode,
       executablePath: executablePath || undefined,
       args,
     });

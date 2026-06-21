@@ -1,19 +1,22 @@
 {
-  "name": "pc-print-service",
+  "name": "salesmaster-print-service",
   "version": "1.0.0",
-  "description": "Standalone PC Print Service for Mobile Print Proxy",
-  "main": "pc-print-service.js",
+  "description": "SalesMaster Dot Matrix Print Service — polls VPS for jobs and prints via Chrome/SumatraPDF",
+  "main": "auto-chrome-service.js",
   "scripts": {
-    "start": "node pc-print-service.js",
-    "test": "node test-service.js"
+    "start": "node auto-chrome-service.js",
+    "install-service": "node service-install.js",
+    "uninstall-service": "node service-uninstall.js",
+    "setup-config": "set CONFIG_MODE=1 && node auto-chrome-service.js"
   },
   "dependencies": {
     "node-fetch": "2.7.0",
-    "puppeteer": "19.11.1"
+    "puppeteer": "19.11.1",
+    "node-windows": "1.0.0-beta.8"
   },
   "engines": {
     "node": ">=14.0.0"
   },
-  "author": "Print Service",
+  "author": "SalesMaster",
   "license": "MIT"
 }
