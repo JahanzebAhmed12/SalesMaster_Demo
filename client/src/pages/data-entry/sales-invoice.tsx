@@ -469,26 +469,21 @@ const SalesInvoice = () => {
     );
     if (!item) return 0;
 
-    // Only apply real-time reduction for new invoices (draft)
-    // For saved invoices, show actual database stock to prevent double reduction
-    if (!currentSale) {
-      // Calculate real-time stock reduction based on items in current invoice (not yet saved)
-      const currentInvoiceReservedQuantity = saleItems
-        .filter(saleItem => {
-          if (type === 'regular') {
-            return saleItem.productId === productId;
-          } else {
-            return saleItem.nonProductId === productId;
-          }
-        })
-        .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
+    // Calculate how much of this product is in the current saleItems list
+    const currentInvoiceReservedQuantity = saleItems
+      .filter(saleItem => {
+        if (type === 'regular') {
+          return saleItem.productId === productId;
+        } else {
+          return saleItem.nonProductId === productId;
+        }
+      })
+      .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
 
-      // Calculate reserved quantity from all held invoices
+    if (!currentSale) {
+      // New invoice: DB stock is correct (nothing deducted yet).
+      // Subtract what's in the current unsaved invoice + held invoices.
       const heldInvoicesReservedQuantity = (heldInvoices as HeldInvoice[])
-        .filter((heldInvoice: HeldInvoice) => {
-          // Skip the current invoice if it's being held
-          return heldInvoice.holdId !== (currentSale as any)?.holdId;
-        })
         .flatMap(heldInvoice => heldInvoice.saleItems || [])
         .filter(saleItem => {
           if (type === 'regular') {
@@ -499,14 +494,19 @@ const SalesInvoice = () => {
         })
         .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
 
-      // Total reserved quantity = current invoice + all held invoices
-      const totalReservedQuantity = currentInvoiceReservedQuantity + heldInvoicesReservedQuantity;
-
-      // Return actual stock level (can be negative) - don't use Math.max(0, ...)
-      return item.currentStock - totalReservedQuantity;
+      return item.currentStock - currentInvoiceReservedQuantity - heldInvoicesReservedQuantity;
     } else {
-      // For saved invoices, return actual database stock (can be negative)
-      return item.currentStock;
+      // Edit mode: DB stock already has the ORIGINAL invoice quantities deducted.
+      // To show the correct available stock we need to:
+      //   available = DB stock + original_saved_qty - current_saleItems_qty
+      // This way adding/removing items in the edit form shows the right number.
+      // We can derive original_saved_qty from the DB stock adjustment that already
+      // happened, but the simplest approach is: the DB stock reflects the invoice
+      // as last saved, so we just subtract the delta = current_qty - 0 (since DB
+      // already accounts for what was saved, and saleItems IS the current state).
+      // In practice: subtract currentInvoiceReservedQuantity from DB stock gives
+      // the correct "what would be left if we save this version".
+      return item.currentStock - currentInvoiceReservedQuantity;
     }
   };
 

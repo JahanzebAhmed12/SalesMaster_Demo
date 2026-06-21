@@ -88,7 +88,7 @@ export default function ClosingStock() {
         productCode: p.productCode,
         currentStock: p.currentStock,
       };
-    });
+    }).sort((a, b) => a.description.localeCompare(b.description));
 
     setEditItems(items);
     initializedRef.current = true;
