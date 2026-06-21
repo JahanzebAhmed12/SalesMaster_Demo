@@ -594,9 +594,18 @@ const SalesInvoice = () => {
   // Scroll highlighted product into view when navigating with keyboard
   useEffect(() => {
     if (showProductDropdown && highlightedProduct >= 0 && productDropdownRef.current) {
-      const item = productDropdownRef.current.children[highlightedProduct] as HTMLElement;
+      const container = productDropdownRef.current;
+      const item = container.children[highlightedProduct] as HTMLElement | undefined;
       if (item) {
-        item.scrollIntoView({ block: 'nearest' });
+        const itemTop = item.offsetTop;
+        const itemBottom = itemTop + item.offsetHeight;
+        const containerTop = container.scrollTop;
+        const containerBottom = containerTop + container.clientHeight;
+        if (itemTop < containerTop) {
+          container.scrollTop = itemTop;
+        } else if (itemBottom > containerBottom) {
+          container.scrollTop = itemBottom - container.clientHeight;
+        }
       }
     }
   }, [highlightedProduct, showProductDropdown]);
