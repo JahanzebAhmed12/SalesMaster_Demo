@@ -126,11 +126,10 @@ export default function ClosingStock() {
     }
     const quantity = qty === "" ? 0 : qty;
     try {
-      const items = editItems.map(item => ({
-        productId: item.productId,
-        productType: item.productType,
-        quantity: item.productId === productId ? quantity : item.quantity,
-      }));
+      const items = [
+        ...closingStockEntries.filter((e: any) => e.productId !== productId),
+        { productId, productType, quantity },
+      ];
       await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
       toast({ title: "Saved", description: "Closing stock entry saved." });
       initializedRef.current = false;
@@ -146,7 +145,7 @@ export default function ClosingStock() {
       return;
     }
     try {
-      const items = editItems
+      const items = closingStockEntries
         .filter((e: any) => e.productId !== productId)
         .map((e: any) => ({
           productId: e.productId,
