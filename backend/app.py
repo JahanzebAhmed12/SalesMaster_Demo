@@ -7956,20 +7956,27 @@ def stock_check_report():
 
 def get_opening_stock(product_id, product_type, from_date):
     """Get stock level at the beginning of from_date.
-    Rule A: if previous day has a manual closing stock entry, use it.
-    Rule B: if no closing stock entry exists for previous day, return 0.
+    Rule A: Look backwards from from_date - 1 to find the most recent manual
+            closing stock entry. This handles skipped days (e.g. Sundays) —
+            Saturday's closing stock becomes Monday's opening stock if Sunday
+            has no entry.
+    Rule B: If no closing stock entry found within the last 7 days, return 0.
     """
     try:
-        prev_date = (from_date - timedelta(days=1)).date()
-        closing_entry = ClosingStock.query.filter_by(
-            product_id=product_id,
-            product_type=product_type,
-            date=prev_date,
-            manual_entry=True
-        ).first()
-        if closing_entry:
-            return safe_float(closing_entry.quantity)
-        # Rule B: no closing stock entered for previous day → start from zero
+        # Search backwards up to 7 days to handle weekends/holidays
+        for days_back in range(1, 8):
+            check_date = (from_date - timedelta(days=days_back)).date()
+            closing_entry = ClosingStock.query.filter_by(
+                product_id=product_id,
+                product_type=product_type,
+                date=check_date,
+                manual_entry=True
+            ).first()
+            if closing_entry:
+                if days_back > 1:
+                    print(f"[DEBUG] Opening stock for product {product_id}: used closing stock from {check_date} (skipped {days_back - 1} day(s))")
+                return safe_float(closing_entry.quantity)
+        # Rule B: no closing stock found in last 7 days → start from zero
         return 0
     except Exception as e:
         print(f"[ERROR] Error getting opening stock: {e}")
