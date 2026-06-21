@@ -1,18 +1,22 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { queryClient } from "./queryClient"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
 export function isPastDate(date: Date | string): boolean {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Set to start of day
-  
-  const checkDate = typeof date === 'string' ? new Date(date) : date;
-  checkDate.setHours(0, 0, 0, 0); // Set to start of day
-  
-  return checkDate < today;
+  // Use business date from the query cache as the reference point.
+  // Falls back to calendar date if business date hasn't loaded yet.
+  const cached = queryClient.getQueryData<{ currentDate: string }>(['/api/business-date']);
+  const reference = cached?.currentDate ? new Date(cached.currentDate) : new Date();
+  reference.setHours(0, 0, 0, 0);
+
+  const checkDate = typeof date === 'string' ? new Date(date) : new Date(date);
+  checkDate.setHours(0, 0, 0, 0);
+
+  return checkDate < reference;
 }
 
 /**

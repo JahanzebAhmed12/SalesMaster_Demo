@@ -14,8 +14,8 @@ import * as XLSX from 'xlsx';
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
-import { isPastDate } from "@/lib/utils";
 import { formatQuantity } from "@/lib/utils";
+import { isPastDate } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
 
 interface StockItem {
