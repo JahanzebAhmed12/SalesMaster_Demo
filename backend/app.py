@@ -15083,7 +15083,7 @@ def get_email_config():
     config = load_email_config()
     if not config:
         config = {
-            'MAIL_USERNAME': current_app.config.get('MAIL_EMAIL'),
+            'MAIL_EMAIL': current_app.config.get('MAIL_USERNAME'),
             'MAIL_PASSWORD': current_app.config.get('MAIL_PASSWORD'),
             'MAIL_DEFAULT_SENDER': current_app.config.get('MAIL_DEFAULT_SENDER'),
         }
@@ -15093,7 +15093,7 @@ def get_email_config():
 def update_email_config():
     data = request.get_json()
     config = load_email_config() or {}
-    config['MAIL_USERNAME'] = data.get('MAIL_EMAIL', '')
+    config['MAIL_EMAIL'] = data.get('MAIL_EMAIL', '')
     config['MAIL_PASSWORD'] = data.get('MAIL_PASSWORD', '')
     config['MAIL_DEFAULT_SENDER'] = data.get('MAIL_DEFAULT_SENDER', '')
     save_email_config(config)
