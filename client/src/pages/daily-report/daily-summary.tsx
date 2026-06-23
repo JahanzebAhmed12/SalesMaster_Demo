@@ -529,7 +529,7 @@ export default function DailySummary() {
     const pageWidth = doc.internal.pageSize.width;
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Daily Sales Summary - ${format(selectedDate, "dd/MM/yyyy")}`, 14, y);
+    doc.text(`Daily Sales Summary - ${format(selectedDate, "EEEE, dd/MM/yyyy")}`, 14, y);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
     doc.text('Stand-100', pageWidth - 14, y, { align: 'right' });
@@ -1075,7 +1075,7 @@ export default function DailySummary() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
-                    <span>Daily Sales Summary - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</span>
+                    <span>Daily Sales Summary - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "EEEE, dd/MM/yyyy") : "Invalid Date"}</span>
                     <span className="hidden print:block text-sm font-normal text-gray-500">Stand-100</span>
                   </CardTitle>
                 </CardHeader>

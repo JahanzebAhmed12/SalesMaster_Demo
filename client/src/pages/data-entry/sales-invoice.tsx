@@ -3373,18 +3373,10 @@ const SalesInvoice = () => {
                         return;
                       }
 
-                      if (currentSale) {
-                        // In edit/readonly mode, just print the existing invoice
-                        const printUrl = invoicePrintFormat === 'DOTMATRIX'
-                          ? `/print/dot-matrix-invoice/${currentSale.invoiceNumber}`
-                          : invoicePrintFormat === 'A5'
-                            ? `/print/a5-invoice/${currentSale.invoiceNumber}`
-                            : `/print/invoice/${currentSale.invoiceNumber}`;
-                        window.open(printUrl, '_blank');
-                      } else {
-                        // For new invoices, save and print
-                        handleSaveInvoiceWithWhatsapp(mailInvoice, true);
-                      }
+                      // Both new and edit mode: save/update first, then print
+                      // handleSaveInvoice with printInvoice=true handles opening the print URL
+                      // in the onSuccess callback after the save/update completes.
+                      handleSaveInvoiceWithWhatsapp(mailInvoice, true);
                     }}
                     disabled={saleItems.length === 0 || isReadOnly}
                   >
