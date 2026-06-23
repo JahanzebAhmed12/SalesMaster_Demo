@@ -11,6 +11,7 @@ import { cn, formatQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useBackdatePermissions } from "@/hooks/usePermissions";
 import PageLayout from "@/components/common/page-layout";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -248,6 +249,7 @@ function PrintButton() {
 }
 export default function DailySummary() {
   const { currentDate: businessDate } = useBusinessDate();
+  const { canEditCurrentDate } = useBackdatePermissions();
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     // Safely initialize the date
     try {
@@ -1112,12 +1114,16 @@ export default function DailySummary() {
                             </TableCell>
                             <TableCell className="border">
                               {sale.invoice_no ? (
-                                <button
-                                  className="text-blue-600 underline hover:text-blue-800 cursor-pointer"
-                                  onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}&readonly=true`, '_self')}
-                                >
-                                  {sale.invoice_no}
-                                </button>
+                                canEditCurrentDate ? (
+                                  <button
+                                    className="text-blue-600 underline hover:text-blue-800 cursor-pointer"
+                                    onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}&readonly=true`, '_self')}
+                                  >
+                                    {sale.invoice_no}
+                                  </button>
+                                ) : (
+                                  <span className="text-gray-600">{sale.invoice_no}</span>
+                                )
                               ) : '-'}
                             </TableCell>
                             <TableCell className="border text-right">

@@ -1083,16 +1083,18 @@ export default function DailyBookSales() {
                 </Button>
               </div>
 
-              <div className="col-span-1 sm:col-span-2 lg:col-span-3 xl:col-span-1 space-y-2">
-                <Label className="text-sm font-medium invisible">View:</Label>
-                <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full h-10"
-                  variant="default"
-                  onClick={() => navigate("/daily-report/daily-sales-full-view")}>
-                  <Eye size={16} />
-                  <span className="hidden sm:inline">Full View</span>
-                  <span className="sm:hidden">View</span>
-                </Button>
-              </div>
+              {canEditCurrentDate && (
+                <div className="col-span-1 sm:col-span-2 lg:col-span-3 xl:col-span-1 space-y-2">
+                  <Label className="text-sm font-medium invisible">View:</Label>
+                  <Button className="bg-blue-500 hover:bg-blue-600 flex items-center gap-2 w-full h-10"
+                    variant="default"
+                    onClick={() => navigate("/daily-report/daily-sales-full-view")}>
+                    <Eye size={16} />
+                    <span className="hidden sm:inline">Full View</span>
+                    <span className="sm:hidden">View</span>
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
