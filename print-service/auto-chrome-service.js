@@ -483,9 +483,9 @@ class AutoChromePrintService {
 
       // Totals — last page only
       const totalsHTML = page.isLastPage ? `
-        <div class="ft" style="top:${fp.totals.goods.top};left:${fp.totals.goods.left};width:${fp.totals.goods.width};text-align:right;font-size:10pt;font-weight:bold;">£${totalAmount.toFixed(2)}</div>
-        <div class="ft" style="top:${fp.totals.vat.top};left:${fp.totals.vat.left};width:${fp.totals.vat.width};text-align:right;font-size:10pt;font-weight:bold;">£${vatAmount.toFixed(2)}</div>
-        <div class="ft" style="top:${fp.totals.total.top};left:${fp.totals.total.left};width:${fp.totals.total.width};text-align:right;font-size:10pt;font-weight:bold;">£${(totalAmount + vatAmount + porterage).toFixed(2)}</div>` : '';
+        <div class="ft" style="top:${fp.totals.goods.top};left:${fp.totals.goods.left};width:${fp.totals.goods.width};text-align:right;font-size:11pt;font-weight:bold;">£${totalAmount.toFixed(2)}</div>
+        <div class="ft" style="top:${fp.totals.vat.top};left:${fp.totals.vat.left};width:${fp.totals.vat.width};text-align:right;font-size:11pt;font-weight:bold;">£${vatAmount.toFixed(2)}</div>
+        <div class="ft" style="top:${fp.totals.total.top};left:${fp.totals.total.left};width:${fp.totals.total.width};text-align:right;font-size:11pt;font-weight:bold;">£${(totalAmount + vatAmount + porterage).toFixed(2)}</div>` : '';
 
       const isLast = page.pageNumber === totalPages;
       return `
@@ -560,7 +560,7 @@ class AutoChromePrintService {
     .ft {
       position: absolute;
       font-family: "Courier New", monospace;
-      font-size: 9pt;
+      font-size: 11pt;
       line-height: 1;
       color: black;
       background: transparent;

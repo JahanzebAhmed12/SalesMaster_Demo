@@ -530,7 +530,7 @@ export default function DotMatrixPaymentPrintPage() {
                 left: FIELD_POSITIONS.columns.quantity.left,
                 width: FIELD_POSITIONS.columns.quantity.width,
                 fontFamily: '"Courier New", "Courier", monospace',
-                fontSize: '9pt',
+                fontSize: '11pt',
                 fontWeight: 'bold',
                 lineHeight: '1'
               }}>
@@ -544,7 +544,7 @@ export default function DotMatrixPaymentPrintPage() {
                 left: FIELD_POSITIONS.columns.description.left,
                 width: FIELD_POSITIONS.columns.description.width,
                 fontFamily: '"Courier New", "Courier", monospace',
-                fontSize: '9pt',
+                fontSize: '11pt',
                 fontWeight: 'bold',
                 lineHeight: '1',
                 overflow: 'hidden',
@@ -573,7 +573,7 @@ export default function DotMatrixPaymentPrintPage() {
                 width: FIELD_POSITIONS.columns.price.width,
                 textAlign: FIELD_POSITIONS.columns.price.align,
                 fontFamily: '"Courier New", "Courier", monospace',
-                fontSize: '9pt',
+                fontSize: '11pt',
                 fontWeight: 'bold',
                 lineHeight: '1'
               }}>
@@ -588,7 +588,7 @@ export default function DotMatrixPaymentPrintPage() {
                 width: FIELD_POSITIONS.columns.value.width,
                 textAlign: FIELD_POSITIONS.columns.value.align,
                 fontFamily: '"Courier New", "Courier", monospace',
-                fontSize: '9pt',
+                fontSize: '11pt',
                 fontWeight: 'bold',
                 lineHeight: '1'
               }}>
@@ -622,7 +622,7 @@ export default function DotMatrixPaymentPrintPage() {
                 position: 'absolute',
                 ...FIELD_POSITIONS.totals.goods,
                 fontFamily: '"Courier New", "Courier", monospace',
-                fontSize: '10pt',
+                fontSize: '11pt',
                 fontWeight: 'bold',
                 textAlign: FIELD_POSITIONS.totals.goods.align as TextAlign
               }}>
