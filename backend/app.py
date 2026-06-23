@@ -7967,7 +7967,7 @@ def get_opening_stock(product_id, product_type, from_date):
             ).first()
             if closing_entry:
                 if days_back > 1:
-                    print(f"[DEBUG] Opening stock for product {product_id}: used closing stock from {check_date} (skipped {days_back - 1} day(s))")
+                    pass
                 return safe_float(closing_entry.quantity)
         # Rule B: no closing stock found in last 7 days → start from zero
         return 0
@@ -15180,73 +15180,54 @@ def test_email_configuration():
 def send_email_with_attachment():
     try:
         data = request.get_json()
-        
-        # Validate required fields
+
         if not data.get('to') or not data.get('subject') or not data.get('body'):
             return jsonify({"error": "Missing required fields: to, subject, body"}), 400
-        
-        # Get email list
+
         email_list = data.get('to')
         if isinstance(email_list, str):
             email_list = [email_list]
-        
-        # Validate email addresses
+
         import re
         email_regex = r'^[^\s@]+@[^\s@]+\.[^\s@]+$'
-        invalid_emails = [email for email in email_list if not re.match(email_regex, email)]
+        invalid_emails = [e for e in email_list if not re.match(email_regex, e)]
         if invalid_emails:
             return jsonify({"error": f"Invalid email addresses: {', '.join(invalid_emails)}"}), 400
-        
-        # Get attachment data
+
         attachment = data.get('attachment')
         if not attachment:
             return jsonify({"error": "No attachment provided"}), 400
-        
-        # Import required modules
-        from flask_mail import Message
+
         import base64
-        
-        # Send email to each recipient
-        sent_count = 0
-        failed_emails = []
-        
-        for email in email_list:
-            try:
-                msg = Message(
-                    subject=data.get('subject'),
-                    sender=mail.default_sender,
-                    recipients=[email]
-                )
-                msg.body = data.get('body')
-                
-                # Add PDF attachment
-                if attachment:
-                    pdf_content = base64.b64decode(attachment.get('content'))
-                    msg.attach(
-                        filename=attachment.get('filename', 'report.pdf'),
-                        content_type=attachment.get('contentType', 'application/pdf'),
-                        data=pdf_content
-                    )
-                
-                mail.send(msg)
-                sent_count += 1
-                print(f"Email sent successfully to {email}")
-                
-            except Exception as e:
-                print(f"Failed to send email to {email}: {str(e)}")
-                failed_emails.append(email)
-        
-        # Return response
-        if sent_count > 0:
-            response = {"message": f"Email sent successfully to {sent_count} recipient(s)"}
-            if failed_emails:
-                response["warnings"] = f"Failed to send to: {', '.join(failed_emails)}"
-            return jsonify(response), 200
+        from mail_utils import send_via_resend
+
+        pdf_bytes = base64.b64decode(attachment.get('content'))
+        attachments = [{
+            'filename':     attachment.get('filename', 'report.pdf'),
+            'content':      pdf_bytes,
+            'content_type': attachment.get('contentType', 'application/pdf'),
+        }]
+
+        # Build a minimal HTML body from the plain-text body
+        plain_body = data.get('body', '')
+        html_body  = f'<pre style="font-family:Arial,sans-serif;white-space:pre-wrap;">{plain_body}</pre>'
+
+        ok = send_via_resend(
+            to_list=email_list,
+            subject=data.get('subject'),
+            html_content=html_body,
+            text_content=plain_body,
+            attachments=attachments,
+        )
+
+        if ok:
+            return jsonify({"message": f"Email sent successfully to {len(email_list)} recipient(s)"}), 200
         else:
-            return jsonify({"error": "Failed to send email to any recipients"}), 500
-            
+            return jsonify({"error": "Failed to send email. Check server logs for details."}), 500
+
     except Exception as e:
         print(f"Error in send_email_with_attachment: {str(e)}")
+        import traceback; print(traceback.format_exc())
         return jsonify({"error": f"Failed to send email: {str(e)}"}), 500
 
 

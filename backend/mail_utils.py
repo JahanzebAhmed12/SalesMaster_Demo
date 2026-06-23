@@ -1,11 +1,16 @@
 import os
 import json
-from flask_mail import Mail, Message
+import base64
+import requests
 from flask import current_app, render_template
 from xhtml2pdf import pisa
 import io
 from datetime import datetime
 from models import Company, SystemSettings
+
+# ---------------------------------------------------------------------------
+# Config file helpers (unchanged — still used by /api/email-config routes)
+# ---------------------------------------------------------------------------
 
 def load_email_config():
     config_path = os.path.join(os.path.dirname(__file__), 'instance', 'email_config.json')
@@ -19,290 +24,349 @@ def save_email_config(config):
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
 
+
+# ---------------------------------------------------------------------------
+# Resend HTTP API sender (replaces Flask-Mail / SMTP)
+# ---------------------------------------------------------------------------
+
+def get_resend_config():
+    """Return (api_key, from_address) from email_config.json or env vars."""
+    config = load_email_config()
+    if config:
+        api_key   = config.get('RESEND_API_KEY') or os.getenv('RESEND_API_KEY', '')
+        from_addr = config.get('MAIL_DEFAULT_SENDER') or config.get('MAIL_EMAIL', '')
+    else:
+        api_key   = os.getenv('RESEND_API_KEY', '')
+        from_addr = os.getenv('MAIL_DEFAULT_SENDER', os.getenv('MAIL_EMAIL', ''))
+    return api_key, from_addr
+
+
+def send_via_resend(to_list, subject, html_content, text_content=None,
+                    attachments=None):
+    """
+    Send an email via the Resend HTTP API.
+
+    Parameters
+    ----------
+    to_list     : list[str]  – recipient addresses
+    subject     : str
+    html_content: str        – HTML body
+    text_content: str | None – plain-text fallback (optional)
+    attachments : list[dict] – each dict: {filename, content (bytes), content_type}
+
+    Returns
+    -------
+    True on success, False on failure.
+    """
+    api_key, from_addr = get_resend_config()
+
+    if not api_key:
+        print('[RESEND ERROR] RESEND_API_KEY not configured in email_config.json')
+        return False
+    if not from_addr:
+        print('[RESEND ERROR] MAIL_DEFAULT_SENDER not configured in email_config.json')
+        return False
+
+    payload = {
+        'from':    from_addr,
+        'to':      to_list,
+        'subject': subject,
+        'html':    html_content,
+    }
+    if text_content:
+        payload['text'] = text_content
+
+    if attachments:
+        payload['attachments'] = [
+            {
+                'filename': att['filename'],
+                'content':  base64.b64encode(att['content']).decode('utf-8'),
+            }
+            for att in attachments
+        ]
+
+    try:
+        resp = requests.post(
+            'https://api.resend.com/emails',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type':  'application/json',
+            },
+            json=payload,
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            print(f'[RESEND SUCCESS] id={data.get("id")} to={to_list}')
+            return True
+        else:
+            print(f'[RESEND ERROR] HTTP {resp.status_code}: {resp.text}')
+            return False
+    except Exception as e:
+        print(f'[RESEND ERROR] Request failed: {e}')
+        import traceback
+        print(traceback.format_exc())
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Stub init_mail — kept so app.py's "mail = init_mail(app)" still works.
+# Returns a dummy object; the real sending is done via send_via_resend().
+# ---------------------------------------------------------------------------
+
+class _DummyMail:
+    """Placeholder that satisfies "mail.send(msg)" calls that haven't been
+    migrated yet, by raising a clear error instead of silently doing nothing."""
+    default_sender = ''
+
+    def send(self, msg):
+        raise RuntimeError(
+            'mail.send() called on the dummy mail object. '
+            'Use send_via_resend() or the dedicated send_*_email() helpers.'
+        )
+
 def init_mail(app):
     try:
-        email_config = load_email_config()
-        if email_config:
-            print(f"[EMAIL CONFIG] Using config file: {email_config.get('MAIL_SERVER', 'smtp.gmail.com')}")
-            app.config['MAIL_SERVER'] = email_config.get('MAIL_SERVER', 'smtp.gmail.com')
-            app.config['MAIL_PORT'] = int(email_config.get('MAIL_PORT', 587))
-            app.config['MAIL_USE_TLS'] = email_config.get('MAIL_USE_TLS', True)
-            app.config['MAIL_USE_SSL'] = email_config.get('MAIL_USE_SSL', False)
-            app.config['MAIL_USERNAME'] = email_config.get('MAIL_EMAIL')
-            app.config['MAIL_PASSWORD'] = email_config.get('MAIL_PASSWORD')
-            app.config['MAIL_DEFAULT_SENDER'] = email_config.get('MAIL_DEFAULT_SENDER', email_config.get('MAIL_EMAIL'))
+        config = load_email_config()
+        from_addr = ''
+        if config:
+            from_addr = config.get('MAIL_DEFAULT_SENDER') or config.get('MAIL_EMAIL', '')
+            print(f'[EMAIL CONFIG] Mode: Resend API')
+            print(f'[EMAIL CONFIG] From: {from_addr}')
+            print(f'[EMAIL CONFIG] API key configured: {bool(config.get("RESEND_API_KEY"))}')
         else:
-            print(f"[EMAIL CONFIG] Using environment variables: {os.getenv('MAIL_SERVER', 'smtp.gmail.com')}")
-            app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
-            app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
-            app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'true').lower() == 'true'
-            app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'false').lower() == 'true'
-            app.config['MAIL_USERNAME'] = os.getenv('MAIL_EMAIL')
-            app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-            app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', app.config.get('MAIL_USERNAME'))
-        
-        # Log configuration (without password)
-        print(f"[EMAIL CONFIG] Server: {app.config.get('MAIL_SERVER')}:{app.config.get('MAIL_PORT')}")
-        print(f"[EMAIL CONFIG] TLS: {app.config.get('MAIL_USE_TLS')}, SSL: {app.config.get('MAIL_USE_SSL')}")
-        print(f"[EMAIL CONFIG] Username: {app.config.get('MAIL_USERNAME')}")
-        print(f"[EMAIL CONFIG] Default Sender: {app.config.get('MAIL_DEFAULT_SENDER')}")
-        
-        return Mail(app)
+            print('[EMAIL CONFIG] No config file — using environment variables')
+        dummy = _DummyMail()
+        dummy.default_sender = from_addr
+        return dummy
     except Exception as e:
-        print(f"[EMAIL CONFIG ERROR] Failed to initialize mail: {str(e)}")
-        return None
+        print(f'[EMAIL CONFIG ERROR] {e}')
+        return _DummyMail()
 
-def render_invoice_html(sale, customer, company=None, now=None, logo_path=None, invoice_footer=None):
-    if company is None:
-        # Get company details from database
-        company = Company.query.first()
-    if now is None:
-        now = datetime.utcnow()
-    return render_template('invoice_email.html', sale=sale, customer=customer, company=company, now=now, logo_path=logo_path, invoice_footer=invoice_footer)
 
-def render_customer_statement_html(customer, statement_data, company=None, from_date=None, to_date=None, statement_type="Full Statement", logo_path=None):
-    if company is None:
-        company = Company.query.first()
-    if from_date is None:
-        from_date = datetime.utcnow()
-    if to_date is None:
-        to_date = datetime.utcnow()
-    now = datetime.utcnow()
-    return render_template('customer_statement_email.html', 
-                         customer=customer, 
-                         statement_data=statement_data, 
-                         company=company, 
-                         from_date=from_date, 
-                         to_date=to_date, 
-                         statement_type=statement_type, 
-                         logo_path=logo_path,
-                         now=now)
+# ---------------------------------------------------------------------------
+# HTML / PDF rendering helpers (unchanged)
+# ---------------------------------------------------------------------------
 
-def render_customer_history_html(customer, history_data, company=None, from_date=None, to_date=None, logo_path=None):
-    if company is None:
-        company = Company.query.first()
-    if from_date is None:
-        from_date = datetime.utcnow()
-    if to_date is None:
-        to_date = datetime.utcnow()
-    now = datetime.utcnow()
-    return render_template('customer_history_email.html', 
-                         customer=customer, 
-                         history_data=history_data, 
-                         company=company, 
-                         from_date=from_date, 
-                         to_date=to_date, 
-                         logo_path=logo_path,
-                         now=now)
-
-def render_purchase_invoice_html(invoice, supplier, company=None, now=None, logo_path=None):
+def render_invoice_html(sale, customer, company=None, now=None,
+                        logo_path=None, invoice_footer=None):
     if company is None:
         company = Company.query.first()
     if now is None:
         now = datetime.utcnow()
-    return render_template('purchase_invoice_email.html', invoice=invoice, supplier=supplier, company=company, now=now, logo_path=logo_path)
+    return render_template('invoice_email.html', sale=sale, customer=customer,
+                           company=company, now=now, logo_path=logo_path,
+                           invoice_footer=invoice_footer)
 
-def generate_invoice_pdf(html_content):
-    pdf = io.BytesIO()
-    pisa_status = pisa.CreatePDF(io.StringIO(html_content), dest=pdf)
-    if pisa_status.err:
+def render_customer_statement_html(customer, statement_data, company=None,
+                                   from_date=None, to_date=None,
+                                   statement_type='Full Statement',
+                                   logo_path=None):
+    if company is None:
+        company = Company.query.first()
+    now = datetime.utcnow()
+    return render_template('customer_statement_email.html',
+                           customer=customer, statement_data=statement_data,
+                           company=company,
+                           from_date=from_date or now,
+                           to_date=to_date or now,
+                           statement_type=statement_type,
+                           logo_path=logo_path, now=now)
+
+def render_customer_history_html(customer, history_data, company=None,
+                                  from_date=None, to_date=None, logo_path=None):
+    if company is None:
+        company = Company.query.first()
+    now = datetime.utcnow()
+    return render_template('customer_history_email.html',
+                           customer=customer, history_data=history_data,
+                           company=company,
+                           from_date=from_date or now,
+                           to_date=to_date or now,
+                           logo_path=logo_path, now=now)
+
+def render_purchase_invoice_html(invoice, supplier, company=None,
+                                  now=None, logo_path=None):
+    if company is None:
+        company = Company.query.first()
+    if now is None:
+        now = datetime.utcnow()
+    return render_template('purchase_invoice_email.html', invoice=invoice,
+                           supplier=supplier, company=company, now=now,
+                           logo_path=logo_path)
+
+def render_supplier_statement_html(supplier, statement_data, company=None,
+                                    from_date=None, to_date=None,
+                                    statement_type='All', logo_path=None):
+    if company is None:
+        company = Company.query.first()
+    now = datetime.utcnow()
+    return render_template('supplier_statement_email.html',
+                           supplier=supplier, statement_data=statement_data,
+                           company=company,
+                           from_date=from_date or now,
+                           to_date=to_date or now,
+                           statement_type=statement_type,
+                           logo_path=logo_path, now=now)
+
+def _generate_pdf(html_content):
+    buf = io.BytesIO()
+    status = pisa.CreatePDF(io.StringIO(html_content), dest=buf)
+    if status.err:
         return None
-    pdf.seek(0)
-    return pdf.read()
+    buf.seek(0)
+    return buf.read()
 
-def generate_statement_pdf(html_content):
-    pdf = io.BytesIO()
-    pisa_status = pisa.CreatePDF(io.StringIO(html_content), dest=pdf)
-    if pisa_status.err:
-        return None
-    pdf.seek(0)
-    return pdf.read()
+generate_invoice_pdf   = _generate_pdf
+generate_statement_pdf = _generate_pdf
+generate_history_pdf   = _generate_pdf
 
-def generate_history_pdf(html_content):
-    pdf = io.BytesIO()
-    pisa_status = pisa.CreatePDF(io.StringIO(html_content), dest=pdf)
-    if pisa_status.err:
-        return None
-    pdf.seek(0)
-    return pdf.read()
 
-def send_invoice_email(mail, recipient, sale, customer):
+# ---------------------------------------------------------------------------
+# Public send_* helpers — same signatures as before, now use Resend
+# ---------------------------------------------------------------------------
+
+def _logo_file_path():
+    return os.path.join(os.path.dirname(__file__), 'static', 'printlogo.png')
+
+
+def send_invoice_email(_mail_unused, recipient, sale, customer):
     try:
-        print(f"[EMAIL DEBUG] Sending invoice email to {recipient} for invoice {sale.invoice_number}")
-        
-        # Get company details
-        company = Company.query.first()
-        from models import SystemSettings
+        company  = Company.query.first()
         settings = SystemSettings.query.first()
-        invoice_footer = settings.invoice_footer if settings and hasattr(settings, 'invoice_footer') else ''
-        
-        # For email, use static URL for logo
-        html_content = render_invoice_html(sale, customer, company, logo_path='/static/printlogo.png', invoice_footer=invoice_footer)
-        
-        # For PDF, use absolute file path for logo
-        static_dir = os.path.join(os.path.dirname(__file__), 'static')
-        logo_file_path = os.path.join(static_dir, 'printlogo.png')
-        
-        # Check if logo file exists
-        if not os.path.exists(logo_file_path):
-            print(f"[EMAIL WARNING] Logo file not found at {logo_file_path}, using fallback")
-            logo_file_path = None
-        
-        pdf_html_content = render_invoice_html(sale, customer, company, logo_path=logo_file_path, invoice_footer=invoice_footer)
-        pdf_bytes = generate_invoice_pdf(pdf_html_content)
-        
-        subject = f"Your Invoice #{sale.invoice_number}"
-        body = f"Dear Customer,\n\nPlease find attached your invoice #{sale.invoice_number}.\n\nThank you."
-        msg = Message(subject, recipients=[recipient], body=body, html=html_content)
+        footer   = getattr(settings, 'invoice_footer', '') or ''
 
-        if pdf_bytes:
-            msg.attach(f"invoice_{sale.invoice_number}.pdf", "application/pdf", pdf_bytes)
-            print(f"[EMAIL DEBUG] PDF attachment added for invoice {sale.invoice_number}")
-        else:
-            print(f"[EMAIL WARNING] Failed to generate PDF for invoice {sale.invoice_number}")
-        
-        mail.send(msg)
-        print(f"[EMAIL SUCCESS] Invoice email sent successfully to {recipient}")
-        return True
-        
+        html = render_invoice_html(sale, customer, company,
+                                   logo_path='/static/printlogo.png',
+                                   invoice_footer=footer)
+        pdf  = _generate_pdf(render_invoice_html(sale, customer, company,
+                                                  logo_path=_logo_file_path(),
+                                                  invoice_footer=footer))
+
+        attachments = ([{'filename': f'invoice_{sale.invoice_number}.pdf',
+                          'content':  pdf,
+                          'content_type': 'application/pdf'}] if pdf else [])
+
+        return send_via_resend(
+            to_list=[recipient],
+            subject=f'Your Invoice #{sale.invoice_number}',
+            html_content=html,
+            text_content=f'Please find attached invoice #{sale.invoice_number}.',
+            attachments=attachments,
+        )
     except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send invoice email to {recipient}: {str(e)}")
-        import traceback
-        print(f"[EMAIL ERROR] Full traceback: {traceback.format_exc()}")
+        print(f'[EMAIL ERROR] send_invoice_email: {e}')
+        import traceback; print(traceback.format_exc())
         return False
 
-def send_customer_statement_email(mail, recipient, customer, statement_data, from_date, to_date, statement_type="Full Statement"):
-    """Send customer statement email with PDF attachment"""
+
+def send_customer_statement_email(_mail_unused, recipient, customer,
+                                   statement_data, from_date, to_date,
+                                   statement_type='Full Statement'):
     try:
-        # Get company details
         company = Company.query.first()
-        
-        # For email, use static URL for logo
-        html_content = render_customer_statement_html(customer, statement_data, company, from_date, to_date, statement_type, logo_path='/static/printlogo.png')
-        
-        # For PDF, use absolute file path for logo
-        static_dir = os.path.join(os.path.dirname(__file__), 'static')
-        logo_file_path = os.path.join(static_dir, 'printlogo.png')
-        pdf_html_content = render_customer_statement_html(customer, statement_data, company, from_date, to_date, statement_type, logo_path=logo_file_path)
-        pdf_bytes = generate_statement_pdf(pdf_html_content)
-        
-        subject = f"Customer Statement - {customer.customer_name}"
-        body = f"Dear {customer.customer_name},\n\nPlease find attached your customer statement for the period {from_date.strftime('%d/%m/%Y')} to {to_date.strftime('%d/%m/%Y')}.\n\nThank you."
-        
-        msg = Message(subject, recipients=[recipient], body=body, html=html_content)
-        if pdf_bytes:
-            msg.attach(f"customer_statement_{customer.customer_name}_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf", "application/pdf", pdf_bytes)
-        
-        mail.send(msg)
-        return True
+        html = render_customer_statement_html(customer, statement_data, company,
+                                              from_date, to_date, statement_type,
+                                              logo_path='/static/printlogo.png')
+        pdf  = _generate_pdf(render_customer_statement_html(
+                    customer, statement_data, company,
+                    from_date, to_date, statement_type,
+                    logo_path=_logo_file_path()))
+
+        fname = (f'customer_statement_{customer.customer_name}_'
+                 f'{from_date.strftime("%Y%m%d")}_{to_date.strftime("%Y%m%d")}.pdf')
+        attachments = [{'filename': fname, 'content': pdf,
+                         'content_type': 'application/pdf'}] if pdf else []
+
+        return send_via_resend(
+            to_list=[recipient],
+            subject=f'Customer Statement - {customer.customer_name}',
+            html_content=html,
+            text_content=(f'Customer statement for '
+                          f'{from_date.strftime("%d/%m/%Y")} to '
+                          f'{to_date.strftime("%d/%m/%Y")}.'),
+            attachments=attachments,
+        )
     except Exception as e:
-        print(f"Failed to send customer statement email: {str(e)}")
+        print(f'[EMAIL ERROR] send_customer_statement_email: {e}')
         return False
 
-def send_customer_history_email(mail, recipient, customer, history_data, from_date, to_date):
-    """Send customer history email with PDF attachment"""
+
+def send_customer_history_email(_mail_unused, recipient, customer,
+                                 history_data, from_date, to_date):
     try:
-        # Get company details
         company = Company.query.first()
-        
-        # For email, use static URL for logo
-        html_content = render_customer_history_html(customer, history_data, company, from_date, to_date, logo_path='/static/printlogo.png')
-        
-        # For PDF, use absolute file path for logo
-        static_dir = os.path.join(os.path.dirname(__file__), 'static')
-        logo_file_path = os.path.join(static_dir, 'printlogo.png')
-        pdf_html_content = render_customer_history_html(customer, history_data, company, from_date, to_date, logo_path=logo_file_path)
-        pdf_bytes = generate_history_pdf(pdf_html_content)
-        
-        subject = f"Customer History - {customer.customer_name}"
-        body = f"Dear {customer.customer_name},\n\nPlease find attached your customer history for the period {from_date.strftime('%d/%m/%Y')} to {to_date.strftime('%d/%m/%Y')}.\n\nThank you."
-        
-        msg = Message(subject, recipients=[recipient], body=body, html=html_content)
-        if pdf_bytes:
-            msg.attach(f"customer_history_{customer.customer_name}_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf", "application/pdf", pdf_bytes)
-        
-        mail.send(msg)
-        return True
+        html = render_customer_history_html(customer, history_data, company,
+                                            from_date, to_date,
+                                            logo_path='/static/printlogo.png')
+        pdf  = _generate_pdf(render_customer_history_html(
+                    customer, history_data, company,
+                    from_date, to_date, logo_path=_logo_file_path()))
+
+        fname = (f'customer_history_{customer.customer_name}_'
+                 f'{from_date.strftime("%Y%m%d")}_{to_date.strftime("%Y%m%d")}.pdf')
+        attachments = [{'filename': fname, 'content': pdf,
+                         'content_type': 'application/pdf'}] if pdf else []
+
+        return send_via_resend(
+            to_list=[recipient],
+            subject=f'Customer History - {customer.customer_name}',
+            html_content=html,
+            attachments=attachments,
+        )
     except Exception as e:
-        print(f"Failed to send customer history email: {str(e)}")
+        print(f'[EMAIL ERROR] send_customer_history_email: {e}')
         return False
 
-def send_purchase_invoice_email(mail, recipient, invoice, supplier):
-    company = Company.query.first()
-    html_content = render_purchase_invoice_html(invoice, supplier, company, logo_path='/static/printlogo.png')
-    static_dir = os.path.join(os.path.dirname(__file__), 'static')
-    logo_file_path = os.path.join(static_dir, 'printlogo.png')
-    pdf_html_content = render_purchase_invoice_html(invoice, supplier, company, logo_path=logo_file_path)
-    pdf_bytes = generate_invoice_pdf(pdf_html_content)
-    subject = f"Your Purchase Invoice #{invoice.id}"
-    body = f"Dear {supplier.supplier_name},\n\nPlease find attached your purchase invoice #{invoice.id}.\n\nThank you."
-    msg = Message(subject, recipients=[recipient], body=body, html=html_content)
-    if pdf_bytes:
-        msg.attach(f"purchase_invoice_{invoice.id}.pdf", "application/pdf", pdf_bytes)
-    mail.send(msg)
 
-def send_supplier_statement_email(mail, recipient, supplier, statement_data, from_date, to_date, statement_type="All"):
-    """Send supplier statement email with PDF attachment"""
+def send_purchase_invoice_email(_mail_unused, recipient, invoice, supplier):
     try:
-        print(f"[DEBUG] Starting supplier statement email send for: {supplier.supplier_name} to {recipient}")
-        
-        # Get company details
         company = Company.query.first()
-        print(f"[DEBUG] Company details retrieved: {company.companyName if company else 'None'}")
-        
-        # For email, use static URL for logo
-        html_content = render_supplier_statement_html(supplier, statement_data, company, from_date, to_date, statement_type, logo_path='/static/printlogo.png')
-        print(f"[DEBUG] HTML content generated, length: {len(html_content)}")
-        
-        # For PDF, use absolute file path for logo
-        static_dir = os.path.join(os.path.dirname(__file__), 'static')
-        logo_file_path = os.path.join(static_dir, 'printlogo.png')
-        print(f"[DEBUG] Logo file path: {logo_file_path}")
-        print(f"[DEBUG] Logo file exists: {os.path.exists(logo_file_path)}")
-        
-        pdf_html_content = render_supplier_statement_html(supplier, statement_data, company, from_date, to_date, statement_type, logo_path=logo_file_path)
-        pdf_bytes = generate_statement_pdf(pdf_html_content)
-        print(f"[DEBUG] PDF generated, size: {len(pdf_bytes) if pdf_bytes else 0} bytes")
-        
-        subject = f"Supplier Statement - {supplier.supplier_name}"
-        body = f"Dear {supplier.supplier_name},\n\nPlease find attached your supplier statement for the period {from_date.strftime('%d/%m/%Y')} to {to_date.strftime('%d/%m/%Y')}.\n\nThank you."
-        
-        print(f"[DEBUG] Creating message with subject: {subject}")
-        print(f"[DEBUG] Recipient: {recipient}")
-        
-        msg = Message(subject, recipients=[recipient], body=body, html=html_content)
-        if pdf_bytes:
-            attachment_name = f"supplier_statement_{supplier.supplier_name}_{from_date.strftime('%Y%m%d')}_{to_date.strftime('%Y%m%d')}.pdf"
-            msg.attach(attachment_name, "application/pdf", pdf_bytes)
-            print(f"[DEBUG] PDF attachment added: {attachment_name}")
-        
-        print(f"[DEBUG] About to send email via mail.send(msg)...")
-        mail.send(msg)
-        print(f"[DEBUG] Email sent successfully!")
-        
-        return True
+        html = render_purchase_invoice_html(invoice, supplier, company,
+                                            logo_path='/static/printlogo.png')
+        pdf  = _generate_pdf(render_purchase_invoice_html(
+                    invoice, supplier, company, logo_path=_logo_file_path()))
+
+        attachments = ([{'filename': f'purchase_invoice_{invoice.id}.pdf',
+                          'content':  pdf,
+                          'content_type': 'application/pdf'}] if pdf else [])
+
+        return send_via_resend(
+            to_list=[recipient],
+            subject=f'Purchase Invoice #{invoice.id}',
+            html_content=html,
+            attachments=attachments,
+        )
     except Exception as e:
-        print(f"[DEBUG] Exception occurred during email sending: {str(e)}")
-        print(f"[DEBUG] Exception type: {type(e).__name__}")
-        import traceback
-        print(f"[DEBUG] Full traceback: {traceback.format_exc()}")
-        print(f"Failed to send supplier statement email: {str(e)}")
+        print(f'[EMAIL ERROR] send_purchase_invoice_email: {e}')
         return False
 
-def render_supplier_statement_html(supplier, statement_data, company=None, from_date=None, to_date=None, statement_type="All", logo_path=None):
-    if company is None:
+
+def send_supplier_statement_email(_mail_unused, recipient, supplier,
+                                   statement_data, from_date, to_date,
+                                   statement_type='All'):
+    try:
         company = Company.query.first()
-    if from_date is None:
-        from_date = datetime.utcnow()
-    if to_date is None:
-        to_date = datetime.utcnow()
-    now = datetime.utcnow()
-    return render_template('supplier_statement_email.html', 
-                         supplier=supplier, 
-                         statement_data=statement_data, 
-                         company=company, 
-                         from_date=from_date, 
-                         to_date=to_date, 
-                         statement_type=statement_type, 
-                         logo_path=logo_path,
-                         now=now)
+        html = render_supplier_statement_html(supplier, statement_data, company,
+                                              from_date, to_date, statement_type,
+                                              logo_path='/static/printlogo.png')
+        pdf  = _generate_pdf(render_supplier_statement_html(
+                    supplier, statement_data, company,
+                    from_date, to_date, statement_type,
+                    logo_path=_logo_file_path()))
+
+        fname = (f'supplier_statement_{supplier.supplier_name}_'
+                 f'{from_date.strftime("%Y%m%d")}_{to_date.strftime("%Y%m%d")}.pdf')
+        attachments = [{'filename': fname, 'content': pdf,
+                         'content_type': 'application/pdf'}] if pdf else []
+
+        return send_via_resend(
+            to_list=[recipient],
+            subject=f'Supplier Statement - {supplier.supplier_name}',
+            html_content=html,
+            attachments=attachments,
+        )
+    except Exception as e:
+        print(f'[EMAIL ERROR] send_supplier_statement_email: {e}')
+        import traceback; print(traceback.format_exc())
+        return False

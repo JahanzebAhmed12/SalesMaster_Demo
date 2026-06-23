@@ -23,6 +23,7 @@ import { format, parseISO, subDays } from 'date-fns';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import jsPDF from "jspdf";
 import logo from "@/public/printlogo.png";
+import { sendInvoicePdfEmail } from "@/lib/invoice-pdf";
 
 interface BackendSalePayload {
   invoice_number: string;
@@ -1063,8 +1064,11 @@ const SalesInvoice = () => {
             window.open(`/print/packing-list/${response.invoiceNumber}`, '_blank');
           }
 
-          // Clear additional emails after successful save
-          if (mailInvoice) {
+          if (mailInvoice && response?.invoiceNumber) {
+            const extra = additionalEmails.split(',').map(e => e.trim()).filter(Boolean);
+            sendInvoicePdfEmail(response.invoiceNumber, extra).catch(() => {});
+            setAdditionalEmails('');
+          } else if (mailInvoice) {
             setAdditionalEmails('');
           }
 
@@ -1148,16 +1152,19 @@ const SalesInvoice = () => {
           notes: item.notes,
           created_at: item.createdAt,
         })),
-        mailInvoice,
-        emailData: mailInvoice ? {
-          customerEmails: selectedCustomer?.email || '',
-          additionalEmails: additionalEmails
-        } : null,
       };
       
       createSaleMutation.mutate(payload, {
-        onSuccess: (response) => {
+        onSuccess: async (response) => {
           console.log('✅ New invoice created successfully:', response.invoiceNumber);
+          if (mailInvoice && response?.invoiceNumber) {
+            try {
+              const extra = additionalEmails.split(',').map(e => e.trim()).filter(Boolean);
+              await sendInvoicePdfEmail(response.invoiceNumber, extra);
+            } catch (e: any) {
+              toast({ title: "Email Warning", description: e?.error || "Invoice saved but email failed.", variant: "destructive" });
+            }
+          }
           if (printInvoice && response?.invoiceNumber) {
             const printUrl = invoicePrintFormat === 'DOTMATRIX'
               ? `/print/dot-matrix-invoice/${response.invoiceNumber}`

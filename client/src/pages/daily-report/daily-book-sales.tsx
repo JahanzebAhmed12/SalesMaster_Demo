@@ -28,6 +28,7 @@ import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { useToast } from "@/hooks/use-toast";
+import { sendInvoicePdfEmail } from "@/lib/invoice-pdf";
 
 interface SalesEntry {
   id: number;
@@ -834,12 +835,10 @@ export default function DailyBookSales() {
   // Helper for WhatsApp and Email
   const sendInvoiceEmail = async (sale: SalesEntry) => {
     try {
-      await apiRequest('POST', `/api/sales/${sale.invoiceNo}/send`, {
-        customerId: sale.customerId
-      });
+      await sendInvoicePdfEmail(sale.invoiceNo);
       toast({ title: "Success", description: "Invoice email sent!" });
-    } catch (e) {
-      toast({ title: "Error", description: "Failed to send invoice email.", variant: "destructive" });
+    } catch (e: any) {
+      toast({ title: "Error", description: e?.error || "Failed to send invoice email.", variant: "destructive" });
     }
   };
   const sendWhatsApp = async (sale: SalesEntry) => {
