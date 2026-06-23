@@ -344,7 +344,7 @@ def update_sale_payment_method():
                 
             # Check permissions
             backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-            today = datetime.now().date()
+            today = get_business_date()  # Use business date as reference, not calendar date
             sale_date = sale.date.date() if hasattr(sale.date, 'date') else sale.date
             
             if backdate_opt and not backdate_opt.editing and sale_date < today:
@@ -461,7 +461,7 @@ def update_sale_split_payment():
         
         # Check permissions
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-        today = datetime.now().date()
+        today = get_business_date()  # Use business date as reference, not calendar date
         sale_date = sale.date.date() if hasattr(sale.date, 'date') else sale.date
         
         if backdate_opt and not backdate_opt.editing and sale_date < today:
@@ -1191,7 +1191,7 @@ def update_sale(id):
         
         # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-        today = datetime.now().date()
+        today = get_business_date()  # Use business date as reference, not calendar date
         # If editing not allowed and sale.date is in the past, block
         if backdate_opt and not backdate_opt.editing and sale.date.date() < today:
             return jsonify({"error": "You do not have permission to edit sales for previous dates."}), 403
@@ -1201,6 +1201,12 @@ def update_sale(id):
             return jsonify({"error": "You do not have permission to edit sales for today."}), 403
 
         # Block editing paid invoices for non-admin users
+        if sale.payment_status in ('paid', 'overpaid'):
+            user = User.query.get(user_id)
+            if not user or user.user_type != 'admin':
+                return jsonify({"error": "This invoice has been paid and cannot be edited. Only admin users can modify paid invoices."}), 403
+
+        # Initialize stock warnings list
         if sale.payment_status in ('paid', 'overpaid'):
             user = User.query.get(user_id)
             if not user or user.user_type != 'admin':
@@ -1653,7 +1659,7 @@ def patch_sale(id):
         
         # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-        today = datetime.now().date()
+        today = get_business_date()  # Use business date as reference, not calendar date
         # If editing not allowed and sale.date is in the past, block
         if backdate_opt and not backdate_opt.editing and sale.date.date() < today:
             return jsonify({"error": "You do not have permission to edit sales for previous dates."}), 403

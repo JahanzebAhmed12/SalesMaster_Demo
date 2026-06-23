@@ -1530,6 +1530,7 @@ const SalesInvoice = () => {
       // Optionally show a toast or alert
       return;
     }
+    skipAutoHoldRef.current = true; // Prevent auto-hold on navigation
     const today = new Date();
     const lastWeek = subDays(today, 7);
     // Pass params as query string
@@ -1546,6 +1547,7 @@ const SalesInvoice = () => {
   const handlePdfDownload = async () => {
     if (currentSale?.invoiceNumber) {
       // For existing invoice - generate PDF directly
+      skipAutoHoldRef.current = true;
       try {
         toast({
           title: "Generating PDF",
@@ -1990,6 +1992,7 @@ const SalesInvoice = () => {
 
   // Download existing invoice as Excel
   const handleDownloadInvoiceExcel = async () => {
+    skipAutoHoldRef.current = true;
     try {
       const backendUrl = window.location.origin.replace(':5173', ':5000');
       const response = await fetch(`${backendUrl}/api/sales/${currentSale?.invoiceNumber}/excel`, {
