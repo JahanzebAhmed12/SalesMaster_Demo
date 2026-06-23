@@ -702,13 +702,11 @@ def get_closing_time():
     return time(23, 59)  # Default closing time
 
 def get_business_date(now=None):
-    """Get current business date - either from manual override or calculated"""
-    # Check if there's a manual business date override
+    """Get current business date — always prefer the DB record if it exists."""
     business_date_record = BusinessDate.query.first()
-    if business_date_record and business_date_record.is_manual_override:
+    if business_date_record and business_date_record.current_date:
         return business_date_record.current_date
-    
-    # Otherwise use current date (no time-based logic)
+    # Fallback: no DB record yet — use calendar date
     now = now or datetime.now()
     return now.date()
 
@@ -863,8 +861,8 @@ def create_sale():
             
             # Check backdate editing permission
             backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-            today = datetime.now().date()
-            # If editing not allowed and business_date is in the past, block
+            today = get_business_date()  # Use business date as reference, not calendar date
+            # If editing not allowed and sale date is before current business date, block
             if backdate_opt and not backdate_opt.editing and business_date < today:
                 db.session.rollback()
                 return jsonify({"error": "You do not have permission to create sales for previous dates."}), 403

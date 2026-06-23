@@ -91,6 +91,8 @@ const SalesInvoice = () => {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { currentDate: businessDate } = useBusinessDate();
+  // Format business date as yyyy-MM-dd for the API — currentDate is a raw ISO string
+  const businessDateForApi = businessDate ? businessDate.split('T')[0] : null;
   const { canEditInvoice, isInvoiceLocked, canEditPaymentMode } = useInvoicePermissions();
   const { invalidateAllSalesQueries, invalidateCustomerQueries } = useSalesInvalidation();
   const { broadcastInvoiceCreated, broadcastInvoiceUpdated } = useCrossTabSync();
@@ -151,6 +153,13 @@ const SalesInvoice = () => {
   const [editGateNumberValue, setEditGateNumberValue] = useState("");
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [editableDate, setEditableDate] = useState<Date | null>(null);
+
+  // For new invoices, initialize the displayed date from business date, not calendar date
+  useEffect(() => {
+    if (!editableDate && businessDateForApi) {
+      setEditableDate(parseISO(businessDateForApi));
+    }
+  }, [businessDateForApi]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customerOptions, setCustomerOptions] = useState<Customer[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -1142,7 +1151,7 @@ const SalesInvoice = () => {
         gate_number: gateNumber || null,
         notes: notes || null,
         status: "finalized",
-        date: businessDate, // Add business date to payload
+        date: businessDateForApi, // Add business date to payload (yyyy-MM-dd)
         items: saleItems.map(item => ({
           product_id: item.productId,
           non_product_id: item.nonProductId,
