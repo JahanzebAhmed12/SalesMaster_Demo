@@ -1615,22 +1615,12 @@ const SalesInvoice = () => {
         doc.setDrawColor(204, 204, 204);
         doc.line(20, 54, pageWidth - 20, 54);
 
-        // INVOICE title below separator
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "normal");
-        doc.text("INVOICE", pageWidth - 20, 65, { align: 'right' });
-
         // Bill To and Invoice Details Section (Side by Side)
-        let yPos = 76;
-
-        // Bill To Section (Left)
-        doc.setFontSize(14);
-        doc.setFont("helvetica", "bold");
-        doc.text("Bill to :", 20, yPos);
+        let yPos = 56;
 
         // Customer box with border
         doc.setLineWidth(0.5);
-        doc.rect(20, yPos + 5, 60, 20);
+        doc.rect(20, yPos + 5, 90, 26);
 
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
@@ -1639,8 +1629,7 @@ const SalesInvoice = () => {
         if (invoiceData.customer?.address) {
           doc.setFont("helvetica", "normal");
           doc.setFontSize(10);
-          // Split address into multiple lines if too long
-          const addressLines = doc.splitTextToSize(invoiceData.customer.address, 70);
+          const addressLines = doc.splitTextToSize(invoiceData.customer.address, 80);
           doc.text(addressLines, 25, yPos + 22);
         }
 
@@ -1658,20 +1647,20 @@ const SalesInvoice = () => {
         const rightX = pageWidth - 50;
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
-        doc.text(`Date: ${format(new Date(), "dd/MM/yyyy")}`, rightX, yPos);
+        doc.text(`Date: ${format(new Date(), "dd/MM/yyyy")}`, rightX, 65);
 
         doc.setFontSize(12);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(26, 35, 126); // Blue color for invoice number
-        doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, yPos + 8);
+        doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, 73);
 
         doc.setFontSize(10);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(0, 0, 0); // Reset to black
-        doc.text(`Cust_type: ${invoiceData.sale?.paymentMode || invoiceData.sale?.payment_mode || invoiceData.sale?.customer_type || "account"}`, rightX, yPos + 16);
+        doc.text(`Cust_type: ${invoiceData.sale?.paymentMode || invoiceData.sale?.payment_mode || invoiceData.sale?.customer_type || "account"}`, rightX, 81);
 
         // Items Table
-        yPos = 110;
+        yPos = 95;
 
         // Table setup
         const tableStartX = 20;

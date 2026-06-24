@@ -1031,6 +1031,7 @@ export default function DotMatrixInvoicePrintPage() {
               {/* Totals - only show on last page */}
               {page.isLastPage && (
                 <>
+                  {/* Goods total - commented out
                   <div className="field-text" style={{
                     position: 'absolute',
                     top: fieldPositions.totals.goods.top,
@@ -1048,6 +1049,7 @@ export default function DotMatrixInvoicePrintPage() {
                     £{totalAmount.toFixed(2)}
                   </div>
 
+                   VAT total - commented out
                   <div className="field-text" style={{
                     position: 'absolute',
                     top: fieldPositions.totals.vat.top,
@@ -1064,6 +1066,7 @@ export default function DotMatrixInvoicePrintPage() {
                   }}>
                     £{vatAmount.toFixed(2)}
                   </div>
+                  */}
 
                   <div className="field-text" style={{
                     position: 'absolute',
