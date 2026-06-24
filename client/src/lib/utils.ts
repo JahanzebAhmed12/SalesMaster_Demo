@@ -49,6 +49,13 @@ export function formatQuantity(quantity: number | string | null | undefined): st
   return formatNumber(quantity, 3);
 }
 
+export function formatSmartQuantity(quantity: number | string | null | undefined): string {
+  if (quantity === null || quantity === undefined || quantity === '') return '';
+  const num = typeof quantity === 'string' ? parseFloat(quantity) : quantity;
+  if (isNaN(num)) return '';
+  return Number.isInteger(num) ? String(num) : num.toFixed(2);
+}
+
 /**
  * Format a price value (always shows 2 decimal places)
  * @param price - The price to format

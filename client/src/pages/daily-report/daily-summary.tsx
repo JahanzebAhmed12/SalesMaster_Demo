@@ -7,7 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Download, FileText, Printer, Mail } from "lucide-react";
 import { format } from "date-fns";
-import { cn, formatQuantity } from "@/lib/utils";
+import { cn, formatQuantity, formatSmartQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
@@ -487,8 +487,8 @@ export default function DailySummary() {
         head, body,
         startY: y,
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
-        headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+        headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.2 },
         bodyStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number] },
         alternateRowStyles: { fillColor: [255, 255, 255] as [number, number, number] },
         ...restOpts,
@@ -674,7 +674,7 @@ export default function DailySummary() {
       ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`],
       ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`],
     ], {
-      styles: { fontSize: 10, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
+      styles: { fontSize: 10, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.15 },
       columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } },
       didParseCell: (data: any) => {
         if (data.row.index === 7) {
@@ -718,23 +718,28 @@ export default function DailySummary() {
 
       const displayData = Array.isArray(productPurchaseData) ? productPurchaseData : [];
       const processedData: any[] = [];
+      let pdfGrandQty = 0, pdfGrandTotal = 0;
       displayData.forEach((row, index) => {
         if (row.isHeader) {
           processedData.push([row.date, row.supplier, row.invNo, '', '', '', '']);
         } else if (row.isTotal) {
-          processedData.push(['', '', '', row.product, formatQuantity(row.quantity), '', Number(row.total).toFixed(2)]);
+          processedData.push(['', '', '', row.product?.replace(/\.000/g, ''), formatSmartQuantity(row.quantity), '', Number(row.total).toFixed(2)]);
           if (index < displayData.length - 1) processedData.push(['', '', '', '', '', '', '']);
         } else {
-          processedData.push(['', '', row.invNo, row.product, formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)]);
+          processedData.push(['', '', row.invNo, row.product, formatSmartQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)]);
+          pdfGrandQty += Number(row.quantity || 0);
+          pdfGrandTotal += Number(row.total || 0);
         }
       });
+      const pdfAvgPrice = pdfGrandQty > 0 ? pdfGrandTotal / pdfGrandQty : 0;
+      processedData.push(['GRAND TOTAL', '', '', '', formatSmartQuantity(pdfGrandQty), `£${pdfAvgPrice.toFixed(2)}`, `£${pdfGrandTotal.toFixed(2)}`]);
       tbl(
         [['Date', 'Supplier', 'Inv.No', 'Product', 'Quantity', 'Unit Price', 'Total']],
         processedData,
         {
           theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
-          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.2 },
           columnStyles: {
             0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 20 },
             3: { cellWidth: 35 }, 4: { cellWidth: 20 }, 5: { cellWidth: 25 }, 6: { cellWidth: 25 },
@@ -792,8 +797,8 @@ export default function DailySummary() {
         ],
         {
           theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.05 },
-          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.2 },
           columnStyles: {
             0: { cellWidth: 12 }, 1: { cellWidth: 38 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 },
             4: { cellWidth: 14 }, 5: { cellWidth: 14 }, 6: { cellWidth: 14 }, 7: { cellWidth: 14 },
@@ -1571,8 +1576,12 @@ export default function DailySummary() {
                               No product purchase data found
                             </TableCell>
                           </TableRow>
-                        ) : (
-                          productPurchaseData.map((row, idx) => {
+                        ) : (() => {
+                          const dataRows = productPurchaseData.filter(r => !r.isHeader && !r.isTotal);
+                          const grandQty = dataRows.reduce((s, r) => s + Number(r.quantity || 0), 0);
+                          const grandTotal = dataRows.reduce((s, r) => s + Number(r.total || 0), 0);
+                          const avgPrice = grandQty > 0 ? grandTotal / grandQty : 0;
+                          return [...productPurchaseData.map((row, idx) => {
                             if (row.isHeader) {
                               return (
                                 <TableRow key={idx} className={cn("font-semibold border-t-2 border-gray-200", row.isCompany ? "bg-amber-50" : "bg-gray-50")}>
@@ -1594,8 +1603,8 @@ export default function DailySummary() {
                               return (
                                 <TableRow key={idx} className={cn("font-bold border-b-2 border-gray-300", row.isCompany ? "bg-amber-50" : "bg-white")}>
                                   <TableCell className="border py-1" colSpan={3}></TableCell>
-                                  <TableCell className="border text-right py-1">{row.product}</TableCell>
-                                  <TableCell className="border text-right py-1">{formatQuantity(row.quantity)}</TableCell>
+                                  <TableCell className="border text-right py-1">{row.product?.replace(/\.000/g, '')}</TableCell>
+                                  <TableCell className="border text-right py-1">{formatSmartQuantity(row.quantity)}</TableCell>
                                   <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border text-right py-1">£{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
@@ -1619,14 +1628,21 @@ export default function DailySummary() {
                                       {row.product}
                                     </span>
                                   </TableCell>
-                                  <TableCell className="border text-right py-1">{formatQuantity(row.quantity)}</TableCell>
+                                  <TableCell className="border text-right py-1">{formatSmartQuantity(row.quantity)}</TableCell>
                                   <TableCell className="border text-right py-1">£{Number(row.unitPrice).toFixed(2)}</TableCell>
                                   <TableCell className="border text-right py-1">£{Number(row.total).toFixed(2)}</TableCell>
                                 </TableRow>
                               );
                             }
-                          })
-                        )}
+                          }), ...(dataRows.length > 0 ? [(
+                            <TableRow key="grand-total" className="font-bold border-t-2 border-gray-400 bg-blue-50">
+                              <TableCell className="border py-1" colSpan={4}>GRAND TOTAL</TableCell>
+                              <TableCell className="border text-right py-1">{formatSmartQuantity(grandQty)}</TableCell>
+                              <TableCell className="border text-right py-1">£{avgPrice.toFixed(2)}</TableCell>
+                              <TableCell className="border text-right py-1">£{grandTotal.toFixed(2)}</TableCell>
+                            </TableRow>
+                          )] : [])];
+                        })()}
                       </TableBody>
                     </Table>
                   </div>
@@ -1634,7 +1650,7 @@ export default function DailySummary() {
               </div>
 
               {/* Stock Check */}
-              <div className={`${filteredStockData && filteredStockData.length === 0 ? "print:hidden" : ""} print-page-break`}>
+              <div className={`${filteredStockData && filteredStockData.length === 0 ? "print:hidden" : ""} print-page-break stock-check-print`}>
                 <div className="print-section-inner">
                   <h2 className="text-xl font-bold mb-3 print-section-title">Stock Check - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</h2>
                   <div className="overflow-x-auto border rounded-lg">
@@ -1650,7 +1666,7 @@ export default function DailySummary() {
                           <TableHead className="font-semibold border text-center w-16">Dmps</TableHead>
                           <TableHead className="font-semibold border text-center w-16">S.RTN</TableHead>
                           <TableHead className="font-semibold border text-center w-16">Stock</TableHead>
-                          <TableHead className="font-semibold border text-center w-20">Cl.Stock</TableHead>
+                          <TableHead className="font-semibold border text-center w-16">Cl.Stock</TableHead>
                           <TableHead className="font-semibold border text-center w-16">Result</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -1666,7 +1682,7 @@ export default function DailySummary() {
                             <TableCell className="border text-center w-16">{formatQuantity(item.dmps)}</TableCell>
                             <TableCell className="border text-center w-16">{formatQuantity(item.srtn)}</TableCell>
                             <TableCell className="border text-center w-16">{formatQuantity(item.stock)}</TableCell>
-                            <TableCell className="border text-center w-20">{formatQuantity(item.clStock)}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(item.clStock)}</TableCell>
                             <TableCell className="border text-center">
                               {item.result === "✓" ? (
                                 <span className="text-green-600">✓</span>
@@ -1696,7 +1712,7 @@ export default function DailySummary() {
                             <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.dmps, 0))}</TableCell>
                             <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.srtn, 0))}</TableCell>
                             <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.stock, 0))}</TableCell>
-                            <TableCell className="border text-center w-20">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.clStock, 0))}</TableCell>
+                            <TableCell className="border text-center w-16">{formatQuantity(filteredStockData.reduce((sum, item) => sum + item.clStock, 0))}</TableCell>
                             <TableCell className="border w-16"></TableCell>
                           </TableRow>
                         )}
