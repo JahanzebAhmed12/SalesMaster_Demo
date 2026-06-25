@@ -1254,31 +1254,32 @@ def update_sale(id):
         print(f"[DEBUG] Old status: {old_status}, New status: {new_status}")
         print(f"[DEBUG] Will process stock updates: {len(quantity_changes) > 0 and old_status == 'finalized' and new_status == 'finalized'}")
         
-        # Update sale fields
-        for key, value in sale_data.dict(exclude={'items'}).items():
+        # Save original time before any updates
+        original_time = sale.date.time() if sale.date else datetime.now().time()
+        
+        # Update sale fields (excluding date which we handle separately)
+        for key, value in sale_data.dict(exclude={'items', 'date'}).items():
             setattr(sale, key, value)
         
-        # Only update date if not provided in the request, otherwise preserve the original date
+        # Update date if provided, otherwise preserve original date+time
         if sale_data.date:
-            # Parse the provided date string to datetime object
             try:
                 if isinstance(sale_data.date, str):
-                    # Handle different date formats
                     if 'T' in sale_data.date:
-                        # ISO format with time
                         parsed_date = datetime.fromisoformat(sale_data.date.replace('Z', '+00:00'))
                     else:
-                        # Date only format
                         parsed_date = datetime.strptime(sale_data.date, '%Y-%m-%d')
-                    sale.date = parsed_date
+                    sale.date = parsed_date.replace(
+                        hour=original_time.hour,
+                        minute=original_time.minute,
+                        second=original_time.second
+                    )
                 else:
                     sale.date = sale_data.date
             except (ValueError, TypeError):
-                # If date parsing fails, use current business date as fallback
-                sale.date = get_business_date()
+                sale.date = datetime.combine(get_business_date(), original_time)
         else:
-            # If no date provided, use current business date
-            sale.date = get_business_date()
+            sale.date = datetime.combine(get_business_date(), original_time)
         
         # Update sale items
         sale.items = []  # Clear existing items
@@ -1674,6 +1675,18 @@ def patch_sale(id):
         for field in allowed_fields:
             if field in data:
                 setattr(sale, field, data[field])
+        
+        # Handle date separately to preserve existing time
+        if 'date' in data:
+            try:
+                parsed_date = datetime.strptime(data['date'], '%Y-%m-%d')
+                sale.date = parsed_date.replace(
+                    hour=sale.date.hour,
+                    minute=sale.date.minute,
+                    second=sale.date.second
+                )
+            except (ValueError, TypeError):
+                return jsonify({'error': 'Invalid date format. Use YYYY-MM-DD.'}), 400
         
         # Special handling for payment status logic
         if 'customer_type' in data:
