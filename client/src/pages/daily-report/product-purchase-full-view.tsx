@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import PageLayout from "@/components/common/page-layout";
@@ -12,6 +12,7 @@ import { CalendarIcon, FileText, Printer, Search, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -32,8 +33,26 @@ interface PurchaseFullViewRow {
 }
 
 export default function ProductPurchaseFullView() {
-  const [fromDate, setFromDate] = useState<Date>(new Date());
-  const [toDate, setToDate] = useState<Date>(new Date());
+  const { currentDate: businessDate } = useBusinessDate();
+  const [fromDate, setFromDate] = useState<Date>(() => {
+    try { return businessDate ? new Date(businessDate) : new Date(); } catch { return new Date(); }
+  });
+  const [toDate, setToDate] = useState<Date>(() => {
+    try { return businessDate ? new Date(businessDate) : new Date(); } catch { return new Date(); }
+  });
+  // Sync dates when business date loads
+  useEffect(() => {
+    if (businessDate) {
+      try {
+        const d = new Date(businessDate);
+        if (!isNaN(d.getTime())) {
+          setFromDate(d);
+          setToDate(d);
+        }
+      } catch {}
+    }
+  }, [businessDate]);
+
   const [search, setSearch] = useState('');
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);

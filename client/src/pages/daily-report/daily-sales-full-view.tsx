@@ -11,6 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Input } from '@/components/ui/input';
 import { cn, formatQuantity } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
+import { useBusinessDate } from '@/hooks/use-business-date';
 import { useAuth } from '@/lib/auth';
 import PageLayout from '@/components/common/page-layout';
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
@@ -33,10 +34,28 @@ interface FullViewRow {
 export default function DailySalesFullView() {
   const { user } = useAuth();
   const { canEditInvoice: canEditInvoiceGlobal } = useInvoicePermissions();
-  const today = new Date();
-  const [fromDate, setFromDate] = useState<Date>(today);
-  const [toDate, setToDate] = useState<Date>(today);
+  const { currentDate: businessDate } = useBusinessDate();
+  const [fromDate, setFromDate] = useState<Date>(() => {
+    try { return businessDate ? new Date(businessDate) : new Date(); } catch { return new Date(); }
+  });
+  const [toDate, setToDate] = useState<Date>(() => {
+    try { return businessDate ? new Date(businessDate) : new Date(); } catch { return new Date(); }
+  });
   const [search, setSearch] = useState('');
+
+  // Sync dates when business date loads
+  useEffect(() => {
+    if (businessDate) {
+      try {
+        const d = new Date(businessDate);
+        if (!isNaN(d.getTime())) {
+          setFromDate(d);
+          setToDate(d);
+        }
+      } catch {}
+    }
+  }, [businessDate]);
+
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
