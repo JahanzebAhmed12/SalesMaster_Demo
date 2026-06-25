@@ -1615,13 +1615,19 @@ export default function DailySummary() {
                                   <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border py-1">
-                                    <Button
-                                      variant="link"
-                                      className="p-0 text-blue-600 underline"
-                                      onClick={() => window.open(`/data-entry/purchase-invoice?invoiceId=${row.invNo}&edit=true`, '_self')}
-                                    >
-                                      {row.invNo}
-                                    </Button>
+                                    {row.invNo ? (
+                                      canEditCurrentDate ? (
+                                        <Button
+                                          variant="link"
+                                          className="p-0 text-blue-600 underline"
+                                          onClick={() => window.open(`/data-entry/purchase-invoice?invoiceId=${row.invNo}&edit=true`, '_self')}
+                                        >
+                                          {row.invNo}
+                                        </Button>
+                                      ) : (
+                                        <span className="text-gray-600">{row.invNo}</span>
+                                      )
+                                    ) : '-'}
                                   </TableCell>
                                   <TableCell className="border py-1">
                                     <span className="text-blue-600 cursor-pointer hover:text-blue-800 transition-colors">
