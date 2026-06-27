@@ -199,7 +199,7 @@ export default function InvoicePrintPage() {
           ))}
           <tr style={{ fontWeight: "bold" }}>
             <td style={{ border: "1px solid #ccc", padding: "1px 4px" }}>SUB TOTAL</td>
-            <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + (b.quantity || 0), 0))}</td>
+            <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + Number(b.quantity || 0), 0))}</td>
             <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>X</td>
             <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>£{data.sale?.subtotal?.toFixed(2) ?? "-"}</td>
           </tr>

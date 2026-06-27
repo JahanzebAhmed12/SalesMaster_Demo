@@ -82,6 +82,7 @@ export default function CustomerPayment() {
   const [onAccountAmount, setOnAccountAmount] = useState<number | "">(0);
   const [emailAddress, setEmailAddress] = useState("");
   const [explicitInvoicePayments, setExplicitInvoicePayments] = useState<Map<number, number>>(new Map()); // Track explicit invoice payment amounts in edit mode
+  const [pendingEditBatchId, setPendingEditBatchId] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -176,14 +177,14 @@ export default function CustomerPayment() {
       if (existingBatch) {
         // Only add positive amounts to the total (credits are applied automatically)
         if (payment.amount > 0) {
-          existingBatch.totalAmount += payment.amount;
+          existingBatch.totalAmount = Number((existingBatch.totalAmount + payment.amount).toFixed(2));
 
           // Aggregate positive amounts by payment mode
           const mode = payment.paymentMode;
-          if (mode === 'cash') existingBatch.cashAmount += payment.amount;
-          else if (mode === 'bank') existingBatch.cardAmount += payment.amount;
-          else if (mode === 'bank_transfer') existingBatch.bankTransferAmount += payment.amount;
-          else if (mode === 'cheque') existingBatch.chequeAmount += payment.amount;
+          if (mode === 'cash') existingBatch.cashAmount = Number((existingBatch.cashAmount + payment.amount).toFixed(2));
+          else if (mode === 'bank') existingBatch.cardAmount = Number((existingBatch.cardAmount + payment.amount).toFixed(2));
+          else if (mode === 'bank_transfer') existingBatch.bankTransferAmount = Number((existingBatch.bankTransferAmount + payment.amount).toFixed(2));
+          else if (mode === 'cheque') existingBatch.chequeAmount = Number((existingBatch.chequeAmount + payment.amount).toFixed(2));
         }
 
         // Always add invoice numbers
@@ -207,6 +208,38 @@ export default function CustomerPayment() {
       return acc;
     }, []) || [];
   }, [paymentHistory]);
+
+  // Process URL params on mount for auto-select customer / auto-edit payment
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const customerIdParam = searchParams.get('customerId');
+    const editBatchIdParam = searchParams.get('editBatchId');
+
+    if (customerIdParam && !selectedCustomer) {
+      apiRequest("GET", `/api/customers/${customerIdParam}`)
+        .then((customer: Customer) => {
+          if (customer) handleCustomerSelect(customer);
+        })
+        .catch(() => {});
+    }
+
+    if (editBatchIdParam) {
+      setPendingEditBatchId(parseInt(editBatchIdParam));
+    }
+  }, []);
+
+  // Auto-edit when groupedPaymentHistory loads and a pending edit exists
+  useEffect(() => {
+    if (pendingEditBatchId && groupedPaymentHistory.length > 0) {
+      const targetBatch = groupedPaymentHistory.find(
+        (batch: any) => batch.batchId === pendingEditBatchId
+      );
+      if (targetBatch) {
+        handleEditPayment(targetBatch);
+        setPendingEditBatchId(null);
+      }
+    }
+  }, [groupedPaymentHistory, pendingEditBatchId]);
 
   // Calculate balances for each invoice
   const invoicesWithBalance = useMemo(() =>
@@ -902,7 +935,7 @@ export default function CustomerPayment() {
     console.log('=== EDIT PAYMENT START ===');
     console.log('Starting handleEditPayment with batchPayment:', batchPayment);
     setEditingPayment(batchPayment);
-    setReceivedAmount(batchPayment.totalAmount);
+    setReceivedAmount(Number(Number(batchPayment.totalAmount).toFixed(2)));
     setPaymentDate(new Date(batchPayment.paymentDate));
     setRemarks(batchPayment.remarks || '');
 
@@ -916,10 +949,10 @@ export default function CustomerPayment() {
     try {
       // Set the split payment UI state from the batch payment
       const splitPayment = {
-        cash: batchPayment.cashAmount ? batchPayment.cashAmount.toString() : "",
-        card: batchPayment.cardAmount ? batchPayment.cardAmount.toString() : "",
-        bankTransfer: batchPayment.bankTransferAmount ? batchPayment.bankTransferAmount.toString() : "",
-        cheque: batchPayment.chequeAmount ? batchPayment.chequeAmount.toString() : ""
+        cash: batchPayment.cashAmount ? Number(batchPayment.cashAmount).toFixed(2) : "",
+        card: batchPayment.cardAmount ? Number(batchPayment.cardAmount).toFixed(2) : "",
+        bankTransfer: batchPayment.bankTransferAmount ? Number(batchPayment.bankTransferAmount).toFixed(2) : "",
+        cheque: batchPayment.chequeAmount ? Number(batchPayment.chequeAmount).toFixed(2) : ""
       };
       console.log('Setting split payment:', splitPayment);
       setSplitPayment(splitPayment);
