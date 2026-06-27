@@ -7520,6 +7520,14 @@ def save_closing_stock_entries():
                     )
                     db.session.add(movement)
                     print(f"[DEBUG] Zeroed current_stock for regular product {product.id} ({product.description}): {old_stock} → 0")
+                entry = ClosingStock(
+                    product_id=product.id,
+                    product_type='regular',
+                    date=date,
+                    quantity=0,
+                    manual_entry=False
+                )
+                db.session.add(entry)
 
         for product in all_non:
             if (product.id, 'non') not in submitted_product_keys:
@@ -7540,6 +7548,14 @@ def save_closing_stock_entries():
                     )
                     db.session.add(movement)
                     print(f"[DEBUG] Zeroed current_stock for non-product {product.id} ({product.description}): {old_stock} → 0")
+                entry = ClosingStock(
+                    product_id=product.id,
+                    product_type='non',
+                    date=date,
+                    quantity=0,
+                    manual_entry=False
+                )
+                db.session.add(entry)
         
         db.session.commit()
         print(f"[DEBUG] Successfully saved {len(items)} closing stock entries")
@@ -7828,12 +7844,11 @@ def stock_check_report():
                 # Calculate expected stock
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
                 
-                # Get actual closing stock from manual entries (prioritize manual entries)
+                # Get actual closing stock
                 closing_stock_entry = ClosingStock.query.filter(
                     ClosingStock.product_id == product.id,
                     ClosingStock.product_type == 'regular',
                     ClosingStock.date == to_dt.date(),
-                    ClosingStock.manual_entry == True  # Only consider manual entries
                 ).first()
                 
                 # If manual entry exists, use it; otherwise use 0
@@ -7903,12 +7918,11 @@ def stock_check_report():
                 # Calculate expected stock
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
                 
-                # Get actual closing stock from manual entries (prioritize manual entries)
+                # Get actual closing stock
                 closing_stock_entry = ClosingStock.query.filter(
                     ClosingStock.product_id == product.id,
                     ClosingStock.product_type == 'non',
                     ClosingStock.date == to_dt.date(),
-                    ClosingStock.manual_entry == True  # Only consider manual entries
                 ).first()
                 
                 # If manual entry exists, use it; otherwise use 0
@@ -7966,10 +7980,10 @@ def stock_check_report():
 
 def get_opening_stock(product_id, product_type, from_date):
     """Get stock level at the beginning of from_date.
-    Rule A: Look backwards from from_date - 1 to find the most recent manual
-            closing stock entry. This handles skipped days (e.g. Sundays) —
-            Saturday's closing stock becomes Monday's opening stock if Sunday
-            has no entry.
+    Rule A: Look backwards from from_date - 1 to find the most recent
+            closing stock entry (manual or auto-zeroed). This handles
+            skipped days (e.g. Sundays) — Saturday's closing stock becomes
+            Monday's opening stock if Sunday has no entry.
     Rule B: If no closing stock entry found within the last 7 days, return 0.
     """
     try:
@@ -7980,11 +7994,8 @@ def get_opening_stock(product_id, product_type, from_date):
                 product_id=product_id,
                 product_type=product_type,
                 date=check_date,
-                manual_entry=True
             ).first()
             if closing_entry:
-                if days_back > 1:
-                    pass
                 return safe_float(closing_entry.quantity)
         # Rule B: no closing stock found in last 7 days → start from zero
         return 0

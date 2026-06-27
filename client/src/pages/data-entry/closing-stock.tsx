@@ -70,7 +70,7 @@ export default function ClosingStock() {
 
   // Populate editItems when data is ready (only once per date) — includes ALL products
   useEffect(() => {
-    if (!selectedDate || currentStock.length === 0) return;
+    if (!selectedDate || currentStock.length === 0 || isLoadingClosing) return;
     if (initializedRef.current) return;
 
     const savedMap = new Map<number, { quantity: number }>();
@@ -78,12 +78,13 @@ export default function ClosingStock() {
       savedMap.set(e.productId, { quantity: e.quantity });
     });
 
+    const isCurrentDate = selectedDate === format(new Date(), "yyyy-MM-dd");
     const items = currentStock.map(p => {
       const saved = savedMap.get(p.id);
       return {
         productId: p.id,
         productType: p.productType,
-        quantity: saved ? saved.quantity : p.currentStock,
+        quantity: saved ? Number(saved.quantity) : (isCurrentDate ? Number(p.currentStock) : ""),
         description: p.description,
         productCode: p.productCode,
         currentStock: p.currentStock,
@@ -92,7 +93,7 @@ export default function ClosingStock() {
 
     setEditItems(items);
     initializedRef.current = true;
-  }, [selectedDate, currentStock, closingStockEntries]);
+  }, [selectedDate, currentStock, closingStockEntries, isLoadingClosing]);
 
   // Derived display list based on filter
   const displayItems = showAllProducts
