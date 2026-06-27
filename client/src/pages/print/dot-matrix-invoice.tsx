@@ -917,9 +917,8 @@ export default function DotMatrixInvoicePrintPage() {
                       lineHeight: '1',
                       margin: '0',
                       padding: '0',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
+                      wordWrap: 'break-word',
+                      whiteSpace: 'normal'
                     }}>
                       {item.product_name || item.productName || item.description}
                       {(item.notes || item.remarks) && (
@@ -982,9 +981,8 @@ export default function DotMatrixInvoicePrintPage() {
                     lineHeight: '1',
                     margin: '0',
                     padding: '0',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
+                    wordWrap: 'break-word',
+                    whiteSpace: 'normal'
                   }}>
                     Porterage
                   </div>
@@ -1020,9 +1018,8 @@ export default function DotMatrixInvoicePrintPage() {
                   lineHeight: '1',
                   margin: '0',
                   padding: '0',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
+                  wordWrap: 'break-word',
+                  whiteSpace: 'normal'
                 }}>
                   ({formatQuantity(totalQuantity)} packages)
                 </div>

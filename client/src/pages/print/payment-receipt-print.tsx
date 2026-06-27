@@ -88,10 +88,30 @@ const PaymentReceiptPrint = () => {
   if (error) return <div className="p-4 print:hidden text-red-500">Error: {error}</div>;
   if (!data) return <div className="p-4 print:hidden">No payment found.</div>;
 
-  const paymentTypeDisplay = paymentType === 'card' ? 'Card' : 'Cash';
   const todayStr = new Date().toLocaleDateString();
   const { payments, totalAmount, customer } = data;
   const paymentDate = payments?.[0]?.paymentDate;
+
+  // Aggregate payments by method (same logic as dot-matrix-payment.tsx)
+  const paymentMethodTotals = (payments || []).reduce((acc: Record<string, number>, p: any) => {
+    const method = p.paymentMode?.toLowerCase() === 'bank' ? 'card' : (p.paymentMode || 'other');
+    acc[method] = (acc[method] || 0) + p.amount;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const methodLabels: Record<string, string> = {
+    cash: 'Cash',
+    card: 'Card',
+    bank_transfer: 'Bank Transfer',
+    cheque: 'Cheque'
+  };
+
+  const methodRows = (Object.entries(paymentMethodTotals) as [string, number][])
+    .filter(([, amount]) => amount > 0)
+    .map(([method, amount]) => ({
+      label: methodLabels[method] || method,
+      amount
+    }));
 
   return (
     <div className="invoice-container" style={{ maxWidth: 700, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
@@ -135,52 +155,24 @@ const PaymentReceiptPrint = () => {
         </div>
       </div>
       
-      {/* Payment Details Table */}
+      {/* Payment Details Table - aggregated by method */}
       <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 16, fontSize: 15 }}>
         <thead>
           <tr style={{ background: "#f5f5f5" }}>
-            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left" }}>Payment</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Qty</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>U.Price</th>
-            <th style={{ border: "1px solid #888", padding: 4 }}>Total</th>
+            <th style={{ border: "1px solid #888", padding: 4, textAlign: "left" }}>Payment Method</th>
+            <th style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>Amount</th>
           </tr>
         </thead>
         <tbody>
-          {payments?.map((payment: any, idx: number) => (
+          {methodRows.map((row, idx) => (
             <tr key={idx}>
-              <td style={{ border: "1px solid #888", padding: 4 }}>
-                <div>
-                  {(() => {
-                    const basePaymentType = payment.paymentMode === 'cash' ? 'Cash' : 
-                      payment.paymentMode === 'bank' ? 'Card' :
-                      payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
-                      payment.paymentMode === 'cheque' ? 'Cheque' : 'Payment';
-                    
-                    // Add payment type prefix for on-account payments
-                    if (payment.paymentType === 'on-account') {
-                      return `On-Account ${basePaymentType} Payment`;
-                    }
-                    return `${basePaymentType} Payment`;
-                  })()}
-                </div>
-                {payment.invoiceNumber && payment.invoiceNumber !== 'On Account' && (
-                  <div style={{ fontSize: "12px", color: "#666", fontStyle: "italic", marginTop: "2px" }}>
-                    {payment.paymentType === 'on-account' ? 
-                      `On-Account Payment for Inv: ${payment.invoiceNumber}` : 
-                      `Inv: ${payment.invoiceNumber}`}
-                  </div>
-                )}
-              </td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>1</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{payment.amount.toFixed(2)}</td>
-              <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{payment.amount.toFixed(2)}</td>
+              <td style={{ border: "1px solid #888", padding: 4 }}>{row.label}</td>
+              <td style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>£{row.amount.toFixed(2)}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
-            <td style={{ border: "1px solid #888", padding: 4 }}>SUB TOTAL</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>{payments?.length || 0}</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>X</td>
-            <td style={{ border: "1px solid #888", padding: 4, textAlign: "center" }}>£{totalAmount?.toFixed(2) || "0.00"}</td>
+            <td style={{ border: "1px solid #888", padding: 4 }}>TOTAL</td>
+            <td style={{ border: "1px solid #888", padding: 4, textAlign: "right" }}>£{totalAmount?.toFixed(2) || "0.00"}</td>
           </tr>
         </tbody>
       </table>
@@ -231,12 +223,6 @@ const PaymentReceiptPrint = () => {
       <div style={{ marginTop: 16, fontSize: 13, color: "#444" }}>
         <div>Payment Time: {paymentDate ? new Date(paymentDate).toLocaleString() : "-"}</div>
         <div>Current Time: {new Date().toLocaleString()}</div>
-        <div>Payment ID: {paymentId}</div>
-        {payments?.[0]?.remarks && (
-          <div style={{ marginTop: 4, fontWeight: "bold" }}>
-            Remarks: {payments[0].remarks}
-          </div>
-        )}
       </div>
       
       <button

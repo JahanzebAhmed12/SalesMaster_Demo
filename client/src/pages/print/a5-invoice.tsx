@@ -125,7 +125,7 @@ export default function A5InvoicePrintPage() {
         <tbody>
           {data.items.map((item: any, idx: number) => (
             <tr key={item.id || idx}>
-              <td style={{ border: "1px solid #ccc", padding: "1px 4px" }}>
+              <td style={{ border: "1px solid #ccc", padding: "1px 4px", wordWrap: "break-word", wordBreak: "break-word" }}>
                 {item.productName || item.description || "-"}
                 {item.notes && (
                   <span style={{ fontSize: "9px", fontStyle: "italic" }}> - {item.notes}</span>
