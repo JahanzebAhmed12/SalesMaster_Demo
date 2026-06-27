@@ -288,7 +288,16 @@ export default function CustomerPayment() {
       refetchPaymentHistory();
       setEditingPayment(null);
       setIsEditing(false);
+      setReceivedAmount(0);
+      setRemarks('');
+      setSelectedInvoiceIds(new Set());
+      setInvoicePaymentModes(new Map());
+      setInvoicePaymentConfigs(new Map());
+      setOnAccountAmount(0);
       setExplicitInvoicePayments(new Map());
+      resetSplitPayment();
+      handleCustomerSelect(null);
+      setCustomerSearchKey(k => k + 1);
     },
     onError: (error) => {
       toast({

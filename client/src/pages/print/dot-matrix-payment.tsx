@@ -48,7 +48,6 @@ const FIELD_POSITIONS = {
   itemsRowHeight: '4mm',
   maxItemsPerPage: 11,
   columns: {
-    quantity: { left: '4mm', width: '7mm' } as ColumnConfig,
     description: { left: '24mm', width: '72mm' } as ColumnConfig,
     price: { left: '88mm', width: '20mm', align: 'right' } as ColumnConfig,
     value: { left: '105mm', width: '25mm', align: 'right' } as ColumnConfig
@@ -224,51 +223,40 @@ export default function DotMatrixPaymentPrintPage() {
   const paymentTime = firstPayment?.paymentDate ? new Date(firstPayment.paymentDate).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
   const createdBy = firstPayment?.createdBy || '';
 
-  // Process payments to group by payment method and sort by invoice number
-  const processedPayments = [...(data.payments || [])].sort((a, b) => {
-    // First sort by payment method (cash, card, bank_transfer, cheque, others)
-    const paymentMethodOrder = {
-      'cash': 0,
-      'card': 1,
-      'bank': 1, // 'bank' is an alias for 'card'
-      'bank_transfer': 2,
-      'transfer': 2, // alias for bank_transfer
-      'cheque': 3
-    };
-    
-    const aMethod = a.paymentMode?.toLowerCase();
-    const bMethod = b.paymentMode?.toLowerCase();
-    const aOrder = aMethod in paymentMethodOrder ? paymentMethodOrder[aMethod as keyof typeof paymentMethodOrder] : 4;
-    const bOrder = bMethod in paymentMethodOrder ? paymentMethodOrder[bMethod as keyof typeof paymentMethodOrder] : 4;
-    
-    if (aOrder !== bOrder) {
-      return aOrder - bOrder;
-    }
-    
-    // Then sort by invoice number (on-account payments last)
-    if (a.invoiceNumber === 'On Account' && b.invoiceNumber !== 'On Account') return 1;
-    if (a.invoiceNumber !== 'On Account' && b.invoiceNumber === 'On Account') return -1;
-    if (a.invoiceNumber === 'On Account' && b.invoiceNumber === 'On Account') return 0;
-    
-    // Extract numeric part of invoice number for proper numeric sorting
-    const aNum = parseInt(a.invoiceNumber) || 0;
-    const bNum = parseInt(b.invoiceNumber) || 0;
-    return aNum - bNum;
-  });
+  // Process payments to group by payment method
+  const paymentMethodTotals = (data.payments || []).reduce((acc, p) => {
+    const method = p.paymentMode?.toLowerCase() === 'bank' ? 'card' : (p.paymentMode || 'other');
+    acc[method] = (acc[method] || 0) + p.amount;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const methodLabels: Record<string, string> = {
+    cash: 'Cash',
+    card: 'Card',
+    bank_transfer: 'Bank Transfer',
+    cheque: 'Cheque'
+  };
+
+  const methodRows = Object.entries(paymentMethodTotals)
+    .filter(([, amount]) => amount > 0)
+    .map(([method, amount]) => ({
+      label: methodLabels[method] || method,
+      amount
+    }));
 
   const { totalAmount, customer } = data;
 
-  // Calculate pagination with processed payments
+  // Calculate pagination with method rows
   const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
-  const totalPages = Math.ceil(processedPayments.length / itemsPerPage);
+  const totalPages = Math.ceil(methodRows.length / itemsPerPage);
   const pages = [];
 
   for (let i = 0; i < totalPages; i++) {
     const startIndex = i * itemsPerPage;
-    const endIndex = Math.min(startIndex + itemsPerPage, processedPayments.length);
+    const endIndex = Math.min(startIndex + itemsPerPage, methodRows.length);
     pages.push({
       pageNumber: i + 1,
-      payments: processedPayments.slice(startIndex, endIndex),
+      payments: methodRows.slice(startIndex, endIndex),
       isLastPage: i === totalPages - 1
     });
   }
@@ -443,7 +431,7 @@ export default function DotMatrixPaymentPrintPage() {
             fontSize: '10pt',
             fontWeight: 'bold'
           }}>
-            {customer?.customer_name || customer?.customerName || processedPayments[0]?.customerName || ''}
+            {customer?.customer_name || customer?.customerName || data.payments?.[0]?.customerName || ''}
           </div>
 
           {/* Customer Address */}
@@ -521,22 +509,8 @@ export default function DotMatrixPaymentPrintPage() {
           </div>
 
           {/* Payment Rows for this page */}
-          {page.payments.map((payment, idx) => (
+          {page.payments.map((row, idx) => (
             <React.Fragment key={idx}>
-              {/* Quantity (always 1 for payments) */}
-              <div style={{
-                position: 'absolute',
-                top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
-                left: FIELD_POSITIONS.columns.quantity.left,
-                width: FIELD_POSITIONS.columns.quantity.width,
-                fontFamily: '"Courier New", "Courier", monospace',
-                fontSize: '11pt',
-                fontWeight: 'bold',
-                lineHeight: '1'
-              }}>
-                1
-              </div>
-
               {/* Payment Description */}
               <div style={{
                 position: 'absolute',
@@ -546,38 +520,24 @@ export default function DotMatrixPaymentPrintPage() {
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '11pt',
                 fontWeight: 'bold',
-                lineHeight: '1',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
+                lineHeight: '1'
               }}>
-                {(() => {
-                  const basePaymentType = payment.paymentMode === 'cash' ? 'Cash' :
-                    payment.paymentMode === 'bank' ? 'Card' :
-                      payment.paymentMode === 'bank_transfer' ? 'Bank Transfer' :
-                        payment.paymentMode === 'cheque' ? 'Cheque' : 'Payment';
-                  
-                  // Show invoice number on the same line
-                  if (payment.invoiceNumber && payment.invoiceNumber !== 'On Account') {
-                    return `${basePaymentType} - Inv: ${payment.invoiceNumber}`;
-                  }
-                  return `${basePaymentType} Payment`;
-                })()}
+                {row.label}
               </div>
 
-              {/* Unit Price (same as amount for payments) */}
+              {/* Amount */}
               <div style={{
                 position: 'absolute',
                 top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
                 left: FIELD_POSITIONS.columns.price.left,
                 width: FIELD_POSITIONS.columns.price.width,
-                textAlign: FIELD_POSITIONS.columns.price.align,
+                textAlign: FIELD_POSITIONS.columns.price.align as TextAlign,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '11pt',
                 fontWeight: 'bold',
                 lineHeight: '1'
               }}>
-                {payment.amount.toFixed(2)}
+                {row.amount.toFixed(2)}
               </div>
 
               {/* Total Value */}
@@ -586,19 +546,19 @@ export default function DotMatrixPaymentPrintPage() {
                 top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + idx * parseInt(FIELD_POSITIONS.itemsRowHeight)}mm`,
                 left: FIELD_POSITIONS.columns.value.left,
                 width: FIELD_POSITIONS.columns.value.width,
-                textAlign: FIELD_POSITIONS.columns.value.align,
+                textAlign: FIELD_POSITIONS.columns.value.align as TextAlign,
                 fontFamily: '"Courier New", "Courier", monospace',
                 fontSize: '11pt',
                 fontWeight: 'bold',
                 lineHeight: '1'
               }}>
-                £{payment.amount.toFixed(2)}
+                £{row.amount.toFixed(2)}
               </div>
             </React.Fragment>
           ))}
 
           {/* Remarks - positioned after last payment item on last page */}
-          {page.isLastPage && processedPayments?.[0]?.remarks && (
+          {page.isLastPage && data.payments?.[0]?.remarks && (
             <div style={{
               position: 'absolute',
               top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + page.payments.length * parseInt(FIELD_POSITIONS.itemsRowHeight) + 2}mm`,
@@ -611,7 +571,7 @@ export default function DotMatrixPaymentPrintPage() {
               whiteSpace: 'pre-wrap',
               wordWrap: 'break-word'
             }}>
-              Remarks: {processedPayments[0].remarks}
+              Remarks: {data.payments[0].remarks}
             </div>
           )}
 
