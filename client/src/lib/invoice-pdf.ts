@@ -49,37 +49,50 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     doc.text(invoiceData.company.email, 20, 46);
   }
 
+  const logoW = 36;
+  const logoH = 22;
+  const logoX = pageWidth - 60;
+  const logoY = 16;
   try {
-    const logoX = pageWidth - 60;
-    const logoY = 15;
-    doc.addImage(logo, 'PNG', logoX, logoY, 50, 30);
+    doc.addImage(logo, 'PNG', logoX, logoY, logoW, logoH);
   } catch {
-    const logoX = pageWidth - 80;
-    const logoY = 15;
     doc.setFillColor(240, 240, 240);
-    doc.rect(logoX, logoY, 60, 20, 'F');
+    doc.rect(logoX, logoY, logoW, logoH, 'F');
     doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
-    doc.text("LOGO", logoX + 30, logoY + 12, { align: 'center' });
+    doc.text("LOGO", logoX + logoW / 2, logoY + 12, { align: 'center' });
     doc.setTextColor(0, 0, 0);
   }
 
+  doc.setFontSize(7);
+  const textCenter = logoX + logoW / 2;
+  let textY = 42;
+
+  doc.setFont("helvetica", "normal");
+  doc.text("Stand 100 New Spitalfields Market", textCenter, textY, { align: 'center' });
+  textY += 3.5;
+  doc.text("Leyton London E10 5SH", textCenter, textY, { align: 'center' });
+  textY += 3.5;
+  doc.setFont("helvetica", "bold");
+  doc.text("Tel 0208 558 5065 Fax 0208 539 4749", textCenter, textY, { align: 'center' });
+  textY += 3.5;
+
+  doc.setFont("helvetica", "normal");
+  doc.text("Stand 73 New Spitalfields Market", textCenter, textY, { align: 'center' });
+  textY += 3.5;
+  doc.text("Leyton London E10 5SH", textCenter, textY, { align: 'center' });
+  textY += 3.5;
+  doc.setFont("helvetica", "bold");
+  doc.text("Tel 0208 558 0909 Fax 0208 558 0707", textCenter, textY, { align: 'center' });
+
   doc.setLineWidth(0.5);
   doc.setDrawColor(204, 204, 204);
-  doc.line(20, 54, pageWidth - 20, 54);
+  doc.line(20, 65, pageWidth - 20, 65);
 
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "normal");
-  doc.text("INVOICE", pageWidth - 20, 65, { align: 'right' });
-
-  let yPos = 76;
-
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.text("Bill to :", 20, yPos);
+  let yPos = 67;
 
   doc.setLineWidth(0.5);
-  doc.rect(20, yPos + 5, 60, 20);
+  doc.rect(20, yPos + 5, 90, 26);
 
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
@@ -88,7 +101,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   if (invoiceData.customer?.address) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    const addressLines = doc.splitTextToSize(invoiceData.customer.address, 70);
+    const addressLines = doc.splitTextToSize(invoiceData.customer.address, 80);
     doc.text(addressLines, 25, yPos + 22);
   }
 
@@ -101,19 +114,19 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   const rightX = pageWidth - 50;
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(`Date: ${new Date().toLocaleDateString("en-GB")}`, rightX, yPos);
+  doc.text(`Date: ${new Date().toLocaleDateString("en-GB")}`, rightX, yPos + 7);
 
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(26, 35, 126);
-  doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, yPos + 8);
+  doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, yPos + 15);
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
-  doc.text(`Cust_type: ${invoiceData.sale?.paymentMode || invoiceData.sale?.payment_mode || invoiceData.sale?.customer_type || "account"}`, rightX, yPos + 16);
+  doc.text(`Cust_type: ${invoiceData.sale?.paymentMode || invoiceData.sale?.payment_mode || invoiceData.sale?.customer_type || "account"}`, rightX, yPos + 23);
 
-  yPos = 110;
+  yPos = 106;
   const tableStartX = 20;
   const tableWidth = pageWidth - 40;
   const colWidths = [90, 20, 35, 35];
@@ -147,26 +160,33 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
       yPos = 20;
     }
 
-    doc.rect(tableStartX, yPos, tableWidth, rowHeight);
-
     doc.setFontSize(10);
     const productLabel = item.notes
       ? `${item.productName || item.description || "-"} - ${item.notes}`
       : (item.productName || item.description || "-");
-    doc.text(productLabel, tableStartX + 2, yPos + 6);
+    const wrappedLines = doc.splitTextToSize(productLabel, colWidths[0] - 4);
+    const lineH = 4.5;
+    const actualRowHeight = Math.max(rowHeight, wrappedLines.length * lineH + 2);
 
+    doc.rect(tableStartX, yPos, tableWidth, actualRowHeight);
+
+    wrappedLines.forEach((line: string, i: number) => {
+      doc.text(line, tableStartX + 2, yPos + 5 + i * lineH);
+    });
+
+    const textCenterY = yPos + actualRowHeight / 2 + 1.5;
     doc.setFontSize(11);
-    doc.text(formatQuantity(item.quantity || 0), tableStartX + colWidths[0] + colWidths[1] / 2, yPos + 6, { align: 'center' });
-    doc.text(`${(item.unitPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, yPos + 6, { align: 'center' });
-    doc.text(`£${(item.totalPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, yPos + 6, { align: 'center' });
+    doc.text(formatQuantity(item.quantity || 0), tableStartX + colWidths[0] + colWidths[1] / 2, textCenterY, { align: 'center' });
+    doc.text(`${(item.unitPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, textCenterY, { align: 'center' });
+    doc.text(`£${(item.totalPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, textCenterY, { align: 'center' });
 
     let rowX = tableStartX;
     colWidths.forEach((width, colIndex) => {
-      if (colIndex > 0) doc.line(rowX, yPos, rowX, yPos + rowHeight);
+      if (colIndex > 0) doc.line(rowX, yPos, rowX, yPos + actualRowHeight);
       rowX += width;
     });
 
-    yPos += rowHeight;
+    yPos += actualRowHeight;
   });
 
   doc.setFillColor(245, 245, 245);
@@ -175,7 +195,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
 
   doc.setFont("helvetica", "bold");
   doc.text("SUB TOTAL", tableStartX + 2, yPos + 6);
-  doc.text(formatQuantity(invoiceData.items.reduce((a: number, b: any) => a + (b.quantity || 0), 0)), tableStartX + colWidths[0] + colWidths[1] / 2, yPos + 6, { align: 'center' });
+  doc.text(formatQuantity(invoiceData.items.reduce((a: number, b: any) => a + (Number(b.quantity) || 0), 0)), tableStartX + colWidths[0] + colWidths[1] / 2, yPos + 6, { align: 'center' });
   doc.text("X", tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, yPos + 6, { align: 'center' });
   doc.text(`£${(invoiceData.sale?.subtotal || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, yPos + 6, { align: 'center' });
 
@@ -192,15 +212,15 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   const totalsX = tableStartX + notesWidth;
 
   doc.setFillColor(255, 255, 255);
-  doc.rect(tableStartX, yPos, notesWidth, 40);
-  doc.setFontSize(10);
+  doc.rect(tableStartX, yPos, notesWidth, 20);
+  doc.setFontSize(9);
   doc.setFont("helvetica", "italic");
   doc.setTextColor(136, 136, 136);
 
   const invoiceFooter = invoiceData.invoiceFooter || "";
   if (invoiceFooter) {
     const noteLines = doc.splitTextToSize(invoiceFooter, notesWidth - 4);
-    doc.text(noteLines, tableStartX + 2, yPos + 8);
+    doc.text(noteLines, tableStartX + 2, yPos + 5);
   }
 
   doc.setTextColor(0, 0, 0);
@@ -208,17 +228,13 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   doc.setFontSize(12);
 
   doc.rect(totalsX, yPos, totalsWidth, 10);
-  doc.text("Vat", totalsX + 2, yPos + 7);
-  doc.text(`£${(invoiceData.sale?.vat_amount || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 7, { align: 'right' });
-
-  doc.rect(totalsX, yPos + 10, totalsWidth, 10);
-  doc.text("Porterage", totalsX + 2, yPos + 17);
-  doc.text(`£${(invoiceData.sale?.porterage || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 17, { align: 'right' });
+  doc.text("Porterage", totalsX + 2, yPos + 7);
+  doc.text(`£${(invoiceData.sale?.porterage || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 7, { align: 'right' });
 
   doc.setFont("helvetica", "bold");
-  doc.rect(totalsX, yPos + 20, totalsWidth, 10);
-  doc.text("TOTAL", totalsX + 2, yPos + 27);
-  doc.text(`£${((invoiceData.sale?.total_amount || invoiceData.sale?.totalAmount) || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 27, { align: 'right' });
+  doc.rect(totalsX, yPos + 10, totalsWidth, 10);
+  doc.text("TOTAL", totalsX + 2, yPos + 17);
+  doc.text(`£${((invoiceData.sale?.total_amount || invoiceData.sale?.totalAmount) || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 17, { align: 'right' });
 
   doc.setFont("helvetica", "normal");
   if (invoiceData.sale?.customer_type === "cash") {
@@ -227,17 +243,12 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
       paymentMode === 'bank' ? 'Card' :
         paymentMode === 'bank_transfer' ? 'Bank Transfer' :
           paymentMode === 'cheque' ? 'Cheque' : paymentMode;
-    doc.rect(totalsX, yPos + 30, totalsWidth, 10);
-    doc.text("PAID", totalsX + 2, yPos + 37);
-    doc.text(`${displayMode} £${(invoiceData.sale?.paid_amount || invoiceData.sale?.paidAmount || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 37, { align: 'right' });
-  } else {
-    const accountAmount = ((invoiceData.sale?.total_amount || invoiceData.sale?.totalAmount || 0) - (invoiceData.sale?.paid_amount || invoiceData.sale?.paidAmount || 0));
-    doc.rect(totalsX, yPos + 30, totalsWidth, 10);
-    doc.text("ACCOUNT", totalsX + 2, yPos + 37);
-    doc.text(`£${accountAmount.toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 37, { align: 'right' });
+    doc.rect(totalsX, yPos + 20, totalsWidth, 10);
+    doc.text("PAID", totalsX + 2, yPos + 27);
+    doc.text(`${displayMode} £${(invoiceData.sale?.paid_amount || invoiceData.sale?.paidAmount || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 27, { align: 'right' });
   }
 
-  yPos += 60;
+  yPos += 50;
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(68, 68, 68);
