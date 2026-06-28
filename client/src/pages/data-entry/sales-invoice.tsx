@@ -2660,7 +2660,7 @@ const SalesInvoice = () => {
                       <div className="flex-1">
                         <h4 className="font-medium text-sm">{item.productName}</h4>
                         {item.notes && (
-                          <p className="text-xs text-gray-600 mt-1">{item.notes}</p>
+                          <p className="text-xs text-gray-600 mt-1 break-words">{item.notes}</p>
                         )}
                       </div>
                       <div className="text-right">
@@ -2818,7 +2818,7 @@ const SalesInvoice = () => {
                         <TableCell>{item.productName}</TableCell>
                         {/* Only show Notes cell when editing or when notes exist */}
                         {(editingIndex !== null || saleItems.some(item => item.notes)) && (
-                          <TableCell className="text-center text-sm text-gray-600">
+                          <TableCell className="text-center text-sm text-gray-600" style={{ wordBreak: 'break-word', whiteSpace: 'normal', maxWidth: '200px' }}>
                             {item.notes || "-"}
                           </TableCell>
                         )}

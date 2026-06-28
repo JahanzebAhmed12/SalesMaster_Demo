@@ -53,6 +53,28 @@ const FIELD_POSITIONS = {
   }
 };
 
+// Estimate chars per line in the description column (72mm wide, Courier New 11pt monospace)
+const CHARS_PER_LINE = 30;
+const ROW_HEIGHT_MM = parseInt(FIELD_POSITIONS.itemsRowHeight); // 4mm
+
+function getItemDisplayText(item: any): string {
+  const name = item.product_name || item.productName || item.description || '';
+  const note = item.notes || item.remarks;
+  return note ? `${name} (${note})` : name;
+}
+
+function estimateLines(text: string): number {
+  if (!text) return 1;
+  return Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
+}
+
+// Available vertical space for items (before totals area starts at ~167mm)
+const ITEMS_START_TOP_MM = parseInt(FIELD_POSITIONS.itemsStartTop);
+const ITEMS_AVAILABLE_HEIGHT_MM = 72;
+
+// Extra gap (in mm) added after items that have notes/comments
+const NOTES_EXTRA_GAP_MM = 3.5;
+
 // Cumulative shift correction: Match printer's 8" (203.2mm) page length setting
 // Printer setting: page length 8" = 203.2mm
 // CSS setting: 200mm
@@ -394,29 +416,65 @@ export default function DotMatrixInvoicePrintPage() {
     return (isMobile && isServerPDF) ? MOBILE_PDF_POSITIONS : FIELD_POSITIONS;
   };
 
-  // Calculate pagination - use base positions to get itemsPerPage
-  const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
-  const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
-  const pages = [];
+  // Calculate items with estimated line counts for dynamic pagination
+  const itemLineEntries: Array<{ item: any; lines: number; height: number }> = [];
+  if (items) {
+    for (const item of items) {
+      const lines = estimateLines(getItemDisplayText(item));
+      const hasNotes = !!(item.notes || item.remarks);
+      const height = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
+      itemLineEntries.push({ item, lines, height });
+    }
+  }
 
-  for (let i = 0; i < totalPages; i++) {
-    const startIndex = i * itemsPerPage;
-    const endIndex = Math.min(startIndex + itemsPerPage, items?.length || 0);
+  const pages: Array<{ pageNumber: number; items: any[]; isLastPage: boolean; itemsHeight: number }> = [];
+  let pageBuffer: any[] = [];
+  let pageHeight = 0;
+
+  for (const entry of itemLineEntries) {
+    if (pageHeight + entry.height > ITEMS_AVAILABLE_HEIGHT_MM && pageBuffer.length > 0) {
+      pages.push({
+        pageNumber: pages.length + 1,
+        items: pageBuffer.map(e => e.item),
+        isLastPage: false,
+        itemsHeight: pageHeight,
+      });
+      pageBuffer = [];
+      pageHeight = 0;
+    }
+    pageBuffer.push(entry);
+    pageHeight += entry.height;
+  }
+
+  if (pageBuffer.length > 0) {
     pages.push({
-      pageNumber: i + 1,
-      items: items?.slice(startIndex, endIndex) || [],
-      isLastPage: i === totalPages - 1
+      pageNumber: pages.length + 1,
+      items: pageBuffer.map(e => e.item),
+      isLastPage: true,
+      itemsHeight: pageHeight,
     });
   }
+
+  // Ensure at least 1 page even if no items
+  if (pages.length === 0) {
+    pages.push({
+      pageNumber: 1,
+      items: [],
+      isLastPage: true,
+      itemsHeight: 0,
+    });
+  }
+
+  const totalPages = pages.length;
 
   // Debug pagination
   console.log('Pagination debug:', {
     totalItems: items?.length || 0,
-    itemsPerPage,
-    totalPages,
+    totalPages: pages.length,
     pages: pages.map(p => ({
       page: p.pageNumber,
       itemCount: p.items.length,
+      itemsHeight: p.itemsHeight,
       itemNames: p.items.map(item => item.product_name || item.productName)
     }))
   });
@@ -882,97 +940,104 @@ export default function DotMatrixInvoicePrintPage() {
                 {page.pageNumber} of {totalPages}
               </div>
 
-              {/* Product Rows for this page - CORRECTED POSITIONING */}
-              {page.items.map((item, itemIndex) => {
-                const topPosition = parseInt(fieldPositions.itemsStartTop) + itemIndex * parseInt(fieldPositions.itemsRowHeight);
+              {/* Product Rows for this page - DYNAMIC POSITIONING based on line wraps */}
+              {(() => {
+                let cumulativeTop = ITEMS_START_TOP_MM;
+                return page.items.map((item, itemIndex) => {
+                  const lines = estimateLines(getItemDisplayText(item));
+                  const hasNotes = !!(item.notes || item.remarks);
+                  const itemHeight = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
+                  const topPosition = cumulativeTop;
+                  cumulativeTop += itemHeight;
 
-                return (
-                  <React.Fragment key={itemIndex}>
-                    {/* Quantity */}
-                    <div className="field-text" style={{
-                      position: 'absolute',
-                      top: `${topPosition}mm`,
-                      left: fieldPositions.columns.quantity.left,
-                      width: fieldPositions.columns.quantity.width,
-                      fontFamily: '"Courier New", "Courier", monospace',
-                      fontSize: '11pt',
-                      fontWeight: 'bold',
-                      lineHeight: '1',
-                      margin: '0',
-                      padding: '0',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {formatQuantity(item.quantity)}
-                    </div>
+                  return (
+                    <React.Fragment key={itemIndex}>
+                      {/* Quantity */}
+                      <div className="field-text" style={{
+                        position: 'absolute',
+                        top: `${topPosition}mm`,
+                        left: fieldPositions.columns.quantity.left,
+                        width: fieldPositions.columns.quantity.width,
+                        fontFamily: '"Courier New", "Courier", monospace',
+                        fontSize: '11pt',
+                        fontWeight: 'bold',
+                        lineHeight: '1',
+                        margin: '0',
+                        padding: '0',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {formatQuantity(item.quantity)}
+                      </div>
 
-                    {/* Product Description */}
-                    <div className="field-text" style={{
-                      position: 'absolute',
-                      top: `${topPosition}mm`,
-                      left: fieldPositions.columns.description.left,
-                      width: fieldPositions.columns.description.width,
-                      fontFamily: '"Courier New", "Courier", monospace',
-                      fontSize: '11pt',
-                      fontWeight: 'bold',
-                      lineHeight: '1',
-                      margin: '0',
-                      padding: '0',
-                      wordWrap: 'break-word',
-                      whiteSpace: 'normal'
-                    }}>
-                      {item.product_name || item.productName || item.description}
-                      {(item.notes || item.remarks) && (
-                        <span style={{ fontStyle: 'italic', fontWeight: 'normal' }}>
-                          {' '}({item.notes || item.remarks})
-                        </span>
-                      )}
-                    </div>
+                      {/* Product Description */}
+                      <div className="field-text" style={{
+                        position: 'absolute',
+                        top: `${topPosition}mm`,
+                        left: fieldPositions.columns.description.left,
+                        width: fieldPositions.columns.description.width,
+                        fontFamily: '"Courier New", "Courier", monospace',
+                        fontSize: '11pt',
+                        fontWeight: 'bold',
+                        lineHeight: '1',
+                        margin: '0',
+                        padding: '0',
+                        wordWrap: 'break-word',
+                        whiteSpace: 'normal'
+                      }}>
+                        {item.product_name || item.productName || item.description}
+                        {(item.notes || item.remarks) && (
+                          <span style={{ fontStyle: 'italic', fontWeight: 'normal' }}>
+                            {' '}({item.notes || item.remarks})
+                          </span>
+                        )}
+                      </div>
 
-                    {/* Unit Price */}
-                    <div className="field-text" style={{
-                      position: 'absolute',
-                      top: `${topPosition}mm`,
-                      left: fieldPositions.columns.price.left,
-                      width: fieldPositions.columns.price.width,
-                      textAlign: fieldPositions.columns.price.align,
-                      fontFamily: '"Courier New", "Courier", monospace',
-                      fontSize: '11pt',
-                      fontWeight: 'bold',
-                      lineHeight: '1',
-                      margin: '0',
-                      padding: '0',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {(item.unit_price || item.unitPrice || 0).toFixed(2)}
-                    </div>
+                      {/* Unit Price */}
+                      <div className="field-text" style={{
+                        position: 'absolute',
+                        top: `${topPosition}mm`,
+                        left: fieldPositions.columns.price.left,
+                        width: fieldPositions.columns.price.width,
+                        textAlign: fieldPositions.columns.price.align,
+                        fontFamily: '"Courier New", "Courier", monospace',
+                        fontSize: '11pt',
+                        fontWeight: 'bold',
+                        lineHeight: '1',
+                        margin: '0',
+                        padding: '0',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {(item.unit_price || item.unitPrice || 0).toFixed(2)}
+                      </div>
 
-                    {/* Total Value */}
-                    <div className="field-text" style={{
-                      position: 'absolute',
-                      top: `${topPosition}mm`,
-                      left: fieldPositions.columns.value.left,
-                      width: fieldPositions.columns.value.width,
-                      textAlign: fieldPositions.columns.value.align,
-                      fontFamily: '"Courier New", "Courier", monospace',
-                      fontSize: '11pt',
-                      fontWeight: 'bold',
-                      lineHeight: '1',
-                      margin: '0',
-                      padding: '0',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {(item.total_price || item.totalPrice || 0).toFixed(2)}
-                    </div>
-                  </React.Fragment>
-                );
-              })}
+                      {/* Total Value */}
+                      <div className="field-text" style={{
+                        position: 'absolute',
+                        top: `${topPosition}mm`,
+                        left: fieldPositions.columns.value.left,
+                        width: fieldPositions.columns.value.width,
+                        textAlign: fieldPositions.columns.value.align,
+                        fontFamily: '"Courier New", "Courier", monospace',
+                        fontSize: '11pt',
+                        fontWeight: 'bold',
+                        lineHeight: '1',
+                        margin: '0',
+                        padding: '0',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {(item.total_price || item.totalPrice || 0).toFixed(2)}
+                      </div>
+                    </React.Fragment>
+                  );
+                });
+              })()}
 
               {/* Porterage - on last page */}
               {page.isLastPage && porterage > 0 && (
                 <>
                   <div className="field-text" style={{
                     position: 'absolute',
-                    top: `${parseInt(fieldPositions.itemsStartTop) + page.items.length * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                    top: `${ITEMS_START_TOP_MM + page.itemsHeight}mm`,
                     left: fieldPositions.columns.description.left,
                     width: fieldPositions.columns.description.width,
                     fontFamily: '"Courier New", "Courier", monospace',
@@ -988,7 +1053,7 @@ export default function DotMatrixInvoicePrintPage() {
                   </div>
                   <div className="field-text" style={{
                     position: 'absolute',
-                    top: `${parseInt(fieldPositions.itemsStartTop) + page.items.length * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                    top: `${ITEMS_START_TOP_MM + page.itemsHeight}mm`,
                     left: fieldPositions.columns.value.left,
                     width: fieldPositions.columns.value.width,
                     textAlign: fieldPositions.columns.value.align,
@@ -1009,7 +1074,7 @@ export default function DotMatrixInvoicePrintPage() {
               {page.isLastPage && (
                 <div className="field-text" style={{
                   position: 'absolute',
-                  top: `${parseInt(fieldPositions.itemsStartTop) + (page.items.length + (porterage > 0 ? 1 : 0)) * parseInt(fieldPositions.itemsRowHeight)}mm`,
+                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0)}mm`,
                   left: fieldPositions.columns.description.left,
                   width: fieldPositions.columns.description.width,
                   fontFamily: '"Courier New", "Courier", monospace',

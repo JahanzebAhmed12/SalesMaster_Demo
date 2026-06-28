@@ -404,6 +404,24 @@ class AutoChromePrintService {
     const porterage   = sale?.porterage  || 0;
     const totalQuantity = items?.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0) || 0;
 
+    // Constants matching dot-matrix-invoice.tsx for dynamic line-wrap pagination
+    const CHARS_PER_LINE = 30;
+    const ROW_HEIGHT_MM = 4;
+    const ITEMS_START_TOP_MM = 95;
+    const ITEMS_AVAILABLE_HEIGHT_MM = 72;
+    const NOTES_EXTRA_GAP_MM = 3.5;
+
+    const getItemDisplayText = (item) => {
+      const name = item.product_name || item.productName || item.description || '';
+      const note = item.notes || item.remarks;
+      return note ? `${name} (${note})` : name;
+    };
+
+    const estimateLines = (text) => {
+      if (!text) return 1;
+      return Math.max(1, Math.ceil(text.length / CHARS_PER_LINE));
+    };
+
     // Field positions — must match dot-matrix-invoice.tsx exactly
     const fp = {
       accountNo:       { top: '27mm',  left: '12mm' },
@@ -416,7 +434,6 @@ class AutoChromePrintService {
       pageNumber:      { top: '77mm',  left: '125mm' },
       itemsStartTop:   95,   // mm (numeric for arithmetic)
       itemsRowHeight:  4,    // mm per row
-      maxItemsPerPage: 11,
       columns: {
         quantity:    { left: '4mm',   width: '7mm'  },
         description: { left: '24mm',  width: '72mm' },
@@ -438,48 +455,84 @@ class AutoChromePrintService {
       return n % 1 === 0 ? n.toString() : parseFloat(n.toFixed(3)).toString();
     };
 
-    // --- Pagination: split items into pages of 11 ---
-    const itemsPerPage = fp.maxItemsPerPage;
-    const totalPages   = Math.max(1, Math.ceil((items?.length || 0) / itemsPerPage));
+    // --- Dynamic pagination based on estimated line wraps ---
+    const itemLineEntries = [];
+    if (items) {
+      for (const item of items) {
+        const lines = estimateLines(getItemDisplayText(item));
+        const hasNotes = !!(item.notes || item.remarks);
+        const height = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
+        itemLineEntries.push({ item, lines, height });
+      }
+    }
+
     const pages = [];
-    for (let i = 0; i < totalPages; i++) {
+    let pageBuffer = [];
+    let pageHeight = 0;
+
+    for (const entry of itemLineEntries) {
+      if (pageHeight + entry.height > ITEMS_AVAILABLE_HEIGHT_MM && pageBuffer.length > 0) {
+        pages.push({
+          pageNumber: pages.length + 1,
+          isLastPage: false,
+          items: pageBuffer.map(e => e.item),
+          itemsHeight: pageHeight,
+        });
+        pageBuffer = [];
+        pageHeight = 0;
+      }
+      pageBuffer.push(entry);
+      pageHeight += entry.height;
+    }
+
+    if (pageBuffer.length > 0) {
       pages.push({
-        pageNumber: i + 1,
-        isLastPage: i === totalPages - 1,
-        items: (items || []).slice(i * itemsPerPage, (i + 1) * itemsPerPage),
+        pageNumber: pages.length + 1,
+        isLastPage: true,
+        items: pageBuffer.map(e => e.item),
+        itemsHeight: pageHeight,
       });
     }
+
+    if (pages.length === 0) {
+      pages.push({
+        pageNumber: 1,
+        isLastPage: true,
+        items: [],
+        itemsHeight: 0,
+      });
+    }
+
+    const totalPages = pages.length;
 
     // --- Build HTML for each page ---
     const pagesHTML = pages.map((page) => {
 
-      // Items rows — positions are relative to THIS page's wrapper (top resets to 0 each page)
-      const itemRowsHTML = page.items.map((item, idx) => {
-        const top = fp.itemsStartTop + idx * fp.itemsRowHeight;
+      // Items rows — cumulative positioning based on estimated line wraps
+      let cumulativeTop = ITEMS_START_TOP_MM;
+      const itemRowsHTML = page.items.map((item) => {
+        const lines = estimateLines(getItemDisplayText(item));
+        const hasNotes = !!(item.notes || item.remarks);
+        const itemHeight = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
+        const top = cumulativeTop;
+        cumulativeTop += itemHeight;
         const notes = item.notes || item.remarks;
         const description = `${item.product_name || item.productName || item.description || ''}${notes ? ` <span style="font-style:italic;font-weight:normal;">(${notes})</span>` : ''}`;
         return `
           <div class="ft" style="top:${top}mm;left:${fp.columns.quantity.left};width:${fp.columns.quantity.width};white-space:nowrap;font-weight:bold;">${formatQty(item.quantity)}</div>
-          <div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};overflow:hidden;white-space:nowrap;font-weight:bold;">${description}</div>
+          <div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};overflow:hidden;white-space:normal;word-wrap:break-word;font-weight:bold;">${description}</div>
           <div class="ft" style="top:${top}mm;left:${fp.columns.price.left};width:${fp.columns.price.width};text-align:right;white-space:nowrap;font-weight:bold;">${(item.unit_price || item.unitPrice || 0).toFixed(2)}</div>
           <div class="ft" style="top:${top}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;white-space:nowrap;font-weight:bold;">£${(item.total_price || item.totalPrice || 0).toFixed(2)}</div>`;
       }).join('');
 
       // Porterage row — last page only, after items
-      let extraRowOffset = page.items.length;
-      const porterageHTML = (page.isLastPage && porterage > 0) ? (() => {
-        const top = fp.itemsStartTop + extraRowOffset * fp.itemsRowHeight;
-        extraRowOffset++;
-        return `
-          <div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">Porterage</div>
-          <div class="ft" style="top:${top}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;font-weight:bold;">£${porterage.toFixed(2)}</div>`;
-      })() : '';
+      const porterageHTML = (page.isLastPage && porterage > 0) ? `
+        <div class="ft" style="top:${ITEMS_START_TOP_MM + page.itemsHeight}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">Porterage</div>
+        <div class="ft" style="top:${ITEMS_START_TOP_MM + page.itemsHeight}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;font-weight:bold;">£${porterage.toFixed(2)}</div>` : '';
 
       // Packages line — last page only
-      const packagesHTML = page.isLastPage ? (() => {
-        const top = fp.itemsStartTop + extraRowOffset * fp.itemsRowHeight;
-        return `<div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">(${formatQty(totalQuantity)} packages)</div>`;
-      })() : '';
+      const packagesTop = ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0);
+      const packagesHTML = page.isLastPage ? `<div class="ft" style="top:${packagesTop}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">(${formatQty(totalQuantity)} packages)</div>` : '';
 
       // Totals — last page only
       const totalsHTML = page.isLastPage ? `
