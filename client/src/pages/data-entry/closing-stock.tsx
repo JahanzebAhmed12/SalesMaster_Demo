@@ -47,6 +47,7 @@ export default function ClosingStock() {
   const initializedRef = useRef(false);
   const [showAllProducts, setShowAllProducts] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [email, setEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
 
@@ -121,45 +122,80 @@ export default function ClosingStock() {
   };
 
   const handleSaveEntry = async (productId: number, productType: string, qty: number | string) => {
+    if (isSaving) return;
     if (isPastDate(selectedDate) && !canEditBackdate) {
       toast({ title: "Error", description: "You don't have permission to edit past dates.", variant: "destructive" });
       return;
     }
+    setIsSaving(true);
     const quantity = qty === "" ? 0 : qty;
     try {
-      const items = [
-        ...closingStockEntries.filter((e: any) => e.productId !== productId),
-        { productId, productType, quantity },
-      ];
-      await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
+      await apiRequest("POST", "/api/closing-stock", {
+        date: selectedDate,
+        items: [{ productId, productType, quantity }],
+      });
       toast({ title: "Saved", description: "Closing stock entry saved." });
       initializedRef.current = false;
       refetch();
     } catch (error) {
       toast({ title: "Error", description: "Failed to save entry.", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDeleteEntry = async (productId: number) => {
+  const handleSaveAll = async () => {
+    if (isSaving) return;
+    if (isPastDate(selectedDate) && !canEditBackdate) {
+      toast({ title: "Error", description: "You don't have permission to edit past dates.", variant: "destructive" });
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const items = editItems
+        .filter(item => item.quantity !== "" && item.quantity !== undefined)
+        .map(item => ({
+          productId: item.productId,
+          productType: item.productType,
+          quantity: item.quantity,
+        }));
+      if (items.length === 0) {
+        setIsSaving(false);
+        toast({ title: "Nothing to save", description: "No products have quantities entered.", variant: "default" });
+        return;
+      }
+      await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
+      toast({ title: "Saved", description: `All ${items.length} product(s) saved.` });
+      initializedRef.current = false;
+      refetch();
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to save all entries.", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteEntry = async (productId: number, productType: string) => {
+    if (isSaving) return;
     if (isPastDate(selectedDate) && !canDeleteBackdate) {
       toast({ title: "Error", description: "You don't have permission to delete past date entries.", variant: "destructive" });
       return;
     }
+    setIsSaving(true);
     try {
-      const items = closingStockEntries
-        .filter((e: any) => e.productId !== productId)
-        .map((e: any) => ({
-          productId: e.productId,
-          productType: e.productType,
-          quantity: e.quantity,
-        }));
-      await apiRequest("POST", "/api/closing-stock", { date: selectedDate, items });
+      await apiRequest("POST", "/api/closing-stock/delete", {
+        date: selectedDate,
+        productId,
+        productType,
+      });
       toast({ title: "Deleted", description: "Closing stock entry deleted." });
       setDeleteConfirm(null);
       initializedRef.current = false;
       refetch();
     } catch (error: any) {
       toast({ title: "Error", description: error?.error || "Failed to delete entry.", variant: "destructive" });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -324,7 +360,7 @@ export default function ClosingStock() {
           />
         </div>
 
-        {/* Filter Toggle */}
+        {/* Filter Toggle + Save All */}
         <div className="flex items-center gap-2 mb-4">
           <Button
             variant={showAllProducts ? "outline" : "default"}
@@ -339,6 +375,15 @@ export default function ClosingStock() {
             size="sm"
           >
             All Products
+          </Button>
+          <div className="flex-1" />
+          <Button
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={handleSaveAll}
+            disabled={isSaving}
+          >
+            {isSaving ? "Saving..." : "Save All"}
           </Button>
         </div>
 
@@ -391,8 +436,8 @@ export default function ClosingStock() {
                     <TableCell className="py-2 px-4">
                       <div className="flex gap-2">
                         {(!isPastDate(selectedDate) || canEditBackdate) ? (
-                          <Button size="sm" onClick={() => handleSaveEntry(item.productId, item.productType, item.quantity)}>
-                            Save
+                          <Button size="sm" onClick={() => handleSaveEntry(item.productId, item.productType, item.quantity)} disabled={isSaving}>
+                            {isSaving ? "Saving..." : "Save"}
                           </Button>
                         ) : (
                           <Button size="sm" disabled className="opacity-50">Save</Button>
@@ -400,7 +445,7 @@ export default function ClosingStock() {
                         {isSaved && (
                           deleteConfirm === item.productId ? (
                             <div className="flex gap-1">
-                              <Button size="sm" variant="destructive" onClick={() => handleDeleteEntry(item.productId)}>
+                              <Button size="sm" variant="destructive" onClick={() => handleDeleteEntry(item.productId, item.productType)}>
                                 Confirm
                               </Button>
                               <Button size="sm" variant="outline" onClick={() => setDeleteConfirm(null)}>

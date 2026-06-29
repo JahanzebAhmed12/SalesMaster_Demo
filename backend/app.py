@@ -7441,133 +7441,186 @@ def save_closing_stock_entries():
         data = request.get_json()
         date_str = data.get('date')
         items = data.get('items', [])
-        
-        print(f"[DEBUG] Closing stock save request: date={date_str}, items_count={len(items)}")
-        
+
         if not date_str:
             return jsonify({"error": "Missing date"}), 400
-        
-        # Allow empty items array for deletion of all entries
+
         date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        
-        # Remove existing entries for this date
-        deleted_count = ClosingStock.query.filter_by(date=date).delete(synchronize_session=False)
-        print(f"[DEBUG] Deleted {deleted_count} existing entries for date {date}")
-        db.session.commit()  # Commit the delete before adding new entries
-        
-        # Add new entries and update current_stock on the product to match
-        submitted_product_keys = set()
-        for item in items:
-            print(f"[DEBUG] Adding entry: product_id={item['productId']}, type={item['productType']}, quantity={item['quantity']}")
-            entry = ClosingStock(
-                product_id=item['productId'],
-                product_type=item['productType'],
-                date=date,
-                quantity=item['quantity'],
-                manual_entry=True  # Mark as manual entry
-            )
-            db.session.add(entry)
+        has_existing = ClosingStock.query.filter_by(date=date).count() > 0
 
-            # Update current_stock on the product so sales invoice shows the correct figure
-            qty = float(item['quantity'])
-            if item['productType'] == 'regular':
-                product = RegularProduct.query.get(item['productId'])
-            else:
-                product = NonProduct.query.get(item['productId'])
-            if product:
-                old_stock = float(product.current_stock or 0)
-                product.current_stock = qty
-                print(f"[DEBUG] Updated current_stock for product {item['productId']} ({item['productType']}): {old_stock} → {qty}")
+        if not has_existing:
+            # FIRST SAVE: delete all + re-add all submitted + auto-zero missing products
+            ClosingStock.query.filter_by(date=date).delete(synchronize_session=False)
 
-                # Create a stock adjustment movement so the history stays accurate
-                movement = StockMovement(
+            submitted_product_keys = set()
+            for item in items:
+                entry = ClosingStock(
                     product_id=item['productId'],
                     product_type=item['productType'],
-                    movement_type='closing_stock_adjustment',
-                    quantity=qty - old_stock,
-                    reference_id=None,
-                    reference_type='closing_stock',
-                    previous_stock=old_stock,
-                    new_stock=qty,
-                    remarks=f"Closing stock override for {date}",
-                    created_by=None
+                    date=date,
+                    quantity=item['quantity'],
+                    manual_entry=True
                 )
-                db.session.add(movement)
+                db.session.add(entry)
 
-            submitted_product_keys.add((item['productId'], item['productType']))
+                qty = float(item['quantity'])
+                if item['productType'] == 'regular':
+                    product = RegularProduct.query.get(item['productId'])
+                else:
+                    product = NonProduct.query.get(item['productId'])
+                if product:
+                    old_stock = float(product.current_stock or 0)
+                    product.current_stock = qty
 
-        # Zero out current_stock for all products NOT included in this closing stock save
-        # Rule B: no closing stock entry = zero stock for next day
-        all_regular = RegularProduct.query.filter(RegularProduct.status == 'active').all()
-        all_non = NonProduct.query.filter(NonProduct.status == 'active').all()
-
-        for product in all_regular:
-            if (product.id, 'regular') not in submitted_product_keys:
-                old_stock = float(product.current_stock or 0)
-                if old_stock != 0:
-                    product.current_stock = 0
                     movement = StockMovement(
+                        product_id=item['productId'],
+                        product_type=item['productType'],
+                        movement_type='closing_stock_adjustment',
+                        quantity=qty - old_stock,
+                        reference_id=None,
+                        reference_type='closing_stock',
+                        previous_stock=old_stock,
+                        new_stock=qty,
+                        remarks=f"Closing stock override for {date}",
+                        created_by=None
+                    )
+                    db.session.add(movement)
+
+                submitted_product_keys.add((item['productId'], item['productType']))
+
+            # Auto-zero all active products not in the submitted list
+            all_regular = RegularProduct.query.filter(RegularProduct.status == 'active').all()
+            all_non = NonProduct.query.filter(NonProduct.status == 'active').all()
+
+            for product in all_regular:
+                if (product.id, 'regular') not in submitted_product_keys:
+                    old_stock = float(product.current_stock or 0)
+                    if old_stock != 0:
+                        product.current_stock = 0
+                        movement = StockMovement(
+                            product_id=product.id,
+                            product_type='regular',
+                            movement_type='closing_stock_adjustment',
+                            quantity=-old_stock,
+                            reference_id=None,
+                            reference_type='closing_stock',
+                            previous_stock=old_stock,
+                            new_stock=0,
+                            remarks=f"No closing stock entered for {date} — zeroed",
+                            created_by=None
+                        )
+                        db.session.add(movement)
+                    entry = ClosingStock(
                         product_id=product.id,
                         product_type='regular',
-                        movement_type='closing_stock_adjustment',
-                        quantity=-old_stock,
-                        reference_id=None,
-                        reference_type='closing_stock',
-                        previous_stock=old_stock,
-                        new_stock=0,
-                        remarks=f"No closing stock entered for {date} — zeroed",
-                        created_by=None
+                        date=date,
+                        quantity=0,
+                        manual_entry=False
                     )
-                    db.session.add(movement)
-                    print(f"[DEBUG] Zeroed current_stock for regular product {product.id} ({product.description}): {old_stock} → 0")
-                entry = ClosingStock(
-                    product_id=product.id,
-                    product_type='regular',
-                    date=date,
-                    quantity=0,
-                    manual_entry=False
-                )
-                db.session.add(entry)
+                    db.session.add(entry)
 
-        for product in all_non:
-            if (product.id, 'non') not in submitted_product_keys:
-                old_stock = float(product.current_stock or 0)
-                if old_stock != 0:
-                    product.current_stock = 0
-                    movement = StockMovement(
+            for product in all_non:
+                if (product.id, 'non') not in submitted_product_keys:
+                    old_stock = float(product.current_stock or 0)
+                    if old_stock != 0:
+                        product.current_stock = 0
+                        movement = StockMovement(
+                            product_id=product.id,
+                            product_type='non',
+                            movement_type='closing_stock_adjustment',
+                            quantity=-old_stock,
+                            reference_id=None,
+                            reference_type='closing_stock',
+                            previous_stock=old_stock,
+                            new_stock=0,
+                            remarks=f"No closing stock entered for {date} — zeroed",
+                            created_by=None
+                        )
+                        db.session.add(movement)
+                    entry = ClosingStock(
                         product_id=product.id,
                         product_type='non',
+                        date=date,
+                        quantity=0,
+                        manual_entry=False
+                    )
+                    db.session.add(entry)
+        else:
+            # SUBSEQUENT SAVE: upsert only the submitted items, no auto-zero
+            for item in items:
+                existing = ClosingStock.query.filter_by(
+                    product_id=item['productId'],
+                    product_type=item['productType'],
+                    date=date
+                ).first()
+
+                if existing:
+                    existing.quantity = item['quantity']
+                else:
+                    entry = ClosingStock(
+                        product_id=item['productId'],
+                        product_type=item['productType'],
+                        date=date,
+                        quantity=item['quantity'],
+                        manual_entry=True
+                    )
+                    db.session.add(entry)
+
+                qty = float(item['quantity'])
+                if item['productType'] == 'regular':
+                    product = RegularProduct.query.get(item['productId'])
+                else:
+                    product = NonProduct.query.get(item['productId'])
+                if product:
+                    old_stock = float(product.current_stock or 0)
+                    product.current_stock = qty
+
+                    movement = StockMovement(
+                        product_id=item['productId'],
+                        product_type=item['productType'],
                         movement_type='closing_stock_adjustment',
-                        quantity=-old_stock,
+                        quantity=qty - old_stock,
                         reference_id=None,
                         reference_type='closing_stock',
                         previous_stock=old_stock,
-                        new_stock=0,
-                        remarks=f"No closing stock entered for {date} — zeroed",
+                        new_stock=qty,
+                        remarks=f"Closing stock override for {date}",
                         created_by=None
                     )
                     db.session.add(movement)
-                    print(f"[DEBUG] Zeroed current_stock for non-product {product.id} ({product.description}): {old_stock} → 0")
-                entry = ClosingStock(
-                    product_id=product.id,
-                    product_type='non',
-                    date=date,
-                    quantity=0,
-                    manual_entry=False
-                )
-                db.session.add(entry)
-        
+
         db.session.commit()
-        print(f"[DEBUG] Successfully saved {len(items)} closing stock entries")
         return jsonify({"success": True}), 200
-        
+
     except Exception as e:
         db.session.rollback()
-        print(f"[ERROR] Closing stock save failed: {str(e)}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/closing-stock/delete', methods=['POST'])
+@jwt_required()
+def delete_closing_stock_entry():
+    try:
+        data = request.get_json()
+        date_str = data.get('date')
+        product_id = data.get('productId')
+        product_type = data.get('productType')
+
+        if not all([date_str, product_id, product_type]):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        ClosingStock.query.filter_by(
+            product_id=product_id,
+            product_type=product_type,
+            date=date
+        ).delete()
+        db.session.commit()
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/stock/closing', methods=['GET'])
@@ -8000,9 +8053,7 @@ def get_opening_stock(product_id, product_type, from_date):
         # Rule B: no closing stock found in last 7 days → start from zero
         return 0
     except Exception as e:
-        print(f"[ERROR] Error getting opening stock: {e}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        logging.exception("get_opening_stock failed")
         return 0
 
 def get_new_stock(product_id, product_type, from_date, to_date):

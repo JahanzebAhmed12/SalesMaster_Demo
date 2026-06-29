@@ -841,6 +841,52 @@ export default function DailyBookSales() {
       toast({ title: "Error", description: e?.error || "Failed to send invoice email.", variant: "destructive" });
     }
   };
+  const handleBulkEmail = async () => {
+    if (selectedSales.size === 0) return;
+    const selected = salesData.filter(s => selectedSales.has(s.id));
+    const invoiceNumbers = selected.map(s => s.invoiceNo);
+    const total = invoiceNumbers.length;
+
+    const progressToast = toast({
+      title: "Sending emails...",
+      description: `0 / ${total} sent`,
+      duration: 999999999,
+    });
+
+    let sent = 0;
+    let failed = 0;
+    const failedInvoices: string[] = [];
+
+    for (const invNo of invoiceNumbers) {
+      try {
+        await sendInvoicePdfEmail(invNo);
+        sent++;
+      } catch {
+        failed++;
+        failedInvoices.push(invNo);
+      }
+      progressToast.update({
+        title: "Sending emails...",
+        description: `${sent + failed} / ${total} processed (${sent} sent, ${failed} failed)`,
+      });
+    }
+
+    progressToast.update({
+      title: failed === 0 ? "All emails sent" : "Emails sent with errors",
+      description: failed === 0
+        ? `${sent} invoice(s) sent successfully.`
+        : `${sent} sent, ${failed} failed. Failed: ${failedInvoices.join(', ')}`,
+      variant: failed === 0 ? "default" : "destructive",
+    });
+  };
+
+  const handleBulkPrint = async () => {
+    if (selectedSales.size === 0) return;
+    const selected = salesData.filter(s => selectedSales.has(s.id));
+    const invoiceNumbers = selected.map(s => s.invoiceNo);
+    window.open(`/print/bulk-dot-matrix?invs=${invoiceNumbers.join(',')}`, '_blank');
+  };
+
   const sendWhatsApp = async (sale: SalesEntry) => {
     const phone = prompt('Enter WhatsApp number (E.164 format, e.g. +441234567890):');
     if (!phone) return;
@@ -1133,6 +1179,30 @@ export default function DailyBookSales() {
                     <RefreshCw size={14} className={isLoadingSales ? "animate-spin" : ""} />
                     <span className="hidden sm:inline">Refresh</span>
                   </Button>
+                  {selectedSales.size > 0 && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex items-center gap-1 border-green-500 text-green-700 hover:bg-green-50"
+                        onClick={handleBulkEmail}
+                      >
+                        <Mail size={14} />
+                        <span className="hidden sm:inline">Email Selected</span>
+                        <span className="sm:hidden">Email</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex items-center gap-1 border-blue-500 text-blue-700 hover:bg-blue-50"
+                        onClick={handleBulkPrint}
+                      >
+                        <Printer size={14} />
+                        <span className="hidden sm:inline">Print Selected</span>
+                        <span className="sm:hidden">Print</span>
+                      </Button>
+                    </>
+                  )}
                 </div>
 
                 {/* Payment action buttons - smaller and on the right */}

@@ -109,6 +109,7 @@ import PurchaseInvoicePrintPage from "@/pages/print/purchase-invoice";
 import DeliveryNotePrintPage from "./pages/print/delivery-note";
 import PackingListPrintPage from "./pages/print/packing-list";
 import DailySummaryPrintPage from "@/pages/print/daily-summary-print";
+import BulkDotMatrixPrintPage from "@/pages/print/bulk-dot-matrix";
 
 // User Profile
 import UserProfile from "./pages/profile/user-profile";
@@ -588,6 +589,9 @@ function Router() {
       </Route>
       <Route path="/print/dot-matrix-invoice/:invoiceNumber">
         <DotMatrixInvoicePrintPage />
+      </Route>
+      <Route path="/print/bulk-dot-matrix">
+        <BulkDotMatrixPrintPage />
       </Route>
       <Route path="/print/dot-matrix-payment/:batchId">
         <DotMatrixPaymentPrintPage />

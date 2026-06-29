@@ -3,11 +3,13 @@ Flask routes for PDF generation
 Add these routes to your main Flask app
 """
 
-from flask import request, jsonify, send_file
+from flask import request, jsonify, send_file, make_response
 import logging
 import io
 import requests
 from mail_utils import generate_invoice_pdf as mail_generate_pdf
+from pypdf import PdfWriter
+from flask_jwt_extended import jwt_required
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -78,6 +80,65 @@ def add_pdf_routes(app, get_invoice_data_func):
         except Exception as e:
             logger.error(f"Error generating PDF: {str(e)}")
             return jsonify({'error': f'PDF generation failed: {str(e)}'}), 500
+
+    @app.route('/api/sales/bulk-print', methods=['POST'])
+    @jwt_required()
+    def bulk_print_invoices():
+        try:
+            data = request.get_json()
+            if not data or 'invoiceNumbers' not in data:
+                return jsonify({'error': 'invoiceNumbers array is required'}), 400
+
+            invoice_numbers = data['invoiceNumbers']
+            if not invoice_numbers or not isinstance(invoice_numbers, list):
+                return jsonify({'error': 'invoiceNumbers must be a non-empty array'}), 400
+
+            if len(invoice_numbers) > 50:
+                return jsonify({'error': 'Maximum 50 invoices per batch'}), 400
+
+            logger.info(f"Bulk printing {len(invoice_numbers)} invoices")
+
+            from pdf_generator import DotMatrixInvoicePDF
+
+            writer = PdfWriter()
+            success_count = 0
+            failed_numbers = []
+
+            for inv_no in invoice_numbers:
+                try:
+                    invoice_data = get_invoice_data_func(inv_no)
+                    if not invoice_data:
+                        failed_numbers.append(inv_no)
+                        logger.warning(f"Invoice not found: {inv_no}")
+                        continue
+
+                    pdf_generator = DotMatrixInvoicePDF()
+                    pdf_buffer = pdf_generator.generate_pdf(invoice_data)
+                    writer.append(pdf_buffer)
+                    success_count += 1
+
+                except Exception as e:
+                    failed_numbers.append(inv_no)
+                    logger.error(f"Failed to generate PDF for {inv_no}: {str(e)}")
+
+            if success_count == 0:
+                return jsonify({'error': 'No invoices could be generated'}), 500
+
+            output = io.BytesIO()
+            writer.write(output)
+            writer.close()
+            output.seek(0)
+
+            logger.info(f"Bulk PDF generated: {success_count} succeeded, {len(failed_numbers)} failed")
+
+            response = make_response(output.read())
+            response.headers['Content-Type'] = 'application/pdf'
+            response.headers['Content-Disposition'] = 'inline'
+            return response
+
+        except Exception as e:
+            logger.error(f"Error in bulk print: {str(e)}")
+            return jsonify({'error': f'Bulk print failed: {str(e)}'}), 500
     
     @app.route('/api/test-pdf', methods=['GET'])
     def test_pdf():
