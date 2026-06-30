@@ -1,7 +1,7 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Plus, Edit, Trash2, Search, FileDown, Printer, Eye, Download, FileText } from "lucide-react";
+import { Plus, Edit, Trash2, Search, FileDown, Printer, Eye, Download, FileText, ChevronUp, ChevronDown } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -17,6 +17,10 @@ import type { Supplier } from "@shared/schema";
 
 export default function Suppliers() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<"supplier_code" | "supplier_name" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const { broadcastSupplierOperation } = useAdminCrossTabSync();
@@ -65,6 +69,38 @@ export default function Suppliers() {
     }
   };
 
+  const sortedSuppliers = React.useMemo(() => {
+    if (!sortField) return suppliers;
+    return [...suppliers].sort((a, b) => {
+      const aVal = (a[sortField] || '').toLowerCase();
+      const bVal = (b[sortField] || '').toLowerCase();
+      const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  }, [suppliers, sortField, sortDirection]);
+
+  const paginatedSuppliers = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return sortedSuppliers.slice(start, start + pageSize);
+  }, [sortedSuppliers, currentPage, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedSuppliers.length / pageSize));
+
+  const handleSort = (field: "supplier_code" | "supplier_name") => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4 ml-1" /> : <ChevronDown className="inline h-4 w-4 ml-1" />;
+  };
+
   const handleExport = async (format: string) => {
     if (format === "all") {
       toast({
@@ -74,7 +110,7 @@ export default function Suppliers() {
       return;
     }
 
-    if (suppliers.length === 0) {
+    if (sortedSuppliers.length === 0) {
       toast({
         variant: "destructive",
         title: "No Data",
@@ -86,7 +122,7 @@ export default function Suppliers() {
     setIsExporting(true);
 
     try {
-      const exportData = suppliers.map((supplier, index) => ({
+      const exportData = sortedSuppliers.map((supplier, index) => ({
         'Sl.No': index + 1,
         'Supplier Code': supplier.supplier_code,
         'Sage Code': supplier.sage_code || '',
@@ -211,7 +247,7 @@ export default function Suppliers() {
 
   const handleSageExport = async () => {
     try {
-      const sageData = suppliers.map(supplier => ({
+      const sageData = sortedSuppliers.map(supplier => ({
         'Supplier Code': supplier.supplier_code,
         'Sage Code': supplier.sage_code || supplier.supplier_code,
         'Supplier Name': supplier.supplier_name,
@@ -272,7 +308,7 @@ export default function Suppliers() {
       printWindow.document.write('<th>#</th><th>Supplier Code</th><th>Sage Code</th><th>Supplier Name</th><th>Telephone</th><th>Email</th><th>EEC Group</th><th>Status</th>');
       printWindow.document.write('</tr></thead><tbody>');
 
-      suppliers.forEach((supplier, index) => {
+      sortedSuppliers.forEach((supplier, index) => {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${index + 1}</td>`);
         printWindow.document.write(`<td>${supplier.supplier_code}</td>`);
@@ -286,7 +322,7 @@ export default function Suppliers() {
       });
 
       printWindow.document.write('</tbody></table>');
-      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Suppliers: ${suppliers.length}</div>`);
+      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Suppliers: ${sortedSuppliers.length}</div>`);
       printWindow.document.write('</body></html>');
       printWindow.document.close();
       printWindow.focus();
@@ -412,9 +448,13 @@ export default function Suppliers() {
           <TableHeader className="bg-gray-50">
             <TableRow>
               <TableHead className="text-xs font-medium text-gray-500 uppercase">Sl.No</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Supplier Code</TableHead>
+              <TableHead className="text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort("supplier_code")}>
+                Supplier Code <SortIcon field="supplier_code" />
+              </TableHead>
               <TableHead className="text-xs font-medium text-gray-500 uppercase">Sage Code</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Supplier Name</TableHead>
+              <TableHead className="text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort("supplier_name")}>
+                Supplier Name <SortIcon field="supplier_name" />
+              </TableHead>
               <TableHead className="text-xs font-medium text-gray-500 uppercase">Telephone</TableHead>
               <TableHead className="text-xs font-medium text-gray-500 uppercase">Email</TableHead>
               <TableHead className="text-xs font-medium text-gray-500 uppercase">EEC Group</TableHead>
@@ -425,16 +465,16 @@ export default function Suppliers() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {suppliers.length === 0 ? (
+            {paginatedSuppliers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                   {searchTerm ? "No suppliers found matching your search." : "No suppliers found. Click 'Add' to create your first supplier."}
                 </TableCell>
               </TableRow>
             ) : (
-              suppliers.map((supplier, index) => (
+              paginatedSuppliers.map((supplier, index) => (
                 <TableRow key={supplier.id} className="table-hover">
-                  <TableCell className="text-sm text-gray-900">{index + 1}</TableCell>
+                  <TableCell className="text-sm text-gray-900">{(currentPage - 1) * pageSize + index + 1}</TableCell>
                   <TableCell className="text-sm text-gray-900">{supplier.supplier_code}</TableCell>
                   <TableCell className="text-sm text-gray-900">{supplier.sage_code || "-"}</TableCell>
                   <TableCell className="text-sm text-gray-900">{supplier.supplier_name}</TableCell>
@@ -473,9 +513,64 @@ export default function Suppliers() {
           </TableBody>
         </Table>
         
-        {suppliers.length > 0 && (
-          <div className="bg-gray-50 px-4 py-3 text-sm text-gray-500 border-t border-gray-200">
-            Showing 1 to {suppliers.length} of {suppliers.length} entries
+        {sortedSuppliers.length > 0 && (
+          <div className="bg-gray-50 px-4 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-500">
+            <div className="flex items-center gap-2">
+              <span>Show</span>
+              <select
+                className="border rounded px-2 py-1 text-sm"
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+              <span>entries</span>
+            </div>
+            <div>
+              Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, sortedSuppliers.length)} of {sortedSuppliers.length} entries
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         )}
       </Card>

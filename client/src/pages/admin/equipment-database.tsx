@@ -1,11 +1,11 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Pencil, Trash2, Plus, Search, Download, FileText, Printer } from "lucide-react";
+import { Pencil, Trash2, Plus, Search, Download, FileText, Printer, ChevronUp, ChevronDown } from "lucide-react";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,10 @@ export default function EquipmentDatabase() {
   const [, setLocation] = useLocation();
   const [searchTerm, setSearchTerm] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [sortField, setSortField] = useState<"description" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { broadcastEquipmentOperation } = useAdminCrossTabSync();
@@ -54,9 +58,44 @@ export default function EquipmentDatabase() {
   });
 
   // Filter equipment based on search term
-  const filteredEquipment = equipment.filter((item) =>
-    item.description?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredEquipment = React.useMemo(() => {
+    let filtered = equipment.filter((item) =>
+      item.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (sortField) {
+      filtered = [...filtered].sort((a, b) => {
+        const aVal = (a[sortField] || '').toLowerCase();
+        const bVal = (b[sortField] || '').toLowerCase();
+        const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
+        return sortDirection === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    return filtered;
+  }, [equipment, searchTerm, sortField, sortDirection]);
+
+  const paginatedEquipment = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredEquipment.slice(start, start + pageSize);
+  }, [filteredEquipment, currentPage, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredEquipment.length / pageSize));
+
+  const handleSort = (field: "description") => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4 ml-1" /> : <ChevronDown className="inline h-4 w-4 ml-1" />;
+  };
 
   const handleEdit = (id: number) => {
     setLocation(`/admin/equipment-database-edit?id=${id}`);
@@ -466,7 +505,9 @@ export default function EquipmentDatabase() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Description</TableHead>
+                  <TableHead className="cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort("description")}>
+                    Description <SortIcon field="description" />
+                  </TableHead>
                   <TableHead>Start Date</TableHead>
                   <TableHead>End Date</TableHead>
                   <TableHead>Status</TableHead>
@@ -487,8 +528,12 @@ export default function EquipmentDatabase() {
                       No equipment found
                     </TableCell>
                   </TableRow>
-                ) : (
-                  filteredEquipment.map((item) => {
+                ) : paginatedEquipment.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">No equipment found.</TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedEquipment.map((item) => {
                     try {
                       const today = new Date();
                       const startDate = item.startDate ? new Date(item.startDate) : null;
@@ -578,9 +623,69 @@ export default function EquipmentDatabase() {
                       );
                     }
                   })
-                )}
+                  )}
               </TableBody>
             </Table>
+            {filteredEquipment.length > 0 && (
+              <div className="border-t px-4 py-3 flex items-center justify-between text-sm text-gray-500">
+                <div className="flex items-center gap-2">
+                  <span>Show</span>
+                  <select
+                    className="border rounded px-2 py-1 text-sm"
+                    value={pageSize}
+                    onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                  <span>entries</span>
+                </div>
+                <div>
+                  Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredEquipment.length)} of {filteredEquipment.length} entries
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let pageNum: number;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

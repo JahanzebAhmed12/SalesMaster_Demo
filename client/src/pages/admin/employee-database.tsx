@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Edit, Trash2, Download, FileText, Upload, UserPlus, Printer } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Download, FileText, Upload, UserPlus, Printer, ChevronUp, ChevronDown } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Employee } from "@shared/schema";
 import { Link } from "wouter";
@@ -218,19 +218,15 @@ export default function EmployeeDatabase() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [sortField, setSortField] = useState<"fullName" | "department" | "status" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const { broadcastEmployeeOperation } = useAdminCrossTabSync();
 
   const { data: employees = [], isLoading, error } = useQuery<Employee[]>({
     queryKey: ["employees"],
     queryFn: () => apiRequest("GET", "/api/employees"),
-    onError: (error: any) => {
-      console.error("Error loading employees:", error);
-      toast({
-        variant: "destructive",
-        title: "Error Loading Employees",
-        description: error.message || "Failed to load employee data. Please try again.",
-      });
-    }
   });
 
   const deleteEmployeeMutation = useMutation<void, Error, number>({
@@ -245,11 +241,46 @@ export default function EmployeeDatabase() {
     },
   });
 
-  const filteredEmployees = (employees || []).filter((employee) =>
-    employee.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (employee.department && employee.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (employee.position && employee.position.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredEmployees = React.useMemo(() => {
+    let filtered = (employees || []).filter((employee) =>
+      employee.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (employee.department && employee.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (employee.position && employee.position.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    if (sortField) {
+      filtered = [...filtered].sort((a, b) => {
+        const aVal = (a[sortField] || '').toLowerCase();
+        const bVal = (b[sortField] || '').toLowerCase();
+        const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
+        return sortDirection === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    return filtered;
+  }, [employees, searchTerm, sortField, sortDirection]);
+
+  const paginatedEmployees = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredEmployees.slice(start, start + pageSize);
+  }, [filteredEmployees, currentPage, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+
+  const handleSort = (field: "fullName" | "department" | "status") => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4 ml-1" /> : <ChevronDown className="inline h-4 w-4 ml-1" />;
+  };
 
   const handleDelete = (employee: Employee) => {
     if (window.confirm(`Are you sure you want to delete employee '${employee.fullName}'?`)) {
@@ -580,14 +611,20 @@ export default function EmployeeDatabase() {
                 <thead>
                   <tr className="border-b bg-gray-50">
                     <th className="text-left p-3 border-r">Sl.No</th>
-                    <th className="text-left p-3 border-r">Full Name</th>
+                    <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("fullName")}>
+                      Full Name <SortIcon field="fullName" />
+                    </th>
                     <th className="text-left p-3 border-r">Title</th>
-                    <th className="text-left p-3 border-r">Department</th>
+                    <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("department")}>
+                      Department <SortIcon field="department" />
+                    </th>
                     <th className="text-left p-3 border-r">Position</th>
                     <th className="text-left p-3 border-r">Mobile Number</th>
                     <th className="text-left p-3 border-r">Start Date</th>
                     <th className="text-left p-3 border-r">Term</th>
-                    <th className="text-left p-3 border-r">Status</th>
+                    <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("status")}>
+                      Status <SortIcon field="status" />
+                    </th>
                     <th className="text-left p-3 border-r">Next of Kin</th>
                     <th className="text-left p-3 border-r">Documents</th>
                     <th className="text-left p-3 border-r">Joining Form</th>
@@ -598,9 +635,14 @@ export default function EmployeeDatabase() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredEmployees.map((employee: Employee, index: number) => (
+                  {paginatedEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan={16} className="p-6 text-center text-gray-500">No employees found.</td>
+                    </tr>
+                  ) : (
+                    paginatedEmployees.map((employee: Employee, index: number) => (
                     <tr key={employee.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3 border-r">{index + 1}</td>
+                      <td className="p-3 border-r">{(currentPage - 1) * pageSize + index + 1}</td>
                       <td className="p-3 border-r">{employee.fullName}</td>
                       <td className="p-3 border-r">{employee.title || ""}</td>
                       <td className="p-3 border-r">{employee.department || ""}</td>
@@ -675,19 +717,69 @@ export default function EmployeeDatabase() {
                         </Badge>
                       </td>
                     </tr>
-                  ))}
+                  ))
+                  )}
                 </tbody>
               </table>
             </div>
-            <div className="p-3 border-t text-sm text-gray-500 flex justify-between items-center">
-              <span>
-                Showing {filteredEmployees.length} of {employees.length} employees
-                {searchTerm && ` (filtered by "${searchTerm}")`}
-              </span>
-              <span>
-                Active: {filteredEmployees.filter(emp => emp.isActive === 'yes').length} | 
-                Inactive: {filteredEmployees.filter(emp => emp.isActive !== 'yes').length}
-              </span>
+            <div className="p-3 border-t flex items-center justify-between text-sm text-gray-500">
+              <div className="flex items-center gap-2">
+                <span>Show</span>
+                <select
+                  className="border rounded px-2 py-1 text-sm"
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+                <span>entries</span>
+              </div>
+              <div>
+                Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredEmployees.length)} of {filteredEmployees.length} employees
+                {searchTerm && ` (filtered)`}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                >
+                  Previous
+                </Button>
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

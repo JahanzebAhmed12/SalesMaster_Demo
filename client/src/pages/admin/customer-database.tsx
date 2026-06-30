@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Eye, Edit, Trash2, Download, FileText, Printer } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Download, FileText, Printer, ChevronUp, ChevronDown } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
@@ -54,6 +54,10 @@ export default function Customers() {
   const [, setLocation] = useLocation();
   const [activeView, setActiveView] = useState<"view" | "add">("view");
   const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState<"customer_code" | "customer_name" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { broadcastCustomerOperation } = useAdminCrossTabSync();
@@ -69,15 +73,48 @@ export default function Customers() {
 
   console.log("Customers data:", customers);
 
-  const filteredCustomers = customers.filter((customer) => {
-    if (!customer?.customer_name || !customer?.customer_code) return false;
-    return (
-      customer.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      customer.customer_code.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  });
+  const filteredCustomers = React.useMemo(() => {
+    let filtered = customers.filter((customer) => {
+      if (!customer?.customer_name || !customer?.customer_code) return false;
+      return (
+        customer.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        customer.customer_code.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    });
 
-  console.log("Filtered customers:", filteredCustomers);
+    if (sortField) {
+      filtered = [...filtered].sort((a, b) => {
+        const aVal = (a[sortField] || '').toLowerCase();
+        const bVal = (b[sortField] || '').toLowerCase();
+        const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
+        return sortDirection === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    return filtered;
+  }, [customers, searchTerm, sortField, sortDirection]);
+
+  const paginatedCustomers = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredCustomers.slice(start, start + pageSize);
+  }, [filteredCustomers, currentPage, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize));
+
+  const handleSort = (field: "customer_code" | "customer_name") => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4 ml-1" /> : <ChevronDown className="inline h-4 w-4 ml-1" />;
+  };
 
   const deleteCustomerMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -407,8 +444,12 @@ export default function Customers() {
                     <thead>
                       <tr className="border-b bg-gray-50">
                         <th className="text-left p-3 border-r">Sl.No</th>
-                        <th className="text-left p-3 border-r">Customer Code</th>
-                        <th className="text-left p-3 border-r">Customer Name</th>
+                        <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("customer_code")}>
+                          Customer Code <SortIcon field="customer_code" />
+                        </th>
+                        <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("customer_name")}>
+                          Customer Name <SortIcon field="customer_name" />
+                        </th>
                         <th className="text-left p-3 border-r">City</th>
                         <th className="text-left p-3 border-r">Country</th>
                         <th className="text-left p-3 border-r">Currency</th>
@@ -421,9 +462,14 @@ export default function Customers() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredCustomers.map((customer, index) => (
+                      {paginatedCustomers.length === 0 ? (
+                        <tr>
+                          <td colSpan={12} className="p-6 text-center text-gray-500">No customers found.</td>
+                        </tr>
+                      ) : (
+                        paginatedCustomers.map((customer, index) => (
                         <tr key={customer.id} className="border-b hover:bg-gray-50">
-                          <td className="p-3 border-r">{index + 1}</td>
+                          <td className="p-3 border-r">{(currentPage - 1) * pageSize + index + 1}</td>
                           <td className="p-3 border-r">{customer.customer_code}</td>
                           <td className="p-3 border-r">{customer.customer_name}</td>
                           <td className="p-3 border-r">{customer.customer_city || "-"}</td>
@@ -461,12 +507,68 @@ export default function Customers() {
                             </Badge>
                           </td>
                         </tr>
-                      ))}
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
-                <div className="p-3 border-t text-sm text-gray-500">
-                  Showing 1 to {filteredCustomers.length} of {filteredCustomers.length} entries
+                <div className="p-3 border-t flex items-center justify-between text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <span>Show</span>
+                    <select
+                      className="border rounded px-2 py-1 text-sm"
+                      value={pageSize}
+                      onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>entries</span>
+                  </div>
+                  <div>
+                    Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredCustomers.length)} of {filteredCustomers.length} entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(pageNum)}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

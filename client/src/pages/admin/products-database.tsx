@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Eye, Edit, Trash2, Download, FileText, Printer } from "lucide-react";
+import { Plus, Eye, Edit, Trash2, Download, FileText, Printer, ChevronUp, ChevronDown } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -97,6 +97,10 @@ export default function Products() {
   const [activeView, setActiveView] = useState<"view" | "add" | "viewNonProducts" | "addNonProducts">("view");
   const [searchTerm, setSearchTerm] = useState("");
   const [editingProduct, setEditingProduct] = useState<RegularProduct | null>(null);
+  const [sortField, setSortField] = useState<"productCode" | "description" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -202,20 +206,51 @@ export default function Products() {
   });
 
   const filteredProducts = React.useMemo(() => {
-    // Ensure products is always an array
     const productsArray = Array.isArray(products) ? products : [];
-    
-    if (!searchTerm) {
-      return productsArray;
+
+    let filtered = productsArray;
+    if (searchTerm) {
+      filtered = productsArray.filter((product) => {
+        const description = product.description || '';
+        const productCode = product.productCode || '';
+        return description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+               productCode.toLowerCase().includes(searchTerm.toLowerCase());
+      });
     }
-    
-    return productsArray.filter((product) => {
-      const description = product.description || '';
-      const productCode = product.productCode || '';
-      return description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             productCode.toLowerCase().includes(searchTerm.toLowerCase());
-    });
-  }, [products, searchTerm]);
+
+    if (sortField) {
+      filtered = [...filtered].sort((a, b) => {
+        const aVal = (a[sortField] || '').toLowerCase();
+        const bVal = (b[sortField] || '').toLowerCase();
+        const cmp = aVal.localeCompare(bVal, undefined, { numeric: true });
+        return sortDirection === 'asc' ? cmp : -cmp;
+      });
+    }
+
+    return filtered;
+  }, [products, searchTerm, sortField, sortDirection]);
+
+  const paginatedProducts = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredProducts.slice(start, start + pageSize);
+  }, [filteredProducts, currentPage, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+
+  const handleSort = (field: "productCode" | "description") => {
+    if (sortField === field) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1);
+  };
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? <ChevronUp className="inline h-4 w-4 ml-1" /> : <ChevronDown className="inline h-4 w-4 ml-1" />;
+  };
 
   const onSubmit = (data: ProductFormData) => {
     if (editingProduct) {
@@ -582,9 +617,13 @@ export default function Products() {
                     <thead>
                       <tr className="border-b bg-gray-50">
                         <th className="text-left p-3 border-r">Sl.No</th>
-                        <th className="text-left p-3 border-r">Product Code</th>
+                        <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("productCode")}>
+                          Product Code <SortIcon field="productCode" />
+                        </th>
                         <th className="text-left p-3 border-r">Sage Code</th>
-                        <th className="text-left p-3 border-r">Product Description</th>
+                        <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("description")}>
+                          Product Description <SortIcon field="description" />
+                        </th>
                         <th className="text-left p-3 border-r">Unitprice</th>
                         <th className="text-left p-3 border-r">Tax</th>
                         <th className="text-left p-3 border-r">Edit</th>
@@ -593,36 +632,97 @@ export default function Products() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredProducts.map((product: RegularProduct, index: number) => (
-                        <tr key={product.id} className="border-b hover:bg-gray-50">
-                          <td className="p-3 border-r">{index + 1}</td>
-                          <td className="p-3 border-r">{product.productCode}</td>
-                          <td className="p-3 border-r">{product.sageCode || ""}</td>
-                          <td className="p-3 border-r">{product.description}</td>
-                          <td className="p-3 border-r">£{(product.sellingPrice ?? 0).toFixed(2)}</td>
-                          <td className="p-3 border-r">{(product.taxRate ?? 0)}%</td>
-                          <td className="p-3 border-r">
-                            <Button variant="ghost" size="sm" onClick={() => handleEdit(product)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </td>
-                          <td className="p-3 border-r">
-                            <Button variant="ghost" size="sm" onClick={() => handleDelete(product)} disabled={deleteProductMutation.isPending}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                          <td className="p-3">
-                            <Badge variant="secondary" className="bg-green-100 text-green-800">
-                              {product.status}
-                            </Badge>
-                          </td>
+                      {paginatedProducts.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="p-6 text-center text-gray-500">No products found.</td>
                         </tr>
-                      ))}
+                      ) : (
+                        paginatedProducts.map((product: RegularProduct, index: number) => (
+                          <tr key={product.id} className="border-b hover:bg-gray-50">
+                            <td className="p-3 border-r">{(currentPage - 1) * pageSize + index + 1}</td>
+                            <td className="p-3 border-r">{product.productCode}</td>
+                            <td className="p-3 border-r">{product.sageCode || ""}</td>
+                            <td className="p-3 border-r">{product.description}</td>
+                            <td className="p-3 border-r">£{(product.sellingPrice ?? 0).toFixed(2)}</td>
+                            <td className="p-3 border-r">{(product.taxRate ?? 0)}%</td>
+                            <td className="p-3 border-r">
+                              <Button variant="ghost" size="sm" onClick={() => handleEdit(product)}>
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </td>
+                            <td className="p-3 border-r">
+                              <Button variant="ghost" size="sm" onClick={() => handleDelete(product)} disabled={deleteProductMutation.isPending}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </td>
+                            <td className="p-3">
+                              <Badge variant="secondary" className="bg-green-100 text-green-800">
+                                {product.status}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
-                <div className="p-3 border-t text-sm text-gray-500">
-                  Showing 1 to {filteredProducts.length} of {filteredProducts.length} entries
+                <div className="p-3 border-t flex items-center justify-between text-sm text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <span>Show</span>
+                    <select
+                      className="border rounded px-2 py-1 text-sm"
+                      value={pageSize}
+                      onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <span>entries</span>
+                  </div>
+                  <div>
+                    Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredProducts.length)} of {filteredProducts.length} entries
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage <= 1}
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </Button>
+                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={currentPage === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setCurrentPage(pageNum)}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={currentPage >= totalPages}
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
