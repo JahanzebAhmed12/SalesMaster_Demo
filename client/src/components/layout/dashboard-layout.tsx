@@ -39,7 +39,7 @@ export default function DashboardLayout({ children, title, breadcrumb }: Dashboa
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col md:ml-64">
+      <div className="flex-1 flex flex-col lg:ml-64">
         <Header title={title} breadcrumb={breadcrumb} />
         
         {/* Page content */}

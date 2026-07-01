@@ -130,6 +130,7 @@ const SalesInvoice = () => {
   const [highlightedProduct, setHighlightedProduct] = useState(-1);
   const productInputRef = useRef<HTMLInputElement>(null);
   const productDropdownRef = useRef<HTMLDivElement>(null);
+  const mobileDropdownRef = useRef<HTMLDivElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const priceInputRef = useRef<HTMLInputElement>(null);
   const notesInputRef = useRef<HTMLInputElement>(null);
@@ -611,19 +612,11 @@ const SalesInvoice = () => {
 
   // Scroll highlighted product into view when navigating with keyboard
   useEffect(() => {
-    if (showProductDropdown && highlightedProduct >= 0 && productDropdownRef.current) {
-      const container = productDropdownRef.current;
+    const container = (productDropdownRef.current?.offsetParent ? productDropdownRef.current : null) || mobileDropdownRef.current;
+    if (showProductDropdown && highlightedProduct >= 0 && container) {
       const item = container.children[highlightedProduct] as HTMLElement | undefined;
       if (item) {
-        const itemTop = item.offsetTop;
-        const itemBottom = itemTop + item.offsetHeight;
-        const containerTop = container.scrollTop;
-        const containerBottom = containerTop + container.clientHeight;
-        if (itemTop < containerTop) {
-          container.scrollTop = itemTop;
-        } else if (itemBottom > containerBottom) {
-          container.scrollTop = itemBottom - container.clientHeight;
-        }
+        item.scrollIntoView({ block: 'nearest' });
       }
     }
   }, [highlightedProduct, showProductDropdown]);
@@ -2504,226 +2497,76 @@ const SalesInvoice = () => {
         {/* Products Table */}
         <Card>
           <CardContent className="p-0">
-            {/* Mobile/Tablet View */}
-            <div className="block lg:hidden">
-              {/* Product Input Section for Mobile */}
-              <div className="p-4 border-b bg-gray-50">
-                <h3 className="text-sm font-medium mb-3">Add Product</h3>
-                
-                {/* Product Search */}
-                <div className="relative mb-3">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Product</label>
-                  <Input
-                    ref={productInputRef}
-                    placeholder={`Search ${selectedProductType === 'regular' ? 'regular' : 'non'} products...`}
-                    value={productSearch}
-                    disabled={isReadOnly}
-                    onChange={e => {
-                      setProductSearch(e.target.value);
-                      setShowProductDropdown(true);
-                      setSelectedProductId("");
-                    }}
-                    onFocus={() => setShowProductDropdown(!!productSearch)}
-                    onBlur={handleProductBlur}
-                    onKeyDown={handleProductKeyDown}
-                    autoComplete="off"
-                    className="w-full"
-                  />
-                  {showProductDropdown && productOptions.length > 0 && (
-                    <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                      {productOptions.map((p, idx) => (
-                        <div
-                          key={p.id}
-                          className={`p-3 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
-                          onMouseDown={() => {
-                            setSelectedProductId(p.id.toString());
-                            // Do NOT override selectedProductType — keep the user's radio button choice
-                            setProductSearch(`${p.productCode} - ${p.description}`);
-                            setShowProductDropdown(false);
-                            setTimeout(() => {
-                              const showNotesColumn = editingIndex !== null || saleItems.some(item => item.notes);
-                              if (showNotesColumn) {
-                                notesInputRef.current?.focus();
-                              } else {
-                                quantityInputRef.current?.focus();
-                              }
-                            }, 100);
-                          }}
-                          onMouseEnter={() => setHighlightedProduct(idx)}
-                        >
-                          <div className="flex flex-col">
-                            <div className="flex items-center justify-between">
-                              <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
-                              {(() => {
-                                const stock = getCurrentStock(p.id, (p as RegularProduct & { productType: 'regular' | 'non' }).productType);
-                                return (
-                                  <span className={`text-xs ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-500'}`}>
-                                    Stock: {stock}
-                                  </span>
-                                );
-                              })()}
-                            </div>
-                            <span className="text-sm text-gray-900">{p.description}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* Show current stock below input if a product is selected */}
-                  {selectedProductId && (() => {
-                    const stock = getStockForProduct(Number(selectedProductId));
-                    return (
-                      <div className={`text-xs mt-1 ${stock < 0 ? 'text-red-600 font-semibold' : stock === 0 ? 'text-orange-500' : 'text-gray-600'}`}>
-                        Current Stock: {stock}
-                        {stock < 0 && <span className="ml-2 text-red-500">(Negative Stock!)</span>}
-                      </div>
-                    );
-                  })()}
-                </div>
-
-                {/* Notes Input (if needed) */}
-                {(editingIndex !== null || saleItems.some(item => item.notes)) && (
-                  <div className="mb-3">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Notes (optional)</label>
-                    <Input
-                      ref={notesInputRef}
-                      placeholder="Notes (optional)"
-                      value={itemNotes}
-                      disabled={isReadOnly}
-                      onChange={(e) => setItemNotes(e.target.value)}
-                      onKeyDown={handleNotesKeyDown}
-                      className="w-full"
-                    />
-                  </div>
-                )}
-
-                {/* Quantity and Price Row */}
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Quantity</label>
-                    <Input
-                      ref={quantityInputRef}
-                      type="text"
-                      placeholder="Qty"
-                      value={itemQuantity}
-                      disabled={isReadOnly}
-                      onChange={(e) => setItemQuantity(e.target.value)}
-                      onKeyDown={handleQuantityKeyDown}
-                      onKeyPress={(e) => {
-                        if (!/[0-9.\-]/.test(e.key) &&
-                          e.key !== 'Backspace' &&
-                          e.key !== 'Delete' &&
-                          !e.key.startsWith('Arrow')) {
-                          e.preventDefault();
-                        }
+            {/* Mobile Add Product Form */}
+            <div className="lg:hidden p-3 border-b bg-gray-50 space-y-2">
+              <h3 className="text-sm font-medium">Add Product</h3>
+              <Input
+                ref={productInputRef}
+                placeholder={`Search ${selectedProductType === 'regular' ? 'regular' : 'non'} products...`}
+                value={productSearch}
+                disabled={isReadOnly}
+                onChange={e => {
+                  setProductSearch(e.target.value);
+                  setShowProductDropdown(true);
+                  setSelectedProductId("");
+                }}
+                onFocus={() => setShowProductDropdown(!!productSearch)}
+                onBlur={handleProductBlur}
+                onKeyDown={handleProductKeyDown}
+                autoComplete="off"
+                className="w-full"
+              />
+              {showProductDropdown && productOptions.length > 0 && (
+                <div ref={mobileDropdownRef} className="bg-white border rounded w-full max-h-48 overflow-y-auto shadow">
+                  {productOptions.map((p, idx) => (
+                    <div
+                      key={p.id}
+                      className={`p-2 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
+                      onMouseDown={() => {
+                        setSelectedProductId(p.id.toString());
+                        setProductSearch(`${p.productCode} - ${p.description}`);
+                        setShowProductDropdown(false);
+                        setTimeout(() => { notesInputRef.current?.focus(); }, 100);
                       }}
-                      className="w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Unit Price</label>
-                    <Input
-                      ref={priceInputRef}
-                      type="number"
-                      step="0.01"
-                      placeholder="Price"
-                      value={itemUnitPrice}
-                      disabled={isReadOnly}
-                      onChange={(e) => setItemUnitPrice(e.target.value)}
-                      onKeyDown={handlePriceKeyDown}
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-
-                {/* Total and Add Button */}
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">
-                    Total: £{(Number(itemQuantity || 0) * Number(itemUnitPrice || 0)).toFixed(2)}
-                  </div>
-                  <Button
-                    size="sm"
-                    className="bg-green-600 hover:bg-green-700"
-                    disabled={isReadOnly}
-                    onClick={handleAddItem}
-                  >
-                    Add Item
-                  </Button>
-                </div>
-              </div>
-
-              {/* Mobile Items List */}
-              <div className="divide-y">
-                {saleItems.map((item, index) => (
-                  <div key={index} className="p-2">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm">{item.productName}</h4>
-                        {item.notes && (
-                          <p className="text-xs text-gray-600 mt-1 break-words">{item.notes}</p>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium">£{Number(item.totalPrice).toFixed(2)}</div>
-                        <div className="text-xs text-gray-500">
-                          {formatQuantity(item.quantity)} × £{Number(item.unitPrice).toFixed(2)}
+                      onMouseEnter={() => setHighlightedProduct(idx)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
+                          <span className="ml-2 text-sm">{p.description}</span>
                         </div>
+                        <span className={`text-xs ${getCurrentStock(p.id, (p as any).productType) < 0 ? 'text-red-600 font-semibold' : getCurrentStock(p.id, (p as any).productType) === 0 ? 'text-orange-500' : 'text-gray-500'}`}>
+                          Stock: {getCurrentStock(p.id, (p as any).productType)}
+                        </span>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center text-xs text-gray-500">
-                      <div>
-                        Added by: {item.addedBy || "-"}
-                        {item.createdAt && (
-                          <span className="ml-2">
-                            {new Date(item.createdAt).toLocaleTimeString()}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          disabled={isReadOnly} 
-                          onClick={() => {
-                            setEditingIndex(index);
-                            setEditItem(item);
-                          }}
-                          className="text-xs px-2 py-1 h-6"
-                        >
-                          Edit
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="destructive" 
-                          disabled={isReadOnly} 
-                          onClick={() => {
-                            const updatedItems = saleItems.filter((_, i) => i !== index);
-                            setSaleItems(updatedItems);
-                            if (!currentSale) {
-                              localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
-                            }
-                            if (currentSale) {
-                              toast({
-                                title: "Item Removed",
-                                description: "Item removed. Remember to click 'Update Ticket' to save changes to the database."
-                              });
-                            } else {
-                              toast({ title: "Item Removed", description: "Sale item has been removed." });
-                            }
-                          }}
-                          className="text-xs px-2 py-1 h-6"
-                        >
-                          Remove
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+              {(editingIndex !== null || saleItems.some(item => item.notes)) && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
+                  <Input ref={notesInputRef} placeholder="Notes" value={itemNotes} disabled={isReadOnly} onChange={e => setItemNotes(e.target.value)} onKeyDown={handleNotesKeyDown} />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Qty</label>
+                  <Input ref={quantityInputRef} type="text" placeholder="Qty" value={itemQuantity} disabled={isReadOnly} onChange={e => setItemQuantity(e.target.value)} onKeyDown={handleQuantityKeyDown} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Unit Price</label>
+                  <Input ref={priceInputRef} type="number" step="0.01" placeholder="Price" value={itemUnitPrice} disabled={isReadOnly} onChange={e => setItemUnitPrice(e.target.value)} onKeyDown={handlePriceKeyDown} />
+                </div>
+                <div className="flex items-end justify-between gap-2 col-span-2">
+                  <span className="text-sm font-medium">£{(Number(itemQuantity || 0) * Number(itemUnitPrice || 0)).toFixed(2)}</span>
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={isReadOnly} onClick={handleAddItem}>Add Item</Button>
+                </div>
               </div>
             </div>
 
-            {/* Desktop View */}
-            <div className="hidden lg:block relative w-full overflow-visible">
+            {/* Table View */}
+            <div className="relative w-full overflow-visible">
               <Table className="[&_th]:h-7 [&_th]:px-2 [&_th]:py-0 [&_td]:p-1 [&_tr]:m-0">
                 <TableHeader>
                   <TableRow>
@@ -2861,8 +2704,8 @@ const SalesInvoice = () => {
                       </TableRow>
                     )
                   ))}
-                  {/* New item entry row */}
-                  <TableRow style={{ overflow: "visible" }}>
+                  {/* New item entry row (hidden on mobile, shown on lg+) */}
+                  <TableRow className="hidden lg:table-row" style={{ overflow: "visible" }}>
                     <TableCell style={{ overflow: "visible", position: "relative" }}>
                       <div className="relative">
                         <Input
