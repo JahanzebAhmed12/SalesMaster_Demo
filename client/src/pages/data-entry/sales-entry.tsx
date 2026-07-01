@@ -42,7 +42,6 @@ export default function SalesEntry() {
   const [gateNumber, setGateNumber] = useState("");
   const [isGateNumberFromCustomer, setIsGateNumberFromCustomer] = useState(false);
 
-  console.log(heldInvoices, "==============?")
 
   const form = useForm<SalesFormData>({
     resolver: zodResolver(salesSchema),
