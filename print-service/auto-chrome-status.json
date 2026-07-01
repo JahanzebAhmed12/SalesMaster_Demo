@@ -1,13 +1,13 @@
 {
   "status": "running",
   "message": "Connected to VPS and polling for jobs",
-  "timestamp": "2026-05-10T06:30:29.665Z",
-  "startTime": "2026-05-10T06:30:28.897Z",
+  "timestamp": "2026-07-01T16:21:09.213Z",
+  "startTime": "2026-07-01T16:21:08.264Z",
   "jobsProcessed": 0,
   "lastJobTime": null,
   "vpsConnected": true,
   "currentStatus": "running",
   "vpsUrl": "https://tropifruituk.net",
-  "printerName": "Microdoft Print to PDF",
+  "printerName": "EPSON LQ-350 ESC/P2",
   "customPaperSize": "DOT MATRIX (18.6x20)"
 }

@@ -99,7 +99,7 @@ export default function ClosingStock() {
   // Derived display list based on filter
   const displayItems = showAllProducts
     ? editItems
-    : editItems.filter(item => item.currentStock > 0);
+    : editItems.filter(item => item.currentStock !== 0);
 
   const savedProductIds = new Set(closingStockEntries.map((e: any) => e.productId));
 

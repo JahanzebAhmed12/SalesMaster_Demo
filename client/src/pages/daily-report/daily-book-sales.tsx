@@ -323,13 +323,14 @@ export default function DailyBookSales() {
     };
   });
 
-  const totalBoxes = useMemo(() => salesData.reduce((sum, item) => sum + item.boxes, 0), [salesData]);
-  const totalVAT = useMemo(() => salesData.reduce((sum, item) => sum + item.vat, 0), [salesData]);
-  const totalAmount = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + item.amount, 0), [salesData]);
-  const totalCash = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + item.cash, 0), [salesData]);
-  const totalBank = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bank || 0), 0), [salesData]);
-  const totalBankTransfer = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bankTransfer || 0), 0), [salesData]);
-  const totalCheque = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cheque || 0), 0), [salesData]);
+  const nonCreditSales = useMemo(() => salesData.filter(i => !i.credit), [salesData]);
+  const totalBoxes = useMemo(() => nonCreditSales.reduce((sum, item) => sum + item.boxes, 0), [nonCreditSales]);
+  const totalVAT = useMemo(() => nonCreditSales.reduce((sum, item) => sum + item.vat, 0), [nonCreditSales]);
+  const totalAmount = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + item.amount, 0), [nonCreditSales]);
+  const totalCash = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + item.cash, 0), [nonCreditSales]);
+  const totalBank = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bank || 0), 0), [nonCreditSales]);
+  const totalBankTransfer = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bankTransfer || 0), 0), [nonCreditSales]);
+  const totalCheque = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cheque || 0), 0), [nonCreditSales]);
   const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const tableRef = useRef<HTMLDivElement>(null);

@@ -11710,6 +11710,11 @@ def daily_summary_report():
         if negative_items or float(sale.total_amount) < 0:
             # This is a negative invoice, show in account credits
             account_credits = abs(float(sale.total_amount or 0))
+            account_amount = 0
+            cash_amount = 0
+            card_amount = 0
+            bank_transfer_amount = 0
+            cheque_amount = 0
 
         # Only add to financial totals if customer is NOT a company
         is_company_customer = bool(sale.is_company) if sale.is_company is not None else False
