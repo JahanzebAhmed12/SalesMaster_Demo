@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { CalendarIcon, Download, BarChart3, Database, Mail } from 'lucide-react';
@@ -35,6 +35,11 @@ export default function ProductSalesReport() {
   const [queryToDate, setQueryToDate] = useState<Date>();
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
+
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'productDescription',
+    direction: 'asc'
+  });
 
   // Track if dates were manually changed
   const fromDateManuallyChanged = useRef(false);
@@ -102,6 +107,16 @@ export default function ProductSalesReport() {
   const totalQuantity = salesData.reduce((sum: number, item: SalesReportData) => sum + item.quantity, 0);
   const averagePrice = salesData.length > 0 ? totalAmount / totalQuantity : 0;
   const numberOfProducts = salesData.length;
+
+  const sortedData = useMemo(() => {
+    const sorted = [...salesData];
+    sorted.sort((a, b) => {
+      const aVal = String(a[sortConfig.key as keyof SalesReportData] ?? '');
+      const bVal = String(b[sortConfig.key as keyof SalesReportData] ?? '');
+      return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    return sorted;
+  }, [salesData, sortConfig]);
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -190,7 +205,7 @@ export default function ProductSalesReport() {
         printWindow.document.write(`<th>${h}</th>`);
       });
       printWindow.document.write('</tr></thead><tbody>');
-      salesData.forEach(item => {
+      sortedData.forEach(item => {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${item.productDescription}</td>`);
         printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
@@ -213,7 +228,7 @@ export default function ProductSalesReport() {
   };
 
   const handleExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(salesData.map((item: SalesReportData) => ({
+    const ws = XLSX.utils.json_to_sheet(sortedData.map((item: SalesReportData) => ({
       'Product Description': item.productDescription,
       'Qty': formatQuantity(item.quantity),
       'Avg Price': item.avgPrice,
@@ -275,7 +290,7 @@ export default function ProductSalesReport() {
       head: [[
         'Product Description', 'Qty', 'Avg Price', 'Total'
       ]],
-      body: salesData.map((item: SalesReportData) => [
+      body: sortedData.map((item: SalesReportData) => [
         item.productDescription,
         formatQuantity(item.quantity),
         `£${item.avgPrice.toFixed(2)}`,
@@ -304,7 +319,7 @@ export default function ProductSalesReport() {
 
   const handleCopy = () => {
     const header = ['Product Description', 'Qty', 'Avg Price', 'Total'];
-    const rows = salesData.map((item: SalesReportData) => [
+    const rows = sortedData.map((item: SalesReportData) => [
       item.productDescription,
       formatQuantity(item.quantity),
       item.avgPrice,
@@ -365,7 +380,7 @@ export default function ProductSalesReport() {
     // Add table
     autoTable(doc, {
       head: [['Product Description', 'Qty', 'Avg Price', 'Total']],
-      body: salesData.map((item: SalesReportData) => [
+      body: sortedData.map((item: SalesReportData) => [
         item.productDescription,
         formatQuantity(item.quantity),
         `£${item.avgPrice.toFixed(2)}`,
@@ -634,7 +649,12 @@ export default function ProductSalesReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-1/4 px-6">Product Description</TableHead>
+                    <TableHead className="w-1/4 px-6 cursor-pointer select-none" onClick={() => setSortConfig(prev => ({
+                        key: 'productDescription',
+                        direction: prev.key === 'productDescription' && prev.direction === 'asc' ? 'desc' : 'asc'
+                      }))}>
+                      Product Description {sortConfig.key === 'productDescription' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                    </TableHead>
                     <TableHead className="w-1/4 text-right px-6">Qty</TableHead>
                     <TableHead className="w-1/4 text-right px-6">Avg Price</TableHead>
                     <TableHead className="w-1/4 text-right px-6">Total</TableHead>
@@ -654,7 +674,7 @@ export default function ProductSalesReport() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    salesData.map((item: SalesReportData) => (
+                    sortedData.map((item: SalesReportData) => (
                       <TableRow key={item.id}>
                         <TableCell className="px-6">
                           <button

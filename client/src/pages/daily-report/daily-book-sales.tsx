@@ -176,6 +176,7 @@ export default function DailyBookSales() {
 
   const { toast } = useToast();
   const [paymentType, setPaymentType] = useState("All");
+  const [invoiceFilter, setInvoiceFilter] = useState("All");
   const [userFilter, setUserFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [user, setUser] = useState<any>(null);
@@ -332,6 +333,33 @@ export default function DailyBookSales() {
   const totalBankTransfer = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bankTransfer || 0), 0), [nonCreditSales]);
   const totalCheque = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cheque || 0), 0), [nonCreditSales]);
   const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
+
+  // Client-side invoice type filter
+  const filteredData = useMemo(() => {
+    if (invoiceFilter === "All") return salesData;
+    return salesData.filter(sale => {
+      switch (invoiceFilter) {
+        case "Account": return (sale.amount || 0) > 0;
+        case "Paid": return sale.isFullyPaid || (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0) > 0;
+        case "Cash": return (sale.cash || 0) > 0;
+        case "Card": return (sale.bank || 0) > 0;
+        case "Cheque": return (sale.cheque || 0) > 0;
+        case "Bank Transfer": return (sale.bankTransfer || 0) > 0;
+        case "Credit": return (sale.credit || 0) > 0;
+        default: return true;
+      }
+    });
+  }, [salesData, invoiceFilter]);
+
+  // Filtered totals for table footer
+  const filteredNonCreditSales = useMemo(() => filteredData.filter(i => !i.credit), [filteredData]);
+  const filteredTotalBoxes = useMemo(() => filteredNonCreditSales.reduce((sum, item) => sum + item.boxes, 0), [filteredNonCreditSales]);
+  const filteredTotalAmount = useMemo(() => filteredNonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + item.amount, 0), [filteredNonCreditSales]);
+  const filteredTotalCash = useMemo(() => filteredNonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + item.cash, 0), [filteredNonCreditSales]);
+  const filteredTotalBank = useMemo(() => filteredNonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bank || 0), 0), [filteredNonCreditSales]);
+  const filteredTotalBankTransfer = useMemo(() => filteredNonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.bankTransfer || 0), 0), [filteredNonCreditSales]);
+  const filteredTotalCheque = useMemo(() => filteredNonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cheque || 0), 0), [filteredNonCreditSales]);
+  const filteredTotalCredit = useMemo(() => filteredData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [filteredData]);
 
   const tableRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -612,7 +640,7 @@ export default function DailyBookSales() {
   // Handle select all checkbox
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedSales(new Set(salesData.map(sale => sale.id)));
+      setSelectedSales(new Set(filteredData.map(sale => sale.id)));
     } else {
       setSelectedSales(new Set());
     }
@@ -1301,6 +1329,23 @@ export default function DailyBookSales() {
             </div>
           </CardHeader>
           <CardContent>
+            {/* Invoice Type Filter Chips */}
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {["All", "Account", "Paid", "Cash", "Card", "Cheque", "Bank Transfer", "Credit"].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setInvoiceFilter(filter)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs font-medium rounded-full border transition-colors",
+                    invoiceFilter === filter
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                  )}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
             <div className="w-full overflow-x-auto" ref={tableRef}>
               <Table>
                 <TableHeader>
@@ -1309,7 +1354,7 @@ export default function DailyBookSales() {
                       <input
                         type="checkbox"
                         className="rounded"
-                        checked={selectedSales.size === salesData.length && salesData.length > 0}
+                        checked={selectedSales.size === filteredData.length && filteredData.length > 0}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
                     </TableHead>
@@ -1344,7 +1389,7 @@ export default function DailyBookSales() {
                       <TableCell colSpan={9}>Loading...</TableCell>
                     </TableRow>
                   ) : (
-                    salesData.map((sale) => (
+                    filteredData.map((sale) => (
                       <TableRow
                         key={sale.id}
                         className={cn(
@@ -1485,48 +1530,48 @@ export default function DailyBookSales() {
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
                     <TableCell></TableCell>
-                    <TableCell className="font-bold text-xs sm:text-sm">{salesData.length} Items</TableCell>
-                    <TableCell className="text-center font-bold text-xs sm:text-sm">{formatQuantity(totalBoxes)}</TableCell>
+                    <TableCell className="font-bold text-xs sm:text-sm">{filteredData.length} Items</TableCell>
+                    <TableCell className="text-center font-bold text-xs sm:text-sm">{formatQuantity(filteredTotalBoxes)}</TableCell>
                     <TableCell></TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      {totalAmount === 0 ? "-" : (
+                      {filteredTotalAmount === 0 ? "-" : (
                         <>
-                          <span className="hidden sm:inline">£</span>{totalAmount.toFixed(2)}
+                          <span className="hidden sm:inline">£</span>{filteredTotalAmount.toFixed(2)}
                         </>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      {totalCash === 0 ? "-" : (
+                      {filteredTotalCash === 0 ? "-" : (
                         <>
-                          <span className="hidden sm:inline">£</span>{totalCash.toFixed(2)}
+                          <span className="hidden sm:inline">£</span>{filteredTotalCash.toFixed(2)}
                         </>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      {totalBank === 0 ? "-" : (
+                      {filteredTotalBank === 0 ? "-" : (
                         <>
-                          <span className="hidden sm:inline">£</span>{totalBank.toFixed(2)}
+                          <span className="hidden sm:inline">£</span>{filteredTotalBank.toFixed(2)}
                         </>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      {totalBankTransfer === 0 ? "-" : (
+                      {filteredTotalBankTransfer === 0 ? "-" : (
                         <>
-                          <span className="hidden sm:inline">£</span>{totalBankTransfer.toFixed(2)}
+                          <span className="hidden sm:inline">£</span>{filteredTotalBankTransfer.toFixed(2)}
                         </>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-xs sm:text-sm">
-                      {totalCheque === 0 ? "-" : (
+                      {filteredTotalCheque === 0 ? "-" : (
                         <>
-                          <span className="hidden sm:inline">£</span>{totalCheque.toFixed(2)}
+                          <span className="hidden sm:inline">£</span>{filteredTotalCheque.toFixed(2)}
                         </>
                       )}
                     </TableCell>
                     <TableCell className="text-right font-bold text-red-600 text-xs sm:text-sm">
-                      {totalCredit === 0 ? "-" : (
+                      {filteredTotalCredit === 0 ? "-" : (
                         <>
-                          <span className="hidden sm:inline">£</span>{totalCredit.toFixed(2)}
+                          <span className="hidden sm:inline">£</span>{filteredTotalCredit.toFixed(2)}
                         </>
                       )}
                     </TableCell>
@@ -1575,7 +1620,7 @@ export default function DailyBookSales() {
             </div>
 
             <div className="flex flex-col sm:flex-row justify-between items-center mt-4 text-sm text-gray-600 gap-2">
-              <div className="text-center sm:text-left">Showing {salesData.length} entries</div>
+              <div className="text-center sm:text-left">Showing {filteredData.length}{invoiceFilter !== "All" ? ` (${invoiceFilter})` : ""} entries</div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="text-xs">Previous</Button>
                 <Button variant="outline" size="sm" className="bg-blue-500 text-white text-xs">1</Button>

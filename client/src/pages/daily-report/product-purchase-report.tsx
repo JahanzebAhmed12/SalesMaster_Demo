@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import PageLayout from "@/components/common/page-layout";
@@ -43,6 +43,11 @@ export default function ProductPurchaseReport() {
   const [isEmailSending, setIsEmailSending] = useState(false);
   const [trigger, setTrigger] = useState(0);
   
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'productDescription',
+    direction: 'asc'
+  });
+
   // Track if dates were manually changed
   const fromDateManuallyChanged = useRef(false);
   const toDateManuallyChanged = useRef(false);
@@ -184,6 +189,16 @@ export default function ProductPurchaseReport() {
   const totalAmount = nonCompanyTotal;
   const averagePrice = totalQuantity > 0 ? totalAmount / totalQuantity : 0;
 
+  const sortedData = useMemo(() => {
+    const sorted = [...purchaseData];
+    sorted.sort((a, b) => {
+      const aVal = String(a[sortConfig.key as keyof PurchaseItem] ?? '');
+      const bVal = String(b[sortConfig.key as keyof PurchaseItem] ?? '');
+      return sortConfig.direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+    return sorted;
+  }, [purchaseData, sortConfig]);
+
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Export handlers
@@ -232,7 +247,7 @@ export default function ProductPurchaseReport() {
         printWindow.document.write(`<th>${h}</th>`);
       });
       printWindow.document.write('</tr></thead><tbody>');
-      purchaseData.forEach(item => {
+      sortedData.forEach(item => {
         printWindow.document.write('<tr>');
         printWindow.document.write(`<td>${item.slNo}</td>`);
         printWindow.document.write(`<td>${item.productDescription}</td>`);
@@ -258,7 +273,7 @@ export default function ProductPurchaseReport() {
   };
 
   const handleExcel = () => {
-    const ws = XLSX.utils.json_to_sheet(purchaseData.map((item: PurchaseItem) => ({
+    const ws = XLSX.utils.json_to_sheet(sortedData.map((item: PurchaseItem) => ({
       'Sl.No': item.slNo,
       'Product Description': item.productDescription,
       'Quantity': formatQuantity(item.quantity),
@@ -322,7 +337,7 @@ export default function ProductPurchaseReport() {
         'Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'
       ]],
       body: [
-        ...purchaseData.map((item: PurchaseItem) => [
+        ...sortedData.map((item: PurchaseItem) => [
           item.slNo,
           item.productDescription,
           formatQuantity(item.quantity),
@@ -330,7 +345,7 @@ export default function ProductPurchaseReport() {
           `£${item.total.toFixed(2)}`
         ]),
         // Add totals row
-        ['', `${purchaseData.length} Items`, formatQuantity(totalQuantity), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
+        ['', `${sortedData.length} Items`, formatQuantity(totalQuantity), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
       ],
       startY: yPosition,
       styles: {
@@ -358,7 +373,7 @@ export default function ProductPurchaseReport() {
 
   const handleCopy = () => {
     const header = ['Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total'];
-    const rows = purchaseData.map((item: PurchaseItem) => [
+    const rows = sortedData.map((item: PurchaseItem) => [
       item.slNo,
       item.productDescription,
       formatQuantity(item.quantity),
@@ -421,7 +436,7 @@ export default function ProductPurchaseReport() {
     autoTable(doc, {
       head: [['Sl.No', 'Product Description', 'Quantity', 'AVG Price', 'Total']],
       body: [
-        ...purchaseData.map((item: PurchaseItem) => [
+        ...sortedData.map((item: PurchaseItem) => [
           item.slNo.toString(),
           item.productDescription,
           formatQuantity(item.quantity),
@@ -429,7 +444,7 @@ export default function ProductPurchaseReport() {
           `£${item.total.toFixed(2)}`
         ]),
         // Add totals row
-        ['', `${purchaseData.length} Items`, formatQuantity(totalQuantity), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
+        ['', `${sortedData.length} Items`, formatQuantity(totalQuantity), `£${averagePrice.toFixed(2)}`, `£${totalAmount.toFixed(2)}`]
       ],
       startY: yPosition,
       styles: {
@@ -731,7 +746,12 @@ export default function ProductPurchaseReport() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Sl.No</TableHead>
-                    <TableHead>Product Description</TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => setSortConfig(prev => ({
+                        key: 'productDescription',
+                        direction: prev.key === 'productDescription' && prev.direction === 'asc' ? 'desc' : 'asc'
+                      }))}>
+                      Product Description {sortConfig.key === 'productDescription' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                    </TableHead>
                     <TableHead className="text-center">Quantity</TableHead>
                     <TableHead className="text-center">AVG Price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
@@ -751,7 +771,7 @@ export default function ProductPurchaseReport() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    purchaseData.map((item) => (
+                    sortedData.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell>{item.slNo}</TableCell>
                         <TableCell>
