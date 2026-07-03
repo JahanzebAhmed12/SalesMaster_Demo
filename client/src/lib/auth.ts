@@ -27,6 +27,15 @@ interface AuthState {
   checkAuth: () => Promise<boolean>;
 }
 
+// Centralized handler for authentication errors (401)
+// This ensures both localStorage token and Zustand store are always in sync
+export function handleAuthError() {
+  localStorage.removeItem('jwt_token');
+  // Update the Zustand store directly (not calling logout() which makes a network request)
+  useAuth.setState({ user: null, isAuthenticated: false });
+  window.location.href = '/';
+}
+
 export const useAuth = create<AuthState>()(
   persist(
     (set) => ({

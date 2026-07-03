@@ -1,5 +1,6 @@
 import { QueryClient, useMutation, useQueryClient, UseMutationOptions, UseMutationResult } from "@tanstack/react-query";
 import { API_BASE_URL, useRelativeUrls } from "./config";
+import { handleAuthError } from "./auth";
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,9 +67,7 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
 
   if (!response.ok) {
     if (response.status === 401) {
-      // Handle unauthorized access
-      localStorage.removeItem('jwt_token');
-      window.location.href = '/';
+      handleAuthError();
       throw new Error('Session expired. Please login again.');
     }
     throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);

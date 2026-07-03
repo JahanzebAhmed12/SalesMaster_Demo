@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePayrollState } from '@/components/payroll/PayrollStateProvider';
 import { apiRequest } from '@/lib/queryClient';
+import { handleAuthError } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
 /**
@@ -119,8 +120,7 @@ export const usePayrollMutations = () => {
           
           if (!res.ok) {
             if (res.status === 401) {
-              localStorage.removeItem('jwt_token');
-              window.location.href = '/';
+              handleAuthError();
               throw new Error('Session expired. Please login again.');
             }
             throw new Error(responseData.message || responseData.error || `HTTP error! status: ${res.status}`);
