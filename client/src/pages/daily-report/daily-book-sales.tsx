@@ -176,7 +176,6 @@ export default function DailyBookSales() {
 
   const { toast } = useToast();
   const [paymentType, setPaymentType] = useState("All");
-  const [invoiceFilter, setInvoiceFilter] = useState("All");
   const [userFilter, setUserFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [user, setUser] = useState<any>(null);
@@ -334,22 +333,7 @@ export default function DailyBookSales() {
   const totalCheque = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cheque || 0), 0), [nonCreditSales]);
   const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
-  // Client-side invoice type filter
-  const filteredData = useMemo(() => {
-    if (invoiceFilter === "All") return salesData;
-    return salesData.filter(sale => {
-      switch (invoiceFilter) {
-        case "Account": return (sale.amount || 0) > 0;
-        case "Paid": return sale.isFullyPaid || (sale.cash || 0) + (sale.bank || 0) + (sale.bankTransfer || 0) + (sale.cheque || 0) > 0;
-        case "Cash": return (sale.cash || 0) > 0;
-        case "Card": return (sale.bank || 0) > 0;
-        case "Cheque": return (sale.cheque || 0) > 0;
-        case "Bank Transfer": return (sale.bankTransfer || 0) > 0;
-        case "Credit": return (sale.credit || 0) > 0;
-        default: return true;
-      }
-    });
-  }, [salesData, invoiceFilter]);
+  const filteredData = useMemo(() => salesData, [salesData]);
 
   // Filtered totals for table footer
   const filteredNonCreditSales = useMemo(() => filteredData.filter(i => !i.credit), [filteredData]);
@@ -1121,6 +1105,7 @@ export default function DailyBookSales() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="All">All</SelectItem>
+                    <SelectItem value="Account">Account</SelectItem>
                     <SelectItem value="Cash">Cash</SelectItem>
                     <SelectItem value="Card">Card</SelectItem>
                     <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
@@ -1153,9 +1138,7 @@ export default function DailyBookSales() {
 
               <div className="w-full space-y-2">
                 <Label className="text-sm font-medium invisible">Action:</Label>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full h-10">
-                  Search
-                </Button>
+                <div className="h-10"></div>
               </div>
 
               {canEditCurrentDate && (
@@ -1329,23 +1312,6 @@ export default function DailyBookSales() {
             </div>
           </CardHeader>
           <CardContent>
-            {/* Invoice Type Filter Chips */}
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {["All", "Account", "Paid", "Cash", "Card", "Cheque", "Bank Transfer", "Credit"].map((filter) => (
-                <button
-                  key={filter}
-                  onClick={() => setInvoiceFilter(filter)}
-                  className={cn(
-                    "px-2.5 py-1 text-xs font-medium rounded-full border transition-colors",
-                    invoiceFilter === filter
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                  )}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
             <div className="w-full overflow-x-auto" ref={tableRef}>
               <Table>
                 <TableHeader>
@@ -1623,7 +1589,7 @@ export default function DailyBookSales() {
             </div>
 
             <div className="flex flex-col sm:flex-row justify-between items-center mt-4 text-sm text-gray-600 gap-2">
-              <div className="text-center sm:text-left">Showing {filteredData.length}{invoiceFilter !== "All" ? ` (${invoiceFilter})` : ""} entries</div>
+              <div className="text-center sm:text-left">Showing {filteredData.length} entries</div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="text-xs">Previous</Button>
                 <Button variant="outline" size="sm" className="bg-blue-500 text-white text-xs">1</Button>

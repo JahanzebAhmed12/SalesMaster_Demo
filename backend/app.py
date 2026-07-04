@@ -5231,19 +5231,6 @@ def daily_book_sales():
     elif to_date:
         to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
         query = query.filter(Sale.date < to_dt)
-    if payment_type and payment_type != 'All':
-        if payment_type == 'Cash':
-            query = query.filter(Sale.customer_type.ilike('cash'))
-        elif payment_type == 'Card':
-            query = query.filter(Sale.customer_type.ilike('bank'))
-        elif payment_type == 'Bank Transfer':
-            query = query.filter(Sale.customer_type.ilike('bank_transfer'))
-        elif payment_type == 'Cheque':
-            query = query.filter(Sale.customer_type.ilike('cheque'))
-        elif payment_type == 'Account':
-            query = query.filter(Sale.customer_type.ilike('account'))
-        elif payment_type == 'Credit':
-            query = query.filter(Sale.customer_type.ilike('credit'))
     if salesman and salesman != 'all':
         query = query.filter(User.username == salesman)
     if search:
@@ -5253,9 +5240,11 @@ def daily_book_sales():
         )
     # Only show finalized sales
     query = query.filter(Sale.status == 'finalized')
+    
     sales = query.order_by(Sale.invoice_number.desc()).all()
     result = []
-    for idx, sale in enumerate(sales, 1):
+    slNo = 0
+    for sale in sales:
         boxes = sum(item.quantity for item in sale.items)
         # Check if invoice was paid via customer payment page (has batch_id payments)
         customer_payment_payments = [p for p in sale.payments if p.batch_id]
@@ -5325,9 +5314,25 @@ def daily_book_sales():
         total_paid = sum(float(p.amount) for p in sale.payments)  # All payments for status calculation
         is_fully_paid = total_paid >= float(sale.total_amount) * 0.99  # Allow for small rounding differences
         
+        # Post-computation payment type filter using actual computed amounts
+        if payment_type and payment_type != 'All':
+            if payment_type == 'Cash' and cash_amount <= 0:
+                continue
+            elif payment_type == 'Card' and bank_amount <= 0:
+                continue
+            elif payment_type == 'Bank Transfer' and bank_transfer_amount <= 0:
+                continue
+            elif payment_type == 'Cheque' and cheque_amount <= 0:
+                continue
+            elif payment_type == 'Account' and account_amount <= 0:
+                continue
+            elif payment_type == 'Credit' and credit_amount <= 0:
+                continue
+        
+        slNo += 1
         result.append({
             'id': sale.id,
-            'slNo': idx,
+            'slNo': slNo,
             'date': sale.date.strftime('%Y-%m-%d'),
             'salesman': sale.user.username if sale.user else '',
             'boxes': boxes,

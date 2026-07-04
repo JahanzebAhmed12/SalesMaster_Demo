@@ -246,6 +246,14 @@ export default function DotMatrixPaymentPrintPage() {
 
   const { totalAmount, customer } = data;
 
+  // Collect unique invoice numbers from all payments
+  const paidInvoiceNumbers = [...new Set(
+    (data.payments || []).map(p => p.invoiceNumber).filter(Boolean)
+  )];
+  const invoiceNumbersText = paidInvoiceNumbers.length > 0
+    ? `Invoice ${paidInvoiceNumbers.join(', ')}`
+    : '';
+
   // Calculate pagination with method rows
   const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
   const totalPages = Math.ceil(methodRows.length / itemsPerPage);
@@ -557,11 +565,30 @@ export default function DotMatrixPaymentPrintPage() {
             </React.Fragment>
           ))}
 
-          {/* Remarks - positioned after last payment item on last page */}
-          {page.isLastPage && data.payments?.[0]?.remarks && (
+          {/* Paid invoice numbers - below payment rows on last page */}
+          {page.isLastPage && invoiceNumbersText && (
             <div style={{
               position: 'absolute',
               top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + page.payments.length * parseInt(FIELD_POSITIONS.itemsRowHeight) + 2}mm`,
+              left: FIELD_POSITIONS.columns.description.left,
+              width: FIELD_POSITIONS.columns.description.width,
+              fontFamily: '"Courier New", "Courier", monospace',
+              fontSize: '10pt',
+              fontWeight: 'bold',
+              lineHeight: '1.3',
+              whiteSpace: 'normal',
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word'
+            }}>
+              {invoiceNumbersText}
+            </div>
+          )}
+
+          {/* Remarks - positioned after invoice numbers on last page */}
+          {page.isLastPage && data.payments?.[0]?.remarks && (
+            <div style={{
+              position: 'absolute',
+              top: `${parseInt(FIELD_POSITIONS.itemsStartTop) + page.payments.length * parseInt(FIELD_POSITIONS.itemsRowHeight) + 16}mm`,
               left: FIELD_POSITIONS.remarks.left,
               width: FIELD_POSITIONS.remarks.width,
               fontFamily: '"Courier New", "Courier", monospace',
