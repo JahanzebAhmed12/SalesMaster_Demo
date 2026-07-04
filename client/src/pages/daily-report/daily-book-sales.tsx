@@ -1358,6 +1358,7 @@ export default function DailyBookSales() {
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
                     </TableHead>
+                    <TableHead className="w-8 sm:w-10 text-center">#</TableHead>
                     <TableHead className="min-w-[80px] sm:min-w-[100px]">Date</TableHead>
                     <TableHead className="w-[150px]">
                       <SortableHeader label="Invoice No" sortKey="invoiceNo" />
@@ -1386,10 +1387,10 @@ export default function DailyBookSales() {
                 <TableBody>
                   {isLoadingSales ? (
                     <TableRow>
-                      <TableCell colSpan={9}>Loading...</TableCell>
+                      <TableCell colSpan={11}>Loading...</TableCell>
                     </TableRow>
                   ) : (
-                    filteredData.map((sale) => (
+                    filteredData.map((sale, idx) => (
                       <TableRow
                         key={sale.id}
                         className={cn(
@@ -1408,6 +1409,7 @@ export default function DailyBookSales() {
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
+                        <TableCell className="text-center text-xs sm:text-sm text-muted-foreground">{idx + 1}</TableCell>
                         <TableCell className="text-xs sm:text-sm">{formatDateForDisplay(sale.date, 'MM/dd/yy')}</TableCell>
                         <TableCell className="text-xs sm:text-sm">{sale.invoiceNo}</TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
@@ -1529,6 +1531,7 @@ export default function DailyBookSales() {
 
                   {/* Total Row */}
                   <TableRow className="border-t-2 border-gray-300 bg-gray-50">
+                    <TableCell></TableCell>
                     <TableCell></TableCell>
                     <TableCell className="font-bold text-xs sm:text-sm">{filteredData.length} Items</TableCell>
                     <TableCell className="text-center font-bold text-xs sm:text-sm">{formatQuantity(filteredTotalBoxes)}</TableCell>

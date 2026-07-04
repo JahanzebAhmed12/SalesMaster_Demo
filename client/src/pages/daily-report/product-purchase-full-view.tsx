@@ -30,6 +30,7 @@ interface PurchaseFullViewRow {
   isHeader?: boolean;
   isTotal?: boolean;
   isCompany?: boolean;
+  notes?: string;
 }
 
 export default function ProductPurchaseFullView() {
@@ -172,26 +173,26 @@ export default function ProductPurchaseFullView() {
       if (row.isHeader) {
         processedData.push([
           row.date, row.supplier, row.invNo, row.awb,
-          '', '', '', '', ''
+          '', '', '', '', '', ''
         ]);
       } else if (row.isTotal) {
         processedData.push([
-          '', '', '', '', row.product, row.quantity.toString(),
+          '', '', '', '', row.product, '', row.quantity.toString(),
           '', '', Number(row.total).toFixed(2)
         ]);
         if (index < displayData.length - 1) {
-          processedData.push(['', '', '', '', '', '', '', '', '']);
+          processedData.push(['', '', '', '', '', '', '', '', '', '']);
         }
       } else {
         processedData.push([
-          '', '', row.invNo, row.awb, row.product, row.quantity.toString(),
+          '', '', row.invNo, row.awb, row.product, row.notes || '', row.quantity.toString(),
           Number(row.unitPrice).toFixed(2), Number(row.sellingPrice).toFixed(2), Number(row.total).toFixed(2)
         ]);
       }
     });
     
     autoTable(doc, {
-      head: [['Date', 'Supplier', 'Inv.No', 'AWB', 'Product', 'Quantity', 'Unit Price', 'Selling Price', 'Total']],
+      head: [['Date', 'Supplier', 'Inv.No', 'AWB', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Selling Price', 'Total']],
       body: processedData,
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
@@ -351,26 +352,26 @@ export default function ProductPurchaseFullView() {
       if (row.isHeader) {
         processedData.push([
           row.date, row.supplier, row.invNo, row.awb,
-          '', '', '', '', ''
+          '', '', '', '', '', ''
         ]);
       } else if (row.isTotal) {
         processedData.push([
-          '', '', '', '', row.product, row.quantity.toString(),
+          '', '', '', '', row.product, '', row.quantity.toString(),
           '', '', Number(row.total).toFixed(2)
         ]);
         if (index < displayData.length - 1) {
-          processedData.push(['', '', '', '', '', '', '', '', '']);
+          processedData.push(['', '', '', '', '', '', '', '', '', '']);
         }
       } else {
         processedData.push([
-          '', '', row.invNo, row.awb, row.product, row.quantity.toString(),
+          '', '', row.invNo, row.awb, row.product, row.notes || '', row.quantity.toString(),
           Number(row.unitPrice).toFixed(2), Number(row.sellingPrice).toFixed(2), Number(row.total).toFixed(2)
         ]);
       }
     });
     
     autoTable(doc, {
-      head: [['Date', 'Supplier', 'Inv.No', 'AWB', 'Product', 'Quantity', 'Unit Price', 'Selling Price', 'Total']],
+      head: [['Date', 'Supplier', 'Inv.No', 'AWB', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Selling Price', 'Total']],
       body: processedData,
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
@@ -512,6 +513,7 @@ export default function ProductPurchaseFullView() {
                     <TableHead>Inv.No</TableHead>
                     <TableHead>AWB</TableHead>
                     <TableHead>Product</TableHead>
+                    <TableHead>Notes</TableHead>
                     <TableHead className="text-right">Quantity</TableHead>
                     <TableHead className="text-right">Unit Price</TableHead>
                     <TableHead className="text-right">Selling Price</TableHead>
@@ -521,11 +523,11 @@ export default function ProductPurchaseFullView() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8">Loading...</TableCell>
+                      <TableCell colSpan={10} className="text-center py-8">Loading...</TableCell>
                     </TableRow>
                   ) : data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8">No data available</TableCell>
+                      <TableCell colSpan={10} className="text-center py-8">No data available</TableCell>
                     </TableRow>
                   ) : (
                     (data as PurchaseFullViewRow[]).map((row, idx) => {
@@ -543,8 +545,10 @@ export default function ProductPurchaseFullView() {
                             </TableCell>
                             <TableCell>{row.invNo}</TableCell>
                             <TableCell>{row.awb}</TableCell>
-                            <TableCell colSpan={4}></TableCell>
-                            <TableCell></TableCell>
+                            <TableCell colSpan={2}></TableCell>
+                            <TableCell className="text-sm text-muted-foreground italic whitespace-normal break-words" colSpan={4}>
+                              {row.notes || ''}
+                            </TableCell>
                           </TableRow>
                         );
                       } else if (row.isTotal) {
@@ -552,6 +556,7 @@ export default function ProductPurchaseFullView() {
                           <TableRow key={idx} className={cn("font-bold border-b-2 border-gray-300", row.isCompany ? "bg-amber-50" : "bg-white")}>
                             <TableCell colSpan={4}></TableCell>
                             <TableCell className="text-right">{row.product}</TableCell>
+                            <TableCell></TableCell>
                             <TableCell className="text-right">{row.quantity}</TableCell>
                             <TableCell></TableCell>
                             <TableCell></TableCell>
@@ -581,6 +586,9 @@ export default function ProductPurchaseFullView() {
                               >
                                 {row.product}
                               </button>
+                            </TableCell>
+                            <TableCell className="max-w-[250px] whitespace-normal break-words text-sm text-muted-foreground">
+                              {row.notes || ''}
                             </TableCell>
                             <TableCell className="text-right">{row.quantity}</TableCell>
                             <TableCell className="text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>

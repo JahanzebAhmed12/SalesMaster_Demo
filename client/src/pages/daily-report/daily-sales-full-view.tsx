@@ -29,6 +29,7 @@ interface FullViewRow {
   total: number;
   isInvoiceHeader?: boolean;
   isInvoiceTotal?: boolean;
+  notes?: string;
 }
 
 export default function DailySalesFullView() {
@@ -213,25 +214,25 @@ export default function DailySalesFullView() {
           row.date,
           row.invoiceNo,
           row.customerName,
-          '', '', '', ''
+          '', row.notes || '', '', '', ''
         ]);
       } else if (row.isInvoiceTotal) {
         processedData.push([
-          '', '', '', '', '', 'Total', Number(row.total).toFixed(2)
+          '', '', '', '', '', '', 'Total', Number(row.total).toFixed(2)
         ]);
         if (index < displayData.length - 1) {
-          processedData.push(['', '', '', '', '', '', '']);
+          processedData.push(['', '', '', '', '', '', '', '']);
         }
       } else {
         processedData.push([
           '', row.invoiceNo, row.customerName, row.productName,
-          formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
+          row.notes || '', formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
         ]);
       }
     });
     
     autoTable(doc, {
-      head: [['Date', 'Invoice No', 'Customer Name', 'Product Name', 'Quantity', 'Unit Price', 'Total']],
+      head: [['Date', 'Invoice No', 'Customer Name', 'Product Name', 'Notes', 'Quantity', 'Unit Price', 'Total']],
       body: processedData,
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
@@ -307,25 +308,25 @@ export default function DailySalesFullView() {
           row.date,
           row.invoiceNo,
           row.customerName,
-          '', '', '', ''
+          '', row.notes || '', '', '', ''
         ]);
       } else if (row.isInvoiceTotal) {
         processedData.push([
-          '', '', '', '', '', 'Total', Number(row.total).toFixed(2)
+          '', '', '', '', '', '', 'Total', Number(row.total).toFixed(2)
         ]);
         if (index < displayData.length - 1) {
-          processedData.push(['', '', '', '', '', '', '']);
+          processedData.push(['', '', '', '', '', '', '', '']);
         }
       } else {
         processedData.push([
           '', row.invoiceNo, row.customerName, row.productName,
-          formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
+          row.notes || '', formatQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)
         ]);
       }
     });
     
     autoTable(doc, {
-      head: [['Date', 'Invoice No', 'Customer Name', 'Product Name', 'Quantity', 'Unit Price', 'Total']],
+      head: [['Date', 'Invoice No', 'Customer Name', 'Product Name', 'Notes', 'Quantity', 'Unit Price', 'Total']],
       body: processedData,
       startY: yPosition,
       styles: { fontSize: 8, cellPadding: 2 },
@@ -554,6 +555,7 @@ export default function DailySalesFullView() {
                     <TableHead>Invoice No</TableHead>
                     <TableHead>Customer Name</TableHead>
                     <TableHead>Product Name</TableHead>
+                    <TableHead>Notes</TableHead>
                     <TableHead className="text-right">Quantity</TableHead>
                     <TableHead className="text-right">Unit Price</TableHead>
                     <TableHead className="text-right">Total</TableHead>
@@ -562,11 +564,11 @@ export default function DailySalesFullView() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">Loading...</TableCell>
+                      <TableCell colSpan={8} className="text-center py-8">Loading...</TableCell>
                     </TableRow>
                   ) : displayData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">No data available</TableCell>
+                      <TableCell colSpan={8} className="text-center py-8">No data available</TableCell>
                     </TableRow>
                   ) : (
                     displayData.map((row: FullViewRow, idx: number) => {
@@ -576,13 +578,16 @@ export default function DailySalesFullView() {
                             <TableCell>{row.date}</TableCell>
                             <TableCell>{row.invoiceNo}</TableCell>
                             <TableCell>{row.customerName}</TableCell>
-                            <TableCell colSpan={4}></TableCell>
+                            <TableCell colSpan={2}></TableCell>
+                            <TableCell className="text-sm text-muted-foreground italic whitespace-normal break-words" colSpan={3}>
+                              {row.notes || ''}
+                            </TableCell>
                           </TableRow>
                         );
                       } else if (row.isInvoiceTotal) {
                         return (
                           <TableRow key={idx} className="bg-white font-bold border-b-2 border-gray-300">
-                            <TableCell colSpan={5}></TableCell>
+                            <TableCell colSpan={6}></TableCell>
                             <TableCell className="text-right font-bold">Total</TableCell>
                             <TableCell className="text-right font-bold">£{Number(row.total).toFixed(2)}</TableCell>
                           </TableRow>
@@ -624,6 +629,9 @@ export default function DailySalesFullView() {
                               >
                                 {row.productName}
                               </button>
+                            </TableCell>
+                            <TableCell className="max-w-[250px] whitespace-normal break-words text-sm text-muted-foreground">
+                              {row.notes || ''}
                             </TableCell>
                             <TableCell className="text-right">{formatQuantity(row.quantity)}</TableCell>
                             <TableCell className="text-right">£{Number(row.unitPrice).toFixed(2)}</TableCell>

@@ -5395,7 +5395,8 @@ def daily_sales_full_view():
             'quantity': 0,
             'unitPrice': 0,
             'total': 0,
-            'isInvoiceHeader': True
+            'isInvoiceHeader': True,
+            'notes': sale.notes or ''
         })
         
         # Add product rows for this invoice
@@ -5433,7 +5434,8 @@ def daily_sales_full_view():
                     'unitPrice': float(item.unit_price) if item.unit_price else 0,
                     'total': float(item.total_price) if item.total_price else 0,
                     'isInvoiceHeader': False,
-                    'isInvoiceTotal' : False
+                    'isInvoiceTotal' : False,
+                    'notes': item.notes or ''
                 })
         result.append({
         'date': '',
@@ -5444,7 +5446,8 @@ def daily_sales_full_view():
         'unitPrice': '',
         'total': invoice_total,
         'isInvoiceHeader': False,
-        'isInvoiceTotal': True
+        'isInvoiceTotal': True,
+        'notes': ''
     })
     
     return jsonify(result)
@@ -5538,6 +5541,7 @@ def product_purchase_full_view():
                 'isHeader': True,
                 'isTotal': False,
                 'isCompany': bool(purchase.supplier.is_company) if purchase.supplier and purchase.supplier.is_company is not None else False,
+                'notes': invoice.remarks or ''
             })
             total_qty = 0
             total_amt = 0
@@ -5577,6 +5581,7 @@ def product_purchase_full_view():
                     'isHeader': False,
                     'isTotal': False,
                     'isCompany': bool(purchase.supplier.is_company) if purchase.supplier and purchase.supplier.is_company is not None else False,
+                    'notes': item.remarks or ''
                 })
             # Total row for this invoice
             result.append({
@@ -5592,6 +5597,7 @@ def product_purchase_full_view():
                 'isHeader': False,
                 'isTotal': True,
                 'isCompany': bool(purchase.supplier.is_company) if purchase.supplier and purchase.supplier.is_company is not None else False,
+                'notes': ''
             })
     return jsonify(result)
 
