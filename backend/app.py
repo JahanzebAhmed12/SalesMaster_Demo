@@ -15225,6 +15225,7 @@ def update_email_config():
     config['MAIL_EMAIL'] = data.get('MAIL_EMAIL', '')
     config['MAIL_PASSWORD'] = data.get('MAIL_PASSWORD', '')
     config['MAIL_DEFAULT_SENDER'] = data.get('MAIL_DEFAULT_SENDER', '')
+    config['BREVO_API_KEY'] = data.get('BREVO_API_KEY', '') or config.get('BREVO_API_KEY', '')
     save_email_config(config)
     
     # Update Flask app config directly
@@ -15328,7 +15329,7 @@ def send_email_with_attachment():
             return jsonify({"error": "No attachment provided"}), 400
 
         import base64
-        from mail_utils import send_via_resend
+        from mail_utils import send_via_brevo
 
         pdf_bytes = base64.b64decode(attachment.get('content'))
         attachments = [{
@@ -15341,7 +15342,7 @@ def send_email_with_attachment():
         plain_body = data.get('body', '')
         html_body  = f'<pre style="font-family:Arial,sans-serif;white-space:pre-wrap;">{plain_body}</pre>'
 
-        ok = send_via_resend(
+        ok = send_via_brevo(
             to_list=email_list,
             subject=data.get('subject'),
             html_content=html_body,

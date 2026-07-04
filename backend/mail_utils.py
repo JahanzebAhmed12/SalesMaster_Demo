@@ -26,25 +26,25 @@ def save_email_config(config):
 
 
 # ---------------------------------------------------------------------------
-# Resend HTTP API sender (replaces Flask-Mail / SMTP)
+# Brevo HTTP API sender (replaces Resend API)
 # ---------------------------------------------------------------------------
 
-def get_resend_config():
+def get_brevo_config():
     """Return (api_key, from_address) from email_config.json or env vars."""
     config = load_email_config()
     if config:
-        api_key   = config.get('RESEND_API_KEY') or os.getenv('RESEND_API_KEY', '')
+        api_key   = config.get('BREVO_API_KEY') or os.getenv('BREVO_API_KEY', '')
         from_addr = config.get('MAIL_DEFAULT_SENDER') or config.get('MAIL_EMAIL', '')
     else:
-        api_key   = os.getenv('RESEND_API_KEY', '')
+        api_key   = os.getenv('BREVO_API_KEY', '')
         from_addr = os.getenv('MAIL_DEFAULT_SENDER', os.getenv('MAIL_EMAIL', ''))
     return api_key, from_addr
 
 
-def send_via_resend(to_list, subject, html_content, text_content=None,
-                    attachments=None):
+def send_via_brevo(to_list, subject, html_content, text_content=None,
+                   attachments=None):
     """
-    Send an email via the Resend HTTP API.
+    Send an email via the Brevo (Sendinblue) HTTP API v3.
 
     Parameters
     ----------
@@ -58,38 +58,38 @@ def send_via_resend(to_list, subject, html_content, text_content=None,
     -------
     True on success, False on failure.
     """
-    api_key, from_addr = get_resend_config()
+    api_key, from_addr = get_brevo_config()
 
     if not api_key:
-        print('[RESEND ERROR] RESEND_API_KEY not configured in email_config.json')
+        print('[BREVO ERROR] BREVO_API_KEY not configured in email_config.json')
         return False
     if not from_addr:
-        print('[RESEND ERROR] MAIL_DEFAULT_SENDER not configured in email_config.json')
+        print('[BREVO ERROR] MAIL_DEFAULT_SENDER not configured in email_config.json')
         return False
 
     payload = {
-        'from':    from_addr,
-        'to':      to_list,
-        'subject': subject,
-        'html':    html_content,
+        'sender':      {'email': from_addr},
+        'to':          [{'email': addr} for addr in to_list],
+        'subject':     subject,
+        'htmlContent': html_content,
     }
     if text_content:
-        payload['text'] = text_content
+        payload['textContent'] = text_content
 
     if attachments:
-        payload['attachments'] = [
+        payload['attachment'] = [
             {
-                'filename': att['filename'],
-                'content':  base64.b64encode(att['content']).decode('utf-8'),
+                'name':    att['filename'],
+                'content': base64.b64encode(att['content']).decode('utf-8'),
             }
             for att in attachments
         ]
 
     try:
         resp = requests.post(
-            'https://api.resend.com/emails',
+            'https://api.brevo.com/v3/smtp/email',
             headers={
-                'Authorization': f'Bearer {api_key}',
+                'api-key':       api_key,
                 'Content-Type':  'application/json',
             },
             json=payload,
@@ -97,13 +97,13 @@ def send_via_resend(to_list, subject, html_content, text_content=None,
         )
         if resp.status_code in (200, 201):
             data = resp.json()
-            print(f'[RESEND SUCCESS] id={data.get("id")} to={to_list}')
+            print(f'[BREVO SUCCESS] messageId={data.get("messageId")} to={to_list}')
             return True
         else:
-            print(f'[RESEND ERROR] HTTP {resp.status_code}: {resp.text}')
+            print(f'[BREVO ERROR] HTTP {resp.status_code}: {resp.text}')
             return False
     except Exception as e:
-        print(f'[RESEND ERROR] Request failed: {e}')
+        print(f'[BREVO ERROR] Request failed: {e}')
         import traceback
         print(traceback.format_exc())
         return False
@@ -111,7 +111,7 @@ def send_via_resend(to_list, subject, html_content, text_content=None,
 
 # ---------------------------------------------------------------------------
 # Stub init_mail — kept so app.py's "mail = init_mail(app)" still works.
-# Returns a dummy object; the real sending is done via send_via_resend().
+# Returns a dummy object; the real sending is done via send_via_brevo().
 # ---------------------------------------------------------------------------
 
 class _DummyMail:
@@ -122,7 +122,7 @@ class _DummyMail:
     def send(self, msg):
         raise RuntimeError(
             'mail.send() called on the dummy mail object. '
-            'Use send_via_resend() or the dedicated send_*_email() helpers.'
+            'Use send_via_brevo() or the dedicated send_*_email() helpers.'
         )
 
 def init_mail(app):
@@ -131,9 +131,9 @@ def init_mail(app):
         from_addr = ''
         if config:
             from_addr = config.get('MAIL_DEFAULT_SENDER') or config.get('MAIL_EMAIL', '')
-            print(f'[EMAIL CONFIG] Mode: Resend API')
+            print(f'[EMAIL CONFIG] Mode: Brevo API')
             print(f'[EMAIL CONFIG] From: {from_addr}')
-            print(f'[EMAIL CONFIG] API key configured: {bool(config.get("RESEND_API_KEY"))}')
+            print(f'[EMAIL CONFIG] API key configured: {bool(config.get("BREVO_API_KEY"))}')
         else:
             print('[EMAIL CONFIG] No config file — using environment variables')
         dummy = _DummyMail()
@@ -223,7 +223,7 @@ generate_history_pdf   = _generate_pdf
 
 
 # ---------------------------------------------------------------------------
-# Public send_* helpers — same signatures as before, now use Resend
+# Public send_* helpers — same signatures as before, now use Brevo
 # ---------------------------------------------------------------------------
 
 def _logo_file_path():
@@ -247,7 +247,7 @@ def send_invoice_email(_mail_unused, recipient, sale, customer):
                           'content':  pdf,
                           'content_type': 'application/pdf'}] if pdf else [])
 
-        return send_via_resend(
+        return send_via_brevo(
             to_list=[recipient],
             subject=f'Your Invoice #{sale.invoice_number}',
             html_content=html,
@@ -278,7 +278,7 @@ def send_customer_statement_email(_mail_unused, recipient, customer,
         attachments = [{'filename': fname, 'content': pdf,
                          'content_type': 'application/pdf'}] if pdf else []
 
-        return send_via_resend(
+        return send_via_brevo(
             to_list=[recipient],
             subject=f'Customer Statement - {customer.customer_name}',
             html_content=html,
@@ -308,7 +308,7 @@ def send_customer_history_email(_mail_unused, recipient, customer,
         attachments = [{'filename': fname, 'content': pdf,
                          'content_type': 'application/pdf'}] if pdf else []
 
-        return send_via_resend(
+        return send_via_brevo(
             to_list=[recipient],
             subject=f'Customer History - {customer.customer_name}',
             html_content=html,
@@ -331,7 +331,7 @@ def send_purchase_invoice_email(_mail_unused, recipient, invoice, supplier):
                           'content':  pdf,
                           'content_type': 'application/pdf'}] if pdf else [])
 
-        return send_via_resend(
+        return send_via_brevo(
             to_list=[recipient],
             subject=f'Purchase Invoice #{invoice.id}',
             html_content=html,
@@ -360,7 +360,7 @@ def send_supplier_statement_email(_mail_unused, recipient, supplier,
         attachments = [{'filename': fname, 'content': pdf,
                          'content_type': 'application/pdf'}] if pdf else []
 
-        return send_via_resend(
+        return send_via_brevo(
             to_list=[recipient],
             subject=f'Supplier Statement - {supplier.supplier_name}',
             html_content=html,
