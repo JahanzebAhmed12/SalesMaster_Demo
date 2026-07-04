@@ -5,7 +5,7 @@ import type { RegularProduct, NonProduct, Customer, Supplier } from "@shared/sch
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -42,8 +42,23 @@ function toEndOfDayDateString(date: Date) {
 export default function ProductHistory() {
   const [productLike, setProductLike] = useState("");
   const [productId, setProductId] = useState<string | undefined>(undefined);
+  const [productSearch, setProductSearch] = useState("");
+  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [highlightedProduct, setHighlightedProduct] = useState(-1);
+  const productInputRef = useRef<HTMLInputElement>(null);
+  const productDropdownRef = useRef<HTMLDivElement>(null);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
   const [supplierId, setSupplierId] = useState<string | undefined>(undefined);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [highlightedCustomer, setHighlightedCustomer] = useState(-1);
+  const customerInputRef = useRef<HTMLInputElement>(null);
+  const customerDropdownRef = useRef<HTMLDivElement>(null);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
+  const [highlightedSupplier, setHighlightedSupplier] = useState(-1);
+  const supplierInputRef = useRef<HTMLInputElement>(null);
+  const supplierDropdownRef = useRef<HTMLDivElement>(null);
   
   // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -141,6 +156,116 @@ export default function ProductHistory() {
     }
   }, [businessDate, isLoadingBusinessDate]);
 
+  // Product search filter — computed synchronously (no stale closure)
+  const productOptions = allProducts.filter((p: any) => {
+    if (!productSearch) return true;
+    const term = productSearch.toLowerCase();
+    return (
+      p.productCode?.toLowerCase().startsWith(term) ||
+      p.description?.toLowerCase().startsWith(term)
+    );
+  });
+
+  // Auto-scroll dropdown to keep highlighted item visible
+  useEffect(() => {
+    if (highlightedProduct >= 0 && productDropdownRef.current) {
+      const item = productDropdownRef.current.children[highlightedProduct] as HTMLElement | undefined;
+      item?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedProduct]);
+
+  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showProductDropdown || productOptions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedProduct(prev => prev < productOptions.length - 1 ? prev + 1 : 0);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedProduct(prev => prev > 0 ? prev - 1 : productOptions.length - 1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const idx = highlightedProduct >= 0 ? highlightedProduct : 0;
+      if (idx < productOptions.length) {
+        const p = productOptions[idx];
+        setProductSearch(`${p.description}`);
+        setProductId(String(p.id));
+        setShowProductDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowProductDropdown(false);
+    }
+  };
+
+  // Customer search
+  const customerOptions = allCustomers.filter(c => {
+    if (!customerSearch) return true;
+    return c.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
+  });
+
+  useEffect(() => {
+    if (highlightedCustomer >= 0 && customerDropdownRef.current) {
+      const item = customerDropdownRef.current.children[highlightedCustomer] as HTMLElement | undefined;
+      item?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedCustomer]);
+
+  const handleCustomerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showCustomerDropdown || customerOptions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedCustomer(prev => prev < customerOptions.length - 1 ? prev + 1 : 0);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedCustomer(prev => prev > 0 ? prev - 1 : customerOptions.length - 1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const idx = highlightedCustomer >= 0 ? highlightedCustomer : 0;
+      if (idx < customerOptions.length) {
+        const c = customerOptions[idx];
+        setCustomerSearch(c.customer_name);
+        setCustomerId(String(c.id));
+        setShowCustomerDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowCustomerDropdown(false);
+    }
+  };
+
+  // Supplier search
+  const supplierOptions = allSuppliers.filter(s => {
+    if (!supplierSearch) return true;
+    return s.supplier_name?.toLowerCase().includes(supplierSearch.toLowerCase());
+  });
+
+  useEffect(() => {
+    if (highlightedSupplier >= 0 && supplierDropdownRef.current) {
+      const item = supplierDropdownRef.current.children[highlightedSupplier] as HTMLElement | undefined;
+      item?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedSupplier]);
+
+  const handleSupplierKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSupplierDropdown || supplierOptions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightedSupplier(prev => prev < supplierOptions.length - 1 ? prev + 1 : 0);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedSupplier(prev => prev > 0 ? prev - 1 : supplierOptions.length - 1);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const idx = highlightedSupplier >= 0 ? highlightedSupplier : 0;
+      if (idx < supplierOptions.length) {
+        const s = supplierOptions[idx];
+        setSupplierSearch(s.supplier_name);
+        setSupplierId(String(s.id));
+        setShowSupplierDropdown(false);
+      }
+    } else if (e.key === "Escape") {
+      setShowSupplierDropdown(false);
+    }
+  };
+
   // Handle date changes
   const handleFromDateChange = (date: Date | undefined) => {
     if (date) {
@@ -195,22 +320,6 @@ export default function ProductHistory() {
       [`Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`],
       [''],
       
-      // From Supplier Section
-      ['FROM SUPPLIER'],
-      ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
-      ...purchases.map((row: any, idx: number) => [
-        idx + 1, row.date, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
-      ]),
-      [''],
-      
-      // Supplier Returns Section
-      ['SUPPLIER RETURNS'],
-      ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
-      ...supplierReturns.map((row: any, idx: number) => [
-        idx + 1, row.date, row.invoice, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
-      ]),
-      [''],
-      
       // Sales Section
       ['SALES'],
       ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
@@ -224,6 +333,22 @@ export default function ProductHistory() {
       ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
       ...customerReturns.map((row: any, idx: number) => [
         idx + 1, row.date, row.invoice, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
+      ]),
+      [''],
+      
+      // From Supplier Section
+      ['FROM SUPPLIER'],
+      ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ...purchases.map((row: any, idx: number) => [
+        idx + 1, row.date, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
+      ]),
+      [''],
+      
+      // Supplier Returns Section
+      ['SUPPLIER RETURNS'],
+      ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ...supplierReturns.map((row: any, idx: number) => [
+        idx + 1, row.date, row.invoice, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
@@ -263,10 +388,10 @@ export default function ProductHistory() {
     
     // Add all tables
     const tables = [
-      { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
-      { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
       { title: 'SALES', data: sales, headers: ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total'] },
       { title: 'CUSTOMER RETURNS', data: customerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
       { title: 'DUMPS', data: dumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
     ];
     
@@ -353,24 +478,6 @@ export default function ProductHistory() {
     text += `Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}\n\n`;
     
     // Add all sections
-    if (purchases.length > 0) {
-      text += 'FROM SUPPLIER\n';
-      text += 'Sl.No\tDate\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
-      purchases.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
-      });
-      text += '\n';
-    }
-    
-    if (supplierReturns.length > 0) {
-      text += 'SUPPLIER RETURNS\n';
-      text += 'Sl.No\tDate\tInvoice#\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
-      supplierReturns.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
-      });
-      text += '\n';
-    }
-    
     if (sales.length > 0) {
       text += 'SALES\n';
       text += 'Sl.No\tDate\tInvoice\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
@@ -385,6 +492,24 @@ export default function ProductHistory() {
       text += 'Sl.No\tDate\tInvoice#\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
       customerReturns.forEach((row: any, idx: number) => {
         text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.customerName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (purchases.length > 0) {
+      text += 'FROM SUPPLIER\n';
+      text += 'Sl.No\tDate\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
+      purchases.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (supplierReturns.length > 0) {
+      text += 'SUPPLIER RETURNS\n';
+      text += 'Sl.No\tDate\tInvoice#\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
+      supplierReturns.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
@@ -427,10 +552,10 @@ export default function ProductHistory() {
       
       // Add all sections
       const sections = [
-        { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-        { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
         { title: 'SALES', data: sales, headers: ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
         { title: 'CUSTOMER RETURNS', data: customerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+        { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+        { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
         { title: 'DUMPS', data: dumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
       ];
       
@@ -538,53 +663,116 @@ export default function ProductHistory() {
                   placeholder=""
                 />
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium mb-2">Product:</label>
-                <Select value={productId || "All"} onValueChange={setProductId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Products" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Products</SelectItem>
-                    {allProducts.map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>
-                        {p.description}
-                      </SelectItem>
+                <Input
+                  ref={productInputRef}
+                  value={productSearch}
+                  onChange={e => {
+                    setProductSearch(e.target.value);
+                    setHighlightedProduct(-1);
+                    setShowProductDropdown(true);
+                    if (!e.target.value) setProductId(undefined);
+                  }}
+                  onFocus={() => setShowProductDropdown(!!productSearch)}
+                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 100)}
+                  onKeyDown={handleProductKeyDown}
+                  placeholder="Search products..."
+                  autoComplete="off"
+                />
+                {showProductDropdown && productOptions.length > 0 && (
+                  <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                    {productOptions.map((p, idx) => (
+                      <div
+                        key={p.id}
+                        className={`p-2 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
+                        onMouseDown={() => {
+                          setProductSearch(`${p.description}`);
+                          setProductId(String(p.id));
+                          setShowProductDropdown(false);
+                        }}
+                        onMouseEnter={() => setHighlightedProduct(idx)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
+                        </div>
+                        <div className="text-sm">{p.description}</div>
+                      </div>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                )}
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium mb-2">Customer:</label>
-                <Select value={customerId || "All"} onValueChange={setCustomerId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Customers" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Customers</SelectItem>
-                    {allCustomers.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.customer_name}
-                      </SelectItem>
+                <Input
+                  ref={customerInputRef}
+                  value={customerSearch}
+                  onChange={e => {
+                    setCustomerSearch(e.target.value);
+                    setHighlightedCustomer(-1);
+                    setShowCustomerDropdown(true);
+                    if (!e.target.value) setCustomerId(undefined);
+                  }}
+                  onFocus={() => setShowCustomerDropdown(!!customerSearch)}
+                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 100)}
+                  onKeyDown={handleCustomerKeyDown}
+                  placeholder="Search customers..."
+                  autoComplete="off"
+                />
+                {showCustomerDropdown && customerOptions.length > 0 && (
+                  <div ref={customerDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                    {customerOptions.map((c, idx) => (
+                      <div
+                        key={c.id}
+                        className={`p-2 cursor-pointer ${highlightedCustomer === idx ? "bg-blue-100" : ""}`}
+                        onMouseDown={() => {
+                          setCustomerSearch(c.customer_name);
+                          setCustomerId(String(c.id));
+                          setShowCustomerDropdown(false);
+                        }}
+                        onMouseEnter={() => setHighlightedCustomer(idx)}
+                      >
+                        <div className="text-sm">{c.customer_name}</div>
+                      </div>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                )}
               </div>
-              <div>
+              <div className="relative">
                 <label className="block text-sm font-medium mb-2">Supplier:</label>
-                <Select value={supplierId || "All"} onValueChange={setSupplierId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Suppliers" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Suppliers</SelectItem>
-                    {allSuppliers.map((s) => (
-                      <SelectItem key={s.id} value={String(s.id)}>
-                        {s.supplier_name}
-                      </SelectItem>
+                <Input
+                  ref={supplierInputRef}
+                  value={supplierSearch}
+                  onChange={e => {
+                    setSupplierSearch(e.target.value);
+                    setHighlightedSupplier(-1);
+                    setShowSupplierDropdown(true);
+                    if (!e.target.value) setSupplierId(undefined);
+                  }}
+                  onFocus={() => setShowSupplierDropdown(!!supplierSearch)}
+                  onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 100)}
+                  onKeyDown={handleSupplierKeyDown}
+                  placeholder="Search suppliers..."
+                  autoComplete="off"
+                />
+                {showSupplierDropdown && supplierOptions.length > 0 && (
+                  <div ref={supplierDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                    {supplierOptions.map((s, idx) => (
+                      <div
+                        key={s.id}
+                        className={`p-2 cursor-pointer ${highlightedSupplier === idx ? "bg-blue-100" : ""}`}
+                        onMouseDown={() => {
+                          setSupplierSearch(s.supplier_name);
+                          setSupplierId(String(s.id));
+                          setShowSupplierDropdown(false);
+                        }}
+                        onMouseEnter={() => setHighlightedSupplier(idx)}
+                      >
+                        <div className="text-sm">{s.supplier_name}</div>
+                      </div>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </div>
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
@@ -727,6 +915,143 @@ export default function ProductHistory() {
           </CardContent>
         </Card>
 
+        {/* From Sales Section */}
+        <Card>
+          <CardContent className="p-6">
+            <h3 className="text-lg font-semibold mb-4 text-blue-600 border-b-2 border-blue-300 pb-2">From Sales</h3>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-blue-50">
+                    <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Date</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Invoice No</TableHead>
+                    <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
+                    <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : sales.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    sales.map((sale, idx) => (
+                      <TableRow key={`sale-${idx}`} className={cn(sale.isCompany && "bg-amber-50")}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{sale.date}</TableCell>
+                        <TableCell className="text-center">{sale.invoiceNo}</TableCell>
+                        <TableCell className="text-center">
+                          <span className="flex items-center gap-1 justify-center">
+                            {sale.customerName}
+                            {sale.isCompany && (
+                              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                            )}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">{sale.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(sale.quantity)}</TableCell>
+                        <TableCell className="text-center">£{Number(sale.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(sale.total).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  {sales.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={4}></TableCell>
+                      <TableCell className="text-center">
+                        {formatQuantity(sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0))}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        £{(() => {
+                          const ncSales = sales.filter((s: any) => !s.isCompany);
+                          const totalQty = ncSales.reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
+                          const totalVal = ncSales.reduce((sum: number, s: any) => sum + (Number(s.unitPrice) || 0) * (Number(s.quantity) || 0), 0);
+                          return (totalVal / (totalQty || 1)).toFixed(2);
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        £{sales.filter((s: any) => !s.isCompany).reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* From Customer Returns Section */}
+        <Card>
+          <CardContent className="p-6">
+            <h3 className="text-lg font-semibold mb-4 text-purple-600 border-b-2 border-purple-300 pb-2">From Customer Returns</h3>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-purple-50">
+                    <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Date</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Invoice#</TableHead>
+                    <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
+                    <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : customerReturns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    customerReturns.map((returnItem, idx) => (
+                      <TableRow key={`customer-return-${idx}`}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center">{returnItem.date}</TableCell>
+                        <TableCell className="text-center">{returnItem.invoice}</TableCell>
+                        <TableCell className="text-center">{returnItem.customerName}</TableCell>
+                        <TableCell className="text-center">{returnItem.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
+                        <TableCell className="text-center">£{Number(returnItem.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{Number(returnItem.total).toFixed(2)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  {customerReturns.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={4}></TableCell>
+                      <TableCell className="text-center">
+                        {formatQuantity(customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        £{(customerReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
+                         (customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        £{customerReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* From Supplier Section */}
         <Card>
           <CardContent className="p-6">
@@ -864,143 +1189,6 @@ export default function ProductHistory() {
                       </TableCell>
                       <TableCell className="text-center">
                         £{supplierReturns.filter((r: any) => !r.isCompany).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* From Sales Section */}
-        <Card>
-          <CardContent className="p-6">
-            <h3 className="text-lg font-semibold mb-4 text-blue-600 border-b-2 border-blue-300 pb-2">From Sales</h3>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-blue-50">
-                    <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Date</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Invoice No</TableHead>
-                    <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Product</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadingHistory ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
-                    </TableRow>
-                  ) : sales.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
-                    </TableRow>
-                  ) : (
-                    sales.map((sale, idx) => (
-                      <TableRow key={`sale-${idx}`} className={cn(sale.isCompany && "bg-amber-50")}>
-                        <TableCell className="text-center">{idx + 1}</TableCell>
-                        <TableCell className="text-center">{sale.date}</TableCell>
-                        <TableCell className="text-center">{sale.invoiceNo}</TableCell>
-                        <TableCell className="text-center">
-                          <span className="flex items-center gap-1 justify-center">
-                            {sale.customerName}
-                            {sale.isCompany && (
-                              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
-                            )}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">{sale.product}</TableCell>
-                        <TableCell className="text-center">{formatQuantity(sale.quantity)}</TableCell>
-                        <TableCell className="text-center">£{Number(sale.unitPrice).toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{Number(sale.total).toFixed(2)}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                  {sales.length > 0 && (
-                    <TableRow className="bg-muted/50 font-bold">
-                      <TableCell className="text-left">Total</TableCell>
-                      <TableCell colSpan={4}></TableCell>
-                      <TableCell className="text-center">
-                        {formatQuantity(sales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0))}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        £{(() => {
-                          const ncSales = sales.filter((s: any) => !s.isCompany);
-                          const totalQty = ncSales.reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
-                          const totalVal = ncSales.reduce((sum: number, s: any) => sum + (Number(s.unitPrice) || 0) * (Number(s.quantity) || 0), 0);
-                          return (totalVal / (totalQty || 1)).toFixed(2);
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        £{sales.filter((s: any) => !s.isCompany).reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0).toFixed(2)}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* From Customer Returns Section */}
-        <Card>
-          <CardContent className="p-6">
-            <h3 className="text-lg font-semibold mb-4 text-purple-600 border-b-2 border-purple-300 pb-2">From Customer Returns</h3>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-purple-50">
-                    <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Date</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Invoice#</TableHead>
-                    <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
-                    <TableHead className="text-center min-w-[120px]">Product</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
-                    <TableHead className="text-center min-w-[100px]">Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loadingHistory ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
-                    </TableRow>
-                  ) : customerReturns.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
-                    </TableRow>
-                  ) : (
-                    customerReturns.map((returnItem, idx) => (
-                      <TableRow key={`customer-return-${idx}`}>
-                        <TableCell className="text-center">{idx + 1}</TableCell>
-                        <TableCell className="text-center">{returnItem.date}</TableCell>
-                        <TableCell className="text-center">{returnItem.invoice}</TableCell>
-                        <TableCell className="text-center">{returnItem.customerName}</TableCell>
-                        <TableCell className="text-center">{returnItem.product}</TableCell>
-                        <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
-                        <TableCell className="text-center">£{Number(returnItem.unitPrice).toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{Number(returnItem.total).toFixed(2)}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                  {customerReturns.length > 0 && (
-                    <TableRow className="bg-muted/50 font-bold">
-                      <TableCell className="text-left">Total</TableCell>
-                      <TableCell colSpan={4}></TableCell>
-                      <TableCell className="text-center">
-                        {formatQuantity(customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        £{(customerReturns.reduce((sum, r) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0) / 
-                         (customerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0) || 1)).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        £{customerReturns.reduce((sum, r) => sum + (Number(r.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
