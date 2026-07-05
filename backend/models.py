@@ -170,8 +170,8 @@ class RegularProduct(db.Model):
     last_stock_take = db.Column(db.Integer, default=0)
     status = db.Column(db.String(20), default='active')
     # Stock tracking fields
-    initial_stock = db.Column(db.Integer, default=0)
-    current_stock = db.Column(db.Integer, default=0)
+    initial_stock = db.Column(db.Numeric(10, 3), default=0)
+    current_stock = db.Column(db.Numeric(10, 3), default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -201,8 +201,8 @@ class RegularProduct(db.Model):
             'reorderQuantity': self.reorder_quantity,
             'lastStockTake': self.last_stock_take,
             'status': self.status,
-            'initialStock': self.initial_stock,
-            'currentStock': self.current_stock,
+            'initialStock': float(self.initial_stock) if self.initial_stock else 0,
+            'currentStock': float(self.current_stock) if self.current_stock else 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -234,8 +234,8 @@ class NonProduct(db.Model):
     last_stock_take = db.Column(db.Integer, default=0)
     status = db.Column(db.String(20), default='active')
     # Stock tracking fields
-    initial_stock = db.Column(db.Integer, default=0)
-    current_stock = db.Column(db.Integer, default=0)
+    initial_stock = db.Column(db.Numeric(10, 3), default=0)
+    current_stock = db.Column(db.Numeric(10, 3), default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -264,8 +264,8 @@ class NonProduct(db.Model):
             'reorderQuantity': self.reorder_quantity,
             'lastStockTake': self.last_stock_take,
             'status': self.status,
-            'initialStock': self.initial_stock,
-            'currentStock': self.current_stock,
+            'initialStock': float(self.initial_stock) if self.initial_stock else 0,
+            'currentStock': float(self.current_stock) if self.current_stock else 0,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'updatedAt': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -725,6 +725,7 @@ class StockMovement(db.Model):
     reference_type = db.Column(db.String(20))  # 'sale', 'purchase', 'adjustment'
     previous_stock = db.Column(db.Numeric(10, 3), nullable=False)
     new_stock = db.Column(db.Numeric(10, 3), nullable=False)
+    movement_date = db.Column(db.Date, nullable=True)  # Business date of the movement (separate from created_at timestamp)
     remarks = db.Column(db.Text)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -740,6 +741,7 @@ class StockMovement(db.Model):
             'referenceType': self.reference_type,
             'previousStock': self.previous_stock,
             'newStock': self.new_stock,
+            'movementDate': self.movement_date.isoformat() if self.movement_date else None,
             'remarks': self.remarks,
             'createdAt': self.created_at.isoformat() if self.created_at else None,
             'createdBy': self.created_by
@@ -752,8 +754,8 @@ class StockAdjustment(db.Model):
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     adjustment_type = db.Column(db.String(20), nullable=False)  # 'increase', 'decrease', 'set'
     quantity = db.Column(db.Numeric(10, 3), nullable=False)
-    previous_stock = db.Column(db.Integer, nullable=False)
-    new_stock = db.Column(db.Integer, nullable=False)
+    previous_stock = db.Column(db.Numeric(10, 3), nullable=False)
+    new_stock = db.Column(db.Numeric(10, 3), nullable=False)
     reason = db.Column(db.String(200), nullable=False)
     remarks = db.Column(db.Text)
     adjustment_date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)

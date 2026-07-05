@@ -148,7 +148,7 @@ def _check_one(product_id, product_type, description, from_date, to_date,
     crtn = get_customer_returns_quantity(product_id, product_type, from_date, to_date)
     dmps = get_dumps_quantity(product_id, product_type, from_date, to_date)
     srtn = get_supplier_returns_quantity(product_id, product_type, from_date, to_date)
-    expected = opening + new_stk - sales + crtn - dmps + srtn
+    expected = opening + new_stk - sales + crtn - dmps - srtn
 
     # Get the live current_stock from product table
     if product_type == 'regular':

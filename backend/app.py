@@ -651,8 +651,8 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             print(f"[DEBUG] Updated product stock: {previous_stock} -> {new_stock}")
             
             # Create stock movement record
-            # Use provided movement_date or default to current time
-            movement_timestamp = movement_date if movement_date else datetime.now()
+            # Separate movement_date (business date) from created_at (system timestamp)
+            movement_date_only = movement_date.date() if isinstance(movement_date, datetime) else (movement_date if movement_date else None)
             
             movement = StockMovement(
                 product_id=product_id,
@@ -663,9 +663,10 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
                 reference_type=reference_type,
                 previous_stock=previous_stock,
                 new_stock=new_stock,
+                movement_date=movement_date_only,
                 remarks=remarks,
                 created_by=user_id,
-                created_at=movement_timestamp
+                created_at=datetime.now()
             )
             db.session.add(movement)
             print(f"[DEBUG] Created stock movement: {movement_type}, quantity={quantity_change_float}, reference_id={reference_id}")
@@ -1383,12 +1384,16 @@ def update_sale(id):
             # If status is changing from finalized to something else, we should restore stock
             # This handles cases where a finalized sale is cancelled or changed back to draft
             for item_data in sale_data.items:
-                if item_data.product_id:
-                    # Regular product - restore stock
+                product_id = item_data.product_id or item_data.non_product_id
+                product_type = 'regular' if item_data.product_id else 'non'
+                if not product_id:
+                    continue
+                if safe_float(item_data.quantity) > 0:
+                    # Normal sale item — restore stock
                     success, result = update_product_stock(
-                        product_id=item_data.product_id,
-                        product_type='regular',
-                        quantity_change=safe_float(item_data.quantity),  # Positive to restore
+                        product_id=product_id,
+                        product_type=product_type,
+                        quantity_change=safe_float(item_data.quantity),
                         movement_type='sale_cancellation',
                         reference_id=sale.id,
                         reference_type='sale',
@@ -1396,29 +1401,24 @@ def update_sale(id):
                         user_id=user_id,
                         movement_date=sale.date
                     )
-                    if not success:
-                        if 'Insufficient stock' in result:
-                            stock_warnings.append(f"Stock restoration warning for product ID {item_data.product_id}: {result}")
-                        else:
-                            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
-                elif item_data.non_product_id:
-                    # Non-product - restore stock
+                else:
+                    # Customer return item — reverse the return
                     success, result = update_product_stock(
-                        product_id=item_data.non_product_id,
-                        product_type='non',
-                        quantity_change=safe_float(item_data.quantity),  # Positive to restore
-                        movement_type='sale_cancellation',
+                        product_id=product_id,
+                        product_type=product_type,
+                        quantity_change=safe_float(item_data.quantity),  # Negative reverses the return
+                        movement_type='customer_return_cancellation',
                         reference_id=sale.id,
                         reference_type='sale',
-                        remarks=f"Sale invoice status changed from finalized: {sale.invoice_number}",
-                        movement_date=sale.date,
-                        user_id=user_id
+                        remarks=f"Customer return reversed on status change: {sale.invoice_number}",
+                        user_id=user_id,
+                        movement_date=sale.date
                     )
-                    if not success:
-                        if 'Insufficient stock' in result:
-                            stock_warnings.append(f"Stock restoration warning for non-product ID {item_data.non_product_id}: {result}")
-                        else:
-                            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+                if not success:
+                    if 'Insufficient stock' in result:
+                        stock_warnings.append(f"Stock restoration warning for product {product_id}: {result}")
+                    else:
+                        return jsonify({"error": f"Stock restoration failed: {result}"}), 400
         elif old_status == 'finalized' and new_status == 'finalized':
             # For finalized invoices being updated, update existing stock movements instead of creating new ones
             print(f"[DEBUG] Processing finalized invoice update. Quantity changes: {quantity_changes}")
@@ -1431,6 +1431,14 @@ def update_sale(id):
                 if quantity_change != 0:  # Only process actual changes
                     actual_product_id = product_id if product_id else non_product_id
                     product_type = 'regular' if product_id else 'non'
+                    new_qty = new_items_detailed[key]
+                    
+                    # Determine which movement type the ORIGINAL was
+                    old_qty = old_items_detailed.get(key, 0)
+                    is_was_return = old_qty < 0  # True if the old item was a customer return
+                    
+                    # Determine the correct original movement type to look up
+                    original_movement_type = 'customer_return' if is_was_return else 'sale'
                     
                     # Find existing stock movement for this product and sale
                     existing_movement = StockMovement.query.filter(
@@ -1438,22 +1446,31 @@ def update_sale(id):
                         StockMovement.reference_type == 'sale',
                         StockMovement.product_id == actual_product_id,
                         StockMovement.product_type == product_type,
-                        StockMovement.movement_type == 'sale'
+                        StockMovement.movement_type == original_movement_type
                     ).first()
                     
                     if existing_movement:
-                        old_quantity = safe_float(existing_movement.quantity)
-                        new_quantity = -safe_float(new_items_detailed[key])  # Negative for sales
-                        quantity_diff = new_quantity - old_quantity
+                        old_qty_movement = safe_float(existing_movement.quantity)
+                        # Calculate what the new movement quantity should be
+                        if new_qty > 0:
+                            new_movement_qty = -safe_float(new_qty)  # Sale: negative
+                        else:
+                            new_movement_qty = abs(safe_float(new_qty))  # Return: positive
+                        quantity_diff = new_movement_qty - old_qty_movement
                         
-                        print(f"[DEBUG] Updating existing movement: old_qty={old_quantity}, new_qty={new_quantity}, diff={quantity_diff}")
+                        print(f"[DEBUG] Updating existing movement: old_qty={old_qty_movement}, new_movement_qty={new_movement_qty}, diff={quantity_diff}")
                         
-                        # Use update_product_stock for proper locking and retry logic
+                        # Determine movement type for the adjustment
+                        if new_qty > 0:
+                            adj_movement_type = 'sale'
+                        else:
+                            adj_movement_type = 'customer_return_adjustment'
+                        
                         success, result = update_product_stock(
                             product_id=actual_product_id,
                             product_type=product_type,
                             quantity_change=quantity_diff,
-                            movement_type='sale',
+                            movement_type=adj_movement_type,
                             reference_id=sale.id,
                             reference_type='sale',
                             remarks=f"Sale invoice updated: {sale.invoice_number}",
@@ -1469,19 +1486,34 @@ def update_sale(id):
                         # Update existing movement remarks to note the adjustment
                         existing_movement.remarks = f"Sale invoice updated (original): {sale.invoice_number}"
                     else:
-                        # Create new movement if none exists (shouldn't happen for finalized sales, but safety check)
+                        # Create new movement if none exists (safety check)
                         print(f"[DEBUG] No existing movement found, creating new one for product {actual_product_id}")
-                        success, result = update_product_stock(
-                            product_id=actual_product_id,
-                            product_type=product_type,
-                            quantity_change=-safe_float(quantity_change),  # Negative because it's a sale
-                            movement_type='sale',
-                            reference_id=sale.id,
-                            reference_type='sale',
-                            remarks=f"Sale invoice updated: {sale.invoice_number}",
-                            user_id=user_id,
-                            movement_date=sale.date
-                        )
+                        if quantity_change > 0:
+                            # Item was added or became more positive → sale reduction
+                            success, result = update_product_stock(
+                                product_id=actual_product_id,
+                                product_type=product_type,
+                                quantity_change=-safe_float(abs(quantity_change)),
+                                movement_type='sale',
+                                reference_id=sale.id,
+                                reference_type='sale',
+                                remarks=f"Sale invoice updated: {sale.invoice_number}",
+                                user_id=user_id,
+                                movement_date=sale.date
+                            )
+                        else:
+                            # Item became more negative → customer return increase
+                            success, result = update_product_stock(
+                                product_id=actual_product_id,
+                                product_type=product_type,
+                                quantity_change=safe_float(abs(quantity_change)),
+                                movement_type='customer_return',
+                                reference_id=sale.id,
+                                reference_type='sale',
+                                remarks=f"Sale invoice updated: {sale.invoice_number}",
+                                user_id=user_id,
+                                movement_date=sale.date
+                            )
                         if not success:
                             if 'Insufficient stock' in result:
                                 stock_warnings.append(f"Insufficient stock for product ID {actual_product_id}: {result}")
@@ -1499,25 +1531,30 @@ def update_sale(id):
                     
                     print(f"[DEBUG] Product {key} removed from invoice, restoring stock: {old_quantity}")
                     
+                    # Determine original movement type
+                    original_movement_type = 'customer_return' if old_quantity < 0 else 'sale'
+                    
                     # Find and remove the existing stock movement
                     existing_movement = StockMovement.query.filter(
                         StockMovement.reference_id == sale.id,
                         StockMovement.reference_type == 'sale',
                         StockMovement.product_id == actual_product_id,
                         StockMovement.product_type == product_type,
-                        StockMovement.movement_type == 'sale'
+                        StockMovement.movement_type == original_movement_type
                     ).first()
                     
                     if existing_movement:
-                        # Restore stock using update_product_stock for proper locking
+                        # Determine reversal movement type
+                        reversal_type = 'customer_return_cancellation' if old_quantity < 0 else 'sale_cancellation'
                         restored_quantity = abs(safe_float(existing_movement.quantity))
+                        
                         success, result = update_product_stock(
                             product_id=actual_product_id,
                             product_type=product_type,
-                            quantity_change=restored_quantity,
-                            movement_type='sale_cancellation',
+                            quantity_change=restored_quantity if old_quantity > 0 else -restored_quantity,
+                            movement_type=reversal_type,
                             reference_id=sale.id,
-                            reference_type='sale_cancellation',
+                            reference_type='sale',
                             remarks=f"Product removed from sale invoice: {sale.invoice_number}",
                             user_id=user_id,
                             movement_date=sale.date
@@ -1525,7 +1562,7 @@ def update_sale(id):
                         if not success:
                             return jsonify({"error": f"Stock restoration failed for product {actual_product_id}: {result}"}), 400
                         
-                        print(f"[DEBUG] Restored stock for removed product {actual_product_id}: +{restored_quantity}")
+                        print(f"[DEBUG] Restored stock for removed product {actual_product_id}: {restored_quantity}")
                         
                         # Remove the original stock movement
                         db.session.delete(existing_movement)
@@ -1541,17 +1578,32 @@ def update_sale(id):
                     
                     print(f"[DEBUG] New product {key} added to invoice, creating stock movement: {new_quantity}")
                     
-                    success, result = update_product_stock(
-                        product_id=actual_product_id,
-                        product_type=product_type,
-                        quantity_change=-safe_float(new_quantity),  # Negative because it's a sale
-                        movement_type='sale',
-                        reference_id=sale.id,
-                        reference_type='sale',
-                        remarks=f"New product added to sale invoice: {sale.invoice_number}",
-                        user_id=user_id,
-                        movement_date=sale.date
-                    )
+                    if new_quantity > 0:
+                        # New sale item — reduce stock
+                        success, result = update_product_stock(
+                            product_id=actual_product_id,
+                            product_type=product_type,
+                            quantity_change=-safe_float(new_quantity),
+                            movement_type='sale',
+                            reference_id=sale.id,
+                            reference_type='sale',
+                            remarks=f"New product added to sale invoice: {sale.invoice_number}",
+                            user_id=user_id,
+                            movement_date=sale.date
+                        )
+                    else:
+                        # New customer return item — increase stock
+                        success, result = update_product_stock(
+                            product_id=actual_product_id,
+                            product_type=product_type,
+                            quantity_change=abs(safe_float(new_quantity)),
+                            movement_type='customer_return',
+                            reference_id=sale.id,
+                            reference_type='sale',
+                            remarks=f"New customer return added to sale invoice: {sale.invoice_number}",
+                            user_id=user_id,
+                            movement_date=sale.date
+                        )
                     if not success:
                         if 'Insufficient stock' in result:
                             stock_warnings.append(f"Insufficient stock for new product ID {actual_product_id}: {result}")
@@ -1715,17 +1767,55 @@ def patch_sale(id):
 def delete_sale(id):
     sale = Sale.query.get_or_404(id)
     try:
-        # Delete associated customer return records (and their stock movements)
+        user_id = get_jwt_identity()
+
+        # Restore stock if the sale was finalized
+        if sale.status == 'finalized':
+            for item in sale.items:
+                product_id = item.product_id or item.non_product_id
+                product_type = 'regular' if item.product_id else 'non'
+                if not product_id:
+                    continue
+                if float(item.quantity) > 0:
+                    # Normal sale item — restore stock
+                    success, result = update_product_stock(
+                        product_id=product_id,
+                        product_type=product_type,
+                        quantity_change=float(item.quantity),
+                        movement_type='sale_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Sale deleted: {sale.invoice_number}",
+                        user_id=user_id,
+                        movement_date=sale.date
+                    )
+                    if not success:
+                        print(f"[WARN] Failed to restore stock for product {product_id} on sale delete: {result}")
+                elif float(item.quantity) < 0:
+                    # Customer return inline item — reverse the return
+                    success, result = update_product_stock(
+                        product_id=product_id,
+                        product_type=product_type,
+                        quantity_change=-abs(float(item.quantity)),
+                        movement_type='customer_return_cancellation',
+                        reference_id=sale.id,
+                        reference_type='sale',
+                        remarks=f"Customer return reversed on sale delete: {sale.invoice_number}",
+                        user_id=user_id,
+                        movement_date=sale.date
+                    )
+                    if not success:
+                        print(f"[WARN] Failed to reverse customer return stock for product {product_id} on sale delete: {result}")
+
+        # Delete associated customer return records
         customer_returns = CustomerReturn.query.filter_by(sale_id=sale.id).all()
         for cr in customer_returns:
-            StockMovement.query.filter_by(
-                reference_id=cr.id,
-                reference_type='customer_return'
-            ).delete()
             db.session.delete(cr)
-        # Delete all related sale items first
+
+        # Delete all sale items
         for item in sale.items:
             db.session.delete(item)
+
         db.session.delete(sale)
         db.session.commit()
         return jsonify({'message': 'Sale deleted successfully'})
@@ -1868,6 +1958,7 @@ def create_regular_product():
                 reference_type='initial_stock',
                 previous_stock=0,
                 new_stock=validated_data.initial_stock,
+                movement_date=datetime.now().date(),
                 remarks=f"Initial stock set to {validated_data.initial_stock}",
                 created_by=None  # System created
             )
@@ -2016,6 +2107,7 @@ def create_non_product():
                 reference_type='initial_stock',
                 previous_stock=0,
                 new_stock=validated_data.initial_stock,
+                movement_date=datetime.now().date(),
                 remarks=f"Initial stock set to {validated_data.initial_stock}",
                 created_by=None  # System created
             )
@@ -7467,7 +7559,6 @@ def save_closing_stock_entries():
             # FIRST SAVE: delete all + re-add all submitted + auto-zero missing products
             ClosingStock.query.filter_by(date=date).delete(synchronize_session=False)
 
-            submitted_product_keys = set()
             for item in items:
                 entry = ClosingStock(
                     product_id=item['productId'],
@@ -7496,70 +7587,11 @@ def save_closing_stock_entries():
                         reference_type='closing_stock',
                         previous_stock=old_stock,
                         new_stock=qty,
+                        movement_date=date,
                         remarks=f"Closing stock override for {date}",
                         created_by=None
                     )
                     db.session.add(movement)
-
-                submitted_product_keys.add((item['productId'], item['productType']))
-
-            # Auto-zero all active products not in the submitted list
-            all_regular = RegularProduct.query.filter(RegularProduct.status == 'active').all()
-            all_non = NonProduct.query.filter(NonProduct.status == 'active').all()
-
-            for product in all_regular:
-                if (product.id, 'regular') not in submitted_product_keys:
-                    old_stock = float(product.current_stock or 0)
-                    if old_stock != 0:
-                        product.current_stock = 0
-                        movement = StockMovement(
-                            product_id=product.id,
-                            product_type='regular',
-                            movement_type='closing_stock_adjustment',
-                            quantity=-old_stock,
-                            reference_id=None,
-                            reference_type='closing_stock',
-                            previous_stock=old_stock,
-                            new_stock=0,
-                            remarks=f"No closing stock entered for {date} — zeroed",
-                            created_by=None
-                        )
-                        db.session.add(movement)
-                    entry = ClosingStock(
-                        product_id=product.id,
-                        product_type='regular',
-                        date=date,
-                        quantity=0,
-                        manual_entry=False
-                    )
-                    db.session.add(entry)
-
-            for product in all_non:
-                if (product.id, 'non') not in submitted_product_keys:
-                    old_stock = float(product.current_stock or 0)
-                    if old_stock != 0:
-                        product.current_stock = 0
-                        movement = StockMovement(
-                            product_id=product.id,
-                            product_type='non',
-                            movement_type='closing_stock_adjustment',
-                            quantity=-old_stock,
-                            reference_id=None,
-                            reference_type='closing_stock',
-                            previous_stock=old_stock,
-                            new_stock=0,
-                            remarks=f"No closing stock entered for {date} — zeroed",
-                            created_by=None
-                        )
-                        db.session.add(movement)
-                    entry = ClosingStock(
-                        product_id=product.id,
-                        product_type='non',
-                        date=date,
-                        quantity=0,
-                        manual_entry=False
-                    )
-                    db.session.add(entry)
         else:
             # SUBSEQUENT SAVE: upsert only the submitted items, no auto-zero
             for item in items:
@@ -7599,6 +7631,7 @@ def save_closing_stock_entries():
                         reference_type='closing_stock',
                         previous_stock=old_stock,
                         new_stock=qty,
+                        movement_date=date,
                         remarks=f"Closing stock override for {date}",
                         created_by=None
                     )
@@ -7948,7 +7981,7 @@ def stock_check_report():
                 supplier_returns = get_supplier_returns_quantity(product.id, 'regular', from_dt, to_dt)
                 
                 # Calculate expected stock
-                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
+                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns
                 
                 # Get actual closing stock
                 closing_stock_entry = ClosingStock.query.filter(
@@ -8022,7 +8055,7 @@ def stock_check_report():
                 supplier_returns = get_supplier_returns_quantity(product.id, 'non', from_dt, to_dt)
                 
                 # Calculate expected stock
-                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps + supplier_returns
+                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns
                 
                 # Get actual closing stock
                 closing_stock_entry = ClosingStock.query.filter(
@@ -8086,40 +8119,58 @@ def stock_check_report():
 
 def get_opening_stock(product_id, product_type, from_date):
     """Get stock level at the beginning of from_date.
-    Rule A: Look backwards from from_date - 1 to find the most recent
-            closing stock entry (manual or auto-zeroed). This handles
-            skipped days (e.g. Sundays) — Saturday's closing stock becomes
-            Monday's opening stock if Sunday has no entry.
-    Rule B: If no closing stock entry found within the last 7 days, return 0.
+
+    Rule A: If yesterday has ANY closing stock entries, it was an active
+            closing day. Return that product's entry if submitted, or 0 if
+            the product was skipped (intentionally not counted).
+    Rule B: If yesterday has ZERO closing stock entries, it was a holiday /
+            non-working day. Fall back up to 7 days to find the last known
+            closing stock value.
+    Rule C: If no entry found within 7 days, return 0.
     """
     try:
-        # Search backwards up to 7 days to handle weekends/holidays
-        for days_back in range(1, 8):
-            check_date = (from_date - timedelta(days=days_back)).date()
-            closing_entry = ClosingStock.query.filter_by(
-                product_id=product_id,
-                product_type=product_type,
-                date=check_date,
+        yesterday = (from_date - timedelta(days=1)).date()
+
+        # Rule A: yesterday had entries — active closing day
+        if ClosingStock.query.filter_by(date=yesterday).count() > 0:
+            exact = ClosingStock.query.filter_by(
+                product_id=product_id, product_type=product_type, date=yesterday
             ).first()
-            if closing_entry:
-                return safe_float(closing_entry.quantity)
-        # Rule B: no closing stock found in last 7 days → start from zero
-        return 0
+            return safe_float(exact.quantity) if exact else 0.0
+
+        # Rule B: yesterday was a holiday — fall back up to 7 days
+        for days_back in range(2, 8):
+            check_date = (from_date - timedelta(days=days_back)).date()
+            entry = ClosingStock.query.filter_by(
+                product_id=product_id, product_type=product_type, date=check_date
+            ).first()
+            if entry:
+                return safe_float(entry.quantity)
+
+        # Rule C: nothing found
+        return 0.0
     except Exception as e:
         logging.exception("get_opening_stock failed")
-        return 0
+        return 0.0
 
 def get_new_stock(product_id, product_type, from_date, to_date):
     """Get new stock (purchases) between dates"""
     try:
-        # Query all purchase and reversal movements by their creation date
-        # We use created_at because deleted invoices no longer exist to join against
+        # Query purchase and reversal movements by movement_date (business date).
+        # Fall back to created_at for records where movement_date is NULL (existing data).
+        from sqlalchemy import or_
         movements = db.session.query(StockMovement).filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
             StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
-            StockMovement.created_at >= from_date,
-            StockMovement.created_at <= to_date
+            or_(
+                StockMovement.movement_date.between(from_date.date(), to_date.date()),
+                db.and_(
+                    StockMovement.movement_date.is_(None),
+                    StockMovement.created_at >= from_date,
+                    StockMovement.created_at <= to_date
+                )
+            )
         ).all()
 
         total = 0
@@ -8807,33 +8858,22 @@ def create_customer_return():
 
         # Create stock movement if status is completed
         if customer_return_data.status == 'completed':
-            # Get current stock to calculate previous and new stock
-            current_stock = get_product_stock(customer_return_data.productId, customer_return_data.productType)
-            previous_stock = current_stock
-            new_stock = current_stock + quantity  # Customer returns increase stock
-            
-            # CRITICAL: Update the product's current_stock in the database
-            product.current_stock = new_stock
-            
-            stock_movement = StockMovement(
+            success, result = update_product_stock(
                 product_id=customer_return_data.productId,
                 product_type=customer_return_data.productType,
+                quantity_change=quantity,
                 movement_type='customer_return',
-                quantity=quantity,
                 reference_id=customer_return.id,
                 reference_type='customer_return',
-                previous_stock=previous_stock,
-                new_stock=new_stock,
                 remarks=f"Customer return: {ref_number}",
-                created_by=user_id
+                user_id=user_id,
+                movement_date=parsed_date
             )
-            db.session.add(stock_movement)
-            print(f"[DEBUG] Customer return stock movement added: product_id={customer_return_data.productId}, product_type={customer_return_data.productType}, quantity={quantity}, movement_type=customer_return, reference_id={customer_return.id}")
-        
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock update failed: {result}"}), 400
+
         db.session.commit()
-        # Verify the stock movement was saved
-        sm = StockMovement.query.filter_by(reference_id=customer_return.id, reference_type='customer_return').first()
-        print(f"[DEBUG] Customer return stock movement after commit: {sm.id if sm else 'NOT FOUND'} (quantity={sm.quantity if sm else 'N/A'})")
         
         # If credit note is issued, update customer balance
         if customer_return_data.creditNoteIssued and customer_return_data.creditNoteAmount > 0:
@@ -9256,17 +9296,9 @@ def create_supplier_return():
         last_return = SupplierReturn.query.order_by(SupplierReturn.id.desc()).first()
         ref_number = f"SR{1 if not last_return else last_return.id + 1:04d}"
         # Calculate total value
-        quantity = int(data.get('quantity', 0))
+        quantity = float(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
-        # Parse date string to date object
-        parsed_date = business_date
-        date_str = data.get('date')
-        if date_str:
-            try:
-                parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except ValueError:
-                parsed_date = business_date
         # Validate supplier exists
         supplier = Supplier.query.get(data.get('supplierId'))
         print(f"[DEBUG] Supplier: {supplier}")  # Debug log
@@ -9417,7 +9449,7 @@ def update_supplier_return(id):
         old_credit_amount = supplier_return.credit_note_amount
         
         # Calculate total value
-        quantity = int(data.get('quantity', 0))
+        quantity = float(data.get('quantity', 0))
         unit_price = float(data.get('unitPrice', 0))
         total_value = quantity * unit_price
         
@@ -9628,7 +9660,7 @@ def reject_supplier_return(id):
         success, result = update_product_stock(
             product_id=supplier_return.product_id,
             product_type=supplier_return.product_type,
-            quantity_change=-supplier_return.quantity,  # Positive to reverse
+            quantity_change=supplier_return.quantity,  # Positive to reverse the original -quantity reduction
             movement_type='supplier_return_rejection',
             reference_id=supplier_return.id,
             reference_type='supplier_return',
