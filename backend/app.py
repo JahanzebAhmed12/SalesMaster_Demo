@@ -640,7 +640,7 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             
             # Allow negative stock for sales (overselling) but warn for regular products
             # Only prevent negative stock for non-sale movements (except adjustments, cancellations, dumps, and purchases)
-            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return_cancellation', 'dump', 'dump_cancellation', 'purchase', 'purchase_reversal']:
+            if new_stock < 0 and movement_type not in ['adjustment', 'sale', 'customer_return', 'customer_return_cancellation', 'customer_return_adjustment', 'dump', 'dump_cancellation', 'dump_adjustment', 'purchase', 'purchase_reversal', 'sale_adjustment', 'sale_cancellation', 'supplier_return_adjustment', 'supplier_return_cancellation']:
                 print(f"[DEBUG] Stock validation FAILED - blocking negative stock for movement_type={movement_type}")
                 raise ValueError(f"Insufficient stock for product {product.description}. Available: {previous_stock}, Required: {abs(quantity_change)}")
             else:
@@ -1233,19 +1233,18 @@ def update_sale(id):
             key = (item.product_id, item.non_product_id)
             new_items_detailed[key] = safe_float(item.quantity)
         
-        # Calculate actual quantity changes
+        # Calculate actual quantity changes (only for items in BOTH old and new)
+        # Items only in old are handled by the "removed from invoice" loop below
         quantity_changes = {}
-        all_product_keys = set(old_items_detailed.keys()) | set(new_items_detailed.keys())
-        
-        for key in all_product_keys:
-            old_qty = old_items_detailed.get(key, 0)
-            new_qty = new_items_detailed.get(key, 0)
-            print(f"[DEBUG] Product {key}: old_qty={old_qty}, new_qty={new_qty}")
-            # Use a small epsilon for float comparison to handle precision issues
-            if abs(old_qty - new_qty) > 0.001:  # Changed from != to handle float precision
-                change = new_qty - old_qty
-                quantity_changes[key] = change
-                print(f"[DEBUG] Detected quantity change for {key}: {change}")
+        for key in new_items_detailed:
+            if key in old_items_detailed:
+                old_qty = old_items_detailed[key]
+                new_qty = new_items_detailed[key]
+                print(f"[DEBUG] Product {key}: old_qty={old_qty}, new_qty={new_qty}")
+                if abs(old_qty - new_qty) > 0.001:
+                    change = new_qty - old_qty
+                    quantity_changes[key] = change
+                    print(f"[DEBUG] Detected quantity change for {key}: {change}")
         
         # Debug logging
         print(f"[DEBUG] Sale ID: {sale.id}, Invoice: {sale.invoice_number}")
@@ -8120,34 +8119,26 @@ def stock_check_report():
 def get_opening_stock(product_id, product_type, from_date):
     """Get stock level at the beginning of from_date.
 
-    Rule A: If yesterday has ANY closing stock entries, it was an active
-            closing day. Return that product's entry if submitted, or 0 if
-            the product was skipped (intentionally not counted).
-    Rule B: If yesterday has ZERO closing stock entries, it was a holiday /
-            non-working day. Fall back up to 7 days to find the last known
-            closing stock value.
-    Rule C: If no entry found within 7 days, return 0.
+    Walk backwards day by day, up to 7 days. For each day:
+      - If that day had ANY closing stock entries → active closing day.
+        Return the product's exact entry, or 0 if it was skipped.
+      - If that day had ZERO closing stock entries → holiday/skipped.
+        Continue falling back to the next day.
+    If nothing found within 7 days, return 0.
     """
     try:
-        yesterday = (from_date - timedelta(days=1)).date()
-
-        # Rule A: yesterday had entries — active closing day
-        if ClosingStock.query.filter_by(date=yesterday).count() > 0:
-            exact = ClosingStock.query.filter_by(
-                product_id=product_id, product_type=product_type, date=yesterday
-            ).first()
-            return safe_float(exact.quantity) if exact else 0.0
-
-        # Rule B: yesterday was a holiday — fall back up to 7 days
-        for days_back in range(2, 8):
+        for days_back in range(1, 8):
             check_date = (from_date - timedelta(days=days_back)).date()
-            entry = ClosingStock.query.filter_by(
-                product_id=product_id, product_type=product_type, date=check_date
-            ).first()
-            if entry:
-                return safe_float(entry.quantity)
 
-        # Rule C: nothing found
+            if ClosingStock.query.filter_by(date=check_date).count() > 0:
+                # Active closing day — exact match or skipped
+                entry = ClosingStock.query.filter_by(
+                    product_id=product_id, product_type=product_type, date=check_date
+                ).first()
+                return safe_float(entry.quantity) if entry else 0.0
+
+            # No entries → holiday, continue looking back
+
         return 0.0
     except Exception as e:
         logging.exception("get_opening_stock failed")
