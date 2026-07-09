@@ -722,33 +722,34 @@ export default function DailySummary() {
       let pdfGrandQty = 0, pdfGrandTotal = 0;
       displayData.forEach((row, index) => {
         if (row.isHeader) {
-          processedData.push([row.date, row.supplier, row.invNo, '', '', '', '']);
+          processedData.push([row.date, row.supplier, row.invNo, '', '', '', '', '']);
         } else if (row.isTotal) {
-          processedData.push(['', '', '', row.product?.replace(/\.000/g, ''), formatSmartQuantity(row.quantity), '', Number(row.total).toFixed(2)]);
-          if (index < displayData.length - 1) processedData.push(['', '', '', '', '', '', '']);
+          processedData.push(['', '', '', '', row.product?.replace(/\.000/g, ''), formatSmartQuantity(row.quantity), '', Number(row.total).toFixed(2)]);
+          if (index < displayData.length - 1) processedData.push(['', '', '', '', '', '', '', '']);
         } else {
-          processedData.push(['', '', row.invNo, row.product, formatSmartQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)]);
+          processedData.push(['', '', row.invNo, '', row.product, formatSmartQuantity(row.quantity), Number(row.unitPrice).toFixed(2), Number(row.total).toFixed(2)]);
           pdfGrandQty += Number(row.quantity || 0);
           pdfGrandTotal += Number(row.total || 0);
         }
       });
       const pdfAvgPrice = pdfGrandQty > 0 ? pdfGrandTotal / pdfGrandQty : 0;
-      processedData.push(['GRAND TOTAL', '', '', '', formatSmartQuantity(pdfGrandQty), `£${pdfAvgPrice.toFixed(2)}`, `£${pdfGrandTotal.toFixed(2)}`]);
+      processedData.push(['GRAND TOTAL', '', '', '', '', formatSmartQuantity(pdfGrandQty), `£${pdfAvgPrice.toFixed(2)}`, `£${pdfGrandTotal.toFixed(2)}`]);
       tbl(
-        [['Date', 'Supplier', 'Inv.No', 'Product', 'Quantity', 'Unit Price', 'Total']],
+        [['Date', 'Supplier', 'Ref No', 'Invoice No', 'Product', 'Quantity', 'Unit Price', 'Total']],
         processedData,
         {
           theme: 'grid',
           styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
           headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.2 },
           columnStyles: {
-            0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 20 },
-            3: { cellWidth: 35 }, 4: { cellWidth: 20 }, 5: { cellWidth: 25 }, 6: { cellWidth: 25 },
+            0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 18 },
+            3: { cellWidth: 18 }, 4: { cellWidth: 35 }, 5: { cellWidth: 18 },
+            6: { cellWidth: 22 }, 7: { cellWidth: 22 },
           },
           didParseCell: (data: any) => {
             const r = processedData[data.row.index];
-            if (r && r[0] && r[1] && !r[3]) data.cell.styles.fontStyle = 'bold';
-            if (r && r[3] && r[6] && !r[0] && !r[1]) data.cell.styles.fontStyle = 'bold';
+            if (r && r[0] && r[1] && !r[4]) data.cell.styles.fontStyle = 'bold';
+            if (r && r[4] && r[7] && !r[0] && !r[1]) data.cell.styles.fontStyle = 'bold';
           }
         }
       );
@@ -1613,7 +1614,8 @@ export default function DailySummary() {
                         <TableRow className="bg-gray-50">
                           <TableHead className="font-semibold border">Date</TableHead>
                           <TableHead className="font-semibold border">Supplier</TableHead>
-                          <TableHead className="font-semibold border">Inv.No</TableHead>
+                          <TableHead className="font-semibold border">Ref No</TableHead>
+                          <TableHead className="font-semibold border">Invoice No</TableHead>
                           <TableHead className="font-semibold border">Product</TableHead>
                           <TableHead className="font-semibold border text-right">Quantity</TableHead>
                           <TableHead className="font-semibold border text-right">Unit Price</TableHead>
@@ -1621,9 +1623,9 @@ export default function DailySummary() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {productPurchaseData.length === 0 ? (
+                          {productPurchaseData.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={5} className="border text-center text-gray-500 py-4">
+                            <TableCell colSpan={8} className="border text-center text-gray-500 py-4">
                               No product purchase data found
                             </TableCell>
                           </TableRow>
@@ -1646,6 +1648,7 @@ export default function DailySummary() {
                                     </span>
                                   </TableCell>
                                   <TableCell className="border py-1">{row.invNo}</TableCell>
+                                  <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border py-1" colSpan={3}></TableCell>
                                   <TableCell className="border py-1"></TableCell>
                                 </TableRow>
@@ -1653,7 +1656,7 @@ export default function DailySummary() {
                             } else if (row.isTotal) {
                               return (
                                 <TableRow key={idx} className={cn("font-bold border-b-2 border-gray-300", row.isCompany ? "bg-amber-50" : "bg-white")}>
-                                  <TableCell className="border py-1" colSpan={3}></TableCell>
+                                  <TableCell className="border py-1" colSpan={4}></TableCell>
                                   <TableCell className="border text-right py-1">{row.product?.replace(/\.000/g, '')}</TableCell>
                                   <TableCell className="border text-right py-1">{formatSmartQuantity(row.quantity)}</TableCell>
                                   <TableCell className="border py-1"></TableCell>
@@ -1680,6 +1683,7 @@ export default function DailySummary() {
                                       )
                                     ) : '-'}
                                   </TableCell>
+                                  <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border py-1">
                                     <span className="text-blue-600 cursor-pointer hover:text-blue-800 transition-colors">
                                       {row.product}
@@ -1693,7 +1697,7 @@ export default function DailySummary() {
                             }
                           }), ...(dataRows.length > 0 ? [(
                             <TableRow key="grand-total" className="font-bold border-t-2 border-gray-400 bg-blue-50">
-                              <TableCell className="border py-1" colSpan={4}>GRAND TOTAL</TableCell>
+                              <TableCell className="border py-1" colSpan={5}>GRAND TOTAL</TableCell>
                               <TableCell className="border text-right py-1">{formatSmartQuantity(grandQty)}</TableCell>
                               <TableCell className="border text-right py-1">£{avgPrice.toFixed(2)}</TableCell>
                               <TableCell className="border text-right py-1">£{grandTotal.toFixed(2)}</TableCell>
