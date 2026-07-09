@@ -1,60 +1,56 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Badge } from '@/components/ui/badge';
 
-const SESSION_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+const SESSION_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export const SessionTimer = () => {
   const { user } = useAuth();
   const [timeLeft, setTimeLeft] = useState<number>(SESSION_DURATION);
-  const [lastActivity, setLastActivity] = useState<number>(Date.now());
+
+  // Use a ref for lastActivity so the interval callback always reads
+  // the latest value without needing to be recreated.
+  const lastActivityRef = useRef<number>(Date.now());
 
   useEffect(() => {
     if (!user) return;
 
-    // Track user activity
     const handleActivity = () => {
-      setLastActivity(Date.now());
-      setTimeLeft(SESSION_DURATION);
+      lastActivityRef.current = Date.now();
     };
 
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click', 'keydown'];
-    
-    events.forEach(event => {
-      document.addEventListener(event, handleActivity, true);
-    });
+    const events = [
+      'mousedown', 'mousemove', 'keypress', 'scroll',
+      'touchstart', 'click', 'keydown', 'input', 'change',
+    ];
 
-    // Update timer every second
+    events.forEach(ev => document.addEventListener(ev, handleActivity, true));
+
     const interval = setInterval(() => {
-      const now = Date.now();
-      const elapsed = now - lastActivity;
+      const elapsed = Date.now() - lastActivityRef.current;
       const remaining = Math.max(0, SESSION_DURATION - elapsed);
       setTimeLeft(remaining);
     }, 1000);
 
     return () => {
-      events.forEach(event => {
-        document.removeEventListener(event, handleActivity, true);
-      });
+      events.forEach(ev => document.removeEventListener(ev, handleActivity, true));
       clearInterval(interval);
     };
-  }, [user, lastActivity]);
+  }, [user]); // Only re-run when login state changes
 
-  // Don't show timer if user is not logged in
   if (!user) return null;
+
+  // Only show the badge when fewer than 2 minutes remain
+  if (timeLeft > 2 * 60 * 1000) return null;
 
   const minutes = Math.floor(timeLeft / 60000);
   const seconds = Math.floor((timeLeft % 60000) / 1000);
-
-  // Only show when less than 2 minutes remaining
-  if (timeLeft > 2 * 60 * 1000) return null;
-
-  const isWarning = timeLeft <= 60000; // Last minute
+  const isWarning = timeLeft <= 60000;
 
   return (
     <div className="fixed top-4 right-4 z-50">
-      <Badge 
-        variant={isWarning ? "destructive" : "secondary"}
+      <Badge
+        variant={isWarning ? 'destructive' : 'secondary'}
         className="animate-pulse"
       >
         Session: {minutes}:{seconds.toString().padStart(2, '0')}
