@@ -22,6 +22,8 @@ export default function PurchaseInvoice() {
   const [quantity, setQuantity] = useState(0);
   const [unitPrice, setUnitPrice] = useState("");
   const [items, setItems] = useState<any[]>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editItem, setEditItem] = useState<any>(null);
   const [remarks, setRemarks] = useState("");
   const [productRemarks, setProductRemarks] = useState("");
   const [locationStr, setLocation] = useLocation();
@@ -397,6 +399,39 @@ export default function PurchaseInvoice() {
     }, 100);
   };
 
+  const handleStartEdit = (index: number) => {
+    setEditingIndex(index);
+    setEditItem({ ...items[index] });
+  };
+
+  const handleSaveEdit = (index: number) => {
+    if (!editItem) return;
+    const qty = Number(editItem.quantity);
+    const price = Number(editItem.unitPrice);
+    if (isNaN(qty) || qty <= 0) {
+      toast({ title: "Validation Error", description: "Please enter a valid quantity.", variant: "destructive" });
+      return;
+    }
+    if (isNaN(price) || price < 0) {
+      toast({ title: "Validation Error", description: "Please enter a valid unit price.", variant: "destructive" });
+      return;
+    }
+    const updatedItems = items.map((item, i) =>
+      i === index
+        ? { ...item, ...editItem, quantity: qty, unitPrice: price, totalPrice: qty * price }
+        : item
+    );
+    setItems(updatedItems);
+    setEditingIndex(null);
+    setEditItem(null);
+    toast({ title: "Item Updated", description: "Remember to save the invoice to persist changes." });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingIndex(null);
+    setEditItem(null);
+  };
+
   // Save invoice
   const handleSaveInvoice = () => {
     if (items.length === 0) {
@@ -723,28 +758,75 @@ export default function PurchaseInvoice() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items.map((item, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell className="font-medium">{item.productName}</TableCell>
-                        <TableCell>{item.remarks || "-"}</TableCell>
-                        <TableCell className="text-right">{item.quantity}</TableCell>
-                        <TableCell className="text-right">£{(Number(item.unitPrice) || 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-medium">£{(Number(item.totalPrice) || 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const newItems = items.filter((_, index) => index !== idx);
-                              setItems(newItems);
-                            }}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            Remove
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {items.map((item, idx) =>
+                      editingIndex === idx ? (
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium">{item.productName}</TableCell>
+                          <TableCell>
+                            <Input
+                              className="h-7"
+                              value={editItem?.remarks ?? item.remarks ?? ""}
+                              onChange={e => setEditItem((prev: any) => ({ ...prev, remarks: e.target.value }))}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              className="h-7 text-right"
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={editItem?.quantity === undefined ? item.quantity : editItem.quantity}
+                              onChange={e => setEditItem((prev: any) => ({ ...prev, quantity: e.target.value }))}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Input
+                              className="h-7 text-right"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={editItem?.unitPrice === undefined ? item.unitPrice : editItem.unitPrice}
+                              onChange={e => setEditItem((prev: any) => ({ ...prev, unitPrice: e.target.value }))}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-medium">
+                            £{(Number(editItem?.quantity ?? item.quantity) * Number(editItem?.unitPrice ?? item.unitPrice)).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right space-x-1">
+                            <Button size="sm" onClick={() => handleSaveEdit(idx)}>Save</Button>
+                            <Button size="sm" variant="outline" onClick={handleCancelEdit}>Cancel</Button>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        <TableRow key={idx}>
+                          <TableCell className="font-medium">{item.productName}</TableCell>
+                          <TableCell>{item.remarks || "-"}</TableCell>
+                          <TableCell className="text-right">{item.quantity}</TableCell>
+                          <TableCell className="text-right">£{(Number(item.unitPrice) || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-right font-medium">£{(Number(item.totalPrice) || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-right space-x-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleStartEdit(idx)}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                const newItems = items.filter((_, index) => index !== idx);
+                                setItems(newItems);
+                              }}
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              Remove
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    )}
                     <TableRow>
                       <TableCell colSpan={5} className="text-right font-bold">
                         Total Amount:
