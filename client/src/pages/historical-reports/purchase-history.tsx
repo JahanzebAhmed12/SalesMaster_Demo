@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SupplierSearch from "@/components/ui/supplier-search";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -67,18 +68,13 @@ export default function PurchaseHistory() {
     isLoading: isLoadingBusinessDate, 
     formatForApi 
   } = useBusinessDate();
-  const [supplierFilter, setSupplierFilter] = useState<string>("All Suppliers");
+  const [supplierId, setSupplierId] = useState<string | undefined>(undefined);
+  const [supplierName, setSupplierName] = useState<string>("All Suppliers");
   const [paymentFilter, setPaymentFilter] = useState<string>("All Payments");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [trigger, setTrigger] = useState(0);
   const [sortField, setSortField] = useState<string>("");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-
-  // Fetch suppliers for dropdown
-  const { data: suppliers, isLoading: loadingSuppliers } = useQuery({
-    queryKey: ["suppliers"],
-    queryFn: () => apiRequest("GET", "/api/suppliers"),
-  });
 
   // Fetch purchase history
   const {
@@ -90,7 +86,7 @@ export default function PurchaseHistory() {
       "purchase-history",
       fromDate,
       toDate,
-      supplierFilter,
+      supplierId,
       paymentFilter,
       searchTerm,
       trigger,
@@ -99,15 +95,12 @@ export default function PurchaseHistory() {
       const params = new URLSearchParams();
       params.append("fromDate", fromDate.toISOString().slice(0, 10));
       params.append("toDate", toDate.toISOString().slice(0, 10));
-      if (supplierFilter !== "All Suppliers") {
-        const supplier = suppliers?.find((s: any) => s.supplier_name === supplierFilter);
-        if (supplier) params.append("supplierId", supplier.id);
-      }
+      if (supplierId) params.append("supplierId", supplierId);
       if (paymentFilter !== "All Payments") params.append("paymentStatus", paymentFilter);
       if (searchTerm) params.append("search", searchTerm);
       return apiRequest("GET", `/api/reports/purchase-history?${params.toString()}`);
     },
-    enabled: !!fromDate && !!toDate && !!suppliers,
+    enabled: !!fromDate && !!toDate,
   });
 
   const purchaseData = Array.isArray(purchaseResponse.data) ? purchaseResponse.data : [];
@@ -196,8 +189,8 @@ export default function PurchaseHistory() {
         </div>
         <div class="report-info">
           <div><strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</div>
-          <div><strong>Supplier:</strong> ${supplierFilter || 'All'}</div>
-          <div><strong>Payment Status:</strong> ${paymentFilter || 'All'}</div>
+          <div><strong>Supplier:</strong> ${supplierName}</div>
+           <div><strong>Payment Status:</strong> ${paymentFilter || 'All'}</div>
         </div>
       `);
       
@@ -300,7 +293,7 @@ export default function PurchaseHistory() {
     dataArray.push(
       ['Report Details:'],
       ['Period:', `${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`],
-      ['Supplier:', supplierFilter],
+       ['Supplier:', supplierName],
       ['Payment Status:', paymentFilter],
       [''],
       header // Add header row
@@ -447,7 +440,7 @@ export default function PurchaseHistory() {
     doc.setFontSize(9);
     doc.text([
       `Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`,
-      `Supplier: ${supplierFilter || 'All'}`,
+      `Supplier: ${supplierName}`,
       `Payment Status: ${paymentFilter || 'All'}`
     ], 20, 48);
     
@@ -644,17 +637,16 @@ export default function PurchaseHistory() {
                 </Popover>
               </div>
               <div>
-                <Select value={supplierFilter} onValueChange={setSupplierFilter} disabled={loadingSuppliers}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All Suppliers">All Suppliers</SelectItem>
-                    {suppliers?.map((s: any) => (
-                      <SelectItem key={s.id} value={s.supplier_name}>{s.supplier_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SupplierSearch
+                  onSupplierSelect={(s) => {
+                    setSupplierId(s ? String(s.id) : undefined);
+                    setSupplierName(s ? s.supplier_name : "All Suppliers");
+                  }}
+                  placeholder="All Suppliers"
+                  label=""
+                  size="sm"
+                  allowClear={true}
+                />
               </div>
               <div>
                 <Select value={paymentFilter} onValueChange={setPaymentFilter}>
@@ -670,7 +662,7 @@ export default function PurchaseHistory() {
                 </Select>
               </div>
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setTrigger(t => t + 1)} disabled={loadingPurchases || loadingSuppliers}>
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setTrigger(t => t + 1)} disabled={loadingPurchases}>
                   {loadingPurchases ? "Loading..." : "Generate Report"}
                 </Button>
               </div>

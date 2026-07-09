@@ -4,7 +4,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import CustomerSearch from "@/components/ui/customer-search";
+import ProductSearch from "@/components/ui/product-search";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -41,7 +42,7 @@ interface CompanyDetails {
 }
 
 export default function ProdCustomerHistory() {
-  const [selectedCustomer, setSelectedCustomer] = useState<string | undefined>(undefined);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | undefined>(undefined);
   const [selectedProduct, setSelectedProduct] = useState<string | undefined>(undefined);
   const [productLike, setProductLike] = useState<string>("");
   
@@ -61,20 +62,7 @@ export default function ProdCustomerHistory() {
   } = useBusinessDate();
   const [searchClicked, setSearchClicked] = useState(false);
 
-  // Fetch customers
-  const { data: customers = [], isLoading: loadingCustomers } = useQuery({
-    queryKey: ["customers"],
-    queryFn: () => apiRequest("GET", "/api/customers"),
-  });
-  // Fetch products
-  const { data: productsData = { regularProducts: [], nonProducts: [] }, isLoading: loadingProducts } = useQuery({
-    queryKey: ["products"],
-    queryFn: () => apiRequest("GET", "/api/products"),
-  });
-  const allProducts = [
-    ...(productsData.regularProducts || []),
-    ...(productsData.nonProducts || [])
-  ];
+  // Customers and Products are fetched by CustomerSearch and ProductSearch components
 
   // Fetch product-customer history
   const {
@@ -85,7 +73,7 @@ export default function ProdCustomerHistory() {
   } = useQuery({
     queryKey: [
       "prod-customer-history",
-      selectedCustomer,
+      selectedCustomerId,
       selectedProduct,
       productLike,
       fromDate?.toISOString().slice(0, 10),
@@ -95,7 +83,7 @@ export default function ProdCustomerHistory() {
     queryFn: async () => {
       if (!searchClicked) return [];
       const params = new URLSearchParams();
-      if (selectedCustomer && selectedCustomer !== "All") params.append("customerId", selectedCustomer);
+      if (selectedCustomerId) params.append("customerId", selectedCustomerId);
       if (selectedProduct && selectedProduct !== "All") {
         // Handle the new product format (regular-123 or non-456)
         const [productType, productId] = selectedProduct.split('-');
@@ -117,7 +105,7 @@ export default function ProdCustomerHistory() {
   const totalAmount = historyData.reduce((sum: number, row: any) => sum + (row.total || 0), 0);
   const averagePrice = totalQuantity > 0 ? totalAmount / totalQuantity : 0;
 
-  const loading = loadingCustomers || loadingProducts || loadingHistory;
+  const loading = loadingHistory;
 
   const { data: companyDetails } = useQuery<CompanyDetails>({
     queryKey: ["/api/company-details"],
@@ -419,42 +407,30 @@ export default function ProdCustomerHistory() {
           <CardContent className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
               <div>
-                <label className="block text-sm font-medium mb-2">Customer:</label>
-                <Select value={selectedCustomer || "All"} onValueChange={setSelectedCustomer}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Customers" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Customers</SelectItem>
-                    {customers.map((c: any) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.customer_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CustomerSearch
+                  onCustomerSelect={(c) => setSelectedCustomerId(c ? String(c.id) : undefined)}
+                  placeholder="All Customers"
+                  label="Customer:"
+                  size="sm"
+                  allowClear={true}
+                />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Product:</label>
-                <Select value={selectedProduct || "All"} onValueChange={setSelectedProduct}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Products" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Products</SelectItem>
-                    {productsData.regularProducts?.map((p: any) => (
-                      <SelectItem key={`regular-${p.id}`} value={`regular-${p.id}`}>
-                        {p.description} (Regular)
-                      </SelectItem>
-                    ))}
-                    {productsData.nonProducts?.map((p: any) => (
-                      <SelectItem key={`non-${p.id}`} value={`non-${p.id}`}>
-                        {p.description} (Non-Product)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ProductSearch
+                  onProductSelect={(p) => {
+                    if (!p) {
+                      setSelectedProduct(undefined);
+                    } else {
+                      const isRegular = 'hsCode' in p;
+                      setSelectedProduct(`${isRegular ? 'regular' : 'non'}-${p.id}`);
+                    }
+                  }}
+                  placeholder="All Products"
+                  label="Product:"
+                  size="sm"
+                  allowClear={true}
+                />
               </div>
 
               <div>

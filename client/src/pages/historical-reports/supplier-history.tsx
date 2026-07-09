@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import SupplierSearch from "@/components/ui/supplier-search";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
@@ -58,7 +59,7 @@ interface CompanyDetails {
 
 export default function SupplierHistory() {
   const { toast } = useToast();
-  const [selectedSupplier, setSelectedSupplier] = useState<string>("");
+  const [selectedSupplier, setSelectedSupplier] = useState<number | null>(null);
   
   // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -114,9 +115,9 @@ export default function SupplierHistory() {
       !autoFetched &&
       urlParams &&
       suppliers.length > 0 &&
-      suppliers.some(s => s.id.toString() === urlParams.supplierId)
+      suppliers.some(s => s.id === parseInt(urlParams.supplierId!))
     ) {
-      setSelectedSupplier(urlParams.supplierId!);
+      setSelectedSupplier(parseInt(urlParams.supplierId!));
       setFromDate(parseISO(urlParams.fromDate!));
       setToDate(parseISO(urlParams.toDate!));
       setStatementType('All');
@@ -138,7 +139,7 @@ export default function SupplierHistory() {
         try {
           const res = await apiRequest(
             "GET",
-            `/api/reports/supplier-statement?supplierId=${selectedSupplier}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=All`
+            `/api/reports/supplier-statement?supplierId=${selectedSupplier!}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=All`
           );
           setStatementData(res);
         } catch (err) {
@@ -237,7 +238,7 @@ export default function SupplierHistory() {
     if (!invoiceNo) return;
     const row = statementData.find(r => r.invoiceNo === invoiceNo);
     if (!row) return;
-    const supplier = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const supplier = suppliers.find(s => s.id === selectedSupplier);
     if (!supplier?.email) {
       toast({
         title: "Error",
@@ -274,7 +275,7 @@ export default function SupplierHistory() {
   // Export handlers
   const handlePrint = () => {
     // Get supplier details
-    const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const selectedSupplierData = suppliers.find(s => s.id === selectedSupplier);
     
     // Create a print window
     const printWindow = window.open('', '', 'height=600,width=900');
@@ -387,7 +388,7 @@ export default function SupplierHistory() {
 
   const handleExcel = () => {
     // Get supplier details
-    const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const selectedSupplierData = suppliers.find(s => s.id === selectedSupplier);
     
     // Create a new workbook
     const wb = XLSX.utils.book_new();
@@ -553,7 +554,7 @@ export default function SupplierHistory() {
 
   const handlePDF = () => {
     // Get supplier details
-    const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const selectedSupplierData = suppliers.find(s => s.id === selectedSupplier);
     
     const doc = new jsPDF();
     
@@ -657,7 +658,7 @@ export default function SupplierHistory() {
       return;
     }
 
-    const selectedSupplierData = suppliers.find(s => s.id.toString() === selectedSupplier);
+    const selectedSupplierData = suppliers.find(s => s.id === selectedSupplier);
     if (!selectedSupplierData?.email) {
       toast({
         title: "Error",
@@ -669,7 +670,7 @@ export default function SupplierHistory() {
 
     try {
       const response = await apiRequest("POST", "/api/send/supplier-statement", {
-        supplierId: parseInt(selectedSupplier),
+        supplierId: selectedSupplier!,
         fromDate: fromDate.toISOString().split('T')[0],
         toDate: toDate.toISOString().split('T')[0],
         type: statementType
@@ -768,25 +769,11 @@ export default function SupplierHistory() {
                   </Popover>
                 </div>
                 <div>
-                  <Label>Supplier:</Label>
-                  <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isLoadingSuppliers ? (
-                        <SelectItem value="loading" disabled>Loading...</SelectItem>
-                      ) : suppliersError ? (
-                        <SelectItem value="error" disabled>Error loading suppliers</SelectItem>
-                      ) : (
-                        suppliers.map((supplier) => (
-                          <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                            {supplier.supplier_name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <SupplierSearch
+                    onSupplierSelect={(supplier) => setSelectedSupplier(supplier?.id ?? null)}
+                    placeholder="Select supplier"
+                    allowClear={false}
+                  />
                 </div>
                 <div>
                   <Label>Type:</Label>
@@ -813,7 +800,7 @@ export default function SupplierHistory() {
                     try {
                       const res = await apiRequest(
                         "GET",
-                        `/api/reports/supplier-statement?supplierId=${selectedSupplier}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=${encodeURIComponent(statementType)}`
+                        `/api/reports/supplier-statement?supplierId=${selectedSupplier!}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&type=${encodeURIComponent(statementType)}`
                       );
                       setStatementData(res);
                     } catch (err) {
@@ -835,7 +822,7 @@ export default function SupplierHistory() {
             <CardTitle className="text-center text-lg">SUPPLIER STATEMENT</CardTitle>
             <div className="text-left">
               <div className="font-medium">
-                {suppliers.find(s => s.id.toString() === selectedSupplier)?.supplier_name || ""},
+                {suppliers.find(s => s.id === selectedSupplier)?.supplier_name || ""},
               </div>
               <div className="text-sm text-gray-600 mt-1">📧</div>
             </div>

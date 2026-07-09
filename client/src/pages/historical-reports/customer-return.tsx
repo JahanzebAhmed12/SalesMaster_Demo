@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import CustomerSearch from "@/components/ui/customer-search";
+import ProductSearch from "@/components/ui/product-search";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -19,24 +19,6 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import React from 'react';
-
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem
-} from '@/components/ui/dropdown-menu';
-
-interface RegularProduct {
-  id: number;
-  productCode: string;
-  description: string;
-}
-interface NonProduct {
-  id: number;
-  productCode: string;
-  description: string;
-}
 
 interface CustomerReturnData {
   id: number;
@@ -79,7 +61,8 @@ export default function CustomerReturn() {
   const { currentDate: businessDate } = useBusinessDate();
   const [fromDate, setFromDate] = useState<Date>(subWeeks(new Date(), 1));
   const [toDate, setToDate] = useState<Date>(new Date());
-  const [customerFilter, setCustomerFilter] = useState("All Customer");
+  const [customerFilter, setCustomerFilter] = useState<number | null>(null);
+  const [selectedProductName, setSelectedProductName] = useState("");
   const fromDateChanged = useRef(false);
   const toDateChanged = useRef(false);
 
@@ -93,27 +76,13 @@ export default function CustomerReturn() {
     }
   }, [businessDate]);
 
-  // Product search
-  const [productSearch, setProductSearch] = useState("");
-  const [productOptions, setProductOptions] = useState<(RegularProduct | NonProduct & { productType: 'regular' | 'non' })[]>([]);
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [highlightedProduct, setHighlightedProduct] = useState(-1);
-  const productInputRef = useRef<HTMLInputElement>(null);
-  const productDropdownRef = useRef<HTMLDivElement>(null);
-
-  // Fetch customers from database
-  const { data: customers = [], isLoading: loadingCustomers } = useQuery({
-    queryKey: ["customers"],
-    queryFn: () => apiRequest("GET", "/api/customers"),
-  });
-
   const { data: returnData = [], isLoading } = useQuery<CustomerReturnData[]>({
     queryKey: [
       "customer-returns",
       fromDate && toLocalDateString(fromDate),
       toDate && toLocalDateString(toDate),
       customerFilter,
-      productSearch,
+      selectedProductName,
       searchClicked
     ],
     queryFn: async () => {
@@ -121,11 +90,8 @@ export default function CustomerReturn() {
       const params = new URLSearchParams();
       if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
       if (toDate) params.append("toDate", toLocalDateString(toDate));
-      if (customerFilter && customerFilter !== "All Customer") params.append("customerId", customerFilter);
-      if (productSearch) {
-        const selectedProductName = productSearch.includes(" - ") ? productSearch.split(" - ")[1] : productSearch;
-        params.append("search", selectedProductName);
-      }
+      if (customerFilter) params.append("customerId", String(customerFilter));
+      if (selectedProductName) params.append("search", selectedProductName);
       return apiRequest("GET", `/api/reports/customer-returns?${params.toString()}`);
     },
     enabled: !!searchClicked,
@@ -135,57 +101,6 @@ export default function CustomerReturn() {
     queryKey: ["/api/company-details"],
     queryFn: () => apiRequest("GET", "/api/company-details"),
   });
-
-  const { data: regularProducts } = useQuery<RegularProduct[]>({
-    queryKey: ["/api/regular_products"],
-    queryFn: () => apiRequest("GET", "/api/regular_products"),
-  });
-
-  const { data: nonProducts } = useQuery<NonProduct[]>({
-    queryKey: ["/api/non_products"],
-    queryFn: () => apiRequest("GET", "/api/non_products"),
-  });
-
-  useEffect(() => {
-    let list: (RegularProduct | NonProduct & { productType: 'regular' | 'non' })[] = [
-      ...(regularProducts || []).map(p => ({ ...p, productType: 'regular' as const })),
-      ...(nonProducts || []).map(p => ({ ...p, productType: 'non' as const }))
-    ];
-    if (productSearch) {
-      const term = productSearch.toLowerCase();
-      list = list.filter(
-        (p: any) =>
-          p.productCode?.toLowerCase().startsWith(term) ||
-          p.description?.toLowerCase().startsWith(term)
-      );
-    }
-    setProductOptions(list);
-    setHighlightedProduct(-1);
-  }, [productSearch, regularProducts, nonProducts]);
-
-  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showProductDropdown || productOptions.length === 0) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedProduct(prev => prev < productOptions.length - 1 ? prev + 1 : 0);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedProduct(prev => prev > 0 ? prev - 1 : productOptions.length - 1);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (highlightedProduct >= 0 && highlightedProduct < productOptions.length) {
-        const p = productOptions[highlightedProduct];
-        setProductSearch(`${p.productCode} - ${p.description}`);
-        setShowProductDropdown(false);
-      }
-    } else if (e.key === "Escape") {
-      setShowProductDropdown(false);
-    }
-  };
-
-  const handleProductBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    setTimeout(() => setShowProductDropdown(false), 100);
-  };
 
   const totals = {
     totalQuantity: returnData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
@@ -554,25 +469,16 @@ export default function CustomerReturn() {
               </div>
               
               <div>
-                <Label>Customer:</Label>
-                <Select value={customerFilter} onValueChange={setCustomerFilter} disabled={loadingCustomers}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={loadingCustomers ? "Loading..." : "All Customer"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All Customer">All Customer</SelectItem>
-                    {customers.map((customer: any) => (
-                      <SelectItem key={customer.id} value={String(customer.id)}>
-                        {customer.customer_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CustomerSearch
+                  onCustomerSelect={(customer) => setCustomerFilter(customer?.id ?? null)}
+                  placeholder="All Customer"
+                  allowClear={true}
+                />
               </div>
               
               <div>
-                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setSearchClicked(v => !v)} disabled={loadingCustomers}>
-                  {loadingCustomers ? "Loading..." : "Search"}
+                <Button className="bg-blue-500 hover:bg-blue-600 w-full" onClick={() => setSearchClicked(v => !v)}>
+                  Search
                 </Button>
               </div>
             </div>
@@ -603,41 +509,12 @@ export default function CustomerReturn() {
                   Print
                 </Button>
               </div>
-              <div className="relative">
-                <Input
-                  ref={productInputRef}
+              <div className="w-64">
+                <ProductSearch
+                  onProductSelect={(product) => setSelectedProductName(product?.description ?? "")}
                   placeholder="Search product..."
-                  value={productSearch}
-                  onChange={e => {
-                    setProductSearch(e.target.value);
-                    setShowProductDropdown(true);
-                  }}
-                  onFocus={() => setShowProductDropdown(!!productSearch)}
-                  onBlur={handleProductBlur}
-                  onKeyDown={handleProductKeyDown}
-                  autoComplete="off"
-                  className="w-64"
+                  allowClear={true}
                 />
-                {showProductDropdown && productOptions.length > 0 && (
-                  <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {productOptions.map((p, idx) => (
-                      <div
-                        key={p.id}
-                        className={`p-2 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
-                        onMouseDown={() => {
-                          setProductSearch(`${p.productCode} - ${p.description}`);
-                          setShowProductDropdown(false);
-                        }}
-                        onMouseEnter={() => setHighlightedProduct(idx)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
-                        </div>
-                        <div className="text-sm">{p.description}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
             <div ref={tableRef}>

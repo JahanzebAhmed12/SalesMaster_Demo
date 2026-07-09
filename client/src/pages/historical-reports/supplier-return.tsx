@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import SupplierSearch from "@/components/ui/supplier-search";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
-import type { Supplier } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -53,7 +52,7 @@ function toLocalDateString(date: Date) {
 }
 
 export default function SupplierReturn() {
-  const [selectedSupplier, setSelectedSupplier] = useState<string>("");
+  const [selectedSupplier, setSelectedSupplier] = useState<number | null>(null);
   const [fromDate, setFromDate] = useState<Date | undefined>();
   const [toDate, setToDate] = useState<Date | undefined>();
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -69,12 +68,6 @@ export default function SupplierReturn() {
       initialSet.current = true;
     }
   }, [businessDate]);
-
-  // Fetch suppliers for dropdown
-  const { data: suppliers = [], isLoading: loadingSuppliers, error: suppliersError } = useQuery<Supplier[]>({
-    queryKey: ["suppliers"],
-    queryFn: () => apiRequest("GET", "/api/suppliers"),
-  });
 
   const { data: companyDetails } = useQuery<CompanyDetails>({
     queryKey: ["/api/company-details"],
@@ -95,7 +88,7 @@ export default function SupplierReturn() {
       const params = new URLSearchParams();
       if (fromDate) params.append("fromDate", toLocalDateString(fromDate));
       if (toDate) params.append("toDate", toLocalDateString(toDate));
-      if (selectedSupplier && selectedSupplier !== "loading" && selectedSupplier !== "error") params.append("supplierId", selectedSupplier);
+      if (selectedSupplier) params.append("supplierId", String(selectedSupplier));
       if (searchTerm) params.append("search", searchTerm);
       return apiRequest("GET", `/api/reports/supplier-returns?${params.toString()}`);
     },
@@ -276,24 +269,11 @@ export default function SupplierReturn() {
           <CardContent className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
               <div>
-                <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select supplier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {loadingSuppliers ? (
-                      <SelectItem value="loading" disabled>Loading...</SelectItem>
-                    ) : suppliersError ? (
-                      <SelectItem value="error" disabled>Error loading suppliers</SelectItem>
-                    ) : (
-                      suppliers.map((supplier: any) => (
-                        <SelectItem key={supplier.id} value={supplier.id.toString()}>
-                          {supplier.supplier_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <SupplierSearch
+                  onSupplierSelect={(supplier) => setSelectedSupplier(supplier?.id ?? null)}
+                  placeholder="Select supplier"
+                  allowClear={false}
+                />
               </div>
 
               <div>

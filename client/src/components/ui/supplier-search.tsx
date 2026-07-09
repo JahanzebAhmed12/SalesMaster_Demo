@@ -135,6 +135,15 @@ export default function SupplierSearch({
     }
   };
 
+  // Auto-scroll dropdown to keep highlighted item visible
+  useEffect(() => {
+    if (highlightedIndex >= 0 && dropdownRef.current) {
+      const items = dropdownRef.current.querySelectorAll('[data-index]');
+      const item = items[highlightedIndex] as HTMLElement | undefined;
+      item?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedIndex]);
+
   // Handle blur with delay to allow clicks
   const handleBlur = () => {
     setTimeout(() => {
@@ -243,6 +252,7 @@ export default function SupplierSearch({
                 {suppliers.map((supplier, index) => (
                   <div
                     key={supplier.id}
+                    data-index={index}
                     className={cn(
                       "flex items-center px-3 py-2 cursor-pointer transition-colors",
                       highlightedIndex === index

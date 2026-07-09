@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import ProductSearch from "@/components/ui/product-search";
+import SupplierSearch from "@/components/ui/supplier-search";
+import CustomerSearch from "@/components/ui/customer-search";
 import { CalendarIcon, FileText, Download, Mail, Copy, Printer } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn, formatQuantity } from "@/lib/utils";
@@ -42,23 +45,8 @@ function toEndOfDayDateString(date: Date) {
 export default function ProductHistory() {
   const [productLike, setProductLike] = useState("");
   const [productId, setProductId] = useState<string | undefined>(undefined);
-  const [productSearch, setProductSearch] = useState("");
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
-  const [highlightedProduct, setHighlightedProduct] = useState(-1);
-  const productInputRef = useRef<HTMLInputElement>(null);
-  const productDropdownRef = useRef<HTMLDivElement>(null);
   const [customerId, setCustomerId] = useState<string | undefined>(undefined);
   const [supplierId, setSupplierId] = useState<string | undefined>(undefined);
-  const [customerSearch, setCustomerSearch] = useState("");
-  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
-  const [highlightedCustomer, setHighlightedCustomer] = useState(-1);
-  const customerInputRef = useRef<HTMLInputElement>(null);
-  const customerDropdownRef = useRef<HTMLDivElement>(null);
-  const [supplierSearch, setSupplierSearch] = useState("");
-  const [showSupplierDropdown, setShowSupplierDropdown] = useState(false);
-  const [highlightedSupplier, setHighlightedSupplier] = useState(-1);
-  const supplierInputRef = useRef<HTMLInputElement>(null);
-  const supplierDropdownRef = useRef<HTMLDivElement>(null);
   
   // Initialize with current date, will be updated when businessDate loads
   const [fromDate, setFromDate] = useState<Date>(new Date());
@@ -93,17 +81,6 @@ export default function ProductHistory() {
     queryKey: ["suppliers"],
     queryFn: () => apiRequest("GET", "/api/suppliers"),
   });
-
-  // Prepare product options
-  const allProducts: (RegularProduct | NonProduct)[] = [
-    ...(productsData.regularProducts || []),
-    ...(productsData.nonProducts || [])
-  ];
-
-  // Prepare customer options
-  const allCustomers: Customer[] = customersData;
-  // Prepare supplier options
-  const allSuppliers: Supplier[] = suppliersData;
 
   // Fetch product history only when Search is clicked
   const {
@@ -156,114 +133,19 @@ export default function ProductHistory() {
     }
   }, [businessDate, isLoadingBusinessDate]);
 
-  // Product search filter — computed synchronously (no stale closure)
-  const productOptions = allProducts.filter((p: any) => {
-    if (!productSearch) return true;
-    const term = productSearch.toLowerCase();
-    return (
-      p.productCode?.toLowerCase().startsWith(term) ||
-      p.description?.toLowerCase().startsWith(term)
-    );
-  });
-
-  // Auto-scroll dropdown to keep highlighted item visible
-  useEffect(() => {
-    if (highlightedProduct >= 0 && productDropdownRef.current) {
-      const item = productDropdownRef.current.children[highlightedProduct] as HTMLElement | undefined;
-      item?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightedProduct]);
-
-  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showProductDropdown || productOptions.length === 0) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedProduct(prev => prev < productOptions.length - 1 ? prev + 1 : 0);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedProduct(prev => prev > 0 ? prev - 1 : productOptions.length - 1);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const idx = highlightedProduct >= 0 ? highlightedProduct : 0;
-      if (idx < productOptions.length) {
-        const p = productOptions[idx];
-        setProductSearch(`${p.description}`);
-        setProductId(String(p.id));
-        setShowProductDropdown(false);
-      }
-    } else if (e.key === "Escape") {
-      setShowProductDropdown(false);
-    }
+  // Product selection handler
+  const handleProductSelect = (product: any) => {
+    setProductId(product ? String(product.id) : undefined);
   };
 
-  // Customer search
-  const customerOptions = allCustomers.filter(c => {
-    if (!customerSearch) return true;
-    return c.customer_name?.toLowerCase().includes(customerSearch.toLowerCase());
-  });
-
-  useEffect(() => {
-    if (highlightedCustomer >= 0 && customerDropdownRef.current) {
-      const item = customerDropdownRef.current.children[highlightedCustomer] as HTMLElement | undefined;
-      item?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightedCustomer]);
-
-  const handleCustomerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showCustomerDropdown || customerOptions.length === 0) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedCustomer(prev => prev < customerOptions.length - 1 ? prev + 1 : 0);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedCustomer(prev => prev > 0 ? prev - 1 : customerOptions.length - 1);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const idx = highlightedCustomer >= 0 ? highlightedCustomer : 0;
-      if (idx < customerOptions.length) {
-        const c = customerOptions[idx];
-        setCustomerSearch(c.customer_name);
-        setCustomerId(String(c.id));
-        setShowCustomerDropdown(false);
-      }
-    } else if (e.key === "Escape") {
-      setShowCustomerDropdown(false);
-    }
+  // Customer selection handler
+  const handleCustomerSelect = (customer: any) => {
+    setCustomerId(customer ? String(customer.id) : undefined);
   };
 
-  // Supplier search
-  const supplierOptions = allSuppliers.filter(s => {
-    if (!supplierSearch) return true;
-    return s.supplier_name?.toLowerCase().includes(supplierSearch.toLowerCase());
-  });
-
-  useEffect(() => {
-    if (highlightedSupplier >= 0 && supplierDropdownRef.current) {
-      const item = supplierDropdownRef.current.children[highlightedSupplier] as HTMLElement | undefined;
-      item?.scrollIntoView({ block: 'nearest' });
-    }
-  }, [highlightedSupplier]);
-
-  const handleSupplierKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showSupplierDropdown || supplierOptions.length === 0) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedSupplier(prev => prev < supplierOptions.length - 1 ? prev + 1 : 0);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedSupplier(prev => prev > 0 ? prev - 1 : supplierOptions.length - 1);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const idx = highlightedSupplier >= 0 ? highlightedSupplier : 0;
-      if (idx < supplierOptions.length) {
-        const s = supplierOptions[idx];
-        setSupplierSearch(s.supplier_name);
-        setSupplierId(String(s.id));
-        setShowSupplierDropdown(false);
-      }
-    } else if (e.key === "Escape") {
-      setShowSupplierDropdown(false);
-    }
+  // Supplier selection handler
+  const handleSupplierSelect = (supplier: any) => {
+    setSupplierId(supplier ? String(supplier.id) : undefined);
   };
 
   // Handle date changes
@@ -663,116 +545,29 @@ export default function ProductHistory() {
                   placeholder=""
                 />
               </div>
-              <div className="relative">
-                <label className="block text-sm font-medium mb-2">Product:</label>
-                <Input
-                  ref={productInputRef}
-                  value={productSearch}
-                  onChange={e => {
-                    setProductSearch(e.target.value);
-                    setHighlightedProduct(-1);
-                    setShowProductDropdown(true);
-                    if (!e.target.value) setProductId(undefined);
-                  }}
-                  onFocus={() => setShowProductDropdown(!!productSearch)}
-                  onBlur={() => setTimeout(() => setShowProductDropdown(false), 100)}
-                  onKeyDown={handleProductKeyDown}
+              <div>
+                <ProductSearch
+                  onProductSelect={handleProductSelect}
                   placeholder="Search products..."
-                  autoComplete="off"
+                  label="Product:"
+                  size="sm"
                 />
-                {showProductDropdown && productOptions.length > 0 && (
-                  <div ref={productDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {productOptions.map((p, idx) => (
-                      <div
-                        key={p.id}
-                        className={`p-2 cursor-pointer ${highlightedProduct === idx ? "bg-blue-100" : ""}`}
-                        onMouseDown={() => {
-                          setProductSearch(`${p.description}`);
-                          setProductId(String(p.id));
-                          setShowProductDropdown(false);
-                        }}
-                        onMouseEnter={() => setHighlightedProduct(idx)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs text-gray-600">{p.productCode}</span>
-                        </div>
-                        <div className="text-sm">{p.description}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
-              <div className="relative">
-                <label className="block text-sm font-medium mb-2">Customer:</label>
-                <Input
-                  ref={customerInputRef}
-                  value={customerSearch}
-                  onChange={e => {
-                    setCustomerSearch(e.target.value);
-                    setHighlightedCustomer(-1);
-                    setShowCustomerDropdown(true);
-                    if (!e.target.value) setCustomerId(undefined);
-                  }}
-                  onFocus={() => setShowCustomerDropdown(!!customerSearch)}
-                  onBlur={() => setTimeout(() => setShowCustomerDropdown(false), 100)}
-                  onKeyDown={handleCustomerKeyDown}
+              <div>
+                <CustomerSearch
+                  onCustomerSelect={handleCustomerSelect}
                   placeholder="Search customers..."
-                  autoComplete="off"
+                  label="Customer:"
+                  size="sm"
                 />
-                {showCustomerDropdown && customerOptions.length > 0 && (
-                  <div ref={customerDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {customerOptions.map((c, idx) => (
-                      <div
-                        key={c.id}
-                        className={`p-2 cursor-pointer ${highlightedCustomer === idx ? "bg-blue-100" : ""}`}
-                        onMouseDown={() => {
-                          setCustomerSearch(c.customer_name);
-                          setCustomerId(String(c.id));
-                          setShowCustomerDropdown(false);
-                        }}
-                        onMouseEnter={() => setHighlightedCustomer(idx)}
-                      >
-                        <div className="text-sm">{c.customer_name}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
-              <div className="relative">
-                <label className="block text-sm font-medium mb-2">Supplier:</label>
-                <Input
-                  ref={supplierInputRef}
-                  value={supplierSearch}
-                  onChange={e => {
-                    setSupplierSearch(e.target.value);
-                    setHighlightedSupplier(-1);
-                    setShowSupplierDropdown(true);
-                    if (!e.target.value) setSupplierId(undefined);
-                  }}
-                  onFocus={() => setShowSupplierDropdown(!!supplierSearch)}
-                  onBlur={() => setTimeout(() => setShowSupplierDropdown(false), 100)}
-                  onKeyDown={handleSupplierKeyDown}
+              <div>
+                <SupplierSearch
+                  onSupplierSelect={handleSupplierSelect}
                   placeholder="Search suppliers..."
-                  autoComplete="off"
+                  label="Supplier:"
+                  size="sm"
                 />
-                {showSupplierDropdown && supplierOptions.length > 0 && (
-                  <div ref={supplierDropdownRef} className="absolute z-50 bg-white border rounded w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                    {supplierOptions.map((s, idx) => (
-                      <div
-                        key={s.id}
-                        className={`p-2 cursor-pointer ${highlightedSupplier === idx ? "bg-blue-100" : ""}`}
-                        onMouseDown={() => {
-                          setSupplierSearch(s.supplier_name);
-                          setSupplierId(String(s.id));
-                          setShowSupplierDropdown(false);
-                        }}
-                        onMouseEnter={() => setHighlightedSupplier(idx)}
-                      >
-                        <div className="text-sm">{s.supplier_name}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
