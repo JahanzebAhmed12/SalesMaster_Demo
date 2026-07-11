@@ -896,6 +896,15 @@ const SalesInvoice = () => {
       return;
     }
 
+    if (Number(itemQuantity) === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Quantity cannot be zero.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const actualStockLevel = getActualStock(parseInt(selectedProductId), selectedProductType);
     const currentStockLevel = getCurrentStock(parseInt(selectedProductId), selectedProductType);
 
