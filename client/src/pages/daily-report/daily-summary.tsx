@@ -1236,36 +1236,35 @@ export default function DailySummary() {
                                   </button>
                                 </TableCell>
                                 <TableCell className="border">
-                                  {canEditCurrentDate ? (
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left font-normal h-auto min-h-0">
-                                          {payment.payment_id}
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="start" className="w-48">
-                                        <DropdownMenuItem
-                                          className="text-sm py-2"
-                                          onClick={() => {
-                                            const primaryType = payment.cash_amount >= payment.card_amount
-                                              && payment.cash_amount >= payment.bank_transfer_amount
-                                              && payment.cash_amount >= payment.cheque_amount ? 'cash' :
-                                              payment.card_amount >= payment.bank_transfer_amount
-                                              && payment.card_amount >= payment.cheque_amount ? 'card' :
-                                                payment.bank_transfer_amount >= payment.cheque_amount ? 'bank_transfer' : 'cheque';
-                                            window.open(`/print/payment-receipt/${payment.payment_id}/${primaryType}`, '_blank');
-                                          }}
-                                        >
-                                          <FileCheck className="mr-2 h-4 w-4" />
-                                          Print A4
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          className="text-sm py-2"
-                                          onClick={() => window.open(`/print/dot-matrix-payment/${payment.payment_id}`, '_blank')}
-                                        >
-                                          <Receipt className="mr-2 h-4 w-4" />
-                                          Print Dot Matrix
-                                        </DropdownMenuItem>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left font-normal h-auto min-h-0">
+                                        {payment.payment_id}
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-48">
+                                      <DropdownMenuItem
+                                        className="text-sm py-2"
+                                        onClick={() => {
+                                          const primaryType = payment.cash_amount >= payment.card_amount
+                                            && payment.cash_amount >= payment.bank_transfer_amount
+                                            && payment.cash_amount >= payment.cheque_amount ? 'cash' :
+                                            payment.card_amount >= payment.bank_transfer_amount
+                                            && payment.card_amount >= payment.cheque_amount ? 'bank_transfer' : 'cheque';
+                                          window.open(`/print/payment-receipt/${payment.payment_id}/${primaryType}`, '_blank');
+                                        }}
+                                      >
+                                        <FileCheck className="mr-2 h-4 w-4" />
+                                        Print A4
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        className="text-sm py-2"
+                                        onClick={() => window.open(`/print/dot-matrix-payment/${payment.payment_id}`, '_blank')}
+                                      >
+                                        <Receipt className="mr-2 h-4 w-4" />
+                                        Print Dot Matrix
+                                      </DropdownMenuItem>
+                                      {canEditCurrentDate && (
                                         <DropdownMenuItem
                                           className="text-sm py-2"
                                           onClick={() => window.open(`/payments/customer-payment?customerId=${payment.customer_id}&editBatchId=${payment.payment_id}`, '_self')}
@@ -1273,18 +1272,16 @@ export default function DailySummary() {
                                           <Pencil className="mr-2 h-4 w-4" />
                                           Edit
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          className="text-sm py-2"
-                                          onClick={() => window.open(`/payments/customer-payment?customerId=${payment.customer_id}`, '_self')}
-                                        >
-                                          <FileText className="mr-2 h-4 w-4" />
-                                          Invoice
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  ) : (
-                                    <span className="text-gray-600">{payment.payment_id}</span>
-                                  )}
+                                      )}
+                                      <DropdownMenuItem
+                                        className="text-sm py-2"
+                                        onClick={() => window.open(`/payments/customer-payment?customerId=${payment.customer_id}`, '_self')}
+                                      >
+                                        <FileText className="mr-2 h-4 w-4" />
+                                        Invoice
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </TableCell>
                                 <TableCell className="border text-right">
                                   {payment.cash_amount > 0 ? payment.cash_amount.toFixed(2) : '-'}

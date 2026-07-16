@@ -19,6 +19,17 @@ import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
 import { Pencil } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 import { format, parseISO, subDays } from 'date-fns';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import jsPDF from "jspdf";
@@ -1313,6 +1324,7 @@ const SalesInvoice = () => {
 
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editItem, setEditItem] = useState<any>(null);
+  const [itemToRemoveIndex, setItemToRemoveIndex] = useState<number | null>(null);
 
   const [heldInvoices, setHeldInvoices] = useState<HeldInvoice[]>([]);
 
@@ -2682,29 +2694,39 @@ const SalesInvoice = () => {
                             setEditingIndex(index);
                             setEditItem(item);
                           }}>Edit</Button>
-                          <Button size="sm" variant="destructive" disabled={isReadOnly} onClick={() => {
-                            const updatedItems = saleItems.filter((_, i) => i !== index);
-                            setSaleItems(updatedItems);
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="sm" variant="destructive" disabled={isReadOnly}>Remove</Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Confirm Removal</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to remove this item? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => {
+                                  const updatedItems = saleItems.filter((_, i) => i !== index);
+                                  setSaleItems(updatedItems);
 
-                            // Save draft items to localStorage for new invoices
-                            if (!currentSale) {
-                              localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
-                            }
+                                  if (!currentSale) {
+                                    localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
+                                  }
 
-                            // Note: Backend update will happen when user clicks "Update Ticket" button
-                            // This prevents automatic double updates
-
-                            if (currentSale) {
-                              toast({
-                                title: "Item Removed",
-                                description: "Item removed. Remember to click 'Update Ticket' to save changes to the database."
-                              });
-                            } else {
-                              toast({ title: "Item Removed", description: "Sale item has been removed." });
-                            }
-                          }}>
-                            Remove
-                          </Button>
+                                  if (currentSale) {
+                                    toast({
+                                      title: "Item Removed",
+                                      description: "Item removed. Remember to click 'Update Ticket' to save changes to the database."
+                                    });
+                                  } else {
+                                    toast({ title: "Item Removed", description: "Sale item has been removed." });
+                                  }
+                                }}>Remove</AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </TableCell>
                         <TableCell className="text-center">
                           {item.addedBy || "-"}
