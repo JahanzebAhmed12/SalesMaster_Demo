@@ -879,6 +879,14 @@ const SalesInvoice = () => {
     return 'N/A';
   };
 
+  const getSignDirection = (items: SaleItem[], excludeIndex?: number): 'positive' | 'negative' | 'none' => {
+    const filtered = excludeIndex !== undefined ? items.filter((_, i) => i !== excludeIndex) : items;
+    if (filtered.length === 0) return 'none';
+    if (filtered.every(item => item.quantity > 0)) return 'positive';
+    if (filtered.every(item => item.quantity < 0)) return 'negative';
+    return 'none';
+  };
+
   const handleAddItem = () => {
     if (!selectedProductId) {
       toast({
@@ -913,6 +921,17 @@ const SalesInvoice = () => {
         description: "Quantity cannot be zero.",
         variant: "destructive",
       });
+      return;
+    }
+
+    const newQty = Number(itemQuantity);
+    const existingSign = getSignDirection(saleItems);
+    if (existingSign === 'positive' && newQty < 0) {
+      toast({ title: "Validation Error", description: "Cannot add a negative quantity when positive quantity items exist.", variant: "destructive" });
+      return;
+    }
+    if (existingSign === 'negative' && newQty > 0) {
+      toast({ title: "Validation Error", description: "Cannot add a positive quantity when negative quantity items exist.", variant: "destructive" });
       return;
     }
 
@@ -2644,6 +2663,20 @@ const SalesInvoice = () => {
                         </TableCell>
                         <TableCell className="text-center">
                           <Button size="sm" onClick={() => {
+                            const editedQty = Number(editItem?.quantity ?? item.quantity);
+                            if (editedQty === 0) {
+                              toast({ title: "Validation Error", description: "Quantity cannot be zero.", variant: "destructive" });
+                              return;
+                            }
+                            const otherItemsSign = getSignDirection(saleItems, index);
+                            if (otherItemsSign === 'positive' && editedQty < 0) {
+                              toast({ title: "Validation Error", description: "Cannot set negative quantity when positive quantity items exist.", variant: "destructive" });
+                              return;
+                            }
+                            if (otherItemsSign === 'negative' && editedQty > 0) {
+                              toast({ title: "Validation Error", description: "Cannot set positive quantity when negative quantity items exist.", variant: "destructive" });
+                              return;
+                            }
                             // Save changes locally only - don't auto-update backend
                             const updatedItems = saleItems.map((it, i) => i === index ? { ...item, ...editItem, totalPrice: Number(editItem?.quantity ?? item.quantity) * Number(editItem?.unitPrice ?? item.unitPrice), createdAt: item.createdAt } : it);
                             setSaleItems(updatedItems);
