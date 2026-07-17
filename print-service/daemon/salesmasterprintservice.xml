@@ -1,0 +1,33 @@
+<service>
+	<id>salesmasterprintservice.exe</id>
+	<name>SalesMaster Print Service</name>
+	<description>Polls the SalesMaster VPS for print jobs and sends them to the dot matrix printer via Chrome/SumatraPDF.</description>
+	<executable>C:\Program Files\nodejs\node.exe</executable>
+	<argument>C:\Work\SalesMasterDashboard\print-service\node_modules\node-windows\lib\wrapper.js</argument>
+	<argument>--file</argument>
+	<argument>C:\Work\SalesMasterDashboard\print-service\auto-chrome-service.js</argument>
+	<argument>--scriptoptions=</argument>
+	<argument>--log</argument>
+	<argument>SalesMaster Print Service wrapper</argument>
+	<argument>--grow</argument>
+	<argument>0.5</argument>
+	<argument>--wait</argument>
+	<argument>5</argument>
+	<argument>--maxrestarts</argument>
+	<argument>3</argument>
+	<argument>--abortonerror</argument>
+	<argument>n</argument>
+	<argument>--stopparentfirst</argument>
+	<argument>undefined</argument>
+	<argument>--maxretries</argument>
+	<argument>3</argument>
+	<logmode>rotate</logmode>
+	<logpath>C:\Work\SalesMasterDashboard\print-service\logs</logpath>
+	<stoptimeout>30sec</stoptimeout>
+	<serviceaccount>
+		<domain>JAHANZEBPC</domain>
+		<user>LocalSystem</user>
+		<password></password>
+	</serviceaccount>
+	<workingdirectory>C:\Work\SalesMasterDashboard\print-service</workingdirectory>
+</service>

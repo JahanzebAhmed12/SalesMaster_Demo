@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useQuery } from "@tanstack/react-query";
@@ -15,18 +16,13 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 
 export default function StockTemplate() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [showPositiveOnly, setShowPositiveOnly] = useState(true);
   const printRef = useRef<HTMLDivElement>(null);
   
-  // Track if date was manually changed
   const dateManuallyChanged = useRef(false);
   
-  // Get business date
-  const { 
-    businessDate, 
-    isLoading: isLoadingBusinessDate 
-  } = useBusinessDate();
+  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
   
-  // Update date when business date changes, but only if not manually changed
   useEffect(() => {
     if (!isLoadingBusinessDate && businessDate && !dateManuallyChanged.current) {
       try {
@@ -38,19 +34,16 @@ export default function StockTemplate() {
     }
   }, [businessDate, isLoadingBusinessDate]);
 
-  // Fetch stock data
   const { data: stockData = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ["stock-template", selectedDate],
-    queryFn: () => apiRequest("GET", "/api/reports/stock-template"),
+    queryKey: ["stock-template", selectedDate, showPositiveOnly],
+    queryFn: () => apiRequest("GET", `/api/reports/stock-template?showPositiveOnly=${showPositiveOnly}`),
   });
 
-  // Fetch company details for header
   const { data: companyDetails } = useQuery({
     queryKey: ['/api/company-details'],
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
-  // Add empty rows for template (5-6 empty rows after products)
   const emptyRows = Array.from({ length: 6 }, (_, index) => ({
     id: `empty-${index}`,
     description: '',
@@ -60,6 +53,13 @@ export default function StockTemplate() {
 
   const allRows = [...stockData, ...emptyRows];
 
+  // Chunk items into groups of 3 for print/PDF layout only
+  const chunkSize = 3;
+  const printRows: any[][] = [];
+  for (let i = 0; i < allRows.length; i += chunkSize) {
+    printRows.push(allRows.slice(i, i + chunkSize));
+  }
+
   const handlePrint = () => {
     if (!printRef.current) return;
     const printContents = printRef.current.innerHTML;
@@ -68,20 +68,21 @@ export default function StockTemplate() {
       printWindow.document.write('<html><head><title>Stock Template</title>');
       printWindow.document.write(`
         <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-          .company-info { text-align: right; font-size: 12px; }
-          .title { font-size: 18px; font-weight: bold; }
-          .date-section { margin: 20px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          .sl-no { width: 60px; text-align: center; }
-          .quantity { width: 100px; text-align: center; }
-          .empty-row { height: 30px; }
+          body { font-family: Arial, sans-serif; margin: 10px; }
+          .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 8px; }
+          .company-info { text-align: right; font-size: 11px; }
+          .title { font-size: 16px; font-weight: bold; }
+          .date-section { margin: 15px 0; font-size: 13px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #000; padding: 3px 4px; text-align: left; font-size: 9px; }
+          th { background-color: #f5f5f5; font-weight: bold; text-align: center; }
+          .screen-view { display: block; }
+          .print-view { display: none; }
           @media print {
             body { margin: 0; }
             .no-print { display: none; }
+            .screen-view { display: none !important; }
+            .print-view { display: block !important; }
           }
         </style>
       `);
@@ -96,38 +97,38 @@ export default function StockTemplate() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
-    
-    // Add header
+
     doc.setFontSize(16);
     doc.text('Stock Template', 14, 20);
-    
-    // Add company info
+
     if (companyDetails) {
       doc.setFontSize(10);
       const companyText = `${companyDetails.companyName || 'TROPIFRUIT UK LTD'}, ${companyDetails.address1 || '3 Dolphin Way, Purfleet'}, ${companyDetails.address2 || 'RM19 1NZ'}`;
       doc.text(companyText, 200, 20, { align: 'right' });
     }
-    
-    // Add date
+
     doc.setFontSize(12);
     doc.text(`Date: ${format(new Date(selectedDate), "dd/MM/yyyy")}`, 14, 35);
-    
-    // Prepare table data
-    const tableData = allRows.map((item, index) => [
-      (index + 1).toString(),
-      item.description || '',
-      '' // Leave quantity column empty for all products
-    ]);
-    
-    // Add table
+
+    const headRow = ['Product', 'Qty', 'Product', 'Qty', 'Product', 'Qty'];
+    const bodyData = printRows.map(group => {
+      const row: string[] = [];
+      for (let c = 0; c < chunkSize; c++) {
+        const item = group[c];
+        row.push(item?.description || '');
+        row.push('');
+      }
+      return row;
+    });
+
     autoTable(doc, {
       startY: 45,
-      head: [['Sl.No', 'Product Description', 'Quantity']],
-      body: tableData,
+      head: [headRow],
+      body: bodyData,
       theme: 'grid',
-      styles: { 
-        fontSize: 10,
-        cellPadding: 3
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
       },
       headStyles: {
         fillColor: [245, 245, 245],
@@ -135,22 +136,32 @@ export default function StockTemplate() {
         fontStyle: 'bold'
       },
       columnStyles: {
-        0: { halign: 'center', cellWidth: 20 },
-        1: { halign: 'left', cellWidth: 120 },
-        2: { halign: 'center', cellWidth: 30 }
+        0: { cellWidth: 38 },
+        1: { cellWidth: 18, halign: 'center' },
+        2: { cellWidth: 38 },
+        3: { cellWidth: 18, halign: 'center' },
+        4: { cellWidth: 38 },
+        5: { cellWidth: 18, halign: 'center' },
       },
       alternateRowStyles: {
         fillColor: [250, 250, 250]
       }
     });
-    
+
     doc.save(`stock-template-${format(new Date(selectedDate), "yyyy-MM-dd")}.pdf`);
   };
 
   return (
     <PageLayout title="Stock Template" breadcrumb="Daily Reports > Stock Template">
+      <style>{`
+        .screen-view { display: block; }
+        .print-view { display: none; }
+        @media print {
+          .screen-view { display: none !important; }
+          .print-view { display: block !important; }
+        }
+      `}</style>
       <div className="space-y-6">
-        {/* Header Controls */}
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -164,7 +175,7 @@ export default function StockTemplate() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
               <div>
                 <Label htmlFor="date">Date:</Label>
                 <Input
@@ -178,8 +189,16 @@ export default function StockTemplate() {
                   className="w-40"
                 />
               </div>
-              <Button 
-                variant="outline" 
+              <div className="flex items-center gap-2 mt-5">
+                <Checkbox
+                  id="positiveOnly"
+                  checked={showPositiveOnly}
+                  onCheckedChange={(checked) => setShowPositiveOnly(checked === true)}
+                />
+                <Label htmlFor="positiveOnly" className="text-sm cursor-pointer">Positive products only</Label>
+              </div>
+              <Button
+                variant="outline"
                 onClick={() => refetch()}
                 disabled={isLoading}
               >
@@ -199,7 +218,6 @@ export default function StockTemplate() {
           </CardContent>
         </Card>
 
-        {/* Stock Template Table */}
         <Card>
           <CardContent className="p-0">
             {isLoading ? (
@@ -213,46 +231,85 @@ export default function StockTemplate() {
               </div>
             ) : (
               <div ref={printRef}>
-                {/* Print Header */}
-                <div className="header no-print-hide">
-                  <div className="title">Stock Template</div>
-                  <div className="company-info">
+                <div className="header no-print-hide" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '2px solid #000', paddingBottom: '8px' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold' }}>Stock Template</div>
+                  <div style={{ textAlign: 'right', fontSize: '11px' }}>
                     {companyDetails?.companyName || 'TROPIFRUIT UK LTD'}, {companyDetails?.address1 || '3 Dolphin Way, Purfleet'}, {companyDetails?.address2 || 'RM19 1NZ'}
                   </div>
                 </div>
-                
-                <div className="date-section no-print-hide">
+
+                <div className="date-section no-print-hide" style={{ margin: '15px 0', fontSize: '13px' }}>
                   <strong>Date:</strong> {format(new Date(selectedDate), "dd/MM/yyyy")}
                 </div>
 
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-16 text-center font-bold">Sl.No</TableHead>
-                      <TableHead className="font-bold">Product Description</TableHead>
-                      <TableHead className="w-24 text-center font-bold">Quantity</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {allRows.map((item, index) => (
-                      <TableRow key={item.id} className={item.isEmpty ? "empty-row" : ""}>
-                        <TableCell className="text-center font-medium">
-                          {index + 1}
-                        </TableCell>
-                        <TableCell>
-                          {item.isEmpty ? (
-                            <span className="text-gray-300">-</span>
-                          ) : (
-                            <span className="text-blue-600">{item.description}</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="text-gray-300">-</span>
-                        </TableCell>
+                {/* Screen: single column layout */}
+                <div className="screen-view">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="font-bold" style={{ width: '75%' }}>Product Description</TableHead>
+                        <TableHead className="text-center font-bold" style={{ width: '25%' }}>Quantity</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {allRows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={2} className="text-center py-8 text-gray-500">
+                            No products found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        allRows.map((item, index) => (
+                          <TableRow key={item.id || index} className={item.isEmpty ? "empty-row" : ""}>
+                            <TableCell style={{ padding: '4px 6px' }}>
+                              {item.isEmpty ? (
+                                <span className="text-gray-300">-</span>
+                              ) : (
+                                <span style={{ color: item.currentStock < 0 ? '#dc2626' : '#2563eb' }}>{item.description}</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center" style={{ padding: '4px 6px' }}>
+                              <span className="text-gray-300">-</span>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Print/PDF: three-column layout (hidden on screen, visible in print) */}
+                <div className="print-view" style={{ display: 'none' }}>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-center font-bold" style={{ width: '22%' }}>Product</TableHead>
+                        <TableHead className="text-center font-bold" style={{ width: '11%' }}>Qty</TableHead>
+                        <TableHead className="text-center font-bold" style={{ width: '22%' }}>Product</TableHead>
+                        <TableHead className="text-center font-bold" style={{ width: '11%' }}>Qty</TableHead>
+                        <TableHead className="text-center font-bold" style={{ width: '22%' }}>Product</TableHead>
+                        <TableHead className="text-center font-bold" style={{ width: '11%' }}>Qty</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {printRows.map((group, rowIndex) => (
+                        <TableRow key={rowIndex}>
+                          {[0, 1, 2].map((colIndex) => {
+                            const item = group[colIndex];
+                            return (
+                              <React.Fragment key={`pair-${rowIndex}-${colIndex}`}>
+                                <TableCell style={{ padding: '3px 4px', fontSize: '9px' }}>
+                                  {item && !item.isEmpty ? <span style={{ color: item.currentStock < 0 ? '#dc2626' : '#2563eb' }}>{item.description}</span> : ''}
+                                </TableCell>
+                                <TableCell className="text-center" style={{ padding: '3px 4px', fontSize: '9px' }}></TableCell>
+                              </React.Fragment>
+                            );
+                          })}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
           </CardContent>

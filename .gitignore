@@ -11,3 +11,6 @@ vite.config.ts.*
 _pycache_
 *.db
 *.html
+/print-service/chrome-profile
+/print-service/logs
+/print-service/temp

@@ -8393,12 +8393,14 @@ def get_expense_entries():
 def stock_template_report():
     """Get all products with stock for stock template print"""
     try:
-        # Get all regular products with stock > 0
+        show_positive_only = request.args.get('showPositiveOnly', 'true') == 'true'
+
+        # Get all active regular products
         regular_products = db.session.query(RegularProduct).filter(
             RegularProduct.status == 'active'
         ).all()
         
-        # Get all non-products with stock > 0  
+        # Get all active non-products
         non_products = db.session.query(NonProduct).filter(
             NonProduct.status == 'active'
         ).all()
@@ -8407,7 +8409,6 @@ def stock_template_report():
         
         # Process regular products
         for product in regular_products:
-            # Get current stock from latest stock movement or initial stock
             latest_movement = StockMovement.query.filter_by(
                 product_id=product.id,
                 product_type='regular'
@@ -8415,19 +8416,22 @@ def stock_template_report():
             
             current_stock = latest_movement.new_stock if latest_movement else (product.initial_stock or 0)
             
-            # Only include products with stock > 0
-            if current_stock > 0:
-                stock_items.append({
-                    'id': product.id,
-                    'productCode': product.product_code,
-                    'description': product.description,
-                    'currentStock': float(current_stock),
-                    'type': 'regular'
-                })
+            if current_stock == 0:
+                continue
+            
+            if show_positive_only and current_stock < 0:
+                continue
+            
+            stock_items.append({
+                'id': product.id,
+                'productCode': product.product_code,
+                'description': product.description,
+                'currentStock': float(current_stock),
+                'type': 'regular'
+            })
         
         # Process non-products
         for product in non_products:
-            # Get current stock from latest stock movement or initial stock
             latest_movement = StockMovement.query.filter_by(
                 product_id=product.id,
                 product_type='non'
@@ -8435,15 +8439,19 @@ def stock_template_report():
             
             current_stock = latest_movement.new_stock if latest_movement else (product.initial_stock or 0)
             
-            # Only include products with stock > 0
-            if current_stock > 0:
-                stock_items.append({
-                    'id': product.id,
-                    'productCode': product.product_code,
-                    'description': product.description,
-                    'currentStock': float(current_stock),
-                    'type': 'non'
-                })
+            if current_stock == 0:
+                continue
+            
+            if show_positive_only and current_stock < 0:
+                continue
+            
+            stock_items.append({
+                'id': product.id,
+                'productCode': product.product_code,
+                'description': product.description,
+                'currentStock': float(current_stock),
+                'type': 'non'
+            })
         
         # Sort by product description
         stock_items.sort(key=lambda x: x['description'])
