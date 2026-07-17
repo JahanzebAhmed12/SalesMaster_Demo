@@ -23,7 +23,8 @@ interface ColumnConfig {
 const FIELD_POSITIONS = {
   accountNo: { top: '27mm', left: '12mm' },
   customerName: { top: '35mm', left: '5mm' },
-  customerAddress: { top: '40mm', left: '5mm', width: '50mm' },
+  gateNumber: { top: '38mm', left: '5mm' },
+  customerAddress: { top: '42mm', left: '5mm', width: '50mm' },
   salesId: { top: '77mm', left: '10mm' },
   ticketNo: { top: '77mm', left: '30mm' },
   date: { top: '77mm', left: '60mm' },
@@ -170,6 +171,21 @@ function InvoicePages({ data }: { data: InvoiceData }) {
             }}>
               {customer?.customer_name || customer?.customerName || ''}
             </div>
+
+            {(sale?.gateNumber || sale?.gate_number) && (
+              <div className="field-text" style={{
+                position: 'absolute',
+                ...FIELD_POSITIONS.gateNumber,
+                fontFamily: '"Courier New", "Courier", monospace',
+                fontSize: '10pt',
+                fontWeight: 'bold',
+                lineHeight: '1',
+                margin: '0',
+                padding: '0'
+              }}>
+                Gate: {sale?.gateNumber || sale?.gate_number}
+              </div>
+            )}
 
             <div className="field-text" style={{
               position: 'absolute',

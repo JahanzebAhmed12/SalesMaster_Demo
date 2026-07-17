@@ -426,7 +426,8 @@ class AutoChromePrintService {
     const fp = {
       accountNo:       { top: '27mm',  left: '12mm' },
       customerName:    { top: '35mm',  left: '5mm'  },
-      customerAddress: { top: '40mm',  left: '5mm', width: '50mm' },
+      gateNumber:      { top: '38mm',  left: '5mm'  },
+      customerAddress: { top: '42mm',  left: '5mm', width: '50mm' },
       salesId:         { top: '77mm',  left: '10mm' },
       ticketNo:        { top: '77mm',  left: '30mm' },
       date:            { top: '77mm',  left: '60mm' },
@@ -546,6 +547,7 @@ class AutoChromePrintService {
         <div class="page-wrapper">
         <div class="ft" style="top:${fp.accountNo.top};left:${fp.accountNo.left};font-size:10pt;font-weight:bold;">C-${customer?.id || sale?.customer_id || ''}</div>
         <div class="ft" style="top:${fp.customerName.top};left:${fp.customerName.left};font-size:10pt;font-weight:bold;">${customer?.customer_name || customer?.customerName || ''}</div>
+        ${(sale?.gateNumber || sale?.gate_number) ? `<div class="ft" style="top:${fp.gateNumber.top};left:${fp.gateNumber.left};font-size:10pt;font-weight:bold;">Gate: ${sale?.gateNumber || sale?.gate_number}</div>` : ''}
         <div class="ft" style="top:${fp.customerAddress.top};left:${fp.customerAddress.left};width:${fp.customerAddress.width};font-size:8pt;font-weight:bold;white-space:pre-wrap;word-wrap:break-word;line-height:1.2;">${customer?.address || ''}</div>
         <div class="ft" style="top:${fp.salesId.top};left:${fp.salesId.left};font-size:10pt;font-weight:bold;">${sale?.createdBy || sale?.id || ''}</div>
         <div class="ft" style="top:${fp.ticketNo.top};left:${fp.ticketNo.left};font-size:10pt;font-weight:bold;">${sale?.invoice_number || sale?.invoiceNumber || ''}</div>
