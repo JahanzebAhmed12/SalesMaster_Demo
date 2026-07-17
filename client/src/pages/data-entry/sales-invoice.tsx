@@ -869,6 +869,13 @@ const SalesInvoice = () => {
     },
   });
 
+  // Disable porterage when any item has a negative quantity
+  useEffect(() => {
+    if (saleItems.some(item => item.quantity < 0)) {
+      setApplyPorterage(false);
+    }
+  }, [saleItems]);
+
   // Helper to get product name by ID
   const getProductName = (productId: number | null, nonProductId: number | null, type: "regular" | "non_product") => {
     if (type === "regular" && productId) {
