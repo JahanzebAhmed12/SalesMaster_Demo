@@ -5454,6 +5454,7 @@ def daily_sales_full_view():
     from_date = request.args.get('fromDate')
     to_date = request.args.get('toDate')
     search = request.args.get('search', '')
+    sort_order = request.args.get('sortOrder', 'asc')
     
     query = Sale.query.join(Customer).join(User, Sale.created_by == User.id)
     
@@ -5478,7 +5479,10 @@ def daily_sales_full_view():
     
     # Only show finalized sales
     query = query.filter(Sale.status == 'finalized')
-    sales = query.order_by(Sale.date.desc()).all()
+    if sort_order == 'desc':
+        sales = query.order_by(Sale.date.desc(), Sale.invoice_number.desc()).all()
+    else:
+        sales = query.order_by(Sale.date.asc(), Sale.invoice_number.asc()).all()
     
     result = []
     for sale in sales:
@@ -5514,9 +5518,9 @@ def daily_sales_full_view():
             matches_search = True
             if search:
                 matches_search = (
-                    sale.invoice_number.lower().includes(search.lower()) or
-                    (sale.customer.customer_name if sale.customer else '').lower().includes(search.lower()) or
-                    product_name.lower().includes(search.lower())
+                    search.lower() in sale.invoice_number.lower() or
+                    search.lower() in (sale.customer.customer_name if sale.customer else '').lower() or
+                    search.lower() in product_name.lower()
                 )
             
             if matches_search:

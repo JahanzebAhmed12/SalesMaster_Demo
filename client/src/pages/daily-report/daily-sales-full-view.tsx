@@ -43,6 +43,7 @@ export default function DailySalesFullView() {
     try { return businessDate ? new Date(businessDate) : new Date(); } catch { return new Date(); }
   });
   const [search, setSearch] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Sync dates when business date loads
   useEffect(() => {
@@ -64,13 +65,13 @@ export default function DailySalesFullView() {
 
   // Fetch all sales for the selected date range
   const { data, isLoading, refetch } = useQuery<FullViewRow[]>({
-    queryKey: ['daily-sales-full-view', format(fromDate, 'yyyy-MM-dd'), format(toDate, 'yyyy-MM-dd'), search],
+    queryKey: ['daily-sales-full-view', format(fromDate, 'yyyy-MM-dd'), format(toDate, 'yyyy-MM-dd'), search, sortOrder],
     queryFn: async () => {
       const fromDateStr = format(fromDate, 'yyyy-MM-dd');
       const toDateStr = format(toDate, 'yyyy-MM-dd');
       
       // Use the new dedicated endpoint
-      const response = await apiRequest('GET', `/api/reports/daily-sales-full-view?fromDate=${fromDateStr}&toDate=${toDateStr}&search=${encodeURIComponent(search)}`);
+      const response = await apiRequest('GET', `/api/reports/daily-sales-full-view?fromDate=${fromDateStr}&toDate=${toDateStr}&search=${encodeURIComponent(search)}&sortOrder=${sortOrder}`);
       return response;
     },
   });
@@ -509,6 +510,15 @@ export default function DailySalesFullView() {
                     className="pl-10 w-full sm:w-56"
                   />
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                  className="h-10 px-3"
+                  title={`Sort ${sortOrder === 'asc' ? 'Descending' : 'Ascending'}`}
+                >
+                  {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+                </Button>
               </div>
               
               {/* Action Buttons Row */}
