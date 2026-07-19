@@ -688,6 +688,9 @@ export default function DailySummary() {
 
     // 9. Banking Records
     if (summaryData.banking_records.length > 0) {
+      const recordsSum = summaryData.banking_records.reduce((s, r) => s + r.amount, 0);
+      const calcTotal = summaryData.totals.banking_total;
+      const diff = recordsSum - calcTotal;
       section('Banking Records');
       tbl(
         [['Date', 'Remarks', 'Payment Type', 'Amount', 'Details']],
@@ -699,9 +702,20 @@ export default function DailySummary() {
               ? r.bag_details.map(b => `Bag: ${b.bag_number}`).join(', ')
               : `${r.paying_number ? `Pay In: ${r.paying_number}` : ''}${r.cheque_number ? ` | Cheque: ${r.cheque_number}` : ''}`,
           ]),
-          ['TOTAL', '', '', summaryData.totals.banking_total.toFixed(2), ''],
+          ['TOTAL', '', '', recordsSum.toFixed(2), ''],
         ]
       );
+      if (diff !== 0) {
+        y += 2;
+        const label = diff > 0 ? 'Extra' : 'Short';
+        doc.setTextColor(diff > 0 ? 0 : 180, diff > 0 ? 128 : 0, 0);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Note: Banking records sum (£${recordsSum.toFixed(2)}) ${diff > 0 ? 'exceeds' : 'falls short of'} calculated total (£${calcTotal.toFixed(2)}) — ${label}: £${Math.abs(diff).toFixed(2)}`, 14, y);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'normal');
+        y += 8;
+      }
     }
 
     // 10. Product Purchase Full View — new page
@@ -1589,11 +1603,30 @@ export default function DailySummary() {
                           </TableRow>
                         )}
                         {summaryData.banking_records.length > 0 && (
-                          <TableRow className="bg-gray-100 font-semibold">
-                            <TableCell className="border" colSpan={3}>TOTAL</TableCell>
-                            <TableCell className="border text-right">{summaryData.totals.banking_total.toFixed(2)}</TableCell>
-                            <TableCell className="border"></TableCell>
-                          </TableRow>
+                          (() => {
+                            const recordsSum = summaryData.banking_records.reduce((s, r) => s + r.amount, 0);
+                            const calcTotal = summaryData.totals.banking_total;
+                            const diff = recordsSum - calcTotal;
+                            return (
+                              <>
+                                <TableRow className="bg-gray-100 font-semibold">
+                                  <TableCell className="border" colSpan={3}>TOTAL</TableCell>
+                                  <TableCell className="border text-right">{recordsSum.toFixed(2)}</TableCell>
+                                  <TableCell className="border"></TableCell>
+                                </TableRow>
+                                {diff !== 0 && (
+                                  <TableRow className="bg-yellow-50">
+                                    <TableCell className="border text-sm font-medium" colSpan={5}>
+                                      Note: Banking records sum (£{recordsSum.toFixed(2)}) {diff > 0 ? 'exceeds' : 'falls short of'} calculated total (£{calcTotal.toFixed(2)}) by{' '}
+                                      <span className={diff > 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
+                                        {diff > 0 ? 'Extra' : 'Short'}: £{Math.abs(diff).toFixed(2)}
+                                      </span>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+                              </>
+                            );
+                          })()
                         )}
                       </TableBody>
                     </Table>
