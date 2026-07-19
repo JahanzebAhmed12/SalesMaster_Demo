@@ -9,6 +9,7 @@ class SaleItemSchema(BaseModel):
     unit_price: float
     total_price: float
     notes: Optional[str] = None
+    added_by: Optional[str] = None  # Username of who added this item
 
     class Config:
         from_attributes = True

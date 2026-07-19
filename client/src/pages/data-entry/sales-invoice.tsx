@@ -52,7 +52,7 @@ interface BackendSalePayload {
   gate_number: string | null;
   notes: string | null;
   status: string;
-  date?: string; // Business date
+  date?: string | null; // Business date
   items: Array<{
     product_id: number | null;
     non_product_id: number | null;
@@ -60,6 +60,7 @@ interface BackendSalePayload {
     unit_price: number;
     total_price: number;
     notes: string | null;
+    added_by?: string | null;
     created_at: string;
   }>;
 }
@@ -165,6 +166,7 @@ const SalesInvoice = () => {
   const [editGateNumberValue, setEditGateNumberValue] = useState("");
   const [isEditingDate, setIsEditingDate] = useState(false);
   const [editableDate, setEditableDate] = useState<Date | null>(null);
+  const [serverTime, setServerTime] = useState<string | null>(null);
 
   // For new invoices, initialize the displayed date from business date, not calendar date
   useEffect(() => {
@@ -285,6 +287,7 @@ const SalesInvoice = () => {
           unit_price: item.unitPrice,
           total_price: item.totalPrice,
           notes: item.notes,
+          added_by: item.addedBy || currentUser?.username || null,
           created_at: item.createdAt,
         })),
       };
@@ -421,6 +424,14 @@ const SalesInvoice = () => {
     } else {
       console.log('🆕 Creating new invoice (no invoiceNumber in URL)');
     }
+  }, []);
+
+  // Fetch server time for accurate createdAt timestamps
+  useEffect(() => {
+    fetch('/api/server-time')
+      .then(r => r.json())
+      .then(data => setServerTime(data.serverTime))
+      .catch(() => setServerTime(new Date().toISOString()));
   }, []);
 
   // Fetch current stock
@@ -993,8 +1004,8 @@ const SalesInvoice = () => {
       addedBy: currentUser?.username || 'Unknown',
       id: 0,
       saleId: currentSale?.id || 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: serverTime || new Date().toISOString(),
+      updatedAt: serverTime || new Date().toISOString()
     };
     const updatedItems = [...saleItems, newItem];
     setSaleItems(updatedItems);
@@ -1098,6 +1109,7 @@ const SalesInvoice = () => {
           unit_price: item.unitPrice,
           total_price: item.totalPrice,
           notes: item.notes,
+          added_by: item.addedBy || currentUser?.username || null,
           created_at: item.createdAt,
         })),
       };
@@ -1206,6 +1218,7 @@ const SalesInvoice = () => {
           unit_price: item.unitPrice,
           total_price: item.totalPrice,
           notes: item.notes,
+          added_by: item.addedBy || currentUser?.username || null,
           created_at: item.createdAt,
         })),
       };

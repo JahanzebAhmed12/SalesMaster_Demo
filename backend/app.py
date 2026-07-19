@@ -746,6 +746,11 @@ def health_check():
         db.session.rollback()
         return jsonify({"status": "unhealthy", "database": "disconnected", "error": str(e)}), 500
 
+# Server time endpoint
+@app.route('/api/server-time', methods=['GET'])
+def server_time():
+    return jsonify({"serverTime": datetime.utcnow().isoformat() + "Z"})
+
 # Auth routes
 @app.route('/api/auth/login', methods=['POST'])
 def login():
@@ -932,6 +937,9 @@ def create_sale():
                     product = NonProduct.query.get(item_data.non_product_id)
                     if product:
                         product_name = product.description
+                # Get username for added_by
+                item_user = User.query.get(user_id)
+                item_username = item_user.username if item_user else None
                 new_item = SaleItem(
                     sale_id=new_sale.id,
                     product_id=item_data.product_id,
@@ -939,7 +947,8 @@ def create_sale():
                     quantity=item_data.quantity,
                     unit_price=item_data.unit_price,
                     total_price=item_data.total_price,
-                    notes=item_data.notes
+                    notes=item_data.notes,
+                    added_by=item_data.added_by or item_username
                 )
                 # Attach productName for template use
                 new_item.productName = product_name
@@ -1283,6 +1292,9 @@ def update_sale(id):
         
         # Update sale items
         sale.items = []  # Clear existing items
+        # Get username for added_by
+        item_user = User.query.get(user_id)
+        item_username = item_user.username if item_user else None
         for item_data in sale_data.items:
             # Determine product name
             product_name = None
@@ -1300,7 +1312,8 @@ def update_sale(id):
                 quantity=item_data.quantity,
                 unit_price=item_data.unit_price,
                 total_price=item_data.total_price,
-                notes=item_data.notes
+                notes=item_data.notes,
+                added_by=item_data.added_by or item_username
             )
             # Attach productName for template use
             sale_item.productName = product_name

@@ -101,6 +101,7 @@ class SaleItem(db.Model):
     notes = db.Column(db.Text)  # Notes for the product item
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    added_by = db.Column(db.String(255), nullable=True)  # Username of who added this item
 
     # Relationships
     product = db.relationship('RegularProduct', backref='sale_items')
@@ -118,7 +119,8 @@ class SaleItem(db.Model):
             'totalPrice': float(self.total_price),
             'notes': self.notes,
             'createdAt': self.created_at.isoformat(),
-            'updatedAt': self.updated_at.isoformat()
+            'updatedAt': self.updated_at.isoformat(),
+            'addedBy': self.added_by
         }
 
 class Purchase(db.Model):
