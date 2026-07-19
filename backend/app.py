@@ -5492,10 +5492,11 @@ def daily_sales_full_view():
     
     # Only show finalized sales
     query = query.filter(Sale.status == 'finalized')
+    from sqlalchemy import func, cast, Integer, Date
     if sort_order == 'desc':
-        sales = query.order_by(Sale.date.desc(), Sale.invoice_number.desc()).all()
+        sales = query.order_by(cast(Sale.date, Date).desc(), cast(Sale.invoice_number, Integer).desc()).all()
     else:
-        sales = query.order_by(Sale.date.asc(), Sale.invoice_number.asc()).all()
+        sales = query.order_by(cast(Sale.date, Date).asc(), cast(Sale.invoice_number, Integer).asc()).all()
     
     result = []
     for sale in sales:
