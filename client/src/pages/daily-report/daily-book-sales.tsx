@@ -959,7 +959,7 @@ export default function DailyBookSales() {
     const totalAmount = (sale.amount || 0) + (sale.cash || 0) + (sale.bank || 0);
 
     // Validate amounts
-    if (cashAmount + cardAmount !== totalAmount) {
+    if (Math.round(cashAmount * 100) + Math.round(cardAmount * 100) !== Math.round(totalAmount * 100)) {
       toast({ title: "Error", description: `Total split amount (£${(cashAmount + cardAmount).toFixed(2)}) must equal the invoice total (£${totalAmount.toFixed(2)})`, variant: "destructive" });
       return;
     }
@@ -1657,8 +1657,8 @@ export default function DailyBookSales() {
 
                 <div className="text-sm">
                   <p><strong>Total Split:</strong> £{(splitPaymentData.cashAmount + splitPaymentData.cardAmount).toFixed(2)}</p>
-                  <p className={`${(splitPaymentData.cashAmount + splitPaymentData.cardAmount) ===
-                    ((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0))
+                  <p className={`${Math.round(splitPaymentData.cashAmount * 100) + Math.round(splitPaymentData.cardAmount * 100) ===
+                    Math.round(((splitPaymentDialog.sale.amount || 0) + (splitPaymentDialog.sale.cash || 0) + (splitPaymentDialog.sale.bank || 0)) * 100)
                     ? 'text-green-600' : 'text-red-600'
                     }`}>
                     <strong>Difference:</strong> £{(
