@@ -97,9 +97,11 @@ export default function ClosingStock() {
   }, [selectedDate, currentStock, closingStockEntries, isLoadingClosing]);
 
   // Derived display list based on filter
+  // "Positive Stock" means non-zero — show both positive AND negative, hide exactly-zero.
+  // Use Number() to safely coerce string values from the API (e.g. "0" === 0 after coercion).
   const displayItems = showAllProducts
     ? editItems
-    : editItems.filter(item => item.currentStock !== 0);
+    : editItems.filter(item => Number(item.currentStock) !== 0);
 
   const savedProductIds = new Set(closingStockEntries.map((e: any) => e.productId));
 
@@ -367,7 +369,7 @@ export default function ClosingStock() {
             onClick={() => setShowAllProducts(false)}
             size="sm"
           >
-            Positive Stock
+            Non-Zero Stock
           </Button>
           <Button
             variant={showAllProducts ? "default" : "outline"}
