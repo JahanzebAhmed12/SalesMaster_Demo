@@ -232,7 +232,8 @@ function PrintButton() {
 }
 export default function DailySummary() {
   const { currentDate: businessDate } = useBusinessDate();
-  const { canEditCurrentDate } = useBackdatePermissions();
+  const { canEditCurrentDate, canEditBackdate } = useBackdatePermissions();
+
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     // Safely initialize the date
     try {
@@ -241,6 +242,15 @@ export default function DailySummary() {
       return new Date();
     }
   });
+
+  // Helper: can the user edit/click records for the currently selected date?
+  // Uses current-date permission if selectedDate == businessDate, backdate permission otherwise.
+  const canEditForSelectedDate = (() => {
+    if (!selectedDate || !businessDate) return false;
+    const selected = format(selectedDate, "yyyy-MM-dd");
+    const business = format(new Date(businessDate), "yyyy-MM-dd");
+    return selected === business ? canEditCurrentDate : canEditBackdate;
+  })();
   const { toast } = useToast();
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
@@ -1113,7 +1123,7 @@ export default function DailySummary() {
                             </TableCell>
                             <TableCell className="border">
                               {sale.invoice_no ? (
-                                canEditCurrentDate ? (
+                                canEditForSelectedDate ? (
                                   <button
                                     className="text-blue-600 underline hover:text-blue-800 cursor-pointer"
                                     onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}&readonly=true`, '_self')}
@@ -1256,7 +1266,7 @@ export default function DailySummary() {
                                         <Receipt className="mr-2 h-4 w-4" />
                                         Print Dot Matrix
                                       </DropdownMenuItem>
-                                      {canEditCurrentDate && (
+                                      {canEditForSelectedDate && (
                                         <DropdownMenuItem
                                           className="text-sm py-2"
                                           onClick={() => window.open(`/payments/customer-payment?customerId=${payment.customer_id}&editBatchId=${payment.payment_id}`, '_self')}
@@ -1678,7 +1688,7 @@ export default function DailySummary() {
                                   <TableCell className="border py-1"></TableCell>
                                   <TableCell className="border py-1">
                                     {row.invNo ? (
-                                      canEditCurrentDate ? (
+                                      canEditForSelectedDate ? (
                                         <Button
                                           variant="link"
                                           className="p-0 text-blue-600 underline"
