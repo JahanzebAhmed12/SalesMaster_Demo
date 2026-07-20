@@ -44,21 +44,27 @@ export default function StockTemplate() {
     queryFn: () => apiRequest('GET', '/api/company-details'),
   });
 
-  const emptyRows = Array.from({ length: 6 }, (_, index) => ({
-    id: `empty-${index}`,
-    description: '',
-    currentStock: '',
-    isEmpty: true
-  }));
-
-  const allRows = [...stockData, ...emptyRows];
-
-  // Chunk items into groups of 3 for print/PDF layout only
-  const chunkSize = 3;
-  const printRows: any[][] = [];
-  for (let i = 0; i < allRows.length; i += chunkSize) {
-    printRows.push(allRows.slice(i, i + chunkSize));
-  }
+  // Build column-major pages for print/PDF (fill col 1, then col 2, then col 3)
+  const getColumnMajorPages = (items: any[], itemsPerPage: number, cols: number): any[][][] => {
+    if (items.length === 0) return [];
+    const pages: any[][][] = [];
+    for (let i = 0; i < items.length; i += itemsPerPage) {
+      const pageItems = items.slice(i, i + itemsPerPage);
+      const n = pageItems.length;
+      const itemsPerCol = Math.ceil(n / cols);
+      const rows: any[][] = [];
+      for (let r = 0; r < itemsPerCol; r++) {
+        const row: any[] = [];
+        for (let c = 0; c < cols; c++) {
+          const idx = c * itemsPerCol + r;
+          row.push(idx < n ? pageItems[idx] : null);
+        }
+        rows.push(row);
+      }
+      pages.push(rows);
+    }
+    return pages;
+  };
 
   const handlePrint = () => {
     if (!printRef.current) return;
@@ -97,55 +103,62 @@ export default function StockTemplate() {
 
   const handlePDF = () => {
     const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const leftMargin = 14;
+    const rightMargin = 14;
+    const availableWidth = pageWidth - leftMargin - rightMargin;
+    const colCount = 3;
+    const colWidth = availableWidth / colCount;
+    const productColWidth = colWidth * 0.65;
+    const qtyColWidth = colWidth * 0.35;
 
-    doc.setFontSize(16);
-    doc.text('Stock Template', 14, 20);
+    const headerHeight = 28;
+    const rowHeight = 7;
+    const bodyHeight = doc.internal.pageSize.height - 20 - 20;
+    const rowsPerCol = Math.floor((bodyHeight - headerHeight) / rowHeight);
+    const itemsPerPage = Math.max(rowsPerCol * colCount, colCount);
 
-    if (companyDetails) {
-      doc.setFontSize(10);
-      const companyText = `${companyDetails.companyName || 'TROPIFRUIT UK LTD'}, ${companyDetails.address1 || '3 Dolphin Way, Purfleet'}, ${companyDetails.address2 || 'RM19 1NZ'}`;
-      doc.text(companyText, 200, 20, { align: 'right' });
-    }
+    const pages = getColumnMajorPages(stockData, itemsPerPage, colCount);
 
-    doc.setFontSize(12);
-    doc.text(`Date: ${format(new Date(selectedDate), "dd/MM/yyyy")}`, 14, 35);
+    pages.forEach((pageRows, pageIdx) => {
+      if (pageIdx > 0) doc.addPage();
 
-    const headRow = ['Product', 'Qty', 'Product', 'Qty', 'Product', 'Qty'];
-    const bodyData = printRows.map(group => {
-      const row: string[] = [];
-      for (let c = 0; c < chunkSize; c++) {
-        const item = group[c];
-        row.push(item?.description || '');
-        row.push('');
+      doc.setFontSize(16);
+      doc.text('Stock Template', leftMargin, 20);
+      if (companyDetails) {
+        doc.setFontSize(10);
+        doc.text(companyDetails.companyName || 'TROPIFRUIT UK LTD', pageWidth - rightMargin, 20, { align: 'right' });
       }
-      return row;
-    });
+      doc.setFontSize(12);
+      doc.text(`Date: ${format(new Date(selectedDate), "dd/MM/yyyy")}`, leftMargin, 32);
 
-    autoTable(doc, {
-      startY: 45,
-      head: [headRow],
-      body: bodyData,
-      theme: 'grid',
-      styles: {
-        fontSize: 8,
-        cellPadding: 2
-      },
-      headStyles: {
-        fillColor: [245, 245, 245],
-        textColor: [0, 0, 0],
-        fontStyle: 'bold'
-      },
-      columnStyles: {
-        0: { cellWidth: 38 },
-        1: { cellWidth: 18, halign: 'center' },
-        2: { cellWidth: 38 },
-        3: { cellWidth: 18, halign: 'center' },
-        4: { cellWidth: 38 },
-        5: { cellWidth: 18, halign: 'center' },
-      },
-      alternateRowStyles: {
-        fillColor: [250, 250, 250]
-      }
+      const bodyData = pageRows.map(group => {
+        const row: string[] = [];
+        group.forEach((item: any) => {
+          row.push(item?.description || '');
+          row.push('');
+        });
+        return row;
+      });
+
+      autoTable(doc, {
+        startY: 40,
+        head: [['Product', 'Qty', 'Product', 'Qty', 'Product', 'Qty']],
+        body: bodyData,
+        theme: 'grid',
+        styles: { fontSize: 10, cellPadding: 3 },
+        headStyles: { fillColor: [245, 245, 245], textColor: [0, 0, 0], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: productColWidth },
+          1: { cellWidth: qtyColWidth, halign: 'center' },
+          2: { cellWidth: productColWidth },
+          3: { cellWidth: qtyColWidth, halign: 'center' },
+          4: { cellWidth: productColWidth },
+          5: { cellWidth: qtyColWidth, halign: 'center' },
+        },
+        margin: { left: leftMargin, right: rightMargin },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+      });
     });
 
     doc.save(`stock-template-${format(new Date(selectedDate), "yyyy-MM-dd")}.pdf`);
@@ -252,21 +265,17 @@ export default function StockTemplate() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {allRows.length === 0 ? (
+                      {stockData.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={2} className="text-center py-8 text-gray-500">
                             No products found.
                           </TableCell>
                         </TableRow>
                       ) : (
-                        allRows.map((item, index) => (
-                          <TableRow key={item.id || index} className={item.isEmpty ? "empty-row" : ""}>
-                            <TableCell style={{ padding: '4px 6px' }}>
-                              {item.isEmpty ? (
-                                <span className="text-gray-300">-</span>
-                              ) : (
-                                <span style={{ color: item.currentStock < 0 ? '#dc2626' : '#2563eb' }}>{item.description}</span>
-                              )}
+                        stockData.map((item, index) => (
+                          <TableRow key={item.id || index}>
+                            <TableCell style={{ padding: '4px 6px', color: item.currentStock < 0 ? '#dc2626' : '#2563eb' }}>
+                              {item.description}
                             </TableCell>
                             <TableCell className="text-center" style={{ padding: '4px 6px' }}>
                               <span className="text-gray-300">-</span>
@@ -278,37 +287,50 @@ export default function StockTemplate() {
                   </Table>
                 </div>
 
-                {/* Print/PDF: three-column layout (hidden on screen, visible in print) */}
+                {/* Print/PDF: column-major three-column layout (hidden on screen, visible in print) */}
                 <div className="print-view" style={{ display: 'none' }}>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-center font-bold" style={{ width: '22%' }}>Product</TableHead>
-                        <TableHead className="text-center font-bold" style={{ width: '11%' }}>Qty</TableHead>
-                        <TableHead className="text-center font-bold" style={{ width: '22%' }}>Product</TableHead>
-                        <TableHead className="text-center font-bold" style={{ width: '11%' }}>Qty</TableHead>
-                        <TableHead className="text-center font-bold" style={{ width: '22%' }}>Product</TableHead>
-                        <TableHead className="text-center font-bold" style={{ width: '11%' }}>Qty</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {printRows.map((group, rowIndex) => (
-                        <TableRow key={rowIndex}>
-                          {[0, 1, 2].map((colIndex) => {
-                            const item = group[colIndex];
-                            return (
-                              <React.Fragment key={`pair-${rowIndex}-${colIndex}`}>
-                                <TableCell style={{ padding: '3px 4px', fontSize: '9px' }}>
-                                  {item && !item.isEmpty ? <span style={{ color: item.currentStock < 0 ? '#dc2626' : '#2563eb' }}>{item.description}</span> : ''}
-                                </TableCell>
-                                <TableCell className="text-center" style={{ padding: '3px 4px', fontSize: '9px' }}></TableCell>
-                              </React.Fragment>
-                            );
-                          })}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                  {(() => {
+                    const pages = getColumnMajorPages(stockData, 99, 3);
+                    return pages.map((pageRows, pageIdx) => (
+                      <div key={pageIdx} style={pageIdx < pages.length - 1 ? { pageBreakAfter: 'always' } : {}}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '2px solid #000', paddingBottom: '4px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: 'bold' }}>Stock Template</div>
+                          <div style={{ textAlign: 'right', fontSize: '10px' }}>
+                            {companyDetails?.companyName || 'TROPIFRUIT UK LTD'}
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: '8px', fontSize: '11px' }}>
+                          <strong>Date:</strong> {format(new Date(selectedDate), "dd/MM/yyyy")}
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr>
+                              {[0, 1, 2].map(col => (
+                                <React.Fragment key={`hdr-${col}`}>
+                                  <th style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '10px', fontWeight: 'bold', textAlign: 'center', backgroundColor: '#f5f5f5', width: '22%' }}>Product</th>
+                                  <th style={{ border: '1px solid #000', padding: '4px 6px', fontSize: '10px', fontWeight: 'bold', textAlign: 'center', backgroundColor: '#f5f5f5', width: '11%' }}>Qty</th>
+                                </React.Fragment>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pageRows.map((group, rowIdx) => (
+                              <tr key={rowIdx}>
+                                {group.map((item: any, colIdx: number) => (
+                                  <React.Fragment key={`cell-${rowIdx}-${colIdx}`}>
+                                    <td style={{ border: '1px solid #000', padding: '3px 6px', fontSize: '10px' }}>
+                                      {item ? item.description : ''}
+                                    </td>
+                                    <td style={{ border: '1px solid #000', padding: '3px 6px', fontSize: '10px', textAlign: 'center' }}></td>
+                                  </React.Fragment>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             )}

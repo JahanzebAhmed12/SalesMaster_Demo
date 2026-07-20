@@ -28,6 +28,21 @@ export default function ProductSalesHistoryPage() {
   const [, setLocation] = useLocation();
   const { canEditInvoice } = useInvoicePermissions();
 
+  // Helper: gate number replaces customer name for cash sales (same logic as daily-summary)
+  const getDisplayCustomerName = (sale: any): string => {
+    const isCashCustomer = sale.customerType === 'cash';
+    const cashSalePatterns = [
+      'cash sale', 'cash sales', 'cash customer', 'walk-in customer',
+      'walk in customer', 'cash', 'walk-in', 'walkin'
+    ];
+    const customerNameLower = (sale.customerName || '').toLowerCase().trim();
+    const isCashByName = cashSalePatterns.includes(customerNameLower);
+    if ((isCashCustomer || isCashByName) && sale.gateNumber && sale.gateNumber.trim()) {
+      return sale.gateNumber.trim();
+    }
+    return sale.customerName || 'Unknown Customer';
+  };
+
   // Navigation handler for clickable product descriptions
   const handleProductClick = (sale: any) => {
     if (!productId) return; // Don't navigate if no product ID in URL
@@ -405,7 +420,7 @@ export default function ProductSalesHistoryPage() {
                         <td className="border border-gray-200 px-3 py-2">{row.date}</td>
                         <td className="border border-gray-200 px-3 py-2">
                           <span className="flex items-center gap-1">
-                            {row.customerName}
+                            {getDisplayCustomerName(row)}
                             {row.isCompany && (
                               <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 py-0 font-medium">CO</span>
                             )}
