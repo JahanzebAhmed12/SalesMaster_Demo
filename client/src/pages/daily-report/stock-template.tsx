@@ -116,12 +116,11 @@ export default function StockTemplate() {
     const pageH = doc.internal.pageSize.height;  // 297
     const ML = 10, MR = 10, MT = 10;
 
-    // How many rows fit: estimate based on row height 8 mm, header ~32 mm
-    const ROW_H = 8;
-    const HEADER_H = 32;
-    const FOOTER_H = 10;
+    // Row height: 11pt font (≈3.9mm) + 3+3 padding = ~10.46mm; enforce via minCellHeight
+    // startY = MT + 22; head row takes ROW_H; autoTable bottom margin ≈ 10mm
+    const ROW_H = 10.5;
     const COLS = 3;
-    const rowsPerCol = Math.floor((pageH - MT - HEADER_H - FOOTER_H) / ROW_H);
+    const rowsPerCol = Math.floor((pageH - MT - 22 - ROW_H - 15) / ROW_H);
     const pages = buildColumnMajorPages(stockData as any[], rowsPerCol, COLS);
 
     const availW = pageW - ML - MR;
@@ -167,7 +166,7 @@ export default function StockTemplate() {
         head: [colHeads],
         body,
         theme: "grid",
-        styles: { fontSize: 11, cellPadding: { top: 3, bottom: 3, left: 3, right: 3 } },
+        styles: { fontSize: 11, cellPadding: { top: 3, bottom: 3, left: 3, right: 3 }, minCellHeight: ROW_H },
         headStyles: {
           fillColor: [230, 230, 230],
           textColor: 0,
