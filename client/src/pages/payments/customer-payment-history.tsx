@@ -320,23 +320,6 @@ export default function CustomerPaymentHistory() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header - responsive */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 py-2 sm:py-3">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
-            <h1 className="text-lg sm:text-xl font-semibold text-gray-900 text-center sm:text-left">
-              TROPIFRUIT UK LTD
-            </h1>
-            <div className="text-xs sm:text-sm text-gray-500 text-center sm:text-right">
-              3 Dolphin Way, Purfleet, RM19 1NZ, ...
-            </div>
-          </div>
-          <div className="text-base sm:text-lg font-bold text-center mt-2">
-            Customer Payment History
-          </div>
-        </div>
-      </div>
-
       <div className="max-w-7xl mx-auto p-2 sm:p-4 space-y-4 sm:space-y-6">
         {/* Filter Section */}
         <Card>
