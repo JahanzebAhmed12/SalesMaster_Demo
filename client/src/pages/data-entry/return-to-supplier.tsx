@@ -40,6 +40,7 @@ import { SupplierReturn, Supplier, RegularProduct, NonProduct } from "@shared/sc
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import * as XLSX from 'xlsx';
 import { useBusinessDate } from "@/hooks/use-business-date";
 import jsPDF from 'jspdf';
@@ -230,10 +231,7 @@ export default function ReturnToSupplier() {
   });
 
   // Fetch company details
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Fetch user permissions
   const { data: userPermissions } = useQuery<any>({

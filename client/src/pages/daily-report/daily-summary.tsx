@@ -12,6 +12,7 @@ import { cn, formatQuantity, formatSmartQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import PageLayout from "@/components/common/page-layout";
 import jsPDF from 'jspdf';
@@ -300,10 +301,7 @@ export default function DailySummary() {
   }, [summaryData]);
 
   // Fetch company details for PDF header
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Fetch stock check data
   const { data: stockData = [] } = useQuery<StockItem[]>({

@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -70,10 +71,7 @@ export default function SalesAnalysis() {
     }
   }, []);
 
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   const { data, isLoading, isError, refetch } = useQuery<SalesAnalysisResponse | undefined>({
     queryKey: ["/api/reports/sales-analysis", fromDate, toDate, searchTerm],

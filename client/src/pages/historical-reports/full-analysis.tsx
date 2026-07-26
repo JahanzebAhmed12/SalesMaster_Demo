@@ -8,6 +8,7 @@ import { CalendarIcon, FileText, Copy, Printer } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
@@ -26,30 +27,6 @@ interface AnalysisData {
   netPurchase: number;
   expenses: number;
   diff: number;
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-function toLocalDateString(date: Date) {
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 export default function FullAnalysis() {
@@ -88,10 +65,7 @@ export default function FullAnalysis() {
     enabled: !!searchClicked,
   });
 
-  const { data: companyDetails } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   const totals = analysisData.reduce(
     (acc, item) => {

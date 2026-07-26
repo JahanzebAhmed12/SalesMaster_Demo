@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -71,10 +72,7 @@ export default function ProductPurchaseFullView() {
   });
 
   // Fetch company details for PDF header
-  const { data: companyDetails }: { data: any } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Navigation handler for clickable product names
   const handleProductClick = (row: PurchaseFullViewRow) => {

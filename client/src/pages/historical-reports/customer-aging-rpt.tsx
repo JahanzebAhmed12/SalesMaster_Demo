@@ -18,6 +18,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 
 interface CustomerAgingData {
   id: number;
@@ -64,25 +65,6 @@ interface ApiResponse {
     searchTerm: string;
     currency: string;
   };
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export default function CustomerAgingRpt() {
@@ -239,10 +221,7 @@ export default function CustomerAgingRpt() {
   }, [customerFilter, currencyFilter, asOfDate]);
 
   // Fetch company details
-  const { data: company } = useQuery<CompanyDetails>({
-    queryKey: ["company-details"],
-    queryFn: async () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails: company } = useCompanyDetails();
 
   // Export to Excel handler
   const handleExportExcel = () => {

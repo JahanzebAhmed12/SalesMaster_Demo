@@ -19,7 +19,7 @@ import type { ExpenseEntry, Expense, Supplier } from "@shared/schema";
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { useQuery as useTanstackQuery } from '@tanstack/react-query';
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useBusinessDate } from "@/hooks/use-business-date";
 
@@ -81,13 +81,10 @@ export default function Expenses() {
   });
 
   // Fetch company details
-  const { data: companyDetails } = useTanstackQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Fetch business date for new expense
-  const { data: businessDateData } = useTanstackQuery<{ business_date: string }>({
+  const { data: businessDateData } = useQuery<{ business_date: string }>({
     queryKey: ["business-date"],
     queryFn: () => apiRequest("GET", "/api/business-date"),
     enabled: dialogOpen, // Only fetch when dialog is open

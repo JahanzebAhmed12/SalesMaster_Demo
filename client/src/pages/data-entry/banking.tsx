@@ -18,6 +18,7 @@ import { BankingEntry, InsertBankingEntry } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useAuth } from "@/lib/auth";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import React from "react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -197,10 +198,7 @@ export default function Banking() {
   };
 
   // Fetch company details
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Fetch user permissions
   const { data: userPermissions } = useQuery<any>({

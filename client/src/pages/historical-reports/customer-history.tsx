@@ -1,3 +1,4 @@
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -25,25 +26,6 @@ import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export default function CustomerHistory() {
   const { user } = useAuth();
@@ -120,10 +102,7 @@ export default function CustomerHistory() {
   };
 
   // Fetch company details
-  const { data: companyDetails, isLoading: isLoadingCompany } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails, isLoadingCompany } = useCompanyDetails();
 
   // Fetch user permissions
   const { data: userPermissions } = useQuery<any>({

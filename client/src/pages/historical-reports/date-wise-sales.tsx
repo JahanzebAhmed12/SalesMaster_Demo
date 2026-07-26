@@ -12,6 +12,7 @@ import { CalendarIcon, Calendar as CalendarIconTwo, FileText, Download, Copy, Pr
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
@@ -28,25 +29,6 @@ interface DateWiseSalesData {
   averageSale: number;
   topProduct: string;
   topCustomer: string;
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 function toLocalDateString(date: Date) {
@@ -96,10 +78,7 @@ export default function DateWiseSales() {
     enabled: !!searchClicked,
   });
 
-  const { data: companyDetails } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   const totals = {
     totalSales: salesData.reduce((sum, item) => sum + (item.totalSales || 0), 0),

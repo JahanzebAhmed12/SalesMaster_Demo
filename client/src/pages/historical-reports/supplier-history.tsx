@@ -1,3 +1,4 @@
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -38,25 +39,6 @@ interface StatementData {
   runningBalance: number;
 }
 
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export default function SupplierHistory() {
   const { toast } = useToast();
   const [selectedSupplier, setSelectedSupplier] = useState<number | null>(null);
@@ -92,10 +74,7 @@ export default function SupplierHistory() {
   });
 
   // Fetch company details
-  const { data: companyDetails, isLoading: isLoadingCompany } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails, isLoadingCompany } = useCompanyDetails();
 
   // Parse URL params once
   useEffect(() => {

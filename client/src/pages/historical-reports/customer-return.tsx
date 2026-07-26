@@ -13,6 +13,7 @@ import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
@@ -31,25 +32,6 @@ interface CustomerReturnData {
   returnReason: string;
   returnAmount: number;
   refundStatus: string;
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 function toLocalDateString(date: Date) {
@@ -97,10 +79,7 @@ export default function CustomerReturn() {
     enabled: !!searchClicked,
   });
 
-  const { data: companyDetails } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   const totals = {
     totalQuantity: returnData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),

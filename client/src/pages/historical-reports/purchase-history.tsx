@@ -1,3 +1,4 @@
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -32,25 +33,6 @@ interface PurchaseHistoryData {
   totalAmount: number;
   paymentStatus: string;
   isCompany?: boolean;
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export default function PurchaseHistory() {
@@ -106,10 +88,7 @@ export default function PurchaseHistory() {
   const purchaseData = Array.isArray(purchaseResponse.data) ? purchaseResponse.data : [];
   const totals = purchaseResponse.totals || { totalQuantity: 0, totalAmount: 0, paidAmount: 0, pendingAmount: 0 };
 
-  const { data: companyDetails } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Update dates when business date changes, but only if not manually changed
   useEffect(() => {

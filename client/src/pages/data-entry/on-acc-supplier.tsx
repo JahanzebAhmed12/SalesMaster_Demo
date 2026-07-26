@@ -19,6 +19,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Supplier, SupplierPayment, InsertSupplierPayment } from "@shared/schema";
 import { toast } from "@/hooks/use-toast";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 
 export default function OnAccSupplier() {
   const { currentDate: businessDate } = useBusinessDate();
@@ -132,10 +133,7 @@ export default function OnAccSupplier() {
   const totalAmount = filteredPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
   // Fetch company details for dynamic address
-  const { data: companyDetails } = useQuery({
-    queryKey: ["company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Fetch business date for new payment
   const { data: businessDateData } = useQuery({

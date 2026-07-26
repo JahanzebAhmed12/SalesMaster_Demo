@@ -16,6 +16,7 @@ import { cn, formatQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -146,10 +147,7 @@ export default function ProductPurchaseReport() {
   const purchaseData = purchaseResponse.data ?? [];
   const nonCompanyTotal = purchaseResponse.nonCompanyTotal ?? 0;
 
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   const handleFromDateChange = (date: Date | undefined) => {
     if (date) {

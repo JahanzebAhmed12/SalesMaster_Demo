@@ -26,6 +26,7 @@ import { useTablePagination } from "@/hooks/useTablePagination";
 import { useBackdatePermissions, useDailyBookSalesPermissions } from "@/hooks/usePermissions";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { useToast } from "@/hooks/use-toast";
 import { sendInvoicePdfEmail } from "@/lib/invoice-pdf";
@@ -409,10 +410,7 @@ export default function DailyBookSales() {
   }, [refetchSales]);
 
   // Fetch company details
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Export handlers
   const handlePrint = () => {

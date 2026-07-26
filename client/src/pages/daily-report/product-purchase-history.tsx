@@ -12,6 +12,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { apiRequest } from "@/lib/queryClient";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -71,10 +72,7 @@ export default function ProductPurchaseHistoryPage() {
   }, []);
 
   // Fetch company details
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   const { data: purchases = [], isLoading } = useQuery<any[]>({
     queryKey: ["product-purchase-history", productId, fromDate, toDate],

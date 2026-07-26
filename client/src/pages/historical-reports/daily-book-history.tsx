@@ -9,6 +9,7 @@ import { CalendarIcon, FileText, Copy, Printer, ChevronUp } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import type { User } from "@shared/schema";
@@ -26,25 +27,6 @@ interface DailyBookData {
   accountPaid: number;
   cash: number;
   isCompany?: boolean;
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 function toLocalDateString(date: Date) {
@@ -106,10 +88,7 @@ export default function DailyBookHistory() {
     cash: dailyBookData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.cash || 0), 0)
   };
 
-  const { data: companyDetails } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Export handlers
   const handlePrint = () => {

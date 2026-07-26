@@ -15,6 +15,7 @@ import { cn, formatQuantity, formatPrice } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import type { DumpEntry, InsertDumpEntry, Supplier } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -81,10 +82,7 @@ export default function Dumps() {
   });
 
   // Fetch company details
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Mutations
   const createDumpMutation = useMutation({

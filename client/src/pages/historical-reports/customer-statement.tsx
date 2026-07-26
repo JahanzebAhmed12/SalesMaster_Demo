@@ -1,3 +1,4 @@
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -20,25 +21,6 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 interface StatementData {
   id: number;
@@ -79,10 +61,7 @@ export default function CustomerStatement() {
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Fetch company details
-  const { data: companyDetails, isLoading: isLoadingCompany } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails, isLoadingCompany } = useCompanyDetails();
 
   // Fetch customers for dropdown - remove this as we're using CustomerSearch now
 

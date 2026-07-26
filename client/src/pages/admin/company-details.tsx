@@ -12,6 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -56,13 +57,7 @@ export default function CompanyDetails() {
   const [isExporting, setIsExporting] = useState(false);
 
   // Fetch current company details with proper typing
-  const { data: companyDetails, isLoading } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: async () => {
-      const response = await apiRequest<CompanyDetails>("GET", "/api/company-details");
-      return response;
-    },
-  });
+  const { companyDetails, isLoadingCompany: isLoading } = useCompanyDetails();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

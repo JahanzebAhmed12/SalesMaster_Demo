@@ -13,6 +13,7 @@ import { cn, formatQuantity } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -112,10 +113,7 @@ export default function ProfitLoss() {
   // Calculate total profit/loss
   const totalProfit = profitData.reduce((sum: number, item: ProfitLossItem) => sum + (Number(item.totProfit) || 0), 0) || 0;
 
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Fetch settings once on component mount
   useEffect(() => {

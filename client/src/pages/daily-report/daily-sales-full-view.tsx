@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { cn, formatQuantity } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
 import { useBusinessDate } from '@/hooks/use-business-date';
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useAuth } from '@/lib/auth';
 import PageLayout from '@/components/common/page-layout';
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
@@ -77,10 +78,7 @@ export default function DailySalesFullView() {
   });
 
   // Add type for companyDetails
-  const { data: companyDetails }: { data: any } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Fetch user permissions
   const { data: userPermissions } = useQuery<any>({

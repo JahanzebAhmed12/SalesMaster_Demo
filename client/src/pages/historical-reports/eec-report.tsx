@@ -8,6 +8,7 @@ import { CalendarIcon, Printer } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn, formatQuantity } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
@@ -25,25 +26,6 @@ interface EECData {
   amount: number;
   supplier: string;
   country: string;
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export default function EecReport() {
@@ -83,10 +65,7 @@ export default function EecReport() {
     { weight: 0, quantity: 0, amount: 0 }
   );
 
-  const { data: companyDetails } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Export handlers
   const handlePrint = () => {

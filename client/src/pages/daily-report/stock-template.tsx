@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 
 // ─────────────────────────────────────────────────────────────────
 // Column-major layout helper
@@ -73,10 +74,7 @@ export default function StockTemplate() {
       apiRequest("GET", `/api/reports/stock-template?showPositiveOnly=${showPositiveOnly}`),
   });
 
-  const { data: companyDetails } = useQuery({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // ── Print ──────────────────────────────────────────────────────
   const handlePrint = () => {

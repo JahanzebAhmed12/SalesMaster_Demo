@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useLocation } from "wouter";
@@ -34,10 +35,7 @@ export default function DailyAccounts() {
   const printRef = useRef<HTMLDivElement>(null);
 
   // Fetch company details
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   const handlePrint = () => {
     const printWindow = window.open('', '', 'height=600,width=900');

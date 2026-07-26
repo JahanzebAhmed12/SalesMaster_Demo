@@ -13,6 +13,7 @@ import { CalendarIcon, Building, FileText, Download, Copy, Printer, Search, Prin
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -30,25 +31,6 @@ interface SupplierData {
   creditLimit: number;
   currency: string;
   isCompany?: boolean;
-}
-
-interface CompanyDetails {
-  id: number;
-  companyName: string;
-  address1: string;
-  address2?: string;
-  telephone?: string;
-  mobile?: string;
-  fax?: string;
-  website?: string;
-  email?: string;
-  vatNo?: string;
-  compRegNo?: string;
-  bankDetails?: string;
-  einlNumber?: string;
-  remarks?: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export default function AllSupplierHistory() {
@@ -71,10 +53,7 @@ export default function AllSupplierHistory() {
     }
   }, [businessDate]);
 
-  const { data: companyDetails } = useQuery<CompanyDetails>({
-    queryKey: ["/api/company-details"],
-    queryFn: () => apiRequest("GET", "/api/company-details"),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   // Calculate totals — exclude company suppliers
   const totals = {

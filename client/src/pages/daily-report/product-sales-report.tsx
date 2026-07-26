@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn, formatQuantity } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
 import { useBusinessDate } from '@/hooks/use-business-date';
+import { useCompanyDetails } from "@/hooks/use-company-details";
 import PageLayout from '@/components/common/page-layout';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -96,10 +97,7 @@ export default function ProductSalesReport() {
     enabled: !!formattedFromDate && !!formattedToDate,
   });
 
-  const { data: companyDetails } = useQuery<any>({
-    queryKey: ['/api/company-details'],
-    queryFn: () => apiRequest('GET', '/api/company-details'),
-  });
+  const { companyDetails } = useCompanyDetails();
 
   console.log('Query State:', { formattedFromDate, formattedToDate, isLoading, dataLength: salesData?.length });
 
