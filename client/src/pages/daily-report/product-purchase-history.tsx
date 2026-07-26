@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCompanyDetails } from "@/hooks/use-company-details";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 export default function ProductPurchaseHistoryPage() {
   const [productId, setProductId] = useState<string>("");
@@ -303,28 +304,15 @@ export default function ProductPurchaseHistoryPage() {
               {/* Date Controls */}
               <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full sm:w-[160px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {fromDate ? format(fromDate, "PPP") : "From Date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="p-0">
-                      <Calendar mode="single" selected={fromDate} onSelect={setFromDate} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full sm:w-[160px] justify-start text-left font-normal">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {toDate ? format(toDate, "PPP") : "To Date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="p-0">
-                      <Calendar mode="single" selected={toDate} onSelect={setToDate} initialFocus />
-                    </PopoverContent>
-                  </Popover>
+                  <DateRangeFilter
+                    from={fromDate}
+                    to={toDate}
+                    onFromChange={setFromDate}
+                    onToChange={setToDate}
+                    fromLabel="From Date"
+                    toLabel="To Date"
+                    dateFormat="PPP"
+                  />
                 </div>
               </div>
               

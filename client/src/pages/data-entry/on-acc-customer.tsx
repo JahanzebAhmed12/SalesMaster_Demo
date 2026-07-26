@@ -21,6 +21,7 @@ import type { Sale } from "@shared/schema";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { useCompanyDetails } from "@/hooks/use-company-details";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 // Extended Payment type that includes batchId from API response
 type PaymentWithBatch = Payment & {
@@ -234,33 +235,18 @@ export default function OnAccCustomer() {
                   allowClear
                 />
               </div>
-              <div className="flex gap-2 items-end">
-                <div>
-                  <Label className="text-xs">From Date:</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-28 justify-start text-left font-normal text-xs", !fromDate && "text-muted-foreground")}>{fromDate ? format(fromDate, "yyyy-MM-dd") : "Pick date"}</Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={fromDate} onSelect={date => date && setFromDate(date)} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div>
-                  <Label className="text-xs">To Date:</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-28 justify-start text-left font-normal text-xs", !toDate && "text-muted-foreground")}>{toDate ? format(toDate, "yyyy-MM-dd") : "Pick date"}</Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar mode="single" selected={toDate} onSelect={date => date && setToDate(date)} initialFocus />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={(date) => date && setFromDate(date)}
+                onToChange={(date) => date && setToDate(date)}
+                fromLabel="From Date:"
+                toLabel="To Date:"
+                dateFormat="yyyy-MM-dd"
+              />
                 <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => refetchPayments()} disabled={loadingPayments}>
                   {loadingPayments ? <Loader2 className="animate-spin h-4 w-4" /> : "Search"}
                 </Button>
-              </div>
               <div></div>
               <div className="flex gap-2">
                 <Button variant="outline" className="flex items-center gap-2">

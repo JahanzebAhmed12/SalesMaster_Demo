@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, ShoppingBag, FileText, Download, Copy, Printer, Search, Mail } from "lucide-react";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { ShoppingBag, FileText, Download, Copy, Printer, Search, Mail } from "lucide-react";
 import { format } from "date-fns";
 import { cn, formatQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -598,56 +597,18 @@ export default function ProductPurchaseReport() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-3 items-end">
-              <div style={{ minWidth: 180, flex: '1 1 180px' }}>
-                <Label>From Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={handleFromDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div style={{ minWidth: 180, flex: '1 1 180px' }}>
-                <Label>To Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "PPP") : <span>Pick a date</span>}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={handleToDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={handleFromDateChange}
+                onToChange={handleToDateChange}
+                fromLabel="From Date:"
+                toLabel="To Date:"
+                dateFormat="PPP"
+                fromManuallyChanged={fromDateManuallyChanged}
+                toManuallyChanged={toDateManuallyChanged}
+                wrapperStyle={{ minWidth: 180, flex: '1 1 180px' }}
+              />
               <div style={{ minWidth: 120, flex: '1 1 120px' }}>
                 <Select value={showAll} onValueChange={setShowAll}>
                   <SelectTrigger>

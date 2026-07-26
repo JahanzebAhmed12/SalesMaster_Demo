@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 interface CompareData {
   productId: number;
@@ -129,56 +130,13 @@ export default function CompareWithPurchasePage() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-3 items-end">
-                <div style={{ minWidth: 180, flex: '1 1 180px' }}>
-                  <Label>From Date:</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !fromDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={fromDate}
-                        onSelect={(date) => date && setFromDate(date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div style={{ minWidth: 180, flex: '1 1 180px' }}>
-                  <Label>To Date:</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !toDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={toDate}
-                        onSelect={(date) => date && setToDate(date)}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                <DateRangeFilter
+                  from={fromDate}
+                  to={toDate}
+                  onFromChange={setFromDate}
+                  onToChange={setToDate}
+                  wrapperStyle={{ minWidth: 180, flex: '1 1 180px' }}
+                />
               </div>
             </CardContent>
           </Card>

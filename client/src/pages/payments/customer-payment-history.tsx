@@ -22,6 +22,7 @@ import { printHtmlTable } from "@/lib/export-utils";
 import { useLocation } from "wouter";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 interface PaymentHistoryData {
   id: number;
@@ -344,61 +345,15 @@ export default function CustomerPaymentHistory() {
 
               {/* Date Range - Side by side on mobile, responsive grid on larger screens */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">From:</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal text-xs sm:text-sm",
-                          !fromDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                        <span className="truncate">
-                          {fromDate ? format(fromDate, "yyyy-MM-dd") : "Select date"}
-                        </span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={fromDate}
-                        onSelect={setFromDate}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">To:</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal text-xs sm:text-sm",
-                          !toDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                        <span className="truncate">
-                          {toDate ? format(toDate, "yyyy-MM-dd") : "Select date"}
-                        </span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={toDate}
-                        onSelect={setToDate}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                <DateRangeFilter
+                  from={fromDate}
+                  to={toDate}
+                  onFromChange={setFromDate}
+                  onToChange={setToDate}
+                  fromLabel="From:"
+                  toLabel="To:"
+                  dateFormat="yyyy-MM-dd"
+                />
 
                 <div>
                   <label className="block text-sm font-medium mb-2">Payment Mode</label>

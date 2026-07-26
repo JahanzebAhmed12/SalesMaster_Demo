@@ -1,3 +1,4 @@
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -557,56 +558,17 @@ export default function ProductHistory() {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-              <div>
-                <label className="block text-sm font-medium mb-2">From:</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? formatDateForDisplay(fromDate, "yyyy-MM-dd") : "Select"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={handleFromDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-2">To:</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? formatDateForDisplay(toDate, "yyyy-MM-dd") : "Select"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={handleToDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={handleFromDateChange}
+                onToChange={handleToDateChange}
+                fromLabel="From:"
+                toLabel="To:"
+                dateFormat="yyyy-MM-dd"
+                fromManuallyChanged={fromDateManuallyChanged}
+                toManuallyChanged={toDateManuallyChanged}
+              />
               <div className="col-span-1 lg:col-span-3 flex items-end gap-2">
                 <Button
                   className="bg-blue-600 hover:bg-blue-700 flex-1"

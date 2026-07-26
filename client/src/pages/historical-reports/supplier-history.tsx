@@ -1,3 +1,4 @@
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -686,56 +687,17 @@ export default function SupplierHistory() {
             <div className="space-y-4">
               {/* Date fields and dropdowns in one row */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                <div>
-                  <Label>From:</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !fromDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {fromDate ? formatDateForDisplay(fromDate, "yyyyMMdd") : "Pick date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={fromDate}
-                        onSelect={handleFromDateChange}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div>
-                  <Label>To:</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !toDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {toDate ? formatDateForDisplay(toDate, "yyyyMMdd") : "Pick date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={toDate}
-                        onSelect={handleToDateChange}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
+                <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={handleFromDateChange}
+                onToChange={handleToDateChange}
+                fromLabel="From:"
+                toLabel="To:"
+                dateFormat="yyyyMMdd"
+                fromManuallyChanged={fromDateManuallyChanged}
+                toManuallyChanged={toDateManuallyChanged}
+              />
                 <div>
                   <SupplierSearch
                     onSupplierSelect={(supplier) => setSelectedSupplier(supplier?.id ?? null)}

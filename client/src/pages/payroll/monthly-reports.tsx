@@ -8,16 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Printer, FileText, Download, RefreshCw, CalendarIcon, Mail, Search, X } from "lucide-react";
+import { Printer, FileText, Download, RefreshCw, Mail, Search, X } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import type { Employee, EmployeeWithAttendance } from "@shared/schema";
 import React from "react";
-import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 
 interface MonthlyStats {
@@ -812,60 +812,15 @@ export default function MonthlyReports() {
           <div className="flex flex-wrap items-center gap-4 overflow-x-auto">
             <CardTitle className="flex-shrink-0">Attendance Reports & Payroll</CardTitle>
             <div className="flex flex-wrap gap-3 items-center ml-auto">
-              {/* From Date Picker */}
-              <div className="flex items-center gap-2">
-                <Label className="text-sm font-medium">From:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-[140px] justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "dd/MM/yyyy") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={handleFromDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              {/* To Date Picker */}
-              <div className="flex items-center gap-2">
-                <Label className="text-sm font-medium">To:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant={"outline"}
-                      className={cn(
-                        "w-[140px] justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "dd/MM/yyyy") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={handleToDateChange}
-                      disabled={(date) => fromDate ? date < fromDate : false}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={handleFromDateChange}
+                onToChange={handleToDateChange}
+                fromLabel="From:"
+                toLabel="To:"
+                dateFormat="dd/MM/yyyy"
+              />
 
 
 

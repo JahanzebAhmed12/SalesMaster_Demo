@@ -5,9 +5,8 @@ import { useLocation } from 'wouter';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, FileText, Printer, Search, Mail } from 'lucide-react';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { FileText, Printer, Search, Mail } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn, formatQuantity } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
@@ -439,57 +438,13 @@ export default function DailySalesFullView() {
               
               {/* Date Controls Row */}
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        'w-full sm:w-auto justify-start text-left font-normal h-10',
-                        !fromDate && 'text-muted-foreground'
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">
-                        {fromDate ? format(fromDate, 'MMM dd, yyyy') : 'From Date'}
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={(d) => d && setFromDate(d)}
-                      initialFocus
-                      className="pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
-                
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        'w-full sm:w-auto justify-start text-left font-normal h-10',
-                        !toDate && 'text-muted-foreground'
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">
-                        {toDate ? format(toDate, 'MMM dd, yyyy') : 'To Date'}
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={(d) => d && setToDate(d)}
-                      initialFocus
-                      className="pointer-events-auto"
-                    />
-                  </PopoverContent>
-                </Popover>
+                <DateRangeFilter
+                  from={fromDate}
+                  to={toDate}
+                  onFromChange={(d) => d && setFromDate(d)}
+                  onToChange={(d) => d && setToDate(d)}
+                  dateFormat="MMM dd, yyyy"
+                />
                 
                 <div className="relative flex-1 sm:flex-none">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />

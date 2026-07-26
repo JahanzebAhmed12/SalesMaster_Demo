@@ -46,6 +46,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 // Form validation schema
 const supplierReturnSchema = z.object({
@@ -615,56 +616,15 @@ export default function ReturnToSupplier() {
                   allowClear
                 />
               </div>
-              <div className="min-w-[180px]">
-                <Label>From Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "PPP") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={setFromDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="min-w-[180px]">
-                <Label>To Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "PPP") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={setToDate}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={setFromDate}
+                onToChange={setToDate}
+                fromLabel="From Date:"
+                toLabel="To Date:"
+                dateFormat="PPP"
+              />
               <div className="flex gap-2 flex-wrap">
                 <Button size="sm" variant="outline" className="flex items-center gap-1" onClick={handlePDF}>
                   <FileText size={14} /> PDF

@@ -23,6 +23,7 @@ import { useCompanyDetails } from "@/hooks/use-company-details";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 interface NewExpense {
   date: Date;
@@ -442,57 +443,15 @@ export default function Expenses() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4">
-              <div>
-                <Label>From Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-32 justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyyMMdd") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={(date) => date && setFromDate(date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div>
-                <Label>To Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-32 justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyyMMdd") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={(date) => date && setFromDate(date)}
+                onToChange={(date) => date && setToDate(date)}
+                fromLabel="From Date:"
+                toLabel="To Date:"
+                dateFormat="yyyyMMdd"
+              />
 
               <Button className="bg-blue-500 hover:bg-blue-600" onClick={handleSearch}>
                 Search

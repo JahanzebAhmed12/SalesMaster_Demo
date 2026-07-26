@@ -24,6 +24,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 export default function Banking() {
   const { currentDate: businessDate } = useBusinessDate();
@@ -443,56 +444,15 @@ export default function Banking() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-4">
-              <div>
-                <Label>From Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-32 justify-start text-left font-normal",
-                        !fromDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {fromDate ? format(fromDate, "yyyy-MM-dd") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={fromDate}
-                      onSelect={(date) => date && setFromDate(date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div>
-                <Label>To Date:</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-32 justify-start text-left font-normal",
-                        !toDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {toDate ? format(toDate, "yyyy-MM-dd") : "Pick date"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={toDate}
-                      onSelect={(date) => date && setToDate(date)}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={(date) => date && setFromDate(date)}
+                onToChange={(date) => date && setToDate(date)}
+                fromLabel="From Date:"
+                toLabel="To Date:"
+                dateFormat="yyyy-MM-dd"
+              />
               <Button className="bg-blue-500 hover:bg-blue-600" onClick={() => refetch()} disabled={isLoading}>
                 {isLoading ? <Loader2 className="animate-spin h-4 w-4" /> : "Search"}
               </Button>

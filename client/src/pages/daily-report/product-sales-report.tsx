@@ -1,13 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { CalendarIcon, Download, BarChart3, Database, Mail } from 'lucide-react';
+import { Download, BarChart3, Database, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn, formatQuantity } from '@/lib/utils';
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { formatQuantity } from '@/lib/utils';
 import { apiRequest } from '@/lib/queryClient';
 import { useBusinessDate } from '@/hooks/use-business-date';
 import { useCompanyDetails } from "@/hooks/use-company-details";
@@ -502,75 +501,17 @@ export default function ProductSalesReport() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row sm:items-end gap-3 sm:gap-4">
-              {/* Date Pickers (left) */}
-              <div className="flex flex-1 gap-3">
-                <div className="flex-1 min-w-0">
-                  <label className="block text-sm font-medium mb-2">From Date</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-10",
-                          !fromDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                        <span className="truncate">
-                          {fromDate ? format(fromDate, "PPP") : "Pick a date"}
-                        </span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={fromDate}
-                        onSelect={(date) => {
-                          if (date) {
-                            fromDateManuallyChanged.current = true;
-                            setFromDate(date);
-                          }
-                        }}
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <label className="block text-sm font-medium mb-2">To Date</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "w-full justify-start text-left font-normal h-10",
-                          !toDate && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                        <span className="truncate">
-                          {toDate ? format(toDate, "PPP") : "Pick a date"}
-                        </span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={toDate}
-                        onSelect={(date) => {
-                          if (date) {
-                            toDateManuallyChanged.current = true;
-                            setToDate(date);
-                          }
-                        }}
-                        initialFocus
-                        className="pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
+              <DateRangeFilter
+                from={fromDate}
+                to={toDate}
+                onFromChange={setFromDate}
+                onToChange={setToDate}
+                fromLabel="From:"
+                toLabel="To:"
+                dateFormat="PPP"
+                fromManuallyChanged={fromDateManuallyChanged}
+                toManuallyChanged={toDateManuallyChanged}
+              />
               {/* Action Buttons (right) */}
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 ml-0 sm:ml-4">
                 <Button
