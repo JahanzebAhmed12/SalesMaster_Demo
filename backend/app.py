@@ -832,8 +832,13 @@ def logout():
 
 # Sales routes
 @app.route('/api/sales', methods=['GET'])
+@jwt_required()
 def get_sales():
-    sales = Sale.query.all()
+    sales = Sale.query.options(
+        db.joinedload(Sale.customer),
+        db.joinedload(Sale.user),
+        db.subqueryload(Sale.items),
+    ).all()
     return jsonify([sale.to_dict() for sale in sales])
 
 def send_invoice_email_placeholder(email, sale):
@@ -5276,7 +5281,10 @@ def get_payment_history():
             ))
         
         # Order by payment date descending
-        query = query.order_by(Payment.payment_date.desc())
+        query = query.options(
+            db.joinedload(Payment.customer),
+            db.joinedload(Payment.sale)
+        ).order_by(Payment.payment_date.desc())
         
         payments = query.all()
         
@@ -5324,7 +5332,11 @@ def daily_book_sales():
     payment_type = request.args.get('paymentType', 'All')
     salesman = request.args.get('salesman', 'all')
     search = request.args.get('search', '')
-    query = Sale.query.join(User, Sale.created_by == User.id)
+    query = Sale.query.join(Customer).join(User, Sale.created_by == User.id).options(
+        db.contains_eager(Sale.customer),
+        db.subqueryload(Sale.items),
+        db.subqueryload(Sale.payments),
+    )
     if from_date and to_date:
         from_dt = datetime.strptime(from_date, "%Y-%m-%d")
         to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
@@ -5338,7 +5350,7 @@ def daily_book_sales():
     if salesman and salesman != 'all':
         query = query.filter(User.username == salesman)
     if search:
-        query = query.join(Customer).filter(
+        query = query.filter(
             (Sale.invoice_number.ilike(f'%{search}%')) |
             (Customer.customer_name.ilike(f'%{search}%'))
         )
@@ -5578,7 +5590,9 @@ def product_sales_history():
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
     # Find all sale items for this product (and customer if provided) in the date range
-    query = SaleItem.query.join(Sale).filter(
+    query = SaleItem.query.join(Sale).options(
+        db.contains_eager(SaleItem.sale).joinedload(Sale.customer)
+    ).filter(
         Sale.status == 'finalized',
         Sale.date >= from_dt,
         Sale.date < to_dt,
@@ -5587,16 +5601,23 @@ def product_sales_history():
     if customer_id:
         query = query.filter(Sale.customer_id == customer_id)
     items = query.all()
+    
+    # Bulk-load product names to avoid N+1
+    product_ids = {item.product_id for item in items if item.product_id}
+    non_product_ids = {item.non_product_id for item in items if item.non_product_id}
+    products = {p.id: p for p in RegularProduct.query.filter(RegularProduct.id.in_(product_ids)).all()} if product_ids else {}
+    non_products = {p.id: p for p in NonProduct.query.filter(NonProduct.id.in_(non_product_ids)).all()} if non_product_ids else {}
+    
     result = []
     for item in items:
         sale = item.sale
         customer = sale.customer
-        # Get product name
+        # Get product name from pre-loaded dicts
         if item.product_id:
-            product = RegularProduct.query.get(item.product_id)
+            product = products.get(item.product_id)
             product_name = product.description if product else ''
         elif item.non_product_id:
-            product = NonProduct.query.get(item.non_product_id)
+            product = non_products.get(item.non_product_id)
             product_name = product.description if product else ''
         else:
             product_name = ''
@@ -6595,71 +6616,72 @@ def get_supplier_payment_history():
         if payment_mode and payment_mode != 'All':
             query = query.filter(SupplierPayment.payment_mode == payment_mode)
         
-        # Order by payment date descending
-        query = query.order_by(SupplierPayment.payment_date.desc())
+        # Eager-load supplier to avoid N+1
+        query = query.options(
+            db.contains_eager(SupplierPayment.supplier)
+        ).order_by(SupplierPayment.payment_date.desc())
         
         payments = query.all()
         
-        # Debug: Print payment information
-        print(f"Found {len(payments)} payments")
-        for payment in payments[:3]:  # Print first 3 payments for debugging
-            print(f"Payment ID: {payment.id}, Purchase Invoice ID: {payment.purchase_invoice_id}, Supplier: {payment.supplier.supplier_name}")
-            
-        # Also check if there are any purchase invoices for these suppliers
-        if payments:
-            supplier_ids = list(set([p.supplier_id for p in payments]))
-            print(f"Checking purchase invoices for suppliers: {supplier_ids}")
-            for supplier_id in supplier_ids[:2]:  # Check first 2 suppliers
-                invoices = PurchaseInvoice.query.join(Purchase).filter(Purchase.supplier_id == supplier_id).all()
-                print(f"Supplier {supplier_id} has {len(invoices)} purchase invoices")
+        # Bulk-load all linked purchase invoices with their items
+        linked_invoice_ids = list({p.purchase_invoice_id for p in payments if p.purchase_invoice_id})
+        invoice_map = {}
+        if linked_invoice_ids:
+            for inv in PurchaseInvoice.query.options(
+                db.joinedload(PurchaseInvoice.items)
+            ).filter(PurchaseInvoice.id.in_(linked_invoice_ids)).all():
+                invoice_map[inv.id] = inv
+        
+        # For payments without a linked invoice, find nearest invoice per supplier in bulk
+        supplier_dates = [(p.supplier_id, p.payment_date) for p in payments if not p.purchase_invoice_id]
+        nearby_map = {}  # (supplier_id, payment_date) -> invoice
+        if supplier_dates:
+            from itertools import groupby
+            # Group by supplier to minimize queries
+            supplier_dates.sort(key=lambda x: x[0])
+            for sid, group in groupby(supplier_dates, key=lambda x: x[0]):
+                dates = sorted(set(g[1] for g in group))
+                # Get the most recent invoice for each date in one query per supplier
+                all_invoices = PurchaseInvoice.query.options(
+                    db.joinedload(PurchaseInvoice.items)
+                ).join(Purchase).filter(
+                    Purchase.supplier_id == sid,
+                    PurchaseInvoice.date <= max(dates)
+                ).order_by(PurchaseInvoice.date.desc()).all()
+                if all_invoices:
+                    for pd in dates:
+                        for inv in all_invoices:
+                            if inv.date <= pd:
+                                nearby_map[(sid, pd)] = inv
+                                break
         
         # Create detailed payment history with invoice information
         payment_history = []
         for idx, payment in enumerate(payments, 1):
-            # Get supplier name
             supplier_name = payment.supplier.supplier_name if payment.supplier else 'Unknown'
             
-            # Get invoice information if linked
             invoice_number = None
             invoice_date = None
             invoice_amount = None
             
-            # Check if payment is linked to a purchase invoice
             if payment.purchase_invoice_id:
-                # Try to get the purchase invoice
-                purchase_invoice = PurchaseInvoice.query.get(payment.purchase_invoice_id)
+                purchase_invoice = invoice_map.get(payment.purchase_invoice_id)
                 if purchase_invoice:
                     invoice_number = purchase_invoice.id
                     invoice_date = purchase_invoice.date.isoformat() if purchase_invoice.date else None
-                    # Calculate invoice amount from items
-                    if purchase_invoice.items:
-                        invoice_amount = sum(float(item.total_price) for item in purchase_invoice.items)
-                    else:
-                        invoice_amount = 0
+                    invoice_amount = sum(float(item.total_price) for item in purchase_invoice.items) if purchase_invoice.items else 0
                 else:
-                    # Purchase invoice was deleted or doesn't exist
                     invoice_number = payment.purchase_invoice_id
-                    invoice_date = None
                     invoice_amount = 0
             else:
-                # Payment is not linked to a specific invoice, try to find any purchase invoice for this supplier around the payment date
-                # This is a fallback to show some purchase invoice data even for unlinked payments
-                nearby_invoice = PurchaseInvoice.query.join(Purchase).filter(
-                    Purchase.supplier_id == payment.supplier_id,
-                    PurchaseInvoice.date <= payment.payment_date
-                ).order_by(PurchaseInvoice.date.desc()).first()
-                
+                nearby_invoice = nearby_map.get((payment.supplier_id, payment.payment_date))
                 if nearby_invoice:
                     invoice_number = nearby_invoice.id
                     invoice_date = nearby_invoice.date.isoformat() if nearby_invoice.date else None
-                    # Calculate invoice amount from items
-                    if nearby_invoice.items:
-                        invoice_amount = sum(float(item.total_price) for item in nearby_invoice.items)
-                    else:
-                        invoice_amount = 0
+                    invoice_amount = sum(float(item.total_price) for item in nearby_invoice.items) if nearby_invoice.items else 0
 
             payment_history.append({
-                'id': payment.id,  # This is the key field that was missing!
+                'id': payment.id,
                 'supplierId': payment.supplier_id,
                 'purchaseInvoiceId': payment.purchase_invoice_id,
                 'amount': float(payment.amount),
@@ -6668,7 +6690,6 @@ def get_supplier_payment_history():
                 'supplierInvoiceNumber': payment.supplier_invoice_number or '',
                 'supplierInvoiceDate': payment.supplier_invoice_date.isoformat() if payment.supplier_invoice_date else None,
                 'remarks': payment.remarks or '',
-                # Additional fields for display purposes
                 'slNo': idx,
                 'paymentId': str(payment.id),
                 'paidAmt': float(payment.amount),
@@ -11106,7 +11127,11 @@ def daily_book_history():
     from_dt = datetime.strptime(from_date, "%Y-%m-%d")
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
 
-    query = Sale.query.join(User, Sale.created_by == User.id).join(Customer, Sale.customer_id == Customer.id)
+    query = Sale.query.join(User, Sale.created_by == User.id).join(Customer, Sale.customer_id == Customer.id).options(
+        db.contains_eager(Sale.user),
+        db.contains_eager(Sale.customer),
+        db.subqueryload(Sale.payments),
+    )
     query = query.filter(Sale.date >= from_dt, Sale.date < to_dt, Sale.status == 'finalized')
     if user and user != 'All':
         query = query.filter(User.username == user)

@@ -35,6 +35,13 @@ class User(db.Model):
         }
 
 class Sale(db.Model):
+    __table_args__ = (
+        db.Index('ix_sale_date', 'date'),
+        db.Index('ix_sale_status', 'status'),
+        db.Index('ix_sale_customer_id', 'customer_id'),
+        db.Index('ix_sale_created_by', 'created_by'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     invoice_number = db.Column(db.String(50), nullable=False, unique=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
@@ -91,6 +98,12 @@ class Sale(db.Model):
         }
 
 class SaleItem(db.Model):
+    __table_args__ = (
+        db.Index('ix_sale_item_sale_id', 'sale_id'),
+        db.Index('ix_sale_item_product_id', 'product_id'),
+        db.Index('ix_sale_item_non_product_id', 'non_product_id'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('regular_products.id'))
@@ -124,6 +137,11 @@ class SaleItem(db.Model):
         }
 
 class Purchase(db.Model):
+    __table_args__ = (
+        db.Index('ix_purchase_supplier_id', 'supplier_id'),
+        db.Index('ix_purchase_date', 'date'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
     supplier_name = db.Column(db.String(100), nullable=False)
@@ -273,6 +291,10 @@ class NonProduct(db.Model):
         }
 
 class Customer(db.Model):
+    __table_args__ = (
+        db.Index('ix_customer_customer_name', 'customer_name'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     customer_code = db.Column(db.String(50), unique=True, nullable=False)
     sage_code = db.Column(db.String(50))
@@ -332,6 +354,13 @@ class Customer(db.Model):
         }
 
 class Payment(db.Model):
+    __table_args__ = (
+        db.Index('ix_payment_customer_id', 'customer_id'),
+        db.Index('ix_payment_sale_id', 'sale_id'),
+        db.Index('ix_payment_payment_date', 'payment_date'),
+        db.Index('ix_payment_payment_source', 'payment_source'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
     sale_id = db.Column(db.Integer, db.ForeignKey('sale.id')) # Optional, for payments linked to specific invoices
@@ -370,6 +399,9 @@ class Payment(db.Model):
 
 class Supplier(db.Model):
     __tablename__ = 'suppliers'
+    __table_args__ = (
+        db.Index('ix_supplier_supplier_name', 'supplier_name'),
+    )
     
     id = db.Column(db.Integer, primary_key=True)
     supplier_code = db.Column(db.String(50), unique=True, nullable=False)
@@ -638,6 +670,12 @@ class Company(db.Model):
         }
 
 class PurchaseInvoice(db.Model):
+    __table_args__ = (
+        db.Index('ix_purchase_invoice_purchase_id', 'purchase_id'),
+        db.Index('ix_purchase_invoice_date', 'date'),
+        db.Index('ix_purchase_invoice_supplier_id', 'supplier_id'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     purchase_id = db.Column(db.Integer, db.ForeignKey('purchase.id'), nullable=False)
     supplier_id = db.Column(db.Integer, nullable=True)  # NEW: Link to Supplier
@@ -664,6 +702,10 @@ class PurchaseInvoice(db.Model):
         }
 
 class PurchaseInvoiceItem(db.Model):
+    __table_args__ = (
+        db.Index('ix_purchase_invoice_item_invoice_id', 'invoice_id'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id'), nullable=False)
     product_id = db.Column(db.Integer, nullable=False)
@@ -686,6 +728,12 @@ class PurchaseInvoiceItem(db.Model):
         }
 
 class SupplierPayment(db.Model):
+    __table_args__ = (
+        db.Index('ix_supplier_payment_supplier_id', 'supplier_id'),
+        db.Index('ix_supplier_payment_purchase_invoice_id', 'purchase_invoice_id'),
+        db.Index('ix_supplier_payment_payment_date', 'payment_date'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
     purchase_invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id')) # Optional, for payments linked to specific invoices
@@ -875,6 +923,11 @@ class DumpEntry(db.Model):
 
 class CustomerReturn(db.Model):
     """Tracks customer returns"""
+    __table_args__ = (
+        db.Index('ix_customer_return_date', 'date'),
+        db.Index('ix_customer_return_customer_id', 'customer_id'),
+    )
+
     id = db.Column(db.Integer, primary_key=True)
     ref_number = db.Column(db.String(50), unique=True, nullable=False)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
