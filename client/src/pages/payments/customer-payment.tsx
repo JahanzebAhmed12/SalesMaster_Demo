@@ -135,12 +135,12 @@ export default function CustomerPayment() {
     }
   };
 
-  // Set initial payment date to business date
+  // Set initial payment date to business date (only when paymentDate is still undefined and API has loaded)
   useEffect(() => {
-    if (businessDate) {
+    if (businessDate && !isLoadingBusinessDate && paymentDate === undefined) {
       setPaymentDate(businessDate);
     }
-  }, [businessDate]);
+  }, [businessDate, isLoadingBusinessDate, paymentDate]);
 
   // Reset email field when customer changes
   useEffect(() => {
@@ -1930,9 +1930,8 @@ export default function CustomerPayment() {
                       <TableCell className="font-mono">{batch.batchId}</TableCell>
                       <TableCell>{format(new Date(batch.paymentDate), "dd/MM/yyyy")}</TableCell>
                       <TableCell>
-                        <div className="text-sm">
-                          {batch.invoices.slice(0, 2).join(', ')}
-                          {batch.invoices.length > 2 && ` +${batch.invoices.length - 2} more`}
+                        <div className="text-sm" style={{ wordBreak: 'break-word', overflowWrap: 'break-word', whiteSpace: 'normal' }}>
+                          {batch.invoices.join(', ')}
                         </div>
                       </TableCell>
                       <TableCell>

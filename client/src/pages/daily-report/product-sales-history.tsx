@@ -29,7 +29,11 @@ export default function ProductSalesHistoryPage() {
   const { canEditInvoice } = useInvoicePermissions();
 
   // Helper: gate number replaces customer name for cash sales (same logic as daily-summary)
-  const getDisplayCustomerName = (sale: any): string => {
+  const getDisplayCustomerName = (sale: {
+    customerName: string;
+    customerType?: string;
+    gateNumber?: string;
+  }): string => {
     const isCashCustomer = sale.customerType === 'cash';
     const cashSalePatterns = [
       'cash sale', 'cash sales', 'cash customer', 'walk-in customer',
@@ -130,7 +134,7 @@ export default function ProductSalesHistoryPage() {
         ...sales.map((row: any) => [
           row.invoiceNo,
           row.date,
-          row.customerName,
+          getDisplayCustomerName(row),
           row.productDescription,
           formatQuantity(row.quantity),
           `£${Number(row.unitPrice).toFixed(2)}`,
@@ -160,7 +164,7 @@ export default function ProductSalesHistoryPage() {
       ...sales.map((row: any) => ({
         "Invoice No": row.invoiceNo,
         "Date": row.date,
-        "Customer Name": row.customerName,
+        "Customer Name": getDisplayCustomerName(row),
         "Product": row.productDescription,
         "Quantity": formatQuantity(row.quantity),
         "Unit Price": row.unitPrice,
@@ -194,7 +198,7 @@ export default function ProductSalesHistoryPage() {
         ...sales.map((row: any) => [
           row.invoiceNo,
           row.date,
-          row.customerName,
+          getDisplayCustomerName(row),
           row.productDescription,
           formatQuantity(row.quantity),
           `£${Number(row.unitPrice).toFixed(2)}`,

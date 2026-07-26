@@ -246,9 +246,12 @@ export default function DotMatrixPaymentPrintPage() {
 
   const { totalAmount, customer } = data;
 
-  // Collect unique invoice numbers from all payments
+  // Collect unique invoice numbers from non-on-account payments only
   const paidInvoiceNumbers = [...new Set(
-    (data.payments || []).map(p => p.invoiceNumber).filter(Boolean)
+    (data.payments || [])
+      .filter(p => p.paymentType !== 'on-account')
+      .map(p => p.invoiceNumber)
+      .filter(Boolean)
   )];
   const invoiceNumbersText = paidInvoiceNumbers.length > 0
     ? `Invoice ${paidInvoiceNumbers.join(', ')}`

@@ -402,7 +402,7 @@ export default function ProductPurchaseHistoryPage() {
                           <Button
                             variant="link"
                             className="p-0 h-auto text-blue-600 underline text-sm"
-                            onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invoiceNo}&edit=true`, '_self')}
+                            onClick={() => window.open(`/data-entry/purchase-invoice?invoiceId=${row.invoiceNo}&edit=true`, '_self')}
                           >
                             {row.invoiceNo}
                           </Button>

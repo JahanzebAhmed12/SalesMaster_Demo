@@ -183,11 +183,14 @@ const PaymentReceiptPrint = () => {
           <div style={{ fontWeight: "bold", fontSize: 16, color: "#1a237e", textAlign: "center" }}>
             Thanks for payment
           </div>
-          {payments?.length > 1 && (
-            <div style={{ marginTop: 8, fontSize: 12 }}>
-              Payment covers {payments.length} invoice{payments.length > 1 ? 's' : ''}
-            </div>
-          )}
+          {(() => {
+            const invoicePayments = (payments || []).filter((p: any) => p.paymentType !== 'on-account');
+            return invoicePayments.length > 1 ? (
+              <div style={{ marginTop: 8, fontSize: 12 }}>
+                Payment covers {invoicePayments.length} invoice{invoicePayments.length > 1 ? 's' : ''}
+              </div>
+            ) : null;
+          })()}
           {payments?.[0]?.remarks && (
             <div style={{ marginTop: 8, fontSize: 12, fontWeight: "bold", color: "#333" }}>
               Remarks: {payments[0].remarks}

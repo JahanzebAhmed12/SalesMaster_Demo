@@ -365,7 +365,7 @@ class AutoChromePrintService {
           console.log(`✅ Found SumatraPDF: ${sumatraExe}`);
           // -print-to: send to specific printer
           // -print-settings: noscale keeps exact PDF dimensions, no fit/shrink to paper
-          const cmd = `"${sumatraExe}" -print-to "${this.printerName}" -print-settings "noscale" -silent "${pdfPath}"`;
+          const cmd = `"${sumatraExe}" -print-to "${this.printerName}" -print-settings "noscale" "${pdfPath}"`;
           console.log(`🖨️  Running: ${cmd}`);
           try {
             const output = execSync(cmd, { timeout: 30000, encoding: 'utf8', stdio: 'pipe' });

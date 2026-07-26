@@ -5604,6 +5604,8 @@ def product_sales_history():
             'invoiceNo': sale.invoice_number,
             'date': sale.date.strftime('%Y-%m-%d') if sale.date else '',
             'customerName': customer.customer_name if customer else '',
+            'customerType': sale.customer_type,
+            'gateNumber': sale.gate_number,
             'productDescription': product_name,
             'quantity': item.quantity,
             'unitPrice': float(item.unit_price),
