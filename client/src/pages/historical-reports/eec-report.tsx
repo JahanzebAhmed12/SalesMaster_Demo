@@ -14,6 +14,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface EECData {
   slNo: number;
@@ -69,64 +70,56 @@ export default function EecReport() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>EEC Report</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}</style>');
-      printWindow.document.write('</head><body>');
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>EEC REPORT</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
-      printWindow.document.write('</div>');
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th>');
-      printWindow.document.write('<th>Date</th>');
-      printWindow.document.write('<th>Commodity</th>');
-      printWindow.document.write('<th>C.Code</th>');
-      printWindow.document.write('<th>Weight</th>');
-      printWindow.document.write('<th>Quantity</th>');
-      printWindow.document.write('<th>U.Price</th>');
-      printWindow.document.write('<th>Amount</th>');
-      printWindow.document.write('<th>Supplier</th>');
-      printWindow.document.write('<th>Country</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      eecData.forEach((item) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.slNo}</td>`);
-        printWindow.document.write(`<td>${item.date}</td>`);
-        printWindow.document.write(`<td>${item.commodity}</td>`);
-        printWindow.document.write(`<td>${item.cCode}</td>`);
-        printWindow.document.write(`<td>${item.weight}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.uPrice).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.amount).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${item.supplier}</td>`);
-        printWindow.document.write(`<td>${item.country}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      // Add total row
-      printWindow.document.write('<tr style="font-weight:bold;background-color:#f9f9f9;">');
-      printWindow.document.write('<td colspan="4" style="text-align:right;">Total:</td>');
-      printWindow.document.write(`<td>${totals.weight.toLocaleString()}</td>`);
-      printWindow.document.write(`<td>${formatQuantity(totals.quantity)}</td>`);
-      printWindow.document.write('<td></td>');
-      printWindow.document.write(`<td>£${totals.amount.toFixed(2)}</td>`);
-      printWindow.document.write('<td colspan="2"></td>');
-      printWindow.document.write('</tr>');
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    let html = '';
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>EEC REPORT</h2>';
+    html += `<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`;
+    html += `<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`;
+    html += '</div>';
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Sl.No</th>';
+    html += '<th>Date</th>';
+    html += '<th>Commodity</th>';
+    html += '<th>C.Code</th>';
+    html += '<th>Weight</th>';
+    html += '<th>Quantity</th>';
+    html += '<th>U.Price</th>';
+    html += '<th>Amount</th>';
+    html += '<th>Supplier</th>';
+    html += '<th>Country</th>';
+    html += '</tr></thead><tbody>';
+    eecData.forEach((item) => {
+      html += '<tr>';
+      html += `<td>${item.slNo}</td>`;
+      html += `<td>${item.date}</td>`;
+      html += `<td>${item.commodity}</td>`;
+      html += `<td>${item.cCode}</td>`;
+      html += `<td>${item.weight}</td>`;
+      html += `<td>${formatQuantity(item.quantity)}</td>`;
+      html += `<td>£${Number(item.uPrice).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.amount).toFixed(2)}</td>`;
+      html += `<td>${item.supplier}</td>`;
+      html += `<td>${item.country}</td>`;
+      html += '</tr>';
+    });
+    // Add total row
+    html += '<tr style="font-weight:bold;background-color:#f9f9f9;">';
+    html += '<td colspan="4" style="text-align:right;">Total:</td>';
+    html += `<td>${totals.weight.toLocaleString()}</td>`;
+    html += `<td>${formatQuantity(totals.quantity)}</td>`;
+    html += '<td></td>';
+    html += `<td>£${totals.amount.toFixed(2)}</td>`;
+    html += '<td colspan="2"></td>';
+    html += '</tr>';
+    html += '</tbody></table>';
+    
+    // Add footer text
+    html += '<div class="footer">stand100</div>';
+    
+    printHtmlTable('EEC Report', html);
   };
 
   const handleExcel = () => {
@@ -348,7 +341,7 @@ export default function EecReport() {
       totals.amount.toFixed(2),
       '', ''
     ].join('\t');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   return (

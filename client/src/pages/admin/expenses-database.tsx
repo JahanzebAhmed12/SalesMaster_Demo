@@ -5,6 +5,7 @@ import { Plus, Edit, Trash2, Search, FileDown, Printer, Download, FileText, Eye 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -196,51 +197,35 @@ export default function Expenses() {
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Expenses Database</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{margin-bottom:15px;}');
-      printWindow.document.write('@media print { body { margin: 0; } }');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>Expenses Database</h2>');
-      printWindow.document.write('</div>');
+    html += '<div class="header">';
+    html += '<h2>Expenses Database</h2>';
+    html += '</div>';
 
-      printWindow.document.write('<div class="company-info">');
-      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
-      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
-      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
-      printWindow.document.write('</div>');
+    html += '<div class="company-info">';
+    html += '<strong>TROPIFRUIT UK LTD</strong><br>';
+    html += '3 Dolphin Way, Purfleet, RM19 1NZ<br>';
+    html += `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+    html += '</div>';
 
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>#</th><th>Expenses Code</th><th>Expenses Name</th><th>Status</th>');
-      printWindow.document.write('</tr></thead><tbody>');
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>#</th><th>Expenses Code</th><th>Expenses Name</th><th>Status</th>';
+    html += '</tr></thead><tbody>';
 
-      filteredExpenses.forEach((expense, index) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${index + 1}</td>`);
-        printWindow.document.write(`<td>${expense.expenseCode}</td>`);
-        printWindow.document.write(`<td>${expense.expenseName}</td>`);
-        printWindow.document.write(`<td>${expense.isActive === "Yes" ? "Active" : "Inactive"}</td>`);
-        printWindow.document.write('</tr>');
-      });
+    filteredExpenses.forEach((expense, index) => {
+      html += '<tr>';
+      html += `<td>${index + 1}</td>`;
+      html += `<td>${expense.expenseCode}</td>`;
+      html += `<td>${expense.expenseName}</td>`;
+      html += `<td>${expense.isActive === "Yes" ? "Active" : "Inactive"}</td>`;
+      html += '</tr>';
+    });
 
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Expenses: ${filteredExpenses.length}</div>`);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    html += '</tbody></table>';
+    html += `<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Expenses: ${filteredExpenses.length}</div>`;
+    printHtmlTable('Expenses Database', html);
   };
 
   if (isLoading) {

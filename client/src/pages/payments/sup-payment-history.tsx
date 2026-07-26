@@ -17,6 +17,7 @@ import type { Supplier } from "@shared/schema";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { copyToClipboard } from "@/lib/export-utils";
 
 interface SupplierPaymentHistoryData {
   slNo: number;
@@ -223,7 +224,7 @@ export default function SupPaymentHistory() {
       item.remarks || '-',
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
-    navigator.clipboard.writeText(tsv);
+    copyToClipboard(tsv);
     alert('Table copied to clipboard!');
   };
 

@@ -20,6 +20,7 @@ import type { DumpEntry, InsertDumpEntry, Supplier } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
 interface Product {
@@ -192,72 +193,61 @@ export default function Dumps() {
   const exportTitle = 'Dump Entries';
 
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Dump Entries</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
+    
+    // Add company details header following the specific structure
+    html += '<div class="company-details">';
+    if (companyDetails) {
+      // Company name
+      html += `<h2>${companyDetails.companyName || ''}</h2>`;
       
-      // Add company details header following the specific structure
-      printWindow.document.write('<div class="company-details">');
-      if (companyDetails) {
-        // Company name
-        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
-        
-        // Email
-        if (companyDetails.email) {
-          printWindow.document.write(`<p>${companyDetails.email}</p>`);
-        }
-        
-        // Bank details
-        if (companyDetails.bankDetails) {
-          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
-        }
-        
-        // VAT and Registration info
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      // Email
+      if (companyDetails.email) {
+        html += `<p>${companyDetails.email}</p>`;
       }
-      printWindow.document.write('</div>');
       
-      // Add report title
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h3>DUMPS</h3>');
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`);
-      printWindow.document.write('</div>');
+      // Bank details
+      if (companyDetails.bankDetails) {
+        html += `<p>${companyDetails.bankDetails}</p>`;
+      }
       
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      const headers = ['Ref No', 'Date', 'Supplier', 'Product', 'Description', 'Remarks', 'Quantity', 'Unit Price', 'Total Value'];
-      headers.forEach(h => {
-        printWindow.document.write(`<th>${h}</th>`);
-      });
-      printWindow.document.write('</tr></thead><tbody>');
-      dumpEntries.forEach((item: DumpEntry) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.refNumber}</td>`);
-        printWindow.document.write(`<td>${item.date}</td>`);
-        printWindow.document.write(`<td>${item.supplierName || 'N/A'}</td>`);
-        printWindow.document.write(`<td>${item.productName || item.productType}</td>`);
-        printWindow.document.write(`<td>${item.description}</td>`);
-        printWindow.document.write(`<td>${item.remarks || 'N/A'}</td>`);
-        printWindow.document.write(`<td>${item.quantity}</td>`);
-        printWindow.document.write(`<td>£${item.unitPrice.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${item.totalValue.toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) html += `<p>${regInfo.join(' | ')}</p>`;
     }
+    html += '</div>';
+    
+    // Add report title
+    html += '<div class="header">';
+    html += '<h3>DUMPS</h3>';
+    html += `<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`;
+    html += '</div>';
+    
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    const headers = ['Ref No', 'Date', 'Supplier', 'Product', 'Description', 'Remarks', 'Quantity', 'Unit Price', 'Total Value'];
+    headers.forEach(h => {
+      html += `<th>${h}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    dumpEntries.forEach((item: DumpEntry) => {
+      html += '<tr>';
+      html += `<td>${item.refNumber}</td>`;
+      html += `<td>${item.date}</td>`;
+      html += `<td>${item.supplierName || 'N/A'}</td>`;
+      html += `<td>${item.productName || item.productType}</td>`;
+      html += `<td>${item.description}</td>`;
+      html += `<td>${item.remarks || 'N/A'}</td>`;
+      html += `<td>${item.quantity}</td>`;
+      html += `<td>£${item.unitPrice.toFixed(2)}</td>`;
+      html += `<td>£${item.totalValue.toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    printHtmlTable('Dump Entries', html);
   };
 
   const handleExcel = () => {

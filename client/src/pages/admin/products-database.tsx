@@ -13,6 +13,7 @@ import { Plus, Eye, Edit, Trash2, Download, FileText, Printer, ChevronUp, Chevro
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { RegularProduct, InsertRegularProduct, UpdateRegularProduct } from "@shared/schema";
 import { Link } from "wouter";
@@ -409,54 +410,38 @@ export default function Products() {
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Products Database</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{margin-bottom:15px;}');
-      printWindow.document.write('@media print { body { margin: 0; } }');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>Products Database</h2>');
-      printWindow.document.write('</div>');
+    html += '<div class="header">';
+    html += '<h2>Products Database</h2>';
+    html += '</div>';
 
-      printWindow.document.write('<div class="company-info">');
-      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
-      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
-      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
-      printWindow.document.write('</div>');
+    html += '<div class="company-info">';
+    html += '<strong>TROPIFRUIT UK LTD</strong><br>';
+    html += '3 Dolphin Way, Purfleet, RM19 1NZ<br>';
+    html += `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+    html += '</div>';
 
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>#</th><th>Product Code</th><th>Sage Code</th><th>Description</th><th>Unit Price</th><th>Tax Rate</th><th>Status</th>');
-      printWindow.document.write('</tr></thead><tbody>');
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>#</th><th>Product Code</th><th>Sage Code</th><th>Description</th><th>Unit Price</th><th>Tax Rate</th><th>Status</th>';
+    html += '</tr></thead><tbody>';
 
-      filteredProducts.forEach((product, index) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${index + 1}</td>`);
-        printWindow.document.write(`<td>${product.productCode}</td>`);
-        printWindow.document.write(`<td>${product.sageCode || ''}</td>`);
-        printWindow.document.write(`<td>${product.description}</td>`);
-        printWindow.document.write(`<td>£${(product.sellingPrice ?? 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${(product.taxRate ?? 0)}%</td>`);
-        printWindow.document.write(`<td>${product.status || 'Active'}</td>`);
-        printWindow.document.write('</tr>');
-      });
+    filteredProducts.forEach((product, index) => {
+      html += '<tr>';
+      html += `<td>${index + 1}</td>`;
+      html += `<td>${product.productCode}</td>`;
+      html += `<td>${product.sageCode || ''}</td>`;
+      html += `<td>${product.description}</td>`;
+      html += `<td>£${(product.sellingPrice ?? 0).toFixed(2)}</td>`;
+      html += `<td>${(product.taxRate ?? 0)}%</td>`;
+      html += `<td>${product.status || 'Active'}</td>`;
+      html += '</tr>';
+    });
 
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Products: ${filteredProducts.length}</div>`);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    html += '</tbody></table>';
+    html += `<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Products: ${filteredProducts.length}</div>`;
+    printHtmlTable('Products Database', html);
   };
 
   // When switching to add mode, set the next product code

@@ -26,6 +26,7 @@ import type { Customer, Sale, Payment, InsertPayment } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 
@@ -1303,60 +1304,45 @@ export default function CustomerPayment() {
   const handlePrint = () => {
     if (groupedPaymentHistory.length === 0) return;
 
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer Payment History</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.customer-info{margin-bottom:15px;font-weight:bold;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>CUSTOMER PAYMENT HISTORY</h2>');
-      printWindow.document.write('<p>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ</p>');
-      printWindow.document.write('</div>');
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>CUSTOMER PAYMENT HISTORY</h2>';
+    html += '<p>TROPIFRUIT UK LTD, 3 Dolphin Way, Purfleet, RM19 1NZ</p>';
+    html += '</div>';
 
-      // Add customer info
-      printWindow.document.write('<div class="customer-info">');
-      printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomer?.customer_name || 'Unknown'}<br>`);
-      printWindow.document.write(`<strong>Generated:</strong> ${format(new Date(), "dd/MM/yyyy HH:mm")}`);
-      printWindow.document.write('</div>');
+    // Add customer info
+    html += '<div class="customer-info">';
+    html += `<strong>Customer:</strong> ${selectedCustomer?.customer_name || 'Unknown'}<br>`;
+    html += `<strong>Generated:</strong> ${format(new Date(), "dd/MM/yyyy HH:mm")}`;
+    html += '</div>';
 
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Payment ID</th><th>Date</th><th>Invoice No.</th><th>Payment Mode</th><th>Amount</th><th>Remarks</th>');
-      printWindow.document.write('</tr></thead><tbody>');
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Payment ID</th><th>Date</th><th>Invoice No.</th><th>Payment Mode</th><th>Amount</th><th>Remarks</th>';
+    html += '</tr></thead><tbody>';
 
-      groupedPaymentHistory.forEach((batch: any) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${batch.batchId}</td>`);
-        printWindow.document.write(`<td>${format(new Date(batch.paymentDate), "dd/MM/yyyy")}</td>`);
-        printWindow.document.write(`<td>${batch.invoices.join(', ')}</td>`);
-        const paymentModes = [
-          batch.cashAmount > 0 ? `Cash: £${batch.cashAmount.toFixed(2)}` : '',
-          batch.cardAmount > 0 ? `Card: £${batch.cardAmount.toFixed(2)}` : '',
-          batch.bankTransferAmount > 0 ? `Transfer: £${batch.bankTransferAmount.toFixed(2)}` : '',
-          batch.chequeAmount > 0 ? `Cheque: £${batch.chequeAmount.toFixed(2)}` : ''
-        ].filter(Boolean).join('<br>');
-        printWindow.document.write(`<td>${paymentModes}</td>`);
-        printWindow.document.write(`<td>£${batch.totalAmount.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${batch.remarks || '-'}</td>`);
-        printWindow.document.write('</tr>');
-      });
+    groupedPaymentHistory.forEach((batch: any) => {
+      html += '<tr>';
+      html += `<td>${batch.batchId}</td>`;
+      html += `<td>${format(new Date(batch.paymentDate), "dd/MM/yyyy")}</td>`;
+      html += `<td>${batch.invoices.join(', ')}</td>`;
+      const paymentModes = [
+        batch.cashAmount > 0 ? `Cash: £${batch.cashAmount.toFixed(2)}` : '',
+        batch.cardAmount > 0 ? `Card: £${batch.cardAmount.toFixed(2)}` : '',
+        batch.bankTransferAmount > 0 ? `Transfer: £${batch.bankTransferAmount.toFixed(2)}` : '',
+        batch.chequeAmount > 0 ? `Cheque: £${batch.chequeAmount.toFixed(2)}` : ''
+      ].filter(Boolean).join('<br>');
+      html += `<td>${paymentModes}</td>`;
+      html += `<td>£${batch.totalAmount.toFixed(2)}</td>`;
+      html += `<td>${batch.remarks || '-'}</td>`;
+      html += '</tr>';
+    });
 
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    html += '</tbody></table>';
+    printHtmlTable('Customer Payment History', html);
   };
 
   const totalOutstandingBalance = displayedInvoices.reduce((sum, invoice) => sum + invoice.balance, 0);

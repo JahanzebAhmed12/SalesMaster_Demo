@@ -8,9 +8,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CalendarIcon, FileText, Copy, Printer } from "lucide-react";
 import { format, subWeeks } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCompanyDetails } from "@/hooks/use-company-details";
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -81,51 +83,26 @@ export default function SupplierReturn() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Supplier Returns</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}</style>');
-      printWindow.document.write('</head><body>');
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>SUPPLIER RETURNS REPORT</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
-      printWindow.document.write('</div>');
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Date</th>');
-      printWindow.document.write('<th>Supplier</th>');
-      printWindow.document.write('<th>Invoice# / Date</th>');
-      printWindow.document.write('<th>Product Name</th>');
-      printWindow.document.write('<th>Remarks</th>');
-      printWindow.document.write('<th>Quantity</th>');
-      printWindow.document.write('<th>Unit Price</th>');
-      printWindow.document.write('<th>Total</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      supplierReturnData.forEach((row) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${format(new Date(row.date), "dd/MM/yyyy")}</td>`);
-        printWindow.document.write(`<td>${row.supplier}</td>`);
-        printWindow.document.write(`<td>${row.invoice}</td>`);
-        printWindow.document.write(`<td>${row.productName}</td>`);
-        printWindow.document.write(`<td>${row.remarks}</td>`);
-        printWindow.document.write(`<td>${row.quantity}</td>`);
-        printWindow.document.write(`<td>£${row.unitPrice.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${row.total.toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    const headerHtml = `<div class="header">
+      <h2>SUPPLIER RETURNS REPORT</h2>
+      <p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>
+      <p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>
+    </div>`;
+    let tableHtml = '<table><thead><tr><th>Date</th><th>Supplier</th><th>Invoice# / Date</th><th>Product Name</th><th>Remarks</th><th>Quantity</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>';
+    supplierReturnData.forEach((row) => {
+      tableHtml += '<tr>';
+      tableHtml += `<td>${format(new Date(row.date), "dd/MM/yyyy")}</td>`;
+      tableHtml += `<td>${row.supplier}</td>`;
+      tableHtml += `<td>${row.invoice}</td>`;
+      tableHtml += `<td>${row.productName}</td>`;
+      tableHtml += `<td>${row.remarks}</td>`;
+      tableHtml += `<td>${row.quantity}</td>`;
+      tableHtml += `<td>£${row.unitPrice.toFixed(2)}</td>`;
+      tableHtml += `<td>£${row.total.toFixed(2)}</td>`;
+      tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody></table><div class="footer">stand100</div>';
+    printHtmlTable('Supplier Returns', headerHtml + tableHtml);
   };
 
   const handleExcel = () => {
@@ -205,7 +182,7 @@ export default function SupplierReturn() {
     doc.save(`supplier_returns_${fromDate ? format(fromDate, "yyyyMMdd") : ''}_${toDate ? format(toDate, "yyyyMMdd") : ''}.pdf`);
   };
 
-  const handleCopy = async () => {
+  const handleCopy = () => {
     let text = 'Date\tSupplier\tInvoice# / Date\tProduct Name\tRemarks\tQuantity\tUnit Price\tTotal\n';
     text += supplierReturnData.map((row) => [
       format(new Date(row.date), "dd/MM/yyyy"),
@@ -217,7 +194,7 @@ export default function SupplierReturn() {
       row.unitPrice,
       row.total
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   return (

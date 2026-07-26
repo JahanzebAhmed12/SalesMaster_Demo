@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 
 // Helper to get the correct API URL
 const getApiUrl = (endpoint: string) => {
@@ -447,59 +448,43 @@ export default function EmployeeDatabase() {
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Employee Database</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{margin-bottom:15px;}');
-      printWindow.document.write('@media print { body { margin: 0; } }');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>Employee Database</h2>');
-      printWindow.document.write('</div>');
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>Employee Database</h2>';
+    html += '</div>';
 
-      // Add company info
-      printWindow.document.write('<div class="company-info">');
-      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
-      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
-      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
-      printWindow.document.write('</div>');
+    // Add company info
+    html += '<div class="company-info">';
+    html += '<strong>TROPIFRUIT UK LTD</strong><br>';
+    html += '3 Dolphin Way, Purfleet, RM19 1NZ<br>';
+    html += `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+    html += '</div>';
 
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>#</th><th>Full Name</th><th>Title</th><th>Department</th><th>Position</th><th>Mobile</th><th>Start Date</th><th>Status</th><th>Active</th>');
-      printWindow.document.write('</tr></thead><tbody>');
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>#</th><th>Full Name</th><th>Title</th><th>Department</th><th>Position</th><th>Mobile</th><th>Start Date</th><th>Status</th><th>Active</th>';
+    html += '</tr></thead><tbody>';
 
-      filteredEmployees.forEach((employee, index) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${index + 1}</td>`);
-        printWindow.document.write(`<td>${employee.fullName}</td>`);
-        printWindow.document.write(`<td>${employee.title || ''}</td>`);
-        printWindow.document.write(`<td>${employee.department || ''}</td>`);
-        printWindow.document.write(`<td>${employee.position || ''}</td>`);
-        printWindow.document.write(`<td>${employee.mobileNumber || ''}</td>`);
-        printWindow.document.write(`<td>${employee.startDate ? new Date(employee.startDate).toLocaleDateString() : ''}</td>`);
-        printWindow.document.write(`<td>${employee.status || ''}</td>`);
-        printWindow.document.write(`<td>${employee.isActive === 'yes' ? 'Active' : 'Inactive'}</td>`);
-        printWindow.document.write('</tr>');
-      });
+    filteredEmployees.forEach((employee, index) => {
+      html += '<tr>';
+      html += `<td>${index + 1}</td>`;
+      html += `<td>${employee.fullName}</td>`;
+      html += `<td>${employee.title || ''}</td>`;
+      html += `<td>${employee.department || ''}</td>`;
+      html += `<td>${employee.position || ''}</td>`;
+      html += `<td>${employee.mobileNumber || ''}</td>`;
+      html += `<td>${employee.startDate ? new Date(employee.startDate).toLocaleDateString() : ''}</td>`;
+      html += `<td>${employee.status || ''}</td>`;
+      html += `<td>${employee.isActive === 'yes' ? 'Active' : 'Inactive'}</td>`;
+      html += '</tr>';
+    });
 
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Employees: ${filteredEmployees.length}</div>`);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    html += '</tbody></table>';
+    html += `<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Employees: ${filteredEmployees.length}</div>`;
+    printHtmlTable('Employee Database', html);
   };
 
   if (isLoading) {

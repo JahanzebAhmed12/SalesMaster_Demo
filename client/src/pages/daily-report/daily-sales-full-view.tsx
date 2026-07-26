@@ -18,6 +18,7 @@ import PageLayout from '@/components/common/page-layout';
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 
 interface FullViewRow {
   date: string;
@@ -131,33 +132,24 @@ export default function DailySalesFullView() {
   // Print handler
   const handlePrint = () => {
     if (!tableRef.current) return;
-    const printContents = tableRef.current.innerHTML;
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}@media print{body{margin:0;}}</style>');
-      printWindow.document.write('</head><body>');
-      
-      // Company details header
-      if (companyDetails) {
-        printWindow.document.write(`<div style="text-align:center;margin-bottom:20px;">`);
-        printWindow.document.write(`<div style="font-size:20px;font-weight:bold;margin-bottom:4px;">${companyDetails.name || 'Company Name'}</div>`);
-        if (companyDetails.address) printWindow.document.write(`<div style="font-size:12px;">${companyDetails.address}</div>`);
-        if (companyDetails.phone) printWindow.document.write(`<div style="font-size:12px;">Phone: ${companyDetails.phone}</div>`);
-        if (companyDetails.email) printWindow.document.write(`<div style="font-size:12px;">Email: ${companyDetails.email}</div>`);
-        if (companyDetails.bankDetails) printWindow.document.write(`<div style="font-size:12px;">Bank: ${companyDetails.bankDetails}</div>`);
-        if (companyDetails.vatNumber) printWindow.document.write(`<div style="font-size:12px;">VAT: ${companyDetails.vatNumber}</div>`);
-        printWindow.document.write(`</div>`);
-      }
-      
-      printWindow.document.write(`<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Daily Sales Full View</div>`);
-      printWindow.document.write(`<div style="font-size:12px;text-align:center;margin-bottom:16px;">Period: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}</div>`);
-      printWindow.document.write(printContents);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
+    let html = '';
+    
+    // Company details header
+    if (companyDetails) {
+      html += `<div style="text-align:center;margin-bottom:20px;">`;
+      html += `<div style="font-size:20px;font-weight:bold;margin-bottom:4px;">${companyDetails.name || 'Company Name'}</div>`;
+      if (companyDetails.address) html += `<div style="font-size:12px;">${companyDetails.address}</div>`;
+      if (companyDetails.phone) html += `<div style="font-size:12px;">Phone: ${companyDetails.phone}</div>`;
+      if (companyDetails.email) html += `<div style="font-size:12px;">Email: ${companyDetails.email}</div>`;
+      if (companyDetails.bankDetails) html += `<div style="font-size:12px;">Bank: ${companyDetails.bankDetails}</div>`;
+      if (companyDetails.vatNumber) html += `<div style="font-size:12px;">VAT: ${companyDetails.vatNumber}</div>`;
+      html += `</div>`;
     }
+    
+    html += `<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Daily Sales Full View</div>`;
+    html += `<div style="font-size:12px;text-align:center;margin-bottom:16px;">Period: ${format(fromDate, 'MM/dd/yyyy')} - ${format(toDate, 'MM/dd/yyyy')}</div>`;
+    html += tableRef.current.innerHTML;
+    printHtmlTable('Daily Sales Full View', html);
   };
 
   // PDF export handler

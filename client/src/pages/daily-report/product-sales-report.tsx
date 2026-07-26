@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useLocation } from "wouter";
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface SalesReportData {
   id: number;
@@ -159,70 +160,62 @@ export default function ProductSalesReport() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Product Sales Report</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      // Add company details header following the specific structure
-      printWindow.document.write('<div class="company-details">');
-      if (companyDetails) {
-        // Company name
-        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+    // Add company details header following the specific structure
+    html += '<div class="company-details">';
+    if (companyDetails) {
+      // Company name
+      html += `<h2>${companyDetails.companyName || ''}</h2>`;
 
-        // Email
-        if (companyDetails.email) {
-          printWindow.document.write(`<p>${companyDetails.email}</p>`);
-        }
-
-        // Bank details
-        if (companyDetails.bankDetails) {
-          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
-        }
-
-        // VAT and Registration info
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      // Email
+      if (companyDetails.email) {
+        html += `<p>${companyDetails.email}</p>`;
       }
-      printWindow.document.write('</div>');
 
-      // Add report title
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h3>PRODUCT SALES REPORT</h3>');
-      printWindow.document.write(`<p>Period: ${formattedFromDate || 'All'} to ${formattedToDate || 'All'}</p>`);
-      printWindow.document.write('</div>');
+      // Bank details
+      if (companyDetails.bankDetails) {
+        html += `<p>${companyDetails.bankDetails}</p>`;
+      }
 
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      const headers = ['Product Description', 'Qty', 'Avg Price', 'Total'];
-      headers.forEach(h => {
-        printWindow.document.write(`<th>${h}</th>`);
-      });
-      printWindow.document.write('</tr></thead><tbody>');
-      sortedData.forEach(item => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.productDescription}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
-        printWindow.document.write(`<td>£${item.avgPrice.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${item.total.toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-
-      // Add summary
-      printWindow.document.write('<div style="margin-top:20px;padding:10px;background-color:#f9f9f9;border:1px solid #ccc;text-align:center;">');
-      printWindow.document.write(`<strong>Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}</strong>`);
-      printWindow.document.write('</div>');
-
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) html += `<p>${regInfo.join(' | ')}</p>`;
     }
+    html += '</div>';
+
+    // Add report title
+    html += '<div class="header">';
+    html += '<h3>PRODUCT SALES REPORT</h3>';
+    html += `<p>Period: ${formattedFromDate || 'All'} to ${formattedToDate || 'All'}</p>`;
+    html += '</div>';
+
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    const headers = ['Product Description', 'Qty', 'Avg Price', 'Total'];
+    headers.forEach(h => {
+      html += `<th>${h}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    sortedData.forEach(item => {
+      html += '<tr>';
+      html += `<td>${item.productDescription}</td>`;
+      html += `<td>${formatQuantity(item.quantity)}</td>`;
+      html += `<td>£${item.avgPrice.toFixed(2)}</td>`;
+      html += `<td>£${item.total.toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+
+    // Add summary
+    html += '<div style="margin-top:20px;padding:10px;background-color:#f9f9f9;border:1px solid #ccc;text-align:center;">';
+    html += `<strong>Summary: Products: ${numberOfProducts} | Total Qty: ${formatQuantity(totalQuantity)} | Avg Price: £${averagePrice.toFixed(2)} | Total Sales: £${totalAmount.toFixed(2)}</strong>`;
+    html += '</div>';
+
+    printHtmlTable('Product Sales Report', html);
   };
 
   const handleExcel = () => {
@@ -324,7 +317,7 @@ export default function ProductSalesReport() {
       item.total
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
-    navigator.clipboard.writeText(tsv);
+    copyToClipboard(tsv);
     alert('Table copied to clipboard!');
   };
 

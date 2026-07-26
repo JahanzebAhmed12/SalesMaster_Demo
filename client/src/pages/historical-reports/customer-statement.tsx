@@ -21,6 +21,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
+import { copyToClipboard } from "@/lib/export-utils";
 
 interface StatementData {
   id: number;
@@ -653,7 +654,7 @@ export default function CustomerStatement() {
       row.balance,
       row.runningBalance
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
     // Optionally show a toast
   };
 

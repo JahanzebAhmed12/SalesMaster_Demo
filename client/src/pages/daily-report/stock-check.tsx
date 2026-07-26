@@ -21,6 +21,7 @@ import { useCompanyDetails } from "@/hooks/use-company-details";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface StockItem {
   id: number;
@@ -205,74 +206,63 @@ export default function StockCheck() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Stock Check</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:10px;}th,td{border:1px solid #ccc;padding:2px;text-align:left;font-size:9px;}th{background-color:#f0f0f0;font-weight:bold;font-size:9px;}.header{text-align:center;margin-bottom:10px;}.company-details{text-align:center;margin-bottom:15px;line-height:1.2;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
+    
+    // Add company details header following the specific structure
+    html += '<div class="company-details">';
+    if (companyDetails) {
+      // Company name
+      html += `<h2>${companyDetails.companyName || ''}</h2>`;
       
-      // Add company details header following the specific structure
-      printWindow.document.write('<div class="company-details">');
-      if (companyDetails) {
-        // Company name
-        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
-        
-        // Email
-        if (companyDetails.email) {
-          printWindow.document.write(`<p>${companyDetails.email}</p>`);
-        }
-        
-        // Bank details
-        if (companyDetails.bankDetails) {
-          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
-        }
-        
-        // VAT and Registration info
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      // Email
+      if (companyDetails.email) {
+        html += `<p>${companyDetails.email}</p>`;
       }
-      printWindow.document.write('</div>');
       
-      // Add report title
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h3>STOCK CHECK</h3>');
-      printWindow.document.write(`<p>Period: ${format(osDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
-      printWindow.document.write('</div>');
+      // Bank details
+      if (companyDetails.bankDetails) {
+        html += `<p>${companyDetails.bankDetails}</p>`;
+      }
       
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      const headers = ['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result'];
-      headers.forEach(h => {
-        printWindow.document.write(`<th>${h}</th>`);
-      });
-      printWindow.document.write('</tr></thead><tbody>');
-      filteredData.forEach(item => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.slNo}</td>`);
-        printWindow.document.write(`<td>${item.productDescription}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.os)}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.ns)}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.sales)}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.crtn)}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.dmps)}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.srtn)}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.stock)}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.clStock)}</td>`);
-        printWindow.document.write(`<td>${item.result}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) html += `<p>${regInfo.join(' | ')}</p>`;
     }
+    html += '</div>';
+    
+    // Add report title
+    html += '<div class="header">';
+    html += '<h3>STOCK CHECK</h3>';
+    html += `<p>Period: ${format(osDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`;
+    html += '</div>';
+    
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    const headers = ['Sl.No', 'Product Description', 'O.S', 'N.S', 'Sales', 'C.RTN', 'Dmps', 'S.RTN', 'Stock', 'Cl.Stock', 'Result'];
+    headers.forEach(h => {
+      html += `<th>${h}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    filteredData.forEach(item => {
+      html += '<tr>';
+      html += `<td>${item.slNo}</td>`;
+      html += `<td>${item.productDescription}</td>`;
+      html += `<td>${formatQuantity(item.os)}</td>`;
+      html += `<td>${formatQuantity(item.ns)}</td>`;
+      html += `<td>${formatQuantity(item.sales)}</td>`;
+      html += `<td>${formatQuantity(item.crtn)}</td>`;
+      html += `<td>${formatQuantity(item.dmps)}</td>`;
+      html += `<td>${formatQuantity(item.srtn)}</td>`;
+      html += `<td>${formatQuantity(item.stock)}</td>`;
+      html += `<td>${formatQuantity(item.clStock)}</td>`;
+      html += `<td>${item.result}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    printHtmlTable('Stock Check', html, { autoClose: true });
   };
 
   const handleExcel = () => {
@@ -406,7 +396,7 @@ export default function StockCheck() {
       item.result
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
-    navigator.clipboard.writeText(tsv);
+    copyToClipboard(tsv);
     alert('Table copied to clipboard!');
   };
 
@@ -561,7 +551,7 @@ export default function StockCheck() {
           const emailData = {
             to: emailList,
             subject: `Stock Check Report - ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Stock Check report for the period from ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed stock analysis including:\n- Opening Stock (O.S) and New Stock (N.S)\n- Sales figures and Customer Returns (C.RTN)\n- Dumps and Supplier Returns (S.RTN)\n- Current Stock and Closing Stock (Cl.Stock)\n- Stock variance analysis (Short/Excess/Correct)\n\nAll Data Summary Totals:\n- Total O.S: ${formatQuantity(totals.os)}\n- Total N.S: ${formatQuantity(totals.ns)}\n- Total Sales: ${formatQuantity(totals.sales)}\n- Total C.RTN: ${formatQuantity(totals.crtn)}\n- Total Dmps: ${formatQuantity(totals.dmps)}\n- Total S.RTN: ${formatQuantity(totals.srtn)}\n- Total Stock: ${formatQuantity(totals.stock)}\n- Total Cl.Stock: ${formatQuantity(totals.clStock)}\n\nFilter Applied: ${stockFilter}${!showZeroEntries ? ' (Zero entries hidden)' : ''}\n${(stockFilter !== "Show All" || !showZeroEntries) ? `\nDisplayed Data Totals:\n- Displayed O.S: ${formatQuantity(filteredTotals.os)}\n- Displayed N.S: ${formatQuantity(filteredTotals.ns)}\n- Displayed Sales: ${formatQuantity(filteredTotals.sales)}\n- Displayed Stock: ${formatQuantity(filteredTotals.stock)}\n- Displayed Cl.Stock: ${formatQuantity(filteredTotals.clStock)}` : ''}\n\nBest regards,\n${companyDetails?.name || 'Stock Management Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Stock Check report for the period from ${format(osDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed stock analysis including:\n- Opening Stock (O.S) and New Stock (N.S)\n- Sales figures and Customer Returns (C.RTN)\n- Dumps and Supplier Returns (S.RTN)\n- Current Stock and Closing Stock (Cl.Stock)\n- Stock variance analysis (Short/Excess/Correct)\n\nAll Data Summary Totals:\n- Total O.S: ${formatQuantity(totals.os)}\n- Total N.S: ${formatQuantity(totals.ns)}\n- Total Sales: ${formatQuantity(totals.sales)}\n- Total C.RTN: ${formatQuantity(totals.crtn)}\n- Total Dmps: ${formatQuantity(totals.dmps)}\n- Total S.RTN: ${formatQuantity(totals.srtn)}\n- Total Stock: ${formatQuantity(totals.stock)}\n- Total Cl.Stock: ${formatQuantity(totals.clStock)}\n\nFilter Applied: ${stockFilter}${!showZeroEntries ? ' (Zero entries hidden)' : ''}\n${(stockFilter !== "Show All" || !showZeroEntries) ? `\nDisplayed Data Totals:\n- Displayed O.S: ${formatQuantity(filteredTotals.os)}\n- Displayed N.S: ${formatQuantity(filteredTotals.ns)}\n- Displayed Sales: ${formatQuantity(filteredTotals.sales)}\n- Displayed Stock: ${formatQuantity(filteredTotals.stock)}\n- Displayed Cl.Stock: ${formatQuantity(filteredTotals.clStock)}` : ''}\n\nBest regards,\n${companyDetails?.companyName || 'Stock Management Team'}`,
             attachment: {
               filename: `stock-check-${format(osDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -800,7 +790,6 @@ export default function StockCheck() {
                     onChange={(e) => setEmails(e.target.value)}
                     className="w-64"
                     disabled={isEmailSending}
-                    size="sm"
                   />
                   <Button 
                     variant="outline" 

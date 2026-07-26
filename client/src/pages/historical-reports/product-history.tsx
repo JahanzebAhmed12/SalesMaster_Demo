@@ -19,6 +19,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 type ProductsAPI = { regularProducts: RegularProduct[]; nonProducts: NonProduct[] };
 type ProductHistoryAPI = {
@@ -404,90 +405,75 @@ export default function ProductHistory() {
       });
     }
     
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
     alert('Product history copied to clipboard!');
   };
 
   const handlePrint = () => {
     if (!searchClicked || loading) return;
     
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Product History Report</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin:20px 0;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.section-title{font-size:14px;font-weight:bold;margin:20px 0 10px 0;color:#333;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
-      
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>PRODUCT HISTORY REPORT</h2>');
-      printWindow.document.write('<p>TROPIFRUIT UK LTD<br>3 Dolphin Way, Purfleet, RM19 1NZ</p>');
-      printWindow.document.write(`<p>Report Period: ${fromDate ? format(fromDate, 'dd/MM/yyyy') : 'All'} to ${toDate ? format(toDate, 'dd/MM/yyyy') : 'All'}</p>`);
-      printWindow.document.write(`<p>Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>`);
-      printWindow.document.write('</div>');
-      
-      // Add all sections
-      const sections = [
-        { title: 'SALES', data: sales, headers: ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-        { title: 'CUSTOMER RETURNS', data: customerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-        { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-        { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-        { title: 'DUMPS', data: dumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
-      ];
-      
-      sections.forEach(section => {
-        if (section.data.length > 0) {
-          printWindow.document.write(`<div class="section-title">${section.title}</div>`);
-          printWindow.document.write('<table>');
-          printWindow.document.write('<thead><tr>');
-          section.headers.forEach(header => {
-            printWindow.document.write(`<th>${header}</th>`);
-          });
-          printWindow.document.write('</tr></thead><tbody>');
+    let html = '';
+    
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>PRODUCT HISTORY REPORT</h2>';
+    html += '<p>TROPIFRUIT UK LTD<br>3 Dolphin Way, Purfleet, RM19 1NZ</p>';
+    html += `<p>Report Period: ${fromDate ? format(fromDate, 'dd/MM/yyyy') : 'All'} to ${toDate ? format(toDate, 'dd/MM/yyyy') : 'All'}</p>`;
+    html += `<p>Generated: ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>`;
+    html += '</div>';
+    
+    // Add all sections
+    const sections = [
+      { title: 'SALES', data: sales, headers: ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'CUSTOMER RETURNS', data: customerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'FROM SUPPLIER', data: purchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'SUPPLIER RETURNS', data: supplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'DUMPS', data: dumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
+    ];
+    
+    sections.forEach(section => {
+      if (section.data.length > 0) {
+        html += `<div class="section-title">${section.title}</div>`;
+        html += '<table>';
+        html += '<thead><tr>';
+        section.headers.forEach(header => {
+          html += `<th>${header}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+        
+        section.data.forEach((row: any, idx: number) => {
+          html += '<tr>';
+          html += `<td>${idx + 1}</td>`;
+          html += `<td>${row.date}</td>`;
           
-          section.data.forEach((row: any, idx: number) => {
-            printWindow.document.write('<tr>');
-            printWindow.document.write(`<td>${idx + 1}</td>`);
-            printWindow.document.write(`<td>${row.date}</td>`);
-            
-            if (section.title === 'DUMPS') {
-              printWindow.document.write(`<td>${row.product}</td>`);
-              printWindow.document.write(`<td>${row.totalQty}</td>`);
-            } else {
-              if (section.title === 'FROM SUPPLIER' || section.title === 'SUPPLIER RETURNS') {
-                if (section.title === 'SUPPLIER RETURNS') {
-                  printWindow.document.write(`<td>${row.invoice}</td>`);
-                }
-                printWindow.document.write(`<td>${row.supplierName}</td>`);
-              } else {
-                if (section.title === 'CUSTOMER RETURNS') {
-                  printWindow.document.write(`<td>${row.invoice}</td>`);
-                }
-                printWindow.document.write(`<td>${row.customerName || row.invoiceNo}</td>`);
+          if (section.title === 'DUMPS') {
+            html += `<td>${row.product}</td>`;
+            html += `<td>${row.totalQty}</td>`;
+          } else {
+            if (section.title === 'FROM SUPPLIER' || section.title === 'SUPPLIER RETURNS') {
+              if (section.title === 'SUPPLIER RETURNS') {
+                html += `<td>${row.invoice}</td>`;
               }
-              printWindow.document.write(`<td>${row.product}</td>`);
-              printWindow.document.write(`<td>${formatQuantity(row.quantity)}</td>`);
-              printWindow.document.write(`<td>${row.unitPrice}</td>`);
-              printWindow.document.write(`<td>${row.total}</td>`);
+              html += `<td>${row.supplierName}</td>`;
+            } else {
+              if (section.title === 'CUSTOMER RETURNS') {
+                html += `<td>${row.invoice}</td>`;
+              }
+              html += `<td>${row.customerName || row.invoiceNo}</td>`;
             }
-            printWindow.document.write('</tr>');
-          });
-          
-          printWindow.document.write('</tbody></table>');
-        }
-      });
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+            html += `<td>${row.product}</td>`;
+            html += `<td>${formatQuantity(row.quantity)}</td>`;
+            html += `<td>${row.unitPrice}</td>`;
+            html += `<td>${row.total}</td>`;
+          }
+          html += '</tr>';
+        });
+        
+        html += '</tbody></table>';
+      }
+    });
+    
+    printHtmlTable('Product History Report', html);
   };
 
   const sendEmail = async () => {

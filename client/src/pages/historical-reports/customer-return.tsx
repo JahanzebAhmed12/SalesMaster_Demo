@@ -20,6 +20,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import React from 'react';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface CustomerReturnData {
   id: number;
@@ -88,72 +89,64 @@ export default function CustomerReturn() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer Returns</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
+    
+    // Add company details header
+    html += '<div class="company-details">';
+    if (companyDetails) {
+      html += `<h2>${companyDetails.companyName || ''}</h2>`;
+      if (companyDetails.address1) html += `<p>${companyDetails.address1}</p>`;
+      if (companyDetails.address2) html += `<p>${companyDetails.address2}</p>`;
       
-      // Add company details header
-      printWindow.document.write('<div class="company-details">');
-      if (companyDetails) {
-        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
-        if (companyDetails.address1) printWindow.document.write(`<p>${companyDetails.address1}</p>`);
-        if (companyDetails.address2) printWindow.document.write(`<p>${companyDetails.address2}</p>`);
-        
-        // Only include mobile and fax, exclude telephone
-        let contactInfo = [];
-        if (companyDetails.mobile) contactInfo.push(`Mobile: ${companyDetails.mobile}`);
-        if (companyDetails.fax) contactInfo.push(`Fax: ${companyDetails.fax}`);
-        if (contactInfo.length > 0) printWindow.document.write(`<p>${contactInfo.join(' | ')}</p>`);
-        
-        // Removed email and website
-        
-        // Only keep EINL if needed, removed VAT No and Reg No
-        let regInfo = [];
-        if (companyDetails.einlNumber) regInfo.push(`EINL: ${companyDetails.einlNumber}`);
-        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
-        
-        if (companyDetails.bankDetails) printWindow.document.write(`<p><strong>Bank Details:</strong> ${companyDetails.bankDetails}</p>`);
-      }
-      printWindow.document.write('</div>');
+      // Only include mobile and fax, exclude telephone
+      let contactInfo = [];
+      if (companyDetails.mobile) contactInfo.push(`Mobile: ${companyDetails.mobile}`);
+      if (companyDetails.fax) contactInfo.push(`Fax: ${companyDetails.fax}`);
+      if (contactInfo.length > 0) html += `<p>${contactInfo.join(' | ')}</p>`;
       
-      // Add report title
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h3>CUSTOMER RETURNS</h3>');
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
-      printWindow.document.write('</div>');
+      // Removed email and website
       
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th>');
-      printWindow.document.write('<th>Return Date</th>');
-      printWindow.document.write('<th>Customer Name</th>');
-      printWindow.document.write('<th>Product Name</th>');
-      printWindow.document.write('<th>Quantity</th>');
-      printWindow.document.write('<th>Return Reason</th>');
-      printWindow.document.write('<th>Return Amount</th>');
-      printWindow.document.write('<th>Status</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      returnData.forEach((item) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.slNo}</td>`);
-        printWindow.document.write(`<td>${format(new Date(item.returnDate), "dd/MM/yyyy")}</td>`);
-        printWindow.document.write(`<td>${item.customerName}</td>`);
-        printWindow.document.write(`<td>${item.productName}</td>`);
-        printWindow.document.write(`<td>${formatQuantity(item.quantity)}</td>`);
-        printWindow.document.write(`<td>${item.returnReason}</td>`);
-        printWindow.document.write(`<td>£${Number(item.returnAmount).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${item.refundStatus}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
+      // Only keep EINL if needed, removed VAT No and Reg No
+      let regInfo = [];
+      if (companyDetails.einlNumber) regInfo.push(`EINL: ${companyDetails.einlNumber}`);
+      if (regInfo.length > 0) html += `<p>${regInfo.join(' | ')}</p>`;
+      
+      if (companyDetails.bankDetails) html += `<p><strong>Bank Details:</strong> ${companyDetails.bankDetails}</p>`;
     }
+    html += '</div>';
+    
+    // Add report title
+    html += '<div class="header">';
+    html += '<h3>CUSTOMER RETURNS</h3>';
+    html += `<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`;
+    html += '</div>';
+    
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Sl.No</th>';
+    html += '<th>Return Date</th>';
+    html += '<th>Customer Name</th>';
+    html += '<th>Product Name</th>';
+    html += '<th>Quantity</th>';
+    html += '<th>Return Reason</th>';
+    html += '<th>Return Amount</th>';
+    html += '<th>Status</th>';
+    html += '</tr></thead><tbody>';
+    returnData.forEach((item) => {
+      html += '<tr>';
+      html += `<td>${item.slNo}</td>`;
+      html += `<td>${format(new Date(item.returnDate), "dd/MM/yyyy")}</td>`;
+      html += `<td>${item.customerName}</td>`;
+      html += `<td>${item.productName}</td>`;
+      html += `<td>${formatQuantity(item.quantity)}</td>`;
+      html += `<td>${item.returnReason}</td>`;
+      html += `<td>£${Number(item.returnAmount).toFixed(2)}</td>`;
+      html += `<td>${item.refundStatus}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    printHtmlTable('Customer Returns', html);
   };
 
   const handleExcel = () => {
@@ -367,7 +360,7 @@ export default function CustomerReturn() {
       Number(item.returnAmount).toFixed(2),
       item.refundStatus
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   return (

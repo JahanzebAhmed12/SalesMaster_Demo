@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useLocation } from 'wouter';
 import { parseISO, subDays } from 'date-fns';
+import { copyToClipboard } from "@/lib/export-utils";
 
 interface StatementData {
   id: number;
@@ -612,19 +613,7 @@ export default function SupplierHistory() {
       row.runningBalance
     ].join('\t')).join('\n');
     
-    try {
-      await navigator.clipboard.writeText(text);
-      toast({
-        title: "Success",
-        description: "Data copied to clipboard",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to copy data to clipboard",
-        variant: "destructive"
-      });
-    }
+    copyToClipboard(text, { toast });
   };
 
   const handleEmail = async () => {

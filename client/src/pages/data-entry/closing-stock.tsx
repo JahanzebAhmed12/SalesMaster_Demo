@@ -11,6 +11,7 @@ import { toast } from "@/hooks/use-toast";
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { printHtmlTable } from "@/lib/export-utils";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
@@ -204,7 +205,6 @@ export default function ClosingStock() {
   // Print handler
   const handlePrint = () => {
     const items = editItems.length > 0 ? editItems : closingStockEntries;
-    const printWindow = window.open('', '', 'height=600,width=900');
     let html = `<div style='font-weight:bold;font-size:18px;margin-bottom:12px;'>Closing Stock</div>`;
     html += `<table style='width:100%;border-collapse:collapse;'>`;
     html += `<thead><tr><th style='border:1px solid #ccc;padding:8px;'>Product</th><th style='border:1px solid #ccc;padding:8px;'>Current Stock</th><th style='border:1px solid #ccc;padding:8px;'>Closing Quantity</th></tr></thead><tbody>`;
@@ -216,19 +216,7 @@ export default function ClosingStock() {
       html += '</tr>';
     });
     html += '</tbody></table>';
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Print Table</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}</style>');
-      printWindow.document.write('</head><body>');
-      printWindow.document.write(html);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
-    }
+    printHtmlTable('Closing Stock', html, { autoClose: true });
   };
 
   // Excel handler

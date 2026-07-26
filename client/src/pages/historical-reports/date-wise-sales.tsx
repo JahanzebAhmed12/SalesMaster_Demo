@@ -18,6 +18,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface DateWiseSalesData {
   id: number;
@@ -90,51 +91,43 @@ export default function DateWiseSales() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Date Wise Sales Report</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}</style>');
-      printWindow.document.write('</head><body>');
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>DATE WISE SALES REPORT</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
-      printWindow.document.write('</div>');
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Date</th>');
-      printWindow.document.write('<th>Total Sales</th>');
-      printWindow.document.write('<th>Account Sales</th>');
-      printWindow.document.write('<th>Cash Sales</th>');
-      printWindow.document.write('<th>Total Invoices</th>');
-      printWindow.document.write('<th>Average Sale</th>');
-      printWindow.document.write('<th>Top Product</th>');
-      printWindow.document.write('<th>Top Customer</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      salesData.forEach((sale) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${format(new Date(sale.date), "dd/MM/yyyy")}</td>`);
-        printWindow.document.write(`<td>£${sale.totalSales.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${(sale.accountSales || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${sale.cashSales.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${sale.totalInvoices}</td>`);
-        printWindow.document.write(`<td>£${sale.averageSale.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${sale.topProduct}</td>`);
-        printWindow.document.write(`<td>${sale.topCustomer}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    let html = '';
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>DATE WISE SALES REPORT</h2>';
+    html += `<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`;
+    html += `<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`;
+    html += '</div>';
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Date</th>';
+    html += '<th>Total Sales</th>';
+    html += '<th>Account Sales</th>';
+    html += '<th>Cash Sales</th>';
+    html += '<th>Total Invoices</th>';
+    html += '<th>Average Sale</th>';
+    html += '<th>Top Product</th>';
+    html += '<th>Top Customer</th>';
+    html += '</tr></thead><tbody>';
+    salesData.forEach((sale) => {
+      html += '<tr>';
+      html += `<td>${format(new Date(sale.date), "dd/MM/yyyy")}</td>`;
+      html += `<td>£${sale.totalSales.toFixed(2)}</td>`;
+      html += `<td>£${(sale.accountSales || 0).toFixed(2)}</td>`;
+      html += `<td>£${sale.cashSales.toFixed(2)}</td>`;
+      html += `<td>${sale.totalInvoices}</td>`;
+      html += `<td>£${sale.averageSale.toFixed(2)}</td>`;
+      html += `<td>${sale.topProduct}</td>`;
+      html += `<td>${sale.topCustomer}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    
+    // Add footer text
+    html += '<div class="footer">stand100</div>';
+    
+    printHtmlTable('Date Wise Sales Report', html);
   };
 
   const handleExcel = () => {
@@ -270,7 +263,7 @@ export default function DateWiseSales() {
       sale.topProduct,
       sale.topCustomer
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   return (

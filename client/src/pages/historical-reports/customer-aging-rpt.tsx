@@ -340,77 +340,61 @@ export default function CustomerAgingRpt() {
 
   // Print only the table section
   const handlePrintTable = () => {
-    const printWindow = window.open('', '', 'width=900,height=700');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer Aging Report</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
-      printWindow.document.write('th{background-color:#dc3545;color:white;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.totals{font-weight:bold;background-color:#fff3cd;}');
-      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
-      
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2 style="font-size:24px;font-weight:bold;margin-bottom:10px;">CUSTOMER AGING REPORT</h2>');
-      const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
-      const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
-      printWindow.document.write(`<p style="font-size:16px;margin-bottom:5px;">${companyName}, ${address}</p>`);
-      printWindow.document.write(`<p style="font-size:14px;">As of Date: ${asOfDate ? format(asOfDate, "dd/MM/yyyy") : ""}</p>`);
-      printWindow.document.write('</div>');
-      
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th><th>Customer Name</th><th>Total Outstanding</th><th>Current</th><th>1-30 Days</th><th>31-60 Days</th><th>61-90 Days</th><th>91-120 Days</th><th>121-180 Days</th><th>Over 180 Days</th><th>Currency</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      
-      // Add customer data
-      agingData.forEach(item => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.slNo}</td>`);
-        printWindow.document.write(`<td>${item.customerName}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.totalOutstanding).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.current).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.days30).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.days60).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.days90).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.days120).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.days180).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:right;">${Number(item.over180).toFixed(2)}</td>`);
-        printWindow.document.write(`<td style="text-align:center;">${item.currency}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      
-      // Add totals row
-      printWindow.document.write('<tr class="totals">');
-      printWindow.document.write('<td></td>');
-      printWindow.document.write('<td><strong>TOTAL</strong></td>');
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.totalOutstanding.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.current.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days30.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days60.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days90.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days120.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.days180.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td style="text-align:right;"><strong>${totals.over180.toFixed(2)}</strong></td>`);
-      printWindow.document.write('<td></td>');
-      printWindow.document.write('</tr>');
-      
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    let html = '';
+    
+    // Add header
+    html += '<div class="header">';
+    html += '<h2 style="font-size:24px;font-weight:bold;margin-bottom:10px;">CUSTOMER AGING REPORT</h2>';
+    const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
+    const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
+    html += `<p style="font-size:16px;margin-bottom:5px;">${companyName}, ${address}</p>`;
+    html += `<p style="font-size:14px;">As of Date: ${asOfDate ? format(asOfDate, "dd/MM/yyyy") : ""}</p>`;
+    html += '</div>';
+    
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Sl.No</th><th>Customer Name</th><th>Total Outstanding</th><th>Current</th><th>1-30 Days</th><th>31-60 Days</th><th>61-90 Days</th><th>91-120 Days</th><th>121-180 Days</th><th>Over 180 Days</th><th>Currency</th>';
+    html += '</tr></thead><tbody>';
+    
+    // Add customer data
+    agingData.forEach(item => {
+      html += '<tr>';
+      html += `<td>${item.slNo}</td>`;
+      html += `<td>${item.customerName}</td>`;
+      html += `<td style="text-align:right;">${Number(item.totalOutstanding).toFixed(2)}</td>`;
+      html += `<td style="text-align:right;">${Number(item.current).toFixed(2)}</td>`;
+      html += `<td style="text-align:right;">${Number(item.days30).toFixed(2)}</td>`;
+      html += `<td style="text-align:right;">${Number(item.days60).toFixed(2)}</td>`;
+      html += `<td style="text-align:right;">${Number(item.days90).toFixed(2)}</td>`;
+      html += `<td style="text-align:right;">${Number(item.days120).toFixed(2)}</td>`;
+      html += `<td style="text-align:right;">${Number(item.days180).toFixed(2)}</td>`;
+      html += `<td style="text-align:right;">${Number(item.over180).toFixed(2)}</td>`;
+      html += `<td style="text-align:center;">${item.currency}</td>`;
+      html += '</tr>';
+    });
+    
+    // Add totals row
+    html += '<tr class="totals">';
+    html += '<td></td>';
+    html += '<td><strong>TOTAL</strong></td>';
+    html += `<td style="text-align:right;"><strong>${totals.totalOutstanding.toFixed(2)}</strong></td>`;
+    html += `<td style="text-align:right;"><strong>${totals.current.toFixed(2)}</strong></td>`;
+    html += `<td style="text-align:right;"><strong>${totals.days30.toFixed(2)}</strong></td>`;
+    html += `<td style="text-align:right;"><strong>${totals.days60.toFixed(2)}</strong></td>`;
+    html += `<td style="text-align:right;"><strong>${totals.days90.toFixed(2)}</strong></td>`;
+    html += `<td style="text-align:right;"><strong>${totals.days120.toFixed(2)}</strong></td>`;
+    html += `<td style="text-align:right;"><strong>${totals.days180.toFixed(2)}</strong></td>`;
+    html += `<td style="text-align:right;"><strong>${totals.over180.toFixed(2)}</strong></td>`;
+    html += '<td></td>';
+    html += '</tr>';
+    
+    html += '</tbody></table>';
+    
+    // Add footer text
+    html += '<div class="footer">stand100</div>';
+    
+    printHtmlTable('Customer Aging', html, { width: 900, height: 700 });
   };
 
   return (

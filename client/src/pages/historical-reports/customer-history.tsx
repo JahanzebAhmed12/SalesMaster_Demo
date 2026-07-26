@@ -26,6 +26,7 @@ import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 export default function CustomerHistory() {
   const { user } = useAuth();
@@ -320,97 +321,76 @@ export default function CustomerHistory() {
   const handlePrint = () => {
     if (!tableRef.current) return;
     
-    // Get customer details from selected customer
-    const printContents = tableRef.current.innerHTML;
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer History Statement</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{text-align:center;margin-bottom:10px;font-size:14px;}');
-      printWindow.document.write('.customer-info{margin-bottom:15px;}');
-      printWindow.document.write('.period-info{margin-bottom:15px;font-weight:bold;}');
-      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
-      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
-      
-      // Add company header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>CUSTOMER HISTORY STATEMENT</h2>');
-      if (companyDetails) {
-        printWindow.document.write(`<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
-      }
-      printWindow.document.write('</div>');
-      
-      // Add customer information
-      if (selectedCustomer) {
-        printWindow.document.write('<div class="customer-info">');
-        printWindow.document.write(`<strong>Customer:</strong> ${selectedCustomer.customer_name}<br>`);
-        if (selectedCustomer.address) {
-          printWindow.document.write(`<strong>Address:</strong> ${selectedCustomer.address}<br>`);
-        }
-        if (selectedCustomer.telephone) {
-          printWindow.document.write(`<strong>Phone:</strong> ${selectedCustomer.telephone}<br>`);
-        }
-        if (selectedCustomer.email) {
-          printWindow.document.write(`<strong>Email:</strong> ${selectedCustomer.email}`);
-        }
-        printWindow.document.write('</div>');
-      }
-      
-      // Add period information
-      printWindow.document.write('<div class="period-info">');
-      printWindow.document.write(`<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`);
-      printWindow.document.write('</div>');
-      
-      // Add custom table without checkboxes
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th><th>Date</th><th>Invoice #</th><th>Account Inv.</th><th>Cash Inv.</th><th>Paid</th><th>Credit/Adj</th><th>Discount/Adj</th><th>Balance</th><th>Running Balance</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      
-      historyData.forEach((row: any) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${row.slNo}</td>`);
-        printWindow.document.write(`<td>${format(new Date(row.date), "yyyy-MM-dd")}</td>`);
-        printWindow.document.write(`<td>${row.invoiceNo}</td>`);
-        printWindow.document.write(`<td>£${(row.accountInv || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${(row.cashInv || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${(row.paid || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£0.00</td>`);
-        printWindow.document.write(`<td>£0.00</td>`);
-        printWindow.document.write(`<td>£${(row.balance || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${(row.runningBalance || 0).toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      
-      // Add totals row
-      printWindow.document.write('<tr class="totals">');
-      printWindow.document.write('<td></td><td><strong>TOTAL</strong></td><td></td>');
-      printWindow.document.write(`<td><strong>£${totals.accountInv.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td><strong>£${totals.cashInv.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td><strong>£${totals.paid.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td><strong>£0.00</strong></td>`);
-      printWindow.document.write(`<td><strong>£0.00</strong></td>`);
-      printWindow.document.write(`<td><strong>£${totals.balance.toFixed(2)}</strong></td>`);
-      printWindow.document.write(`<td><strong>£${totals.runningBalance.toFixed(2)}</strong></td>`);
-      printWindow.document.write('</tr>');
-      
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
+    let html = '';
+    
+    // Add company header
+    html += '<div class="header">';
+    html += '<h2>CUSTOMER HISTORY STATEMENT</h2>';
+    if (companyDetails) {
+      html += `<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`;
     }
+    html += '</div>';
+    
+    // Add customer information
+    if (selectedCustomer) {
+      html += '<div class="customer-info">';
+      html += `<strong>Customer:</strong> ${selectedCustomer.customer_name}<br>`;
+      if (selectedCustomer.address) {
+        html += `<strong>Address:</strong> ${selectedCustomer.address}<br>`;
+      }
+      if (selectedCustomer.telephone) {
+        html += `<strong>Phone:</strong> ${selectedCustomer.telephone}<br>`;
+      }
+      if (selectedCustomer.email) {
+        html += `<strong>Email:</strong> ${selectedCustomer.email}`;
+      }
+      html += '</div>';
+    }
+    
+    // Add period information
+    html += '<div class="period-info">';
+    html += `<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`;
+    html += '</div>';
+    
+    // Add custom table without checkboxes
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Sl.No</th><th>Date</th><th>Invoice #</th><th>Account Inv.</th><th>Cash Inv.</th><th>Paid</th><th>Credit/Adj</th><th>Discount/Adj</th><th>Balance</th><th>Running Balance</th>';
+    html += '</tr></thead><tbody>';
+    
+    historyData.forEach((row: any) => {
+      html += '<tr>';
+      html += `<td>${row.slNo}</td>`;
+      html += `<td>${format(new Date(row.date), "yyyy-MM-dd")}</td>`;
+      html += `<td>${row.invoiceNo}</td>`;
+      html += `<td>£${(row.accountInv || 0).toFixed(2)}</td>`;
+      html += `<td>£${(row.cashInv || 0).toFixed(2)}</td>`;
+      html += `<td>£${(row.paid || 0).toFixed(2)}</td>`;
+      html += `<td>£0.00</td>`;
+      html += `<td>£0.00</td>`;
+      html += `<td>£${(row.balance || 0).toFixed(2)}</td>`;
+      html += `<td>£${(row.runningBalance || 0).toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    
+    // Add totals row
+    html += '<tr class="totals">';
+    html += '<td></td><td><strong>TOTAL</strong></td><td></td>';
+    html += `<td><strong>£${totals.accountInv.toFixed(2)}</strong></td>`;
+    html += `<td><strong>£${totals.cashInv.toFixed(2)}</strong></td>`;
+    html += `<td><strong>£${totals.paid.toFixed(2)}</strong></td>`;
+    html += `<td><strong>£0.00</strong></td>`;
+    html += `<td><strong>£0.00</strong></td>`;
+    html += `<td><strong>£${totals.balance.toFixed(2)}</strong></td>`;
+    html += `<td><strong>£${totals.runningBalance.toFixed(2)}</strong></td>`;
+    html += '</tr>';
+    
+    html += '</tbody></table>';
+    
+    // Add footer text
+    html += '<div class="footer">stand100</div>';
+    
+    printHtmlTable('Customer History Statement', html);
   };
 
   const handlePDF = () => {
@@ -637,7 +617,7 @@ export default function CustomerHistory() {
       row.balance,
       row.runningBalance
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
     // Optionally show a toast
   };
 

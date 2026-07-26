@@ -18,6 +18,7 @@ import React from 'react';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface ProfitLossItem {
   id: number;
@@ -128,94 +129,70 @@ export default function ProfitLoss() {
   const handlePrint = () => {
     if (!tableRef.current) return;
 
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Profit/Loss Report</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('.company-header{text-align:center;margin-bottom:30px;}');
-      printWindow.document.write('.company-name{font-size:18px;font-weight:bold;margin-bottom:5px;}');
-      printWindow.document.write('.report-title{font-size:16px;font-weight:bold;margin-bottom:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-bottom:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;text-align:center;}');
-      printWindow.document.write('.text-center{text-align:center;}');
-      printWindow.document.write('.font-bold{font-weight:bold;}');
-      printWindow.document.write('.bg-gray-50{background-color:#f9f9f9;}');
-      printWindow.document.write('.text-red-600{color:#dc2626;}');
-      printWindow.document.write('.bg-orange-50{background-color:#fff7ed;}');
-      printWindow.document.write('.summary{background-color:#f9f9f9;padding:15px;border:1px solid #ccc;margin-top:20px;}');
-      printWindow.document.write('.summary-row{display:flex;justify-content:space-between;margin-bottom:8px;}');
-      printWindow.document.write('.summary-label{font-weight:bold;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      // Add company header
-      printWindow.document.write('<div class="company-header">');
-      printWindow.document.write(`<div class="company-name">${companyDetails?.companyName || 'TROPIFRUIT UK LTD'}</div>`);
-      printWindow.document.write('<div class="report-title">Profit/Loss Report</div>');
-      printWindow.document.write('</div>');
+    // Add company header
+    html += '<div class="company-header">';
+    html += `<div class="company-name">${companyDetails?.companyName || 'TROPIFRUIT UK LTD'}</div>`;
+    html += '<div class="report-title">Profit/Loss Report</div>';
+    html += '</div>';
 
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th><th>Product Description</th><th>Total Quantity</th><th>AVG Purchase</th><th>AVG Sales</th>');
-      if (showProfit) printWindow.document.write('<th>AVG Profit</th>');
-      printWindow.document.write('<th>TOT Purchase</th><th>TOT Sales</th>');
-      if (showProfit) printWindow.document.write('<th>TOT Profit</th><th>PERCENT Profit %</th>');
-      printWindow.document.write('</tr></thead><tbody>');
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Sl.No</th><th>Product Description</th><th>Total Quantity</th><th>AVG Purchase</th><th>AVG Sales</th>';
+    if (showProfit) html += '<th>AVG Profit</th>';
+    html += '<th>TOT Purchase</th><th>TOT Sales</th>';
+    if (showProfit) html += '<th>TOT Profit</th><th>PERCENT Profit %</th>';
+    html += '</tr></thead><tbody>';
 
-      profitData.forEach((item: any) => {
-        const rowClass = item.isLoss ? ' style="background-color:#fff7ed;"' : '';
-        const textClass = item.isLoss ? ' style="color:#dc2626;"' : '';
-        printWindow.document.write(`<tr${rowClass}>`);
-        printWindow.document.write(`<td class="text-center">${item.slNo}</td>`);
-        printWindow.document.write(`<td>${item.productDescription}</td>`);
-        printWindow.document.write(`<td class="text-center">${formatQuantity(item.totalQuantity)}</td>`);
-        printWindow.document.write(`<td class="text-center">£${Number(item.avgPurchase).toFixed(2)}</td>`);
-        printWindow.document.write(`<td class="text-center">£${Number(item.avgSales).toFixed(2)}</td>`);
-        if (showProfit) printWindow.document.write(`<td class="text-center"${textClass}>£${Number(item.avgProfit).toFixed(2)}</td>`);
-        printWindow.document.write(`<td class="text-center">£${Number(item.totPurchase).toFixed(2)}</td>`);
-        printWindow.document.write(`<td class="text-center">£${Number(item.totSales).toFixed(2)}</td>`);
-        if (showProfit) {
-          printWindow.document.write(`<td class="text-center"${textClass}>£${Number(item.totProfit).toFixed(2)}</td>`);
-          printWindow.document.write(`<td class="text-center"${textClass}>${Number(item.percentProfit).toFixed(2)}%</td>`);
-        }
-        printWindow.document.write('</tr>');
-      });
-
-      // Add totals row
-      printWindow.document.write('<tr style="background-color:#f9f9f9;border-top:2px solid #666;">');
-      printWindow.document.write('<td></td><td class="font-bold">TOTAL</td>');
-      printWindow.document.write(`<td class="text-center font-bold">${formatQuantity(totals.totalQuantity)}</td>`);
-      printWindow.document.write('<td></td><td></td>');
-      if (showProfit) printWindow.document.write('<td></td>');
-      printWindow.document.write(`<td class="text-center font-bold">£${Number(totals.totPurchase).toFixed(2)}</td>`);
-      printWindow.document.write(`<td class="text-center font-bold">£${Number(totals.totSales).toFixed(2)}</td>`);
+    profitData.forEach((item: any) => {
+      const rowClass = item.isLoss ? ' style="background-color:#fff7ed;"' : '';
+      const textClass = item.isLoss ? ' style="color:#dc2626;"' : '';
+      html += `<tr${rowClass}>`;
+      html += `<td class="text-center">${item.slNo}</td>`;
+      html += `<td>${item.productDescription}</td>`;
+      html += `<td class="text-center">${formatQuantity(item.totalQuantity)}</td>`;
+      html += `<td class="text-center">£${Number(item.avgPurchase).toFixed(2)}</td>`;
+      html += `<td class="text-center">£${Number(item.avgSales).toFixed(2)}</td>`;
+      if (showProfit) html += `<td class="text-center"${textClass}>£${Number(item.avgProfit).toFixed(2)}</td>`;
+      html += `<td class="text-center">£${Number(item.totPurchase).toFixed(2)}</td>`;
+      html += `<td class="text-center">£${Number(item.totSales).toFixed(2)}</td>`;
       if (showProfit) {
-        printWindow.document.write(`<td class="text-center font-bold">£${Number(totals.totProfit).toFixed(2)}</td>`);
-        printWindow.document.write(`<td class="text-center font-bold">${Number(overallProfitPercent).toFixed(2)}%</td>`);
+        html += `<td class="text-center"${textClass}>£${Number(item.totProfit).toFixed(2)}</td>`;
+        html += `<td class="text-center"${textClass}>${Number(item.percentProfit).toFixed(2)}%</td>`;
       }
-      printWindow.document.write('</tr>');
-      printWindow.document.write('</tbody></table>');
+      html += '</tr>';
+    });
 
-      // Add summary
-      printWindow.document.write('<div class="summary">');
-      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Date Range:</span><span>${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}</span></div>`);
-      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Quantity:</span><span>${formatQuantity(totals.totalQuantity)}</span></div>`);
-      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Purchase:</span><span>£${Number(totals.totPurchase).toFixed(2)}</span></div>`);
-      printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Sales:</span><span>£${Number(totals.totSales).toFixed(2)}</span></div>`);
-      if (showProfit) {
-        printWindow.document.write(`<div class="summary-row"><span class="summary-label">Total Profit:</span><span>£${Number(totals.totProfit).toFixed(2)}</span></div>`);
-        printWindow.document.write(`<div class="summary-row"><span class="summary-label">Percent Profit:</span><span>${Number(overallProfitPercent).toFixed(2)}%</span></div>`);
-      }
-      printWindow.document.write('</div>');
-
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
+    // Add totals row
+    html += '<tr style="background-color:#f9f9f9;border-top:2px solid #666;">';
+    html += '<td></td><td class="font-bold">TOTAL</td>';
+    html += `<td class="text-center font-bold">${formatQuantity(totals.totalQuantity)}</td>`;
+    html += '<td></td><td></td>';
+    if (showProfit) html += '<td></td>';
+    html += `<td class="text-center font-bold">£${Number(totals.totPurchase).toFixed(2)}</td>`;
+    html += `<td class="text-center font-bold">£${Number(totals.totSales).toFixed(2)}</td>`;
+    if (showProfit) {
+      html += `<td class="text-center font-bold">£${Number(totals.totProfit).toFixed(2)}</td>`;
+      html += `<td class="text-center font-bold">${Number(overallProfitPercent).toFixed(2)}%</td>`;
     }
+    html += '</tr>';
+    html += '</tbody></table>';
+
+    // Add summary
+    html += '<div class="summary">';
+    html += `<div class="summary-row"><span class="summary-label">Date Range:</span><span>${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}</span></div>`;
+    html += `<div class="summary-row"><span class="summary-label">Total Quantity:</span><span>${formatQuantity(totals.totalQuantity)}</span></div>`;
+    html += `<div class="summary-row"><span class="summary-label">Total Purchase:</span><span>£${Number(totals.totPurchase).toFixed(2)}</span></div>`;
+    html += `<div class="summary-row"><span class="summary-label">Total Sales:</span><span>£${Number(totals.totSales).toFixed(2)}</span></div>`;
+    if (showProfit) {
+      html += `<div class="summary-row"><span class="summary-label">Total Profit:</span><span>£${Number(totals.totProfit).toFixed(2)}</span></div>`;
+      html += `<div class="summary-row"><span class="summary-label">Percent Profit:</span><span>${Number(overallProfitPercent).toFixed(2)}%</span></div>`;
+    }
+    html += '</div>';
+
+    printHtmlTable('Profit/Loss Report', html);
   };
 
   const handleExcel = () => {
@@ -370,7 +347,7 @@ export default function ProfitLoss() {
     }).join('\n');
 
     try {
-      await navigator.clipboard.writeText(text);
+      copyToClipboard(text);
       // Optional: Show a brief success message
       console.log('Data copied to clipboard');
     } catch (err) {

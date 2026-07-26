@@ -19,6 +19,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface PurchaseHistoryData {
   id: number;
@@ -137,29 +138,10 @@ export default function PurchaseHistory() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Purchase History Report</title>');
-      printWindow.document.write(`
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          h1 { color: #2C7A7B; text-align: center; margin-bottom: 5px; }
-          .company-info { text-align: center; margin-bottom: 10px; font-size: 14px; }
-          .report-info { margin-bottom: 15px; font-size: 13px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-          th { background-color: #2C7A7B; color: white; padding: 8px; text-align: left; }
-          td { padding: 6px; border: 1px solid #ddd; }
-          .total-row { font-weight: bold; background-color: #f5f5f5; }
-          .text-right { text-align: right; }
-          .text-center { text-align: center; }
-          .footer { margin-top: 20px; font-size: 12px; text-align: center; color: #666; }
-          .page-break { page-break-after: always; }
-        </style>
-      `);
-      printWindow.document.write('</head><body>');
-      
-      // Header with company info
-      printWindow.document.write(`
+    let html = '';
+    
+    // Header with company info
+    html += `
         <h1>PURCHASE HISTORY REPORT</h1>
         <div class="company-info">
           <div>${companyDetails?.companyName || ''}</div>
@@ -171,10 +153,10 @@ export default function PurchaseHistory() {
           <div><strong>Supplier:</strong> ${supplierName}</div>
            <div><strong>Payment Status:</strong> ${paymentFilter || 'All'}</div>
         </div>
-      `);
-      
-      // Table
-      printWindow.document.write(`
+      `;
+    
+    // Table
+    html += `
         <table>
           <thead>
             <tr>
@@ -190,11 +172,11 @@ export default function PurchaseHistory() {
             </tr>
           </thead>
           <tbody>
-      `);
-      
-      // Table rows
-      purchaseData.forEach((purchase: PurchaseHistoryData) => {
-        printWindow.document.write(`
+      `;
+    
+    // Table rows
+    purchaseData.forEach((purchase: PurchaseHistoryData) => {
+      html += `
           <tr>
             <td>${purchase.slNo}</td>
             <td>${format(new Date(purchase.date), 'dd/MM/yyyy')}</td>
@@ -206,11 +188,11 @@ export default function PurchaseHistory() {
             <td class="text-right">£${purchase.totalAmount.toFixed(2)}</td>
             <td>${purchase.paymentStatus}</td>
           </tr>
-        `);
-      });
-      
-      // Totals row
-      printWindow.document.write(`
+        `;
+    });
+    
+    // Totals row
+    html += `
           <tr class="total-row">
             <td colspan="5" class="text-right"><strong>TOTALS:</strong></td>
             <td class="text-center">${formatQuantity(totals.totalQuantity)}</td>
@@ -220,21 +202,17 @@ export default function PurchaseHistory() {
           </tr>
         </tbody>
       </table>
-      `);
-      
-      // Footer
-      printWindow.document.write(`
+      `;
+    
+    // Footer
+    html += `
         <div class="footer">
           <div>Generated on ${format(new Date(), 'dd/MM/yyyy hh:mm a')}</div>
           <div>${window.location.href}</div>
         </div>
-      `);
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+      `;
+    
+    printHtmlTable('Purchase History Report', html);
   };
 
   const handleExcel = () => {
@@ -537,7 +515,7 @@ export default function PurchaseHistory() {
       purchase.totalAmount,
       purchase.paymentStatus
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   return (

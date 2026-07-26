@@ -14,6 +14,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface AnalysisData {
   month: string;
@@ -85,57 +86,49 @@ export default function FullAnalysis() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=1200');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Full Analysis Report</title>');
-      printWindow.document.write('<style>@page { size: landscape; margin: 0.5in; } body{font-family:Arial,sans-serif;margin:10px;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:15px;table-layout:fixed;}th,td{border:1px solid #ccc;padding:4px;text-align:center;font-size:10px;word-wrap:break-word;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:15px;}.totals{font-weight:bold;background-color:#f9f9f9;}.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}th:nth-child(1),td:nth-child(1){width:8%;}th:nth-child(2),td:nth-child(2){width:6%;}th:nth-child(3),td:nth-child(3){width:9%;}th:nth-child(4),td:nth-child(4){width:9%;}th:nth-child(5),td:nth-child(5){width:10%;}th:nth-child(6),td:nth-child(6){width:10%;}th:nth-child(7),td:nth-child(7){width:10%;}th:nth-child(8),td:nth-child(8){width:8%;}th:nth-child(9),td:nth-child(9){width:11%;}th:nth-child(10),td:nth-child(10){width:9%;}th:nth-child(11),td:nth-child(11){width:10%;}</style>');
-      printWindow.document.write('</head><body>');
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>MONTH WISE PURCHASE / SALES</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
-      printWindow.document.write('</div>');
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Month</th>');
-      printWindow.document.write('<th>Year</th>');
-      printWindow.document.write('<th>Sales</th>');
-      printWindow.document.write('<th>Returns</th>');
-      printWindow.document.write('<th>Net Sales</th>');
-      printWindow.document.write('<th>Purchase</th>');
-      printWindow.document.write('<th>Returns_Sup</th>');
-      printWindow.document.write('<th>Dumps</th>');
-      printWindow.document.write('<th>Net Purchase</th>');
-      printWindow.document.write('<th>Expenses</th>');
-      printWindow.document.write('<th>Diff</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      analysisData.forEach((item) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.month}</td>`);
-        printWindow.document.write(`<td>${item.year}</td>`);
-        printWindow.document.write(`<td>£${Number(item.sales).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.returns).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.netSales).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.purchase).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.returnsSup).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.dumps).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.netPurchase).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.expenses).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(item.diff).toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    let html = '';
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>MONTH WISE PURCHASE / SALES</h2>';
+    html += `<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`;
+    html += `<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`;
+    html += '</div>';
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Month</th>';
+    html += '<th>Year</th>';
+    html += '<th>Sales</th>';
+    html += '<th>Returns</th>';
+    html += '<th>Net Sales</th>';
+    html += '<th>Purchase</th>';
+    html += '<th>Returns_Sup</th>';
+    html += '<th>Dumps</th>';
+    html += '<th>Net Purchase</th>';
+    html += '<th>Expenses</th>';
+    html += '<th>Diff</th>';
+    html += '</tr></thead><tbody>';
+    analysisData.forEach((item) => {
+      html += '<tr>';
+      html += `<td>${item.month}</td>`;
+      html += `<td>${item.year}</td>`;
+      html += `<td>£${Number(item.sales).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.returns).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.netSales).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.purchase).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.returnsSup).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.dumps).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.netPurchase).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.expenses).toFixed(2)}</td>`;
+      html += `<td>£${Number(item.diff).toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    
+    // Add footer text
+    html += '<div class="footer">stand100</div>';
+    
+    printHtmlTable('Full Analysis', html, { width: 1200, useLandscape: true });
   };
 
   const handleExcel = () => {
@@ -315,7 +308,7 @@ export default function FullAnalysis() {
       `£${Number(item.expenses).toFixed(2)}`,
       `£${Number(item.diff).toFixed(2)}`
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   return (

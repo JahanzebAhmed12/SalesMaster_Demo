@@ -30,6 +30,7 @@ import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { useToast } from "@/hooks/use-toast";
 import { sendInvoicePdfEmail } from "@/lib/invoice-pdf";
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface SalesEntry {
   id: number;
@@ -414,69 +415,58 @@ export default function DailyBookSales() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Daily Book Sales</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:10px;font-size:12px;}table{width:100%;border-collapse:collapse;margin-top:20px;table-layout:fixed;}th,td{border:1px solid #ccc;padding:4px;text-align:left;word-wrap:break-word;overflow:hidden;}th{background-color:#f0f0f0;font-weight:bold;font-size:11px;}td{font-size:10px;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}th:nth-child(1),td:nth-child(1){width:8%;}th:nth-child(2),td:nth-child(2){width:10%;}th:nth-child(3),td:nth-child(3){width:20%;}th:nth-child(4),td:nth-child(4){width:12%;}th:nth-child(5),td:nth-child(5){width:10%;}th:nth-child(6),td:nth-child(6){width:10%;}th:nth-child(7),td:nth-child(7){width:12%;}th:nth-child(8),td:nth-child(8){width:10%;}th:nth-child(9),td:nth-child(9){width:8%;}</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      // Add company details header following the specific structure
-      printWindow.document.write('<div class="company-details">');
-      if (companyDetails) {
-        // Company name
-        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+    // Add company details header following the specific structure
+    html += '<div class="company-details">';
+    if (companyDetails) {
+      // Company name
+      html += `<h2>${companyDetails.companyName || ''}</h2>`;
 
-        // Email
-        if (companyDetails.email) {
-          printWindow.document.write(`<p>${companyDetails.email}</p>`);
-        }
-
-        // Bank details
-        if (companyDetails.bankDetails) {
-          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
-        }
-
-        // VAT and Registration info
-
+      // Email
+      if (companyDetails.email) {
+        html += `<p>${companyDetails.email}</p>`;
       }
-      printWindow.document.write('</div>');
 
-      // Add report title
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h3>DAILY BOOK SALES</h3>');
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`);
-      printWindow.document.write('</div>');
+      // Bank details
+      if (companyDetails.bankDetails) {
+        html += `<p>${companyDetails.bankDetails}</p>`;
+      }
 
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      const headers = ['Date', 'Invoice', 'Customer Name', 'Accounts', 'Cash', 'Card', 'Transfer', 'Cheque', 'Credit'];
-      headers.forEach(h => {
-        printWindow.document.write(`<th>${h}</th>`);
-      });
-      printWindow.document.write('</tr></thead><tbody>');
-      salesData.forEach(sale => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${formatDateForDisplay(sale.date)}</td>`);
-        printWindow.document.write(`<td>${sale.invoiceNo}</td>`);
-        printWindow.document.write(`<td>${getDisplayCustomerName(sale)}</td>`);
-        printWindow.document.write(`<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(sale.bank ?? 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(sale.bankTransfer ?? 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(sale.cheque ?? 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${Number(sale.credit ?? 0).toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
+      // VAT and Registration info
+
     }
+    html += '</div>';
+
+    // Add report title
+    html += '<div class="header">';
+    html += '<h3>DAILY BOOK SALES</h3>';
+    html += `<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : 'All'} to ${toDate ? format(toDate, "dd/MM/yyyy") : 'All'}</p>`;
+    html += '</div>';
+
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    const headers = ['Date', 'Invoice', 'Customer Name', 'Accounts', 'Cash', 'Card', 'Transfer', 'Cheque', 'Credit'];
+    headers.forEach(h => {
+      html += `<th>${h}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    salesData.forEach(sale => {
+      html += '<tr>';
+      html += `<td>${formatDateForDisplay(sale.date)}</td>`;
+      html += `<td>${sale.invoiceNo}</td>`;
+      html += `<td>${getDisplayCustomerName(sale)}</td>`;
+      html += `<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`;
+      html += `<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`;
+      html += `<td>£${Number(sale.bank ?? 0).toFixed(2)}</td>`;
+      html += `<td>£${Number(sale.bankTransfer ?? 0).toFixed(2)}</td>`;
+      html += `<td>£${Number(sale.cheque ?? 0).toFixed(2)}</td>`;
+      html += `<td>£${Number(sale.credit ?? 0).toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    printHtmlTable('Daily Book Sales', html, { autoClose: true });
   };
 
   const handleExcel = () => {
@@ -602,8 +592,7 @@ export default function DailyBookSales() {
       item.credit || 0
     ]);
     const tsv = [header, ...rows].map(row => row.join('\t')).join('\n');
-    navigator.clipboard.writeText(tsv);
-    toast({ title: "Copied", description: "Table copied to clipboard!" });
+    copyToClipboard(tsv, { toast });
   };
 
   // Handle checkbox selection

@@ -6,6 +6,7 @@ import { FileDown, Printer, Copy, Download, FileText } from "lucide-react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -292,55 +293,40 @@ export default function CompanyDetails() {
   const handlePrint = () => {
     if (!companyDetails) return;
 
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Company Details</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:12px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;width:30%;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('@media print { body { margin: 0; } }');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>Company Details</h2>');
-      printWindow.document.write(`<p>Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</p>`);
-      printWindow.document.write('</div>');
+    html += '<div class="header">';
+    html += '<h2>Company Details</h2>';
+    html += `<p>Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</p>`;
+    html += '</div>';
 
-      printWindow.document.write('<table>');
+    html += '<table>';
 
-      const fields = [
-        ['Company Name', companyDetails.companyName],
-        ['Address 1', companyDetails.address1],
-        ['Address 2', companyDetails.address2 || ''],
-        ['Telephone', companyDetails.telephone || ''],
-        ['Mobile', companyDetails.mobile || ''],
-        ['Fax', companyDetails.fax || ''],
-        ['Website', companyDetails.website || ''],
-        ['Email', companyDetails.email || ''],
-        ['VAT No', companyDetails.vatNo || ''],
-        ['Company Reg No', companyDetails.compRegNo || ''],
-        ['Bank Details', companyDetails.bankDetails || ''],
-        ['EINL Number', companyDetails.einlNumber || ''],
-        ['Remarks', companyDetails.remarks || '']
-      ];
+    const fields = [
+      ['Company Name', companyDetails.companyName],
+      ['Address 1', companyDetails.address1],
+      ['Address 2', companyDetails.address2 || ''],
+      ['Telephone', companyDetails.telephone || ''],
+      ['Mobile', companyDetails.mobile || ''],
+      ['Fax', companyDetails.fax || ''],
+      ['Website', companyDetails.website || ''],
+      ['Email', companyDetails.email || ''],
+      ['VAT No', companyDetails.vatNo || ''],
+      ['Company Reg No', companyDetails.compRegNo || ''],
+      ['Bank Details', companyDetails.bankDetails || ''],
+      ['EINL Number', companyDetails.einlNumber || ''],
+      ['Remarks', companyDetails.remarks || '']
+    ];
 
-      fields.forEach(([field, value]) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<th>${field}</th>`);
-        printWindow.document.write(`<td>${value || '-'}</td>`);
-        printWindow.document.write('</tr>');
-      });
+    fields.forEach(([field, value]) => {
+      html += '<tr>';
+      html += `<th>${field}</th>`;
+      html += `<td>${value || '-'}</td>`;
+      html += '</tr>';
+    });
 
-      printWindow.document.write('</table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    html += '</table>';
+    printHtmlTable('Company Details', html);
   };
 
   if (isLoading) {

@@ -18,6 +18,7 @@ import type { Customer } from "@shared/schema";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { printHtmlTable } from "@/lib/export-utils";
 import { useLocation } from "wouter";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
@@ -134,25 +135,17 @@ export default function CustomerPaymentHistory() {
   const handlePrint = () => {
     const printContents = document.getElementById('customer-payment-table')?.innerHTML;
     if (!printContents) return;
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Print</title>');
-      printWindow.document.write('<style>table{width:100%;border-collapse:collapse;}th,td{border:1px solid #ccc;padding:8px;}@media print{body{margin:0;}}</style>');
-      printWindow.document.write('</head><body>');
-      printWindow.document.write('<div style="font-size:20px;font-weight:bold;text-align:center;margin-bottom:8px;">TROPIFRUIT UK LTD</div>');
-      printWindow.document.write('<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Customer Payment History</div>');
-      // Remove serial number and payment id columns from print
-      let tableHtml = printContents
-        .replace(/<th[^>]*>\s*Sl\.No\.?\s*<\/th>/gi, '')
-        .replace(/<th[^>]*>\s*Payment Id\s*<\/th>/gi, '')
-        .replace(/<td[^>]*>\s*\d+\s*<\/td>/gi, '') // Remove serial number cells
-        .replace(/<td[^>]*>\s*\d+\s*<\/td>/gi, ''); // Remove payment id cells (if needed)
-      printWindow.document.write(tableHtml);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    let html = '';
+    html += '<div style="font-size:20px;font-weight:bold;text-align:center;margin-bottom:8px;">TROPIFRUIT UK LTD</div>';
+    html += '<div style="font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;">Customer Payment History</div>';
+    // Remove serial number and payment id columns from print
+    let tableHtml = printContents
+      .replace(/<th[^>]*>\s*Sl\.No\.?\s*<\/th>/gi, '')
+      .replace(/<th[^>]*>\s*Payment Id\s*<\/th>/gi, '')
+      .replace(/<td[^>]*>\s*\d+\s*<\/td>/gi, '') // Remove serial number cells
+      .replace(/<td[^>]*>\s*\d+\s*<\/td>/gi, ''); // Remove payment id cells (if needed)
+    html += tableHtml;
+    printHtmlTable('Customer Payment History', html);
   };
 
   const handlePDF = () => {

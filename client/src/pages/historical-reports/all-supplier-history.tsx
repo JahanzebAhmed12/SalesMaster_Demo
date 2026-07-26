@@ -18,6 +18,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface SupplierData {
   id: number;
@@ -83,61 +84,45 @@ export default function AllSupplierHistory() {
   // Export handlers
   const handlePrint = () => {
     if (!fromDate || !toDate) return;
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>All Supplier History</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.totals{font-weight:bold;background-color:#f9f9f9;}');
-      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>ALL SUPPLIER HISTORY</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
-      printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
-      printWindow.document.write('</div>');
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th>');
-      printWindow.document.write('<th>Supplier Name</th>');
-      printWindow.document.write('<th>Purchase Invoice</th>');
-      printWindow.document.write('<th>Amount Paid</th>');
-      printWindow.document.write('<th>Credit/Adj</th>');
-      printWindow.document.write('<th>Discount/Adj</th>');
-      printWindow.document.write('<th>Balance Outstanding</th>');
-      printWindow.document.write('<th>Credit Limit</th>');
-      printWindow.document.write('<th>Currency</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      supplierData.forEach(supplier => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${supplier.slNo}</td>`);
-        printWindow.document.write(`<td>${supplier.supplierName}</td>`);
-        printWindow.document.write(`<td>${supplier.purchaseInvoice.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${supplier.amountPaid.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${supplier.creditAdj.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${supplier.discountAdj.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${supplier.balanceOutstanding.toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${supplier.creditLimit}</td>`);
-        printWindow.document.write(`<td>${supplier.currency}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    let html = '';
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>ALL SUPPLIER HISTORY</h2>';
+    html += `<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`;
+    html += `<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`;
+    html += '</div>';
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Sl.No</th>';
+    html += '<th>Supplier Name</th>';
+    html += '<th>Purchase Invoice</th>';
+    html += '<th>Amount Paid</th>';
+    html += '<th>Credit/Adj</th>';
+    html += '<th>Discount/Adj</th>';
+    html += '<th>Balance Outstanding</th>';
+    html += '<th>Credit Limit</th>';
+    html += '<th>Currency</th>';
+    html += '</tr></thead><tbody>';
+    supplierData.forEach(supplier => {
+      html += '<tr>';
+      html += `<td>${supplier.slNo}</td>`;
+      html += `<td>${supplier.supplierName}</td>`;
+      html += `<td>${supplier.purchaseInvoice.toFixed(2)}</td>`;
+      html += `<td>${supplier.amountPaid.toFixed(2)}</td>`;
+      html += `<td>${supplier.creditAdj.toFixed(2)}</td>`;
+      html += `<td>${supplier.discountAdj.toFixed(2)}</td>`;
+      html += `<td>${supplier.balanceOutstanding.toFixed(2)}</td>`;
+      html += `<td>${supplier.creditLimit}</td>`;
+      html += `<td>${supplier.currency}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    
+    // Add footer text
+    html += '<div class="footer">stand100</div>';
+    
+    printHtmlTable('All Supplier History', html);
   };
 
   const handleExcel = () => {
@@ -356,7 +341,7 @@ export default function AllSupplierHistory() {
       supplier.creditLimit,
       supplier.currency
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   return (

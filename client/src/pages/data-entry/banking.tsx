@@ -23,6 +23,7 @@ import React from "react";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 export default function Banking() {
   const { currentDate: businessDate } = useBusinessDate();
@@ -227,43 +228,25 @@ export default function Banking() {
   const handlePrint = () => {
     if (!tableRef.current || bankingEntries.length === 0) return;
     
-    const printContents = tableRef.current.innerHTML;
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Banking Entries Report</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{text-align:center;margin-bottom:10px;font-size:14px;}');
-      printWindow.document.write('.period-info{margin-bottom:15px;font-weight:bold;}');
-      printWindow.document.write('.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
-      
-      // Add company header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>BANKING ENTRIES REPORT</h2>');
-      if (companyDetails) {
-        printWindow.document.write(`<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`);
-      }
-      printWindow.document.write('</div>');
-      
-      // Add period information
-      printWindow.document.write('<div class="period-info">');
-      printWindow.document.write(`<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`);
-      printWindow.document.write('</div>');
-      
-      // Add the table content
-      printWindow.document.write(printContents);
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
+    let html = '';
+    
+    // Add company header
+    html += '<div class="header">';
+    html += '<h2>BANKING ENTRIES REPORT</h2>';
+    if (companyDetails) {
+      html += `<div class="company-info">${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}</div>`;
     }
+    html += '</div>';
+    
+    // Add period information
+    html += '<div class="period-info">';
+    html += `<strong>Period:</strong> ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`;
+    html += '</div>';
+    
+    // Add the table content
+    html += tableRef.current.innerHTML;
+    
+    printHtmlTable('Banking Entries Report', html);
   };
 
   const handleExcel = () => {
@@ -364,11 +347,7 @@ export default function Banking() {
     
     const csvContent = [headers, ...rows].map(row => row.join('\t')).join('\n');
     
-    navigator.clipboard.writeText(csvContent).then(() => {
-      toast({ title: "Success", description: "Banking entries copied to clipboard" });
-    }).catch(() => {
-      toast({ title: "Error", description: "Failed to copy to clipboard", variant: "destructive" });
-    });
+    copyToClipboard(csvContent, { toast, successMessage: 'Banking entries copied to clipboard' });
   };
 
   const handleEmail = async () => {

@@ -13,6 +13,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCompanyDetails } from "@/hooks/use-company-details";
+import { printHtmlTable } from "@/lib/export-utils";
 
 // ─────────────────────────────────────────────────────────────────
 // Column-major layout helper
@@ -79,32 +80,8 @@ export default function StockTemplate() {
   // ── Print ──────────────────────────────────────────────────────
   const handlePrint = () => {
     if (!printRef.current) return;
-    const win = window.open("", "", "height=800,width=1000");
-    if (!win) return;
-    win.document.write(`
-      <html><head><title>Stock Template</title>
-      <style>
-        * { box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; margin: 12px; font-size: 12px; }
-        .page-header { display: flex; justify-content: space-between; align-items: flex-end;
-                       border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
-        .page-title  { font-size: 16px; font-weight: bold; }
-        .company     { font-size: 11px; text-align: right; }
-        .date-line   { font-size: 12px; margin-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th { border: 1px solid #333; padding: 5px 7px; font-size: 11px; font-weight: bold;
-             background: #f0f0f0; text-align: center; }
-        td { border: 1px solid #555; padding: 6px 7px; font-size: 12px; vertical-align: middle; }
-        td.qty { text-align: center; }
-        tr:nth-child(even) td { background: #fafafa; }
-        .page-break { page-break-after: always; }
-        @media print { body { margin: 0; } }
-      </style></head><body>`);
-    win.document.write(printRef.current.innerHTML);
-    win.document.write("</body></html>");
-    win.document.close();
-    win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 500);
+    const html = printRef.current.innerHTML;
+    printHtmlTable('Stock Template', html, { width: 1000, height: 800, autoClose: true });
   };
 
   // ── PDF ───────────────────────────────────────────────────────

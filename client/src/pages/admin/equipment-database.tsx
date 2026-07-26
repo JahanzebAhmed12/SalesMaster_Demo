@@ -16,6 +16,7 @@ import PageLayout from "@/components/common/page-layout";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 
 export default function EquipmentDatabase() {
   const [, setLocation] = useLocation();
@@ -346,45 +347,25 @@ export default function EquipmentDatabase() {
 
   const handlePrint = () => {
     try {
-      const printWindow = window.open('', '', 'height=600,width=900');
-      if (!printWindow) {
-        toast({
-          variant: "destructive",
-          title: "Print Failed",
-          description: "Unable to open print window. Please check your browser's popup settings."
-        });
-        return;
-      }
-
-      printWindow.document.write('<html><head><title>Equipment Database</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{margin-bottom:15px;}');
-      printWindow.document.write('@media print { body { margin: 0; } }');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+      let html = '';
 
       // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>Equipment Database</h2>');
-      printWindow.document.write('</div>');
+      html += '<div class="header">';
+      html += '<h2>Equipment Database</h2>';
+      html += '</div>';
 
       // Add company info
-      printWindow.document.write('<div class="company-info">');
-      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
-      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
-      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
-      printWindow.document.write('</div>');
+      html += '<div class="company-info">';
+      html += '<strong>TROPIFRUIT UK LTD</strong><br>';
+      html += '3 Dolphin Way, Purfleet, RM19 1NZ<br>';
+      html += `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+      html += '</div>';
 
       // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>#</th><th>Description</th><th>Start Date</th><th>End Date</th><th>Status</th><th>Days Remaining</th>');
-      printWindow.document.write('</tr></thead><tbody>');
+      html += '<table>';
+      html += '<thead><tr>';
+      html += '<th>#</th><th>Description</th><th>Start Date</th><th>End Date</th><th>Status</th><th>Days Remaining</th>';
+      html += '</tr></thead><tbody>';
 
       filteredEquipment.forEach((item, index) => {
         try {
@@ -398,42 +379,33 @@ export default function EquipmentDatabase() {
           const diffTime = isValidEndDate ? endDate.getTime() - today.getTime() : 0;
           const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           
-          printWindow.document.write('<tr>');
-          printWindow.document.write(`<td>${index + 1}</td>`);
-          printWindow.document.write(`<td>${item.description || 'N/A'}</td>`);
-          printWindow.document.write(`<td>${isValidStartDate ? format(startDate, "dd/MM/yyyy") : 'N/A'}</td>`);
-          printWindow.document.write(`<td>${isValidEndDate ? format(endDate, "dd/MM/yyyy") : 'N/A'}</td>`);
-          printWindow.document.write(`<td>${isValidEndDate ? (isExpired(item.endDate) ? 'Expired' : isExpiringSoon(item.endDate) ? 'Expiring Soon' : 'Active') : 'Unknown'}</td>`);
-          printWindow.document.write(`<td>${isValidEndDate ? (daysRemaining < 0 ? `${Math.abs(daysRemaining)} days overdue` : `${daysRemaining} days`) : 'N/A'}</td>`);
-          printWindow.document.write('</tr>');
+          html += '<tr>';
+          html += `<td>${index + 1}</td>`;
+          html += `<td>${item.description || 'N/A'}</td>`;
+          html += `<td>${isValidStartDate ? format(startDate, "dd/MM/yyyy") : 'N/A'}</td>`;
+          html += `<td>${isValidEndDate ? format(endDate, "dd/MM/yyyy") : 'N/A'}</td>`;
+          html += `<td>${isValidEndDate ? (isExpired(item.endDate) ? 'Expired' : isExpiringSoon(item.endDate) ? 'Expiring Soon' : 'Active') : 'Unknown'}</td>`;
+          html += `<td>${isValidEndDate ? (daysRemaining < 0 ? `${Math.abs(daysRemaining)} days overdue` : `${daysRemaining} days`) : 'N/A'}</td>`;
+          html += '</tr>';
         } catch (rowError) {
           console.error('Error processing row:', rowError);
           // Add a fallback row
-          printWindow.document.write('<tr>');
-          printWindow.document.write(`<td>${index + 1}</td>`);
-          printWindow.document.write(`<td>${item.description || 'N/A'}</td>`);
-          printWindow.document.write('<td>Error</td><td>Error</td><td>Error</td><td>Error</td>');
-          printWindow.document.write('</tr>');
+          html += '<tr>';
+          html += `<td>${index + 1}</td>`;
+          html += `<td>${item.description || 'N/A'}</td>`;
+          html += '<td colspan="4">Error processing row</td>';
+          html += '</tr>';
         }
       });
-
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Equipment: ${filteredEquipment.length}</div>`);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
       
-      toast({
-        title: "Success",
-        description: "Print dialog opened successfully."
-      });
+      html += '</tbody></table>';
+      html += `<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Equipment: ${filteredEquipment.length}</div>`;
+      printHtmlTable('Equipment Database', html);
     } catch (error) {
-      console.error('Print error:', error);
       toast({
         variant: "destructive",
         title: "Print Failed",
-        description: error instanceof Error ? error.message : "Failed to open print dialog."
+        description: "An error occurred while printing."
       });
     }
   };

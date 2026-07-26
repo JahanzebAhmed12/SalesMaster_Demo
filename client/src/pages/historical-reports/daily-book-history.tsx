@@ -16,6 +16,7 @@ import type { User } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface DailyBookData {
   slNo: number;
@@ -92,51 +93,43 @@ export default function DailyBookHistory() {
 
   // Export handlers
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Daily Book History</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.totals{font-weight:bold;background-color:#f9f9f9;}.footer{position:fixed;bottom:10px;right:10px;font-size:8px;color:#666;}</style>');
-      printWindow.document.write('</head><body>');
-      // Add header
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>DAILY BOOK HISTORY REPORT</h2>');
-      printWindow.document.write(`<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`);
-      printWindow.document.write(`<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`);
-      printWindow.document.write('</div>');
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>Sl.No</th>');
-      printWindow.document.write('<th>Date</th>');
-      printWindow.document.write('<th>User</th>');
-      printWindow.document.write('<th>Invoice No</th>');
-      printWindow.document.write('<th>Customer Name</th>');
-      printWindow.document.write('<th>Account</th>');
-      printWindow.document.write('<th>Account Paid</th>');
-      printWindow.document.write('<th>Cash</th>');
-      printWindow.document.write('</tr></thead><tbody>');
-      dailyBookData.forEach((item) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${item.slNo}</td>`);
-        printWindow.document.write(`<td>${format(new Date(item.date), "dd-MM-yyyy")}</td>`);
-        printWindow.document.write(`<td>${item.user}</td>`);
-        printWindow.document.write(`<td>${item.invoiceNo}</td>`);
-        printWindow.document.write(`<td>${item.customerName}</td>`);
-        printWindow.document.write(`<td>£${(item.account || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${(item.accountPaid || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>£${(item.cash || 0).toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      
-      // Add footer text
-      printWindow.document.write('<div class="footer">stand100</div>');
-      
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    let html = '';
+    // Add header
+    html += '<div class="header">';
+    html += '<h2>DAILY BOOK HISTORY REPORT</h2>';
+    html += `<p>${companyDetails?.companyName || ''}${companyDetails?.address1 ? ', ' + companyDetails.address1 : ''}${companyDetails?.address2 ? ', ' + companyDetails.address2 : ''}</p>`;
+    html += `<p>Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}</p>`;
+    html += '</div>';
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>Sl.No</th>';
+    html += '<th>Date</th>';
+    html += '<th>User</th>';
+    html += '<th>Invoice No</th>';
+    html += '<th>Customer Name</th>';
+    html += '<th>Account</th>';
+    html += '<th>Account Paid</th>';
+    html += '<th>Cash</th>';
+    html += '</tr></thead><tbody>';
+    dailyBookData.forEach((item) => {
+      html += '<tr>';
+      html += `<td>${item.slNo}</td>`;
+      html += `<td>${format(new Date(item.date), "dd-MM-yyyy")}</td>`;
+      html += `<td>${item.user}</td>`;
+      html += `<td>${item.invoiceNo}</td>`;
+      html += `<td>${item.customerName}</td>`;
+      html += `<td>£${(item.account || 0).toFixed(2)}</td>`;
+      html += `<td>£${(item.accountPaid || 0).toFixed(2)}</td>`;
+      html += `<td>£${(item.cash || 0).toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    
+    // Add footer text
+    html += '<div class="footer">stand100</div>';
+    
+    printHtmlTable('Daily Book History', html);
   };
 
   const handleExcel = () => {
@@ -228,7 +221,7 @@ export default function DailyBookHistory() {
       item.accountPaid || 0,
       item.cash || 0
     ].join('\t')).join('\n');
-    await navigator.clipboard.writeText(text);
+    copyToClipboard(text);
   };
 
   // Invoice button logic

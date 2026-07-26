@@ -22,6 +22,7 @@ import * as XLSX from 'xlsx';
 import { useCompanyDetails } from "@/hooks/use-company-details";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface NewExpense {
   date: Date;
@@ -251,70 +252,59 @@ export default function Expenses() {
   // Export handlers (same as Dumps)
   const exportTitle = 'Expense Entries';
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Expense Entries</title>');
-      printWindow.document.write('<style>body{font-family:Arial,sans-serif;margin:20px;}table{width:100%;border-collapse:collapse;margin-top:20px;}th,td{border:1px solid #ccc;padding:8px;text-align:left;}th{background-color:#f0f0f0;font-weight:bold;}.header{text-align:center;margin-bottom:20px;}.company-details{text-align:center;margin-bottom:30px;line-height:1.4;}.totals{font-weight:bold;background-color:#f9f9f9;}</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      // Add company details header following the specific structure
-      printWindow.document.write('<div class="company-details">');
-      if (companyDetails) {
-        // Company name
-        printWindow.document.write(`<h2>${companyDetails.companyName || ''}</h2>`);
+    // Add company details header following the specific structure
+    html += '<div class="company-details">';
+    if (companyDetails) {
+      // Company name
+      html += `<h2>${companyDetails.companyName || ''}</h2>`;
 
-        // Email
-        if (companyDetails.email) {
-          printWindow.document.write(`<p>${companyDetails.email}</p>`);
-        }
-
-        // Bank details
-        if (companyDetails.bankDetails) {
-          printWindow.document.write(`<p>${companyDetails.bankDetails}</p>`);
-        }
-
-        // VAT and Registration info
-        let regInfo = [];
-        if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
-        if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
-        if (regInfo.length > 0) printWindow.document.write(`<p>${regInfo.join(' | ')}</p>`);
+      // Email
+      if (companyDetails.email) {
+        html += `<p>${companyDetails.email}</p>`;
       }
-      printWindow.document.write('</div>');
 
-      // Add report title
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h3>EXPENSES</h3>');
-      printWindow.document.write(`<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`);
-      printWindow.document.write('</div>');
+      // Bank details
+      if (companyDetails.bankDetails) {
+        html += `<p>${companyDetails.bankDetails}</p>`;
+      }
 
-      // Add table
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      const headers = ['Date', 'Supplier', 'Expenses Category', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
-      headers.forEach(h => {
-        printWindow.document.write(`<th>${h}</th>`);
-      });
-      printWindow.document.write('</tr></thead><tbody>');
-      expenseEntries.forEach((item: ExpenseEntry) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${format(new Date(item.date), "dd/MM/yyyy")}</td>`);
-        printWindow.document.write(`<td>${item.supplierName || '-'}</td>`);
-        printWindow.document.write(`<td>${item.expenseName || '-'}</td>`);
-        printWindow.document.write(`<td>${item.invoiceNumber || '-'}</td>`);
-        printWindow.document.write(`<td>${item.remarks || '-'}</td>`);
-        printWindow.document.write(`<td>${item.paymentMode}</td>`);
-        printWindow.document.write(`<td>£${item.amount.toFixed(2)}</td>`);
-        printWindow.document.write('</tr>');
-      });
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 500);
+      // VAT and Registration info
+      let regInfo = [];
+      if (companyDetails.vatNo) regInfo.push(`VAT No: ${companyDetails.vatNo}`);
+      if (companyDetails.compRegNo) regInfo.push(`Reg No: ${companyDetails.compRegNo}`);
+      if (regInfo.length > 0) html += `<p>${regInfo.join(' | ')}</p>`;
     }
+    html += '</div>';
+
+    // Add report title
+    html += '<div class="header">';
+    html += '<h3>EXPENSES</h3>';
+    html += `<p>Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}</p>`;
+    html += '</div>';
+
+    // Add table
+    html += '<table>';
+    html += '<thead><tr>';
+    const headers = ['Date', 'Supplier', 'Expenses Category', 'Invoice #', 'Remarks', 'Payment Mode', 'Amount(Exc VAT)'];
+    headers.forEach(h => {
+      html += `<th>${h}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    expenseEntries.forEach((item: ExpenseEntry) => {
+      html += '<tr>';
+      html += `<td>${format(new Date(item.date), "dd/MM/yyyy")}</td>`;
+      html += `<td>${item.supplierName || '-'}</td>`;
+      html += `<td>${item.expenseName || '-'}</td>`;
+      html += `<td>${item.invoiceNumber || '-'}</td>`;
+      html += `<td>${item.remarks || '-'}</td>`;
+      html += `<td>${item.paymentMode}</td>`;
+      html += `<td>£${item.amount.toFixed(2)}</td>`;
+      html += '</tr>';
+    });
+    html += '</tbody></table>';
+    printHtmlTable('Expense Entries', html, { autoClose: true });
   };
 
   const handleExcel = () => {
@@ -428,8 +418,7 @@ export default function Expenses() {
       item.amount,
     ]);
     const text = [headers, ...rows].map(row => row.join('\t')).join('\n');
-    navigator.clipboard.writeText(text);
-    toast({ title: 'Copied', description: 'Expense entries copied to clipboard.' });
+    copyToClipboard(text, { toast, successMessage: 'Expense entries copied to clipboard.' });
   };
 
   return (

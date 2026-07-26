@@ -15,6 +15,7 @@ import 'react-phone-input-2/lib/style.css';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { printHtmlTable } from "@/lib/export-utils";
 
 // Helper function to format multiple emails for display
 const formatEmails = (emailString: string) => {
@@ -295,57 +296,41 @@ export default function Customers() {
   };
 
   const handlePrint = () => {
-    const printWindow = window.open('', '', 'height=600,width=900');
-    if (printWindow) {
-      printWindow.document.write('<html><head><title>Customer Database</title>');
-      printWindow.document.write('<style>');
-      printWindow.document.write('body{font-family:Arial,sans-serif;margin:20px;}');
-      printWindow.document.write('table{width:100%;border-collapse:collapse;margin-top:20px;}');
-      printWindow.document.write('th,td{border:1px solid #ccc;padding:8px;text-align:left;font-size:12px;}');
-      printWindow.document.write('th{background-color:#f0f0f0;font-weight:bold;}');
-      printWindow.document.write('.header{text-align:center;margin-bottom:20px;}');
-      printWindow.document.write('.company-info{margin-bottom:15px;}');
-      printWindow.document.write('@media print { body { margin: 0; } }');
-      printWindow.document.write('</style>');
-      printWindow.document.write('</head><body>');
+    let html = '';
 
-      printWindow.document.write('<div class="header">');
-      printWindow.document.write('<h2>Customer Database</h2>');
-      printWindow.document.write('</div>');
+    html += '<div class="header">';
+    html += '<h2>Customer Database</h2>';
+    html += '</div>';
 
-      printWindow.document.write('<div class="company-info">');
-      printWindow.document.write('<strong>TROPIFRUIT UK LTD</strong><br>');
-      printWindow.document.write('3 Dolphin Way, Purfleet, RM19 1NZ<br>');
-      printWindow.document.write(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`);
-      printWindow.document.write('</div>');
+    html += '<div class="company-info">';
+    html += '<strong>TROPIFRUIT UK LTD</strong><br>';
+    html += '3 Dolphin Way, Purfleet, RM19 1NZ<br>';
+    html += `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`;
+    html += '</div>';
 
-      printWindow.document.write('<table>');
-      printWindow.document.write('<thead><tr>');
-      printWindow.document.write('<th>#</th><th>Code</th><th>Name</th><th>City</th><th>Country</th><th>Currency</th><th>Balance</th><th>Email</th><th>Phone</th><th>Status</th>');
-      printWindow.document.write('</tr></thead><tbody>');
+    html += '<table>';
+    html += '<thead><tr>';
+    html += '<th>#</th><th>Code</th><th>Name</th><th>City</th><th>Country</th><th>Currency</th><th>Balance</th><th>Email</th><th>Phone</th><th>Status</th>';
+    html += '</tr></thead><tbody>';
 
-      filteredCustomers.forEach((customer, index) => {
-        printWindow.document.write('<tr>');
-        printWindow.document.write(`<td>${index + 1}</td>`);
-        printWindow.document.write(`<td>${customer.customer_code}</td>`);
-        printWindow.document.write(`<td>${customer.customer_name}</td>`);
-        printWindow.document.write(`<td>${customer.customer_city || '-'}</td>`);
-        printWindow.document.write(`<td>${customer.customer_country || '-'}</td>`);
-        printWindow.document.write(`<td>${customer.customer_currency}</td>`);
-        printWindow.document.write(`<td>£${(customer.runningBalance || 0).toFixed(2)}</td>`);
-        printWindow.document.write(`<td>${customer.email || '-'}</td>`);
-        printWindow.document.write(`<td>${customer.telephone || '-'}</td>`);
-        printWindow.document.write(`<td>${customer.is_active === "yes" ? "Active" : "Inactive"}</td>`);
-        printWindow.document.write('</tr>');
-      });
+    filteredCustomers.forEach((customer, index) => {
+      html += '<tr>';
+      html += `<td>${index + 1}</td>`;
+      html += `<td>${customer.customer_code}</td>`;
+      html += `<td>${customer.customer_name}</td>`;
+      html += `<td>${customer.customer_city || '-'}</td>`;
+      html += `<td>${customer.customer_country || '-'}</td>`;
+      html += `<td>${customer.customer_currency}</td>`;
+      html += `<td>£${(customer.runningBalance || 0).toFixed(2)}</td>`;
+      html += `<td>${customer.email || '-'}</td>`;
+      html += `<td>${customer.telephone || '-'}</td>`;
+      html += `<td>${customer.is_active === "yes" ? "Active" : "Inactive"}</td>`;
+      html += '</tr>';
+    });
 
-      printWindow.document.write('</tbody></table>');
-      printWindow.document.write(`<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Customers: ${filteredCustomers.length}</div>`);
-      printWindow.document.write('</body></html>');
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => printWindow.print(), 500);
-    }
+    html += '</tbody></table>';
+    html += `<div style="margin-top: 20px; font-size: 12px; color: #666;">Total Customers: ${filteredCustomers.length}</div>`;
+    printHtmlTable('Customer Database', html);
   };
 
   const handleAddClick = () => {
