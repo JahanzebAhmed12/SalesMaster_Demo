@@ -72,6 +72,37 @@ def get_product_stock(product):
     return safe_float(product.current_stock)
 
 # ── Stock Check Calculation (mirrors app.py logic) ───────────────────────────
+# Mirrors the movement-ledger-based helpers in app.py: every family is summed
+# from StockMovement (which is exactly what keeps current_stock consistent),
+# NOT from SaleItem/CustomerReturn/DumpEntry/SupplierReturn entity tables.
+
+_SALE_FAMILY = ['sale', 'sale_cancellation', 'sale_adjustment']
+_RETURN_FAMILY = ['customer_return', 'customer_return_cancellation',
+                  'customer_return_adjustment', 'customer_return_rejection']
+_DUMP_FAMILY = ['dump', 'dump_cancellation', 'dump_adjustment']
+_SUPPLIER_RETURN_FAMILY = ['supplier_return', 'supplier_return_cancellation',
+                           'supplier_return_adjustment', 'supplier_return_rejection']
+_PURCHASE_FAMILY = ['purchase', 'purchase_reversal']
+
+def _movements_in_range(product_id, product_type, from_date, to_date):
+    from sqlalchemy import or_
+    from_dt = datetime(from_date.year, from_date.month, from_date.day)
+    to_dt = datetime(to_date.year, to_date.month, to_date.day, 23, 59, 59)
+    return StockMovement.query.filter(
+        StockMovement.product_id == product_id,
+        StockMovement.product_type == product_type,
+        or_(
+            StockMovement.movement_date.between(from_date, to_date),
+            db.and_(
+                StockMovement.movement_date.is_(None),
+                StockMovement.created_at >= from_dt,
+                StockMovement.created_at <= to_dt
+            )
+        )
+    ).all()
+
+def _family_total(movements, family):
+    return sum(safe_float(m.quantity) for m in movements if m.movement_type in family)
 
 def calc_opening_stock(product_id, product_type, from_date):
     yesterday = from_date - timedelta(days=1)
@@ -89,81 +120,52 @@ def calc_opening_stock(product_id, product_type, from_date):
         ).first()
         if entry:
             return safe_float(entry.quantity)
+    # Fall back to the movement ledger before initial_stock
+    previous = StockMovement.query.filter(
+        StockMovement.product_id == product_id,
+        StockMovement.product_type == product_type,
+        StockMovement.movement_date.isnot(None),
+        StockMovement.movement_date < from_date
+    ).order_by(StockMovement.movement_date.desc(), StockMovement.id.desc()).first()
+    if previous:
+        return safe_float(previous.new_stock)
     product = RegularProduct.query.get(product_id)
     if product:
         return safe_float(product.initial_stock)
     return 0.0
 
 def calc_new_stock(product_id, product_type, from_date, to_date):
-    from sqlalchemy import or_
-    from_dt = datetime(from_date.year, from_date.month, from_date.day)
-    to_dt = datetime(to_date.year, to_date.month, to_date.day, 23, 59, 59)
-    movements = StockMovement.query.filter(
-        StockMovement.product_id == product_id,
-        StockMovement.product_type == product_type,
-        StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
-        or_(
-            StockMovement.movement_date.between(from_date, to_date),
-            db.and_(
-                StockMovement.movement_date.is_(None),
-                StockMovement.created_at >= from_dt,
-                StockMovement.created_at <= to_dt
-            )
-        )
-    ).all()
-    total = 0.0
-    for m in movements:
-        qty = safe_float(m.quantity)
-        if m.movement_type == 'purchase' and qty > 0:
-            total += qty
-        elif m.movement_type == 'purchase_reversal' and qty < 0:
-            total += qty
-    return max(0.0, total)
+    movements = _movements_in_range(product_id, product_type, from_date, to_date)
+    return max(0.0, _family_total(movements, _PURCHASE_FAMILY))
 
 def calc_sales_quantity(product_id, product_type, from_date, to_date):
-    from_dt = datetime(from_date.year, from_date.month, from_date.day)
-    to_dt = datetime(to_date.year, to_date.month, to_date.day, 23, 59, 59)
-    if product_type == 'regular':
-        items = db.session.query(SaleItem).join(
-            Sale, SaleItem.sale_id == Sale.id
-        ).filter(
-            SaleItem.product_id == product_id,
-            Sale.date >= from_dt,
-            Sale.date <= to_dt,
-            Sale.status == 'finalized'
-        ).all()
-    else:
-        items = []
-    total = sum(abs(safe_float(i.quantity)) for i in items if safe_float(i.quantity) > 0)
-    return max(0.0, total)
+    movements = _movements_in_range(product_id, product_type, from_date, to_date)
+    return max(0.0, -_family_total(movements, _SALE_FAMILY))
 
 def calc_customer_returns(product_id, product_type, from_date, to_date):
-    returns = CustomerReturn.query.filter(
-        CustomerReturn.product_id == product_id,
-        CustomerReturn.product_type == product_type,
-        CustomerReturn.date >= from_date,
-        CustomerReturn.date <= to_date,
-        CustomerReturn.status == 'completed'
-    ).all()
-    return sum(safe_float(r.quantity) for r in returns if safe_float(r.quantity) > 0)
+    movements = _movements_in_range(product_id, product_type, from_date, to_date)
+    return max(0.0, _family_total(movements, _RETURN_FAMILY))
 
 def calc_dumps(product_id, product_type, from_date, to_date):
-    dumps = DumpEntry.query.filter(
-        DumpEntry.product_id == product_id,
-        DumpEntry.product_type == product_type,
-        DumpEntry.date >= from_date,
-        DumpEntry.date <= to_date
-    ).all()
-    return sum(abs(safe_float(d.quantity)) for d in dumps)
+    movements = _movements_in_range(product_id, product_type, from_date, to_date)
+    return max(0.0, -_family_total(movements, _DUMP_FAMILY))
 
 def calc_supplier_returns(product_id, product_type, from_date, to_date):
-    returns = SupplierReturn.query.filter(
-        SupplierReturn.product_id == product_id,
-        SupplierReturn.product_type == product_type,
-        SupplierReturn.date >= from_date,
-        SupplierReturn.date <= to_date
-    ).all()
-    return sum(safe_float(r.quantity) for r in returns)
+    movements = _movements_in_range(product_id, product_type, from_date, to_date)
+    return max(0.0, -_family_total(movements, _SUPPLIER_RETURN_FAMILY))
+
+def calc_adjustments(product_id, product_type, from_date, to_date):
+    movements = _movements_in_range(product_id, product_type, from_date, to_date)
+    known = (_SALE_FAMILY + _RETURN_FAMILY + _DUMP_FAMILY +
+             _SUPPLIER_RETURN_FAMILY + _PURCHASE_FAMILY)
+    total = 0.0
+    for m in movements:
+        if m.movement_type in known:
+            continue
+        if m.reference_type == 'initial_stock':
+            continue
+        total += safe_float(m.quantity)
+    return total
 
 def expected_stock(product_id, product_type, from_date, to_date):
     os = calc_opening_stock(product_id, product_type, from_date)
@@ -172,8 +174,9 @@ def expected_stock(product_id, product_type, from_date, to_date):
     crtn = calc_customer_returns(product_id, product_type, from_date, to_date)
     dmps = calc_dumps(product_id, product_type, from_date, to_date)
     srtn = calc_supplier_returns(product_id, product_type, from_date, to_date)
-    exp = os + ns - sales + crtn - dmps - srtn
-    return exp, {"OS": os, "NS": ns, "Sales": sales, "CRTN": crtn, "DMPS": dmps, "SRTN": srtn}
+    adj = calc_adjustments(product_id, product_type, from_date, to_date)
+    exp = os + ns - sales + crtn - dmps - srtn + adj
+    return exp, {"OS": os, "NS": ns, "Sales": sales, "CRTN": crtn, "DMPS": dmps, "SRTN": srtn, "Adj": adj}
 
 def verify_current_stock(product, label=""):
     """Compare product.current_stock against calculated expected stock."""
@@ -368,7 +371,7 @@ def create_sale(customer, items_data, inv_date, status='finalized'):
         invoice_number=next_inv, customer_id=customer.id,
         customer_type='cash', payment_status='pending',
         subtotal=subtotal, total_amount=total,
-        status='finalized', date=datetime(inv_date.year, inv_date.month, inv_date.day),
+        status=status, date=datetime(inv_date.year, inv_date.month, inv_date.day),
         created_by=user_id
     )
     db.session.add(sale)
@@ -382,6 +385,8 @@ def create_sale(customer, items_data, inv_date, status='finalized'):
         db.session.add(item)
         db.session.flush()
 
+        if status != 'finalized':
+            continue  # Draft/cancelled sales do not affect stock
         if float(qty) > 0:
             success, result = update_product_stock(
                 product_id=product.id, product_type='regular',
@@ -403,6 +408,109 @@ def create_sale(customer, items_data, inv_date, status='finalized'):
             raise RuntimeError(f"Sale stock update failed: {result}")
     db.session.commit()
     return sale
+
+def edit_sale(sale, items_data, inv_date, status='finalized'):
+    """Mimics PUT /api/sales/<id> via the real update_sale route using JWT.
+
+    items_data = [(product, qty, price), ...]. Verifies the route responds
+    successfully and commits the changes.
+    """
+    from flask_jwt_extended import create_access_token
+    token = create_access_token(identity=str(user_id))
+    payload_items = []
+    for product, qty, price in items_data:
+        payload_items.append({
+            'product_id': product.id,
+            'quantity': qty,
+            'unit_price': price,
+            'total_price': qty * price,
+            'notes': None
+        })
+    subtotal = sum(qty * price for _, qty, price in items_data)
+    payload = {
+        'invoice_number': sale.invoice_number,
+        'customer_id': sale.customer_id,
+        'customer_type': sale.customer_type,
+        'payment_status': sale.payment_status,
+        'subtotal': subtotal,
+        'porterage': safe_float(getattr(sale, 'porterage', 0) or 0),
+        'porterage_type': getattr(sale, 'porterage_type', None) or 'per_unit',
+        'porterage_rate': safe_float(getattr(sale, 'porterage_rate', 0) or 0),
+        'vat_rate': safe_float(getattr(sale, 'vat_rate', 0) or 0),
+        'vat_amount': safe_float(getattr(sale, 'vat_amount', 0) or 0),
+        'total_amount': subtotal,
+        'vehicle_details': getattr(sale, 'vehicle_details', None),
+        'gate_number': getattr(sale, 'gate_number', None),
+        'notes': getattr(sale, 'notes', None),
+        'status': status,
+        'date': inv_date.strftime('%Y-%m-%d'),
+        'items': payload_items
+    }
+    client = app.test_client()
+    resp = client.put(
+        f'/api/sales/{sale.id}',
+        json=payload,
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"update_sale failed ({resp.status_code}): {resp.get_json()}")
+    db.session.refresh(sale)
+    return resp.get_json()
+
+def update_purchase_invoice(invoice, items_data, inv_date):
+    """Mimics PUT /api/purchase-invoices/<id> via the real route using JWT.
+
+    items_data = [(product, quantity, unit_price), ...]
+    """
+    from flask_jwt_extended import create_access_token
+    token = create_access_token(identity=str(user_id))
+    payload_items = []
+    for product, qty, price in items_data:
+        payload_items.append({
+            'productId': product.id,
+            'productName': product.description,
+            'quantity': qty,
+            'unitPrice': price,
+            'totalPrice': qty * price,
+            'remarks': None
+        })
+    client = app.test_client()
+    resp = client.put(
+        f'/api/purchase-invoices/{invoice.id}',
+        json={'remarks': invoice.remarks, 'items': payload_items},
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"update_purchase_invoice failed ({resp.status_code}): {resp.get_json()}")
+    db.session.refresh(invoice)
+    return resp.get_json()
+
+def count_sale_movements(sale_id, product_id):
+    """Count sale-family StockMovements for one product of a sale."""
+    return StockMovement.query.filter(
+        StockMovement.reference_id == sale_id,
+        StockMovement.reference_type == 'sale',
+        StockMovement.product_id == product_id,
+        StockMovement.movement_type.in_(
+            ['sale', 'sale_cancellation', 'sale_adjustment',
+             'customer_return', 'customer_return_cancellation',
+             'customer_return_adjustment', 'customer_return_rejection']
+        )
+    ).count()
+
+def sale_net_movement(sale_id, product_id):
+    """Net signed movement effect for a product of a sale."""
+    rows = StockMovement.query.filter(
+        StockMovement.reference_id == sale_id,
+        StockMovement.reference_type == 'sale',
+        StockMovement.product_id == product_id,
+        StockMovement.movement_type.in_(
+            ['sale', 'sale_cancellation', 'sale_adjustment',
+             'customer_return', 'customer_return_cancellation',
+             'customer_return_adjustment', 'customer_return_rejection']
+        )
+    ).all()
+    return sum(safe_float(r.quantity) for r in rows)
 
 def create_customer_return(customer, product, quantity, ret_date, status='completed'):
     last = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
@@ -889,6 +997,92 @@ def run_tests(cleanup=False):
         else:
             msg(f"Note: {bad_sales} movement(s) reference deleted sales (expected - audit trail preserved)")
             ok("Deleted sale audit trail intact")
+
+        # ── EDIT / CANCEL / UPDATE SCENARIOS ────────────────────────────────
+        heading(8, "DAY 4 - Sale Edits, Cancellations & Purchase Updates")
+
+        test_day = date(2026, 6, 4)
+        # Snapshot current stock as the Day 4 opening baseline
+        base_a = safe_float(prod_a.current_stock)
+        base_b = safe_float(prod_b.current_stock)
+        base_c = safe_float(prod_c.current_stock)
+        msg(f"Day 4 opening baseline: A={base_a}, B={base_b}, C={base_c}")
+
+        # 8.1 Sale edit: quantity up
+        subheading("8.1 Edit sale quantity up (A +10 -> +15)")
+        s8 = create_sale(cust_a, [(prod_a, 10, 10.0)], test_day)
+        msg(f"After create: A={prod_a.current_stock} (expected {base_a - 10})")
+        verify_expected_stock(prod_a, base_a - 10, "after create 8.1")
+        edit_sale(s8, [(prod_a, 15, 10.0)], test_day)
+        msg(f"After edit to 15: A={prod_a.current_stock} (expected {base_a - 15})")
+        verify_expected_stock(prod_a, base_a - 15, "after edit up 8.1")
+        net = sale_net_movement(s8.id, prod_a.id)
+        ok(f"Net sale movement for A={net} (expected -15)") if abs(net + 15) < 0.01 else fail(f"Net sale movement A={net} != -15")
+
+        # 8.2 Sale edit: quantity down
+        subheading("8.2 Edit sale quantity down (15 -> 7)")
+        edit_sale(s8, [(prod_a, 7, 10.0)], test_day)
+        msg(f"After edit to 7: A={prod_a.current_stock} (expected {base_a - 7})")
+        verify_expected_stock(prod_a, base_a - 7, "after edit down 8.2")
+        net = sale_net_movement(s8.id, prod_a.id)
+        ok(f"Net sale movement for A={net} (expected -7)") if abs(net + 7) < 0.01 else fail(f"Net sale movement A={net} != -7")
+
+        # 8.3 Sale edit: item added
+        subheading("8.3 Edit sale adding a new product (A 7 + B 3)")
+        edit_sale(s8, [(prod_a, 7, 10.0), (prod_b, 3, 10.0)], test_day)
+        verify_expected_stock(prod_a, base_a - 7, "after add item A 8.3")
+        verify_expected_stock(prod_b, base_b - 3, "after add item B 8.3")
+
+        # 8.4 Sale edit: item removed
+        subheading("8.4 Edit sale removing an item (keep only B 3)")
+        edit_sale(s8, [(prod_b, 3, 10.0)], test_day)
+        verify_expected_stock(prod_a, base_a, "A restored after removal 8.4")
+        verify_expected_stock(prod_b, base_b - 3, "B unchanged after removal 8.4")
+
+        # 8.5 Duplicate line items (the P58 bug): same product twice in one edit
+        subheading("8.5 Edit sale with duplicate line items for same product (B 2 + B 4)")
+        edit_sale(s8, [(prod_b, 2, 10.0), (prod_b, 4, 10.0)], test_day)
+        verify_expected_stock(prod_b, base_b - 6, "B net -6 after duplicate items 8.5")
+        net = sale_net_movement(s8.id, prod_b.id)
+        ok(f"Net sale movement B={net} (expected -6)") if abs(net + 6) < 0.01 else fail(f"Net sale movement B={net} != -6")
+
+        # 8.6 Finalize status transition (draft -> finalized creates movements)
+        subheading("8.6 Draft sale finalization via edit")
+        s9 = create_sale(cust_b, [(prod_c, 8, 10.0)], test_day, status='draft')
+        msg(f"Draft sale created (no stock change): C={prod_c.current_stock}")
+        verify_expected_stock(prod_c, base_c, "C unchanged by draft 8.6")
+        edit_sale(s9, [(prod_c, 8, 10.0)], test_day, status='finalized')
+        verify_expected_stock(prod_c, base_c - 8, "C reduced after finalize 8.6")
+
+        # 8.7 Cancel a finalized sale (finalized -> cancelled restores stock)
+        subheading("8.7 Cancel finalized sale (finalized -> cancelled)")
+        msg(f"Before cancel: C={prod_c.current_stock} (expected {base_c - 8})")
+        edit_sale(s9, [(prod_c, 8, 10.0)], test_day, status='cancelled')
+        verify_expected_stock(prod_c, base_c, "C restored after cancel 8.7")
+
+        # 8.8 Stock check consistency after all edits
+        subheading("8.8 Stock check report matches current_stock after edits")
+        for prod, name in [(prod_a, "A"), (prod_b, "B"), (prod_c, "C")]:
+            verify_current_stock(prod, f"Day4 {name}")
+
+        # 8.9 Purchase invoice update (reverse + re-add)
+        subheading("8.9 Update purchase invoice (A +20 -> +35)")
+        p8, inv8, _ = create_purchase_invoice(supp_a, prod_a, 20, test_day)
+        msg(f"After purchase A+20: A={prod_a.current_stock} (expected {base_a + 20})")
+        verify_expected_stock(prod_a, base_a + 20, "after purchase 8.9")
+        update_purchase_invoice(inv8, [(prod_a, 35, 10.0)], test_day)
+        msg(f"After purchase update to 35: A={prod_a.current_stock} (expected {base_a + 35})")
+        verify_expected_stock(prod_a, base_a + 35, "after purchase update 8.9")
+
+        # 8.10 Delete purchase invoice reverses stock
+        subheading("8.10 Delete purchase invoice (reverses +35)")
+        delete_purchase_invoice(inv8)
+        verify_expected_stock(prod_a, base_a, "A restored after purchase delete 8.10")
+
+        # 8.11 Stock check report again after purchase scenarios
+        subheading("8.11 Stock check report consistency after purchases")
+        for prod, name in [(prod_a, "A"), (prod_b, "B"), (prod_c, "C")]:
+            verify_current_stock(prod, f"Day4 final {name}")
 
         # ── CLEANUP ──────────────────────────────────────────────────────────
         if cleanup:
