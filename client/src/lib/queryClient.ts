@@ -2,14 +2,46 @@ import { QueryClient, useMutation, useQueryClient, UseMutationOptions, UseMutati
 import { API_BASE_URL, useRelativeUrls } from "./config";
 import { handleAuthError } from "./auth";
 
+// ── 401 de-bounce ────────────────────────────────────────────────────────────
+// Prevent multiple simultaneous 401 responses (e.g. from parallel background
+// queries) from each triggering an independent logout + redirect.
+// The first 401 sets a short grace timer; subsequent 401s within that window
+// are ignored. Only after the grace period fires does the actual logout run,
+// giving in-flight retries a chance to succeed (e.g. if the server restarted
+// and a fresh request works).
+
+let _authErrorTimer: ReturnType<typeof setTimeout> | null = null;
+let _authErrorCount = 0;
+const AUTH_ERROR_GRACE_MS = 3000; // wait 3 s before acting on 401s
+
+export function scheduleAuthError() {
+  _authErrorCount++;
+  if (_authErrorTimer) return; // already scheduled — don't stack
+  _authErrorTimer = setTimeout(() => {
+    _authErrorTimer = null;
+    const count = _authErrorCount;
+    _authErrorCount = 0;
+    console.warn(`[Auth] ${count} 401 response(s) received — session expired.`);
+    handleAuthError();
+  }, AUTH_ERROR_GRACE_MS);
+}
+
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: true,
+      // Only refetch on window focus for queries that are stale
+      // — prevents a burst of re-requests every time the user switches tabs,
+      // any one of which could get a 401 and log them out.
+      refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: true,
       staleTime: 1000 * 60 * 5, // 5 minutes
-      retry: 3,
+      // Only retry once on failure — repeated retries on a 401 just delay logout
+      retry: (failureCount, error: any) => {
+        // Never retry auth errors
+        if (error?.message?.includes('401') || error?.message?.includes('Session expired')) return false;
+        return failureCount < 1;
+      },
     },
   },
 });
@@ -63,13 +95,16 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
 
   const response = await fetch(url, fetchOptions);
 
+  // Handle 401 with de-bounce so a burst of background queries expiring at the
+  // same moment doesn't fire multiple independent logout flows.
+  if (response.status === 401) {
+    scheduleAuthError();
+    throw new Error('Session expired. Please login again.');
+  }
+
   const responseData = await response.json();
 
   if (!response.ok) {
-    if (response.status === 401) {
-      handleAuthError();
-      throw new Error('Session expired. Please login again.');
-    }
     throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
   }
 

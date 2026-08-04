@@ -238,8 +238,8 @@ def get_print_job_status(job_id):
         return jsonify({'error': f'Failed to get job status: {str(e)}'}), 500
 
 # Configure Flask-JWT-Extended
-app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY', 'super-secret-key')  # Use environment variable
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
+app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY', 'salesmaster-jwt-secret-key-change-in-production-2024')
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
 jwt = JWTManager(app)
 
 # Security Headers Middleware

@@ -2,8 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { handleAuthError } from "@/lib/auth";
+import { apiRequest, scheduleAuthError } from "@/lib/queryClient";
 import { HolidayRequest } from "@shared/schema";
 import { Loader2, Plus, Eye, Edit, Trash2, Printer, Upload, FileText, CalendarIcon, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -198,7 +197,7 @@ const HolidayRequests = () => {
 
         if (!response.ok) {
           if (response.status === 401) {
-            handleAuthError();
+            scheduleAuthError();
             throw new Error('Session expired. Please login again.');
           }
           throw new Error('Failed to load signed form');

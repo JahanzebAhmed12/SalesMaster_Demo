@@ -28,8 +28,12 @@ interface AuthState {
 }
 
 // Centralized handler for authentication errors (401)
-// This ensures both localStorage token and Zustand store are always in sync
+// This ensures both localStorage token and Zustand store are always in sync.
+// Called by the de-bounced 401 handler in queryClient — not on every single 401.
 export function handleAuthError() {
+  // Don't redirect if we're already on the login page
+  if (window.location.pathname === '/' || window.location.pathname === '/login') return;
+
   localStorage.removeItem('jwt_token');
   // Update the Zustand store directly (not calling logout() which makes a network request)
   useAuth.setState({ user: null, isAuthenticated: false });
