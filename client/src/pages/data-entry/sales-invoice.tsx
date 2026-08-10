@@ -499,7 +499,7 @@ const SalesInvoice = () => {
     const item = currentStock.find(
       (s) => s.id === productId && s.productType === stockType
     );
-    return item ? item.currentStock : 0;
+    return item ? (Number(item.currentStock) || 0) : 0;
   };
 
   // Find current stock for a product with real-time reduction for items in current invoice
@@ -519,7 +519,7 @@ const SalesInvoice = () => {
           return saleItem.nonProductId === productId;
         }
       })
-      .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
+      .reduce((sum, saleItem) => sum + (Number(saleItem.quantity) || 0), 0);
 
     if (!currentSale) {
       // New invoice: DB stock is correct (nothing deducted yet).
@@ -533,21 +533,29 @@ const SalesInvoice = () => {
             return saleItem.nonProductId === productId;
           }
         })
-        .reduce((sum, saleItem) => sum + saleItem.quantity, 0);
+        .reduce((sum, saleItem) => sum + (Number(saleItem.quantity) || 0), 0);
 
-      return item.currentStock - currentInvoiceReservedQuantity - heldInvoicesReservedQuantity;
+      return Number(item.currentStock) - currentInvoiceReservedQuantity - heldInvoicesReservedQuantity;
     } else {
       // Edit mode: DB stock already has the ORIGINAL invoice quantities deducted.
       // To show the correct available stock we need to:
       //   available = DB stock + original_saved_qty - current_saleItems_qty
-      // This way adding/removing items in the edit form shows the right number.
-      // We can derive original_saved_qty from the DB stock adjustment that already
-      // happened, but the simplest approach is: the DB stock reflects the invoice
-      // as last saved, so we just subtract the delta = current_qty - 0 (since DB
-      // already accounts for what was saved, and saleItems IS the current state).
-      // In practice: subtract currentInvoiceReservedQuantity from DB stock gives
-      // the correct "what would be left if we save this version".
-      return item.currentStock - currentInvoiceReservedQuantity;
+      // currentSale.items holds the items as they were saved (the quantities the
+      // DB stock already accounts for), while saleItems is the editable state.
+      // Re-adding the original qty removes the double-deduction, then subtracting
+      // the current qty reflects any additions/removals made during this edit.
+      // Note: Number() on currentStock is required because the API may return
+      // it as a string (Decimal serialization); string + number concatenates.
+      const originalSavedQuantity = (currentSale?.items || [])
+        .filter(item => {
+          if (type === 'regular') {
+            return item.productId === productId;
+          } else {
+            return item.nonProductId === productId;
+          }
+        })
+        .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+      return Number(item.currentStock) + originalSavedQuantity - currentInvoiceReservedQuantity;
     }
   };
 

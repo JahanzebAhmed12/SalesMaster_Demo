@@ -127,7 +127,7 @@ class SaleItem(db.Model):
             'productId': self.product_id,
             'nonProductId': self.non_product_id,
             'productName': self.product.description if self.product else self.non_product.description if self.non_product else None,
-            'quantity': self.quantity,
+            'quantity': float(self.quantity) if self.quantity is not None else 0,
             'unitPrice': float(self.unit_price),
             'totalPrice': float(self.total_price),
             'notes': self.notes,

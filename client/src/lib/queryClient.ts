@@ -1,6 +1,6 @@
 import { QueryClient, useMutation, useQueryClient, UseMutationOptions, UseMutationResult } from "@tanstack/react-query";
 import { API_BASE_URL, useRelativeUrls } from "./config";
-import { handleAuthError } from "./auth";
+import { handleAuthError, useAuth } from "./auth";
 
 // ── 401 de-bounce ────────────────────────────────────────────────────────────
 // Prevent multiple simultaneous 401 responses (e.g. from parallel background
@@ -17,11 +17,28 @@ const AUTH_ERROR_GRACE_MS = 3000; // wait 3 s before acting on 401s
 export function scheduleAuthError() {
   _authErrorCount++;
   if (_authErrorTimer) return; // already scheduled — don't stack
-  _authErrorTimer = setTimeout(() => {
+  _authErrorTimer = setTimeout(async () => {
     _authErrorTimer = null;
     const count = _authErrorCount;
     _authErrorCount = 0;
-    console.warn(`[Auth] ${count} 401 response(s) received — session expired.`);
+    console.warn(`[Auth] ${count} 401/422 response(s) received — attempting silent token refresh...`);
+
+    // Try to silently refresh the token before giving up and logging out.
+    // This handles the case where the token just expired mid-request.
+    try {
+      const { refreshToken, isAuthenticated } = useAuth.getState();
+      if (isAuthenticated) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          console.log('[Auth] Silent refresh succeeded — not logging out');
+          return; // Token refreshed — do NOT log out
+        }
+      }
+    } catch {
+      // refresh failed — fall through to logout
+    }
+
+    console.warn('[Auth] Silent refresh failed — logging out');
     handleAuthError();
   }, AUTH_ERROR_GRACE_MS);
 }
@@ -38,8 +55,12 @@ export const queryClient = new QueryClient({
       staleTime: 1000 * 60 * 5, // 5 minutes
       // Only retry once on failure — repeated retries on a 401 just delay logout
       retry: (failureCount, error: any) => {
-        // Never retry auth errors
-        if (error?.message?.includes('401') || error?.message?.includes('Session expired')) return false;
+        // Never retry auth errors (401 or 422)
+        if (
+          error?.message?.includes('Session expired') ||
+          error?.message?.includes('401') ||
+          error?.message?.includes('422')
+        ) return false;
         return failureCount < 1;
       },
     },
@@ -95,9 +116,11 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
 
   const response = await fetch(url, fetchOptions);
 
-  // Handle 401 with de-bounce so a burst of background queries expiring at the
+  // Handle 401/422 with de-bounce so a burst of background queries expiring at the
   // same moment doesn't fire multiple independent logout flows.
-  if (response.status === 401) {
+  // 401 = expired/invalid token, 422 = malformed token (Flask-JWT returns this
+  // when the Authorization header is present but unparseable, e.g. "Bearer null").
+  if (response.status === 401 || response.status === 422) {
     scheduleAuthError();
     throw new Error('Session expired. Please login again.');
   }

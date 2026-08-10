@@ -14,11 +14,6 @@ from decimal import Decimal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import app, db
-from app import (
-    get_opening_stock, get_new_stock, get_sales_quantity,
-    get_customer_returns_quantity, get_dumps_quantity,
-    get_supplier_returns_quantity, get_adjustments_quantity
-)
 from models import (
     RegularProduct, NonProduct, ClosingStock, StockMovement,
     SaleItem, Sale, CustomerReturn, DumpEntry, SupplierReturn
@@ -31,6 +26,92 @@ def safe_float(val):
         return float(val)
     except (ValueError, TypeError):
         return 0.0
+
+def get_opening_stock(product_id, product_type, from_date):
+    """Look back up to 7 days for the last ClosingStock entry (same as stock check report)."""
+    for days_back in range(1, 8):
+        check_date = (from_date - timedelta(days=days_back))
+        entry = ClosingStock.query.filter_by(
+            product_id=product_id,
+            product_type=product_type,
+            date=check_date,
+        ).first()
+        if entry:
+            return safe_float(entry.quantity)
+    return 0.0
+
+def get_new_stock(product_id, product_type, from_date, to_date):
+    """Net purchases via StockMovement (same as stock check report)."""
+    movements = StockMovement.query.filter(
+        StockMovement.product_id == product_id,
+        StockMovement.product_type == product_type,
+        StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
+        StockMovement.created_at >= from_date,
+        StockMovement.created_at <= to_date
+    ).all()
+    total = 0.0
+    for mov in movements:
+        qty = safe_float(mov.quantity)
+        if mov.movement_type == 'purchase' and qty > 0:
+            total += qty
+        elif mov.movement_type == 'purchase_reversal' and qty < 0:
+            total += qty
+    return max(0.0, total)
+
+def get_sales_quantity(product_id, product_type, from_date, to_date):
+    """Sales via SaleItem for finalized sales (same as stock check report)."""
+    if product_type == 'regular':
+        items = db.session.query(SaleItem).join(
+            Sale, SaleItem.sale_id == Sale.id
+        ).filter(
+            SaleItem.product_id == product_id,
+            Sale.date >= from_date,
+            Sale.date <= to_date,
+            Sale.status == 'finalized'
+        ).all()
+    else:
+        items = db.session.query(SaleItem).join(
+            Sale, SaleItem.sale_id == Sale.id
+        ).filter(
+            SaleItem.non_product_id == product_id,
+            Sale.date >= from_date,
+            Sale.date <= to_date,
+            Sale.status == 'finalized'
+        ).all()
+    total = sum(abs(safe_float(item.quantity)) for item in items if item.quantity > 0)
+    return max(0.0, total)
+
+def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
+    """Completed customer returns (same as stock check report)."""
+    returns = CustomerReturn.query.filter(
+        CustomerReturn.product_id == product_id,
+        CustomerReturn.product_type == product_type,
+        CustomerReturn.date >= from_date,
+        CustomerReturn.date <= to_date,
+        CustomerReturn.status == 'completed'
+    ).all()
+    return sum(safe_float(r.quantity) for r in returns if r.quantity > 0)
+
+def get_dumps_quantity(product_id, product_type, from_date, to_date):
+    """All dump entries (same as stock check report)."""
+    dumps = DumpEntry.query.filter(
+        DumpEntry.product_id == product_id,
+        DumpEntry.product_type == product_type,
+        DumpEntry.date >= from_date,
+        DumpEntry.date <= to_date
+    ).all()
+    total = sum(abs(safe_float(d.quantity)) for d in dumps)
+    return max(0.0, total)
+
+def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
+    """All supplier returns (same as stock check report)."""
+    returns = SupplierReturn.query.filter(
+        SupplierReturn.product_id == product_id,
+        SupplierReturn.product_type == product_type,
+        SupplierReturn.date >= from_date,
+        SupplierReturn.date <= to_date
+    ).all()
+    return sum(safe_float(r.quantity) for r in returns)
 
 def check_discrepancies(from_date, to_date):
     """Compare Stock Check formula output vs current_stock for every active product."""
@@ -67,8 +148,7 @@ def _check_one(product_id, product_type, description, from_date, to_date,
     crtn = get_customer_returns_quantity(product_id, product_type, from_date, to_date)
     dmps = get_dumps_quantity(product_id, product_type, from_date, to_date)
     srtn = get_supplier_returns_quantity(product_id, product_type, from_date, to_date)
-    adj = get_adjustments_quantity(product_id, product_type, from_date, to_date)
-    expected = opening + new_stk - sales + crtn - dmps - srtn + adj
+    expected = opening + new_stk - sales + crtn - dmps - srtn
 
     # Get the live current_stock from product table
     if product_type == 'regular':

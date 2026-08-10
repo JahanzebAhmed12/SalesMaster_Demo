@@ -24,6 +24,7 @@ interface AuthState {
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
+  refreshToken: () => Promise<boolean>;
   checkAuth: () => Promise<boolean>;
 }
 
@@ -96,35 +97,73 @@ export const useAuth = create<AuthState>()(
           });
         }
       },
+      refreshToken: async () => {
+        // Silently exchange the current token for a fresh one.
+        // Called periodically while the user is active so the token
+        // never expires during a working session.
+        const token = localStorage.getItem('jwt_token');
+        if (!token) return false;
+        try {
+          const response = await fetch(getApiUrl("/api/auth/refresh"), {
+            method: "POST",
+            headers: { 'Authorization': `Bearer ${token}` },
+            credentials: "include",
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.token) {
+              localStorage.setItem('jwt_token', data.token);
+              console.log('[Auth] Token refreshed silently');
+              return true;
+            }
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      },
       checkAuth: async () => {
         try {
+          const token = localStorage.getItem('jwt_token');
+
+          // No token stored — definitely not authenticated, but don't redirect.
+          // The user simply hasn't logged in yet (or already logged out cleanly).
+          if (!token) {
+            set({ user: null, isAuthenticated: false });
+            return false;
+          }
+
           const response = await fetch(getApiUrl("/api/auth/me"), {
             headers: {
-              'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+              'Authorization': `Bearer ${token}`,
             },
             credentials: "include",
           });
 
           if (response.ok) {
             const data = await response.json();
-            set({
-              user: data,
-              isAuthenticated: true,
-            });
+            set({ user: data, isAuthenticated: true });
             return true;
           }
-          set({
-            user: null,
-            isAuthenticated: false,
-          });
-          return false;
+
+          // 401 = token expired/invalid, 422 = malformed token (e.g. "Bearer null")
+          // Both mean the stored token is no good — clear it but only redirect if
+          // the user was previously authenticated (preserve current page experience).
+          if (response.status === 401 || response.status === 422) {
+            localStorage.removeItem('jwt_token');
+            set({ user: null, isAuthenticated: false });
+            return false;
+          }
+
+          // Any other error (500, network timeout, etc.) — do NOT log the user out.
+          // The server may be temporarily unavailable; keep existing auth state.
+          console.warn(`[checkAuth] Non-auth error ${response.status} — keeping existing session`);
+          return true;
         } catch (error) {
-          console.error("Auth check error:", error);
-          set({
-            user: null,
-            isAuthenticated: false,
-          });
-          return false;
+          // Network error — do NOT log the user out. The server may be restarting.
+          console.warn('[checkAuth] Network error — keeping existing session:', error);
+          // Return current auth state without touching the store
+          return useAuth.getState().isAuthenticated;
         }
       },
     }),

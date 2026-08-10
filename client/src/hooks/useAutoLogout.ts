@@ -2,30 +2,30 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
-const IDLE_TIME = 5 * 60 * 1000;     // 5 minutes
-const WARNING_TIME = 4 * 60 * 1000;  // warn at 4 minutes
+const IDLE_TIME = 5 * 60 * 1000;       // 5 minutes idle → logout
+const WARNING_TIME = 4 * 60 * 1000;    // warn at 4 minutes
+const TOKEN_REFRESH_INTERVAL = 30 * 60 * 1000; // refresh token every 30 minutes
 
 export const useAutoLogout = () => {
-  // Store everything in refs so callbacks are always stable and never
-  // cause timer restarts simply because a dependency identity changed.
-  const { logout, user } = useAuth();
+  const { logout, user, refreshToken } = useAuth();
   const { toast } = useToast();
 
   const logoutRef = useRef(logout);
   const toastRef = useRef(toast);
   const userRef = useRef(user);
+  const refreshTokenRef = useRef(refreshToken);
 
-  // Keep refs in sync with latest values without recreating callbacks
   useEffect(() => { logoutRef.current = logout; }, [logout]);
   useEffect(() => { toastRef.current = toast; }, [toast]);
   useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { refreshTokenRef.current = refreshToken; }, [refreshToken]);
 
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tokenRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   const warningShownRef = useRef(false);
 
-  // stable reset — never changes identity
   const resetTimer = useRef(() => {
     if (!userRef.current) return;
 
@@ -35,10 +35,8 @@ export const useAutoLogout = () => {
     warningShownRef.current = false;
     lastActivityRef.current = Date.now();
 
-    // Dispatch reset event for SessionStatus component
     window.dispatchEvent(new CustomEvent('session-reset'));
 
-    // Warning at 4 minutes
     warningTimerRef.current = setTimeout(() => {
       if (warningShownRef.current) return;
       warningShownRef.current = true;
@@ -51,7 +49,6 @@ export const useAutoLogout = () => {
       });
     }, WARNING_TIME);
 
-    // Logout at 5 minutes — double-check real idle time before acting
     idleTimerRef.current = setTimeout(() => {
       const idle = Date.now() - lastActivityRef.current;
       if (idle >= IDLE_TIME) {
@@ -63,28 +60,23 @@ export const useAutoLogout = () => {
         });
         logoutRef.current();
       } else {
-        // User was actually active — reset without triggering another warning
         resetTimer.current();
       }
     }, IDLE_TIME);
   }).current;
 
-  // Stable activity handler — never recreated
   const handleActivity = useRef((e?: Event) => {
     if (!userRef.current) return;
-
     const now = Date.now();
-    // Throttle: only react if >1 s has passed since last recorded activity
     if (now - lastActivityRef.current < 1000) return;
-
     resetTimer();
   }).current;
 
   useEffect(() => {
     if (!user) {
-      // User logged out — clear all timers
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+      if (tokenRefreshIntervalRef.current) clearInterval(tokenRefreshIntervalRef.current);
       return;
     }
 
@@ -98,7 +90,16 @@ export const useAutoLogout = () => {
       document.addEventListener(ev, handleActivity, { passive: true, capture: true });
     });
 
-    // Kick off the first timer
+    // Silently refresh the JWT token every 30 minutes while the user is logged in.
+    // This prevents the token from expiring during a long working session.
+    tokenRefreshIntervalRef.current = setInterval(async () => {
+      if (!userRef.current) return;
+      const success = await refreshTokenRef.current();
+      if (!success) {
+        console.warn('[Auth] Token refresh failed — user may be logged out soon');
+      }
+    }, TOKEN_REFRESH_INTERVAL);
+
     resetTimer();
 
     return () => {
@@ -107,9 +108,10 @@ export const useAutoLogout = () => {
       });
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+      if (tokenRefreshIntervalRef.current) clearInterval(tokenRefreshIntervalRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Only re-run when login state changes — NOT on every render
+  }, [user]);
 
   return { resetTimer: handleActivity };
 };

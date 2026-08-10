@@ -239,7 +239,9 @@ def get_print_job_status(job_id):
 
 # Configure Flask-JWT-Extended
 app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY', 'salesmaster-jwt-secret-key-change-in-production-2024')
-app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=12)
+# Long-lived token — 24 hours. Combined with silent refresh on the frontend,
+# a user working all day will never be logged out by token expiry.
+app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 jwt = JWTManager(app)
 
 # Security Headers Middleware
@@ -833,6 +835,23 @@ def login():
 def logout():
     session.clear()
     return jsonify({'message': 'Logged out successfully'})
+
+
+@app.route('/api/auth/refresh', methods=['POST'])
+@jwt_required()
+def refresh_token():
+    """Issue a fresh token for an authenticated user.
+
+    Called by the frontend before the current token expires so the user
+    is never interrupted mid-session.  The endpoint simply re-creates a
+    token for the same user identity.
+    """
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if not user or user.status != 'Active':
+        return jsonify({'error': 'Account inactive'}), 403
+    new_token = create_access_token(identity=str(user_id))
+    return jsonify({'token': new_token}), 200
 
 # Sales routes
 @app.route('/api/sales', methods=['GET'])
@@ -4424,29 +4443,57 @@ def handle_delete_payment_batch(batch_id, user_id):
         if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and payment_date == today:
             return jsonify({"error": "You do not have permission to delete payments for today."}), 403
         
-        # Revert sale payment statuses for invoice payments
+        # Revert sale payment statuses for invoice payments and restore any
+        # credit invoices consumed by this batch.
+        #
+        # When a credit invoice is applied, its amount is baked into the
+        # positive invoice's paid_amount (via the credit_applied logic in
+        # create_customer_bulk_payment) without a matching Payment row. So
+        # instead of merely subtracting the batch's rows, each affected
+        # invoice's paid_amount is recomputed from its remaining Payment rows.
+        # That automatically removes the embedded credit contribution. Credit
+        # rows (0-amount records of an applied credit invoice) restore the
+        # credit sale back to outstanding.
+        batch_payments_by_sale = {}
         for payment in payments:
-            if payment.sale_id:  # This is an invoice payment
+            if payment.sale_id and payment.payment_type != 'credit':
+                batch_payments_by_sale.setdefault(payment.sale_id, []).append(payment)
+
+        for sale_id, batch_rows in batch_payments_by_sale.items():
+            sale = Sale.query.get(sale_id)
+            if not sale:
+                continue
+            batch_total = sum(float(p.amount) for p in batch_rows)
+            remaining_total = sum(
+                float(p.amount) for p in sale.payments
+                if p.payment_type != 'credit'
+            ) - batch_total
+            new_paid = round(min(max(0.0, remaining_total), float(sale.total_amount or 0)), 2)
+            sale.paid_amount = new_paid
+
+            if new_paid == 0:
+                sale.payment_status = "unpaid"
+            elif new_paid < float(sale.total_amount):
+                sale.payment_status = "partial"
+            else:
+                sale.payment_status = "paid"
+
+            # Reset customer_type to 'account' when payments are deleted
+            if sale.customer_type != 'account':
+                sale.customer_type = 'account'
+            db.session.add(sale)
+
+        # Restore credit invoices that were consumed by this batch
+        for payment in payments:
+            if payment.payment_type == 'credit' and payment.sale_id:
                 sale = Sale.query.get(payment.sale_id)
-                if sale:
-                    # Subtract this payment amount from the sale's paid amount
-                    current_paid = float(sale.paid_amount or 0)
-                    new_paid = max(0, current_paid - float(payment.amount))
-                    sale.paid_amount = new_paid
-                    
-                    # Update payment status based on new paid amount
-                    if new_paid == 0:
-                        sale.payment_status = "unpaid"
-                    elif new_paid < float(sale.total_amount):
-                        sale.payment_status = "partial"
-                    else:
-                        sale.payment_status = "paid"
-                    
-                    # Reset customer_type to 'account' when payments are deleted
+                if sale and float(sale.paid_amount or 0) < 0:
+                    sale.paid_amount = 0
+                    sale.payment_status = "unpaid"
                     if sale.customer_type != 'account':
                         sale.customer_type = 'account'
                     db.session.add(sale)
-        
+
         # Delete all payments in the batch
         Payment.query.filter_by(batch_id=batch_id).delete()
         
@@ -4513,9 +4560,11 @@ def manage_payment_batch(batch_id):
                     if sale:
                         original_sale_types[payment.sale_id] = sale.customer_type
             
-            # Revert sale payment statuses for old payments
+            # Revert sale payment statuses for old payments.
+            # Credit rows are 0-amount records of an applied credit invoice and
+            # are skipped here so the credit sale's paid_amount is not reset.
             for payment in payments:
-                if payment.sale_id:
+                if payment.sale_id and payment.payment_type != 'credit':
                     sale = Sale.query.get(payment.sale_id)
                     if sale:
                         current_paid = float(sale.paid_amount or 0)
@@ -4533,6 +4582,12 @@ def manage_payment_batch(batch_id):
             
             # Calculate old total amount before deleting payments
             old_total_amount = sum(float(p.amount) for p in payments)
+            
+            # Capture existing credit-application rows so they survive the edit
+            existing_credit_rows = [
+                {'sale_id': p.sale_id, 'payment_mode': p.payment_mode}
+                for p in payments if p.payment_type == 'credit' and p.sale_id
+            ]
             
             # Delete existing payments in batch
             Payment.query.filter_by(batch_id=batch_id).delete()
@@ -4757,8 +4812,24 @@ def manage_payment_batch(batch_id):
                         payments_created.append(payment)
                         print(f"[EDIT DEBUG] Created on-account payment: {mode} £{remaining_amount}")
 
+            # Re-add the credit-application rows captured before the delete so
+            # applied credit invoices stay visible in the payment history.
+            for credit_row in existing_credit_rows:
+                credit_payment = Payment(
+                    customer_id=customer_id,
+                    sale_id=credit_row['sale_id'],
+                    amount=0,
+                    payment_mode=credit_row['payment_mode'],
+                    payment_date=payment_date_obj,
+                    batch_id=batch_id,
+                    payment_type='credit',
+                    payment_source='customer_payment',
+                    remarks=f"{remarks} (Credit applied)" if remarks else "Credit applied",
+                    created_by=user_id
+                )
+                db.session.add(credit_payment)
+                payments_created.append(credit_payment)
 
-            
             # Commit the transaction
             db.session.commit()
             
@@ -5025,9 +5096,15 @@ def get_customer_outstanding_invoices(customer_id):
         
         outstanding_sales = []
         for sale in all_sales:
-            # Calculate total payments for this sale from Payment records
-            total_payments = sum(float(p.amount) for p in sale.payments)
-            outstanding_balance = float(sale.total_amount) - total_payments
+            if float(sale.total_amount) < 0:
+                # Credit invoice: the applied amount is tracked on paid_amount because
+                # no Payment rows are created when a credit is applied
+                outstanding_balance = float(sale.total_amount) - float(sale.paid_amount or 0)
+            else:
+                total_payments = sum(float(p.amount) for p in sale.payments)
+                # Use the greater of payment-row sums and paid_amount so invoices that are
+                # settled partly via applied credits are correctly excluded
+                outstanding_balance = float(sale.total_amount) - max(total_payments, float(sale.paid_amount or 0))
             
             # Include sales with outstanding balance (positive or negative for credit invoices)
             if abs(outstanding_balance) > 0.01:  # Allow for small rounding differences
@@ -5700,6 +5777,10 @@ def customer_statement():
     
     # Add payment entries
     for payment in payments:
+        if payment.payment_type == 'credit':
+            # 0-amount credit-application row: the credit is already shown above
+            # as a Credit Note sale entry, so skip the redundant 0-amount line.
+            continue
         payment_datetime = datetime.combine(payment.payment_date, datetime.min.time())
         
         if payment.sale_id:
@@ -7234,7 +7315,7 @@ def get_current_stock():
                 'productCode': product.product_code,
                 'description': product.description,
                 'productType': 'regular',
-                'currentStock': product.current_stock,
+                'currentStock': float(product.current_stock) if product.current_stock is not None else 0,
                 'reorderLevel': product.reorder_level,
                 'unitOfSale': product.unit_of_sale,
                 'location': product.location
@@ -7247,7 +7328,7 @@ def get_current_stock():
                 'productCode': product.product_code,
                 'description': product.description,
                 'productType': 'non',
-                'currentStock': product.current_stock,
+                'currentStock': float(product.current_stock) if product.current_stock is not None else 0,
                 'reorderLevel': product.reorder_level,
                 'unitOfSale': product.unit_of_sale,
                 'location': product.location
@@ -7284,7 +7365,7 @@ def get_product_stock_details(product_id):
                 'productCode': product.product_code,
                 'description': product.description,
                 'productType': product_type,
-                'currentStock': product.current_stock,
+                'currentStock': float(product.current_stock) if product.current_stock is not None else 0,
                 'reorderLevel': product.reorder_level,
                 'unitOfSale': product.unit_of_sale,
                 'location': product.location
@@ -7919,11 +8000,8 @@ def stock_check_report():
                 # Get supplier returns between dates
                 supplier_returns = get_supplier_returns_quantity(product.id, 'regular', from_dt, to_dt)
                 
-                # Get stock adjustments (movements outside all known families)
-                adjustments = get_adjustments_quantity(product.id, 'regular', from_dt, to_dt)
-                
                 # Calculate expected stock
-                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns + adjustments
+                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns
                 
                 # Get actual closing stock
                 closing_stock_entry = ClosingStock.query.filter(
@@ -7996,11 +8074,8 @@ def stock_check_report():
                 # Get supplier returns
                 supplier_returns = get_supplier_returns_quantity(product.id, 'non', from_dt, to_dt)
                 
-                # Get stock adjustments (movements outside all known families)
-                adjustments = get_adjustments_quantity(product.id, 'non', from_dt, to_dt)
-                
                 # Calculate expected stock
-                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns + adjustments
+                expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns
                 
                 # Get actual closing stock
                 closing_stock_entry = ClosingStock.query.filter(
@@ -8090,23 +8165,6 @@ def get_opening_stock(product_id, product_type, from_date):
 
             # No entries → holiday, continue looking back
 
-        # No closing-stock anchor found — derive opening from the movement ledger
-        # so a product with no closing-stock entry never incorrectly opens at 0.
-        previous_movement = db.session.query(StockMovement).filter(
-            StockMovement.product_id == product_id,
-            StockMovement.product_type == product_type,
-            StockMovement.movement_date.isnot(None),
-            StockMovement.movement_date < from_date_only
-        ).order_by(StockMovement.movement_date.desc(), StockMovement.id.desc()).first()
-        if previous_movement:
-            return safe_float(previous_movement.new_stock)
-
-        if product_type == 'regular':
-            product = RegularProduct.query.get(product_id)
-        else:
-            product = NonProduct.query.get(product_id)
-        if product:
-            return safe_float(product.initial_stock)
         return 0.0
     except Exception as e:
         print(f"[ERROR] get_opening_stock failed: {e}")
@@ -8115,65 +8173,41 @@ def get_opening_stock(product_id, product_type, from_date):
         return 0.0
 
 
-# Movement-type families used by the stock-check report. Each movement's
-# `quantity` already carries the stock-effect sign (sales, dumps and supplier
-# returns reduce stock, so they are stored negative; purchases and customer
-# returns are positive). Aggregating movements — rather than re-reading the
-# SaleItem / CustomerReturn / DumpEntry / SupplierReturn entity tables — keeps
-# the report perfectly consistent with the running current_stock ledger that
-# update_product_stock maintains.
+# Movement-type families used by update_sale / delete_sale reconciliation.
+# Kept here even though the stock-check helpers read entity tables directly.
 _SALE_FAMILY = ['sale', 'sale_cancellation', 'sale_adjustment']
 _RETURN_FAMILY = ['customer_return', 'customer_return_cancellation',
                   'customer_return_adjustment', 'customer_return_rejection']
-_DUMP_FAMILY = ['dump', 'dump_cancellation', 'dump_adjustment']
-_SUPPLIER_RETURN_FAMILY = ['supplier_return', 'supplier_return_cancellation',
-                           'supplier_return_adjustment', 'supplier_return_rejection']
-_PURCHASE_FAMILY = ['purchase', 'purchase_reversal']
-
-
-def _movements_in_range(product_id, product_type, from_date, to_date):
-    """Return stock movements for a product between two dates.
-
-    Accepts either datetime or date boundaries. Filters by movement_date
-    (business date). Legacy rows with a NULL movement_date fall back to
-    created_at so they remain visible.
-    """
-    from sqlalchemy import or_
-
-    def _to_dt(value, end_of_day=False):
-        if isinstance(value, datetime):
-            return value
-        from_dt = datetime(value.year, value.month, value.day)
-        if end_of_day:
-            return from_dt.replace(hour=23, minute=59, second=59)
-        return from_dt
-
-    from_dt = _to_dt(from_date)
-    to_dt = _to_dt(to_date, end_of_day=True)
-    return db.session.query(StockMovement).filter(
-        StockMovement.product_id == product_id,
-        StockMovement.product_type == product_type,
-        or_(
-            StockMovement.movement_date.between(from_dt.date(), to_dt.date()),
-            db.and_(
-                StockMovement.movement_date.is_(None),
-                StockMovement.created_at >= from_dt,
-                StockMovement.created_at <= to_dt
-            )
-        )
-    ).all()
-
-
-def _movement_family_total(movements, family):
-    """Sum the signed quantity of movements in the given family."""
-    return sum(safe_float(m.quantity) for m in movements if m.movement_type in family)
 
 
 def get_new_stock(product_id, product_type, from_date, to_date):
-    """Get new stock (purchases) between dates — from purchase movements."""
+    """Get new stock (purchases) between dates"""
     try:
-        movements = _movements_in_range(product_id, product_type, from_date, to_date)
-        total = _movement_family_total(movements, _PURCHASE_FAMILY)
+        # Query purchase and reversal movements by movement_date (business date).
+        # Fall back to created_at for records where movement_date is NULL (existing data).
+        from sqlalchemy import or_
+        movements = db.session.query(StockMovement).filter(
+            StockMovement.product_id == product_id,
+            StockMovement.product_type == product_type,
+            StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
+            or_(
+                StockMovement.movement_date.between(from_date.date(), to_date.date()),
+                db.and_(
+                    StockMovement.movement_date.is_(None),
+                    StockMovement.created_at >= from_date,
+                    StockMovement.created_at <= to_date
+                )
+            )
+        ).all()
+
+        total = 0
+        for movement in movements:
+            quantity = safe_float(movement.quantity)
+            if movement.movement_type == 'purchase' and quantity > 0:
+                total += quantity
+            elif movement.movement_type == 'purchase_reversal' and quantity < 0:
+                total += quantity  # negative, reduces total
+
         return max(0, total)
     except Exception as e:
         print(f"[ERROR] Error getting new stock: {e}")
@@ -8182,16 +8216,40 @@ def get_new_stock(product_id, product_type, from_date, to_date):
         return 0
 
 def get_sales_quantity(product_id, product_type, from_date, to_date):
-    """Get net sales quantity between dates — from sale-family stock movements.
-
-    Aggregating the movement ledger (which already nets out sale edits and
-    cancellations) keeps this exactly in line with the product's current_stock,
-    unlike summing SaleItem rows which drift when a sale is edited.
-    """
+    """Get sales quantity between dates - calculate from actual sale items instead of stock movements"""
     try:
-        movements = _movements_in_range(product_id, product_type, from_date, to_date)
-        total = -_movement_family_total(movements, _SALE_FAMILY)
-        return max(0, total)
+        # Calculate sales directly from sale items to avoid duplicate movement issues
+        if product_type == 'regular':
+            # Query regular product sales
+            sales_items = db.session.query(SaleItem).join(
+                Sale, SaleItem.sale_id == Sale.id
+            ).filter(
+                SaleItem.product_id == product_id,
+                Sale.date >= from_date,
+                Sale.date <= to_date,
+                Sale.status == 'finalized'  # Only count finalized sales
+            ).all()
+        else:
+            # Query non-product sales
+            sales_items = db.session.query(SaleItem).join(
+                Sale, SaleItem.sale_id == Sale.id
+            ).filter(
+                SaleItem.non_product_id == product_id,
+                Sale.date >= from_date,
+                Sale.date <= to_date,
+                Sale.status == 'finalized'  # Only count finalized sales
+            ).all()
+        
+        # Sum up quantities — count only positive sale items (gross sales)
+        # Negative quantity items (inline credit returns) are captured separately
+        # by get_customer_returns_quantity via Fix 4 (StockMovement reference updated)
+        total = sum(abs(safe_float(item.quantity)) for item in sales_items if item.quantity > 0)
+        
+        # Net sales = gross positive sales only (do NOT subtract negative items here)
+        # Negative items are counted as customer returns, not deducted from sales
+        net_sales = total
+        
+        return max(0, net_sales)  # Ensure non-negative result
     except Exception as e:
         print(f"[ERROR] Error getting sales quantity: {e}")
         import traceback
@@ -8199,11 +8257,17 @@ def get_sales_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
-    """Get customer returns between dates — from customer-return movements."""
+    """Get customer returns between dates — query CustomerReturn directly (like get_sales_quantity)"""
     try:
-        movements = _movements_in_range(product_id, product_type, from_date, to_date)
-        total = _movement_family_total(movements, _RETURN_FAMILY)
-        return max(0, total)
+        returns = CustomerReturn.query.filter(
+            CustomerReturn.product_id == product_id,
+            CustomerReturn.product_type == product_type,
+            CustomerReturn.date >= from_date.date(),
+            CustomerReturn.date <= to_date.date(),
+            CustomerReturn.status == 'completed'
+        ).all()
+        total = sum(safe_float(ret.quantity) for ret in returns if ret.quantity > 0)
+        return total
     except Exception as e:
         print(f"[ERROR] Error getting customer returns: {e}")
         import traceback
@@ -8211,10 +8275,15 @@ def get_customer_returns_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_dumps_quantity(product_id, product_type, from_date, to_date):
-    """Get dumps/wastage between dates — from dump-family movements."""
+    """Get dumps/wastage between dates — query DumpEntry directly"""
     try:
-        movements = _movements_in_range(product_id, product_type, from_date, to_date)
-        total = -_movement_family_total(movements, _DUMP_FAMILY)
+        dumps = DumpEntry.query.filter(
+            DumpEntry.product_id == product_id,
+            DumpEntry.product_type == product_type,
+            DumpEntry.date >= from_date.date(),
+            DumpEntry.date <= to_date.date()
+        ).all()
+        total = sum(abs(safe_float(d.quantity)) for d in dumps)
         return max(0, total)
     except Exception as e:
         print(f"[ERROR] Error getting dumps quantity: {e}")
@@ -8223,38 +8292,18 @@ def get_dumps_quantity(product_id, product_type, from_date, to_date):
         return 0
 
 def get_supplier_returns_quantity(product_id, product_type, from_date, to_date):
-    """Get supplier returns between dates — from supplier-return movements."""
+    """Get supplier returns between dates — query SupplierReturn directly"""
     try:
-        movements = _movements_in_range(product_id, product_type, from_date, to_date)
-        total = -_movement_family_total(movements, _SUPPLIER_RETURN_FAMILY)
-        return max(0, total)
-    except Exception as e:
-        print(f"[ERROR] Error getting supplier returns: {e}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        return 0
-
-def get_adjustments_quantity(product_id, product_type, from_date, to_date):
-    """Sum of movements outside the sale/return/dump/supplier-return/purchase
-    families (e.g. stock adjustments, closing-stock adjustments).
-
-    Initial-stock seed movements are excluded: opening stock already carries
-    the initial stock value, so counting the seed here would double-count it.
-    """
-    try:
-        all_movements = _movements_in_range(product_id, product_type, from_date, to_date)
-        known = (_SALE_FAMILY + _RETURN_FAMILY + _DUMP_FAMILY +
-                 _SUPPLIER_RETURN_FAMILY + _PURCHASE_FAMILY)
-        total = 0.0
-        for m in all_movements:
-            if m.movement_type in known:
-                continue
-            if m.reference_type == 'initial_stock':
-                continue
-            total += safe_float(m.quantity)
+        returns = SupplierReturn.query.filter(
+            SupplierReturn.product_id == product_id,
+            SupplierReturn.product_type == product_type,
+            SupplierReturn.date >= from_date.date(),
+            SupplierReturn.date <= to_date.date()
+        ).all()
+        total = sum(safe_float(r.quantity) for r in returns)
         return total
     except Exception as e:
-        print(f"[ERROR] Error getting adjustments quantity: {e}")
+        print(f"[ERROR] Error getting supplier returns: {e}")
         import traceback
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return 0
@@ -13942,6 +13991,9 @@ def send_customer_statement_email_api():
         
         # Add payments
         for payment in payments:
+            if payment.payment_type == 'credit':
+                # 0-amount credit-application row - credit already shown above
+                continue
             running_balance -= float(payment.amount)
             statement_data.append({
                 'slNo': sl_no,
@@ -14071,6 +14123,9 @@ def send_customer_history_email_api():
         
         # Add payments
         for payment in payments:
+            if payment.payment_type == 'credit':
+                # 0-amount credit-application row - credit already shown above
+                continue
             running_balance -= float(payment.amount)
             history_data.append({
                 'slNo': sl_no,
@@ -14671,6 +14726,13 @@ def create_customer_bulk_payment():
             overpayment_amount = max(0, total_invoice_payments - total_invoice_amounts)
             print(f"Total invoice payments: {total_invoice_payments}, Total invoice amounts: {total_invoice_amounts}, Overpayment: {overpayment_amount}")
             
+            # Total customer credit available from credit invoice lines (negative amounts)
+            # These credits reduce the outstanding balance of positive invoices being paid
+            credit_remaining = -sum(
+                float(p.get('amount', 0)) for p in payment_distribution
+                if not p.get('isOnAccount', False) and float(p.get('amount', 0)) < 0
+            )
+            
             # Create payments based on the frontend's payment distribution
             for payment_item in payment_distribution:
                 payment_amount = float(payment_item.get('amount', 0))
@@ -14737,6 +14799,14 @@ def create_customer_bulk_payment():
                         current_paid = float(sale.paid_amount or 0)
                         outstanding = float(sale.total_amount) - current_paid
                         
+                        # Apply available customer credit toward this invoice's outstanding balance
+                        # (credit invoices are sent as negative amounts in the distribution)
+                        credit_applied = 0
+                        if credit_remaining > 0 and outstanding > 0:
+                            credit_applied = min(credit_remaining, outstanding)
+                            credit_remaining -= credit_applied
+                            outstanding -= credit_applied
+                        
                         if payment_amount <= outstanding:
                             # Normal payment - doesn't exceed invoice amount
                             payment = Payment(
@@ -14754,8 +14824,8 @@ def create_customer_bulk_payment():
                             db.session.add(payment)
                             payments_created.append(payment)
                             
-                            # Update sale payment status
-                            new_paid = current_paid + payment_amount
+                            # Update sale payment status (cash payment + applied credit)
+                            new_paid = current_paid + payment_amount + credit_applied
                             if new_paid >= float(sale.total_amount):
                                 sale.payment_status = "paid"
                                 sale.paid_amount = sale.total_amount
@@ -14815,8 +14885,10 @@ def create_customer_bulk_payment():
                                 print(f"Created overpayment credit of {overpay_amount} for customer {customer_id}")
                         
                 elif payment_amount < 0:
-                    # Credit invoice - just mark as paid without creating payment record
-                    # The credit is already shown in the daily sales summary
+                    # Credit invoice - mark as paid and record the application
+                    # with a 0-amount Payment row so the payment history can show
+                    # which credit invoice was applied in this batch. The 0 amount
+                    # keeps every payment sum / outstanding balance unchanged.
                     sale = Sale.query.get(payment_item.get('invoiceId'))
                     if sale:
                         # Mark credit invoice as fully applied/paid
@@ -14825,7 +14897,22 @@ def create_customer_bulk_payment():
                         sale.paid_amount = sale.total_amount  # For credit invoices, this will be negative
                         sale.customer_type = payment_item.get('paymentMode', 'cash')
                         db.session.add(sale)
-                        print(f"Credit invoice {sale.invoice_number} marked as paid without creating payment record")
+
+                        credit_payment = Payment(
+                            customer_id=customer_id,
+                            sale_id=sale.id,
+                            amount=0,
+                            payment_mode=payment_item.get('paymentMode', 'cash'),
+                            payment_date=payment_date_obj,
+                            batch_id=batch_id,
+                            payment_type='credit',
+                            payment_source='customer_payment',
+                            remarks=f"{remarks} (Credit applied)" if remarks else "Credit applied",
+                            created_by=user_id
+                        )
+                        db.session.add(credit_payment)
+                        payments_created.append(credit_payment)
+                        print(f"Credit invoice {sale.invoice_number} marked as paid (credit Payment row created)")
         
         else:
             # Fallback to proportional distribution (original logic)
