@@ -478,7 +478,7 @@ export default function DailySummary() {
         head, body,
         startY: y,
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+        styles: { fontSize: 9, cellPadding: 2, fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
         headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.2 },
         bodyStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number] },
         alternateRowStyles: { fillColor: [255, 255, 255] as [number, number, number] },
@@ -627,7 +627,7 @@ export default function DailySummary() {
       (summaryData.totals.bank_transfer_sales || 0) + (summaryData.totals.cheque_sales || 0) +
       summaryData.totals.account_sales;
     tbl([], [['Daily Sales (All Payment Methods)', `£${totalAllSales.toFixed(2)}`]], {
-      styles: { fontSize: 10, cellPadding: 3 },
+      styles: { fontSize: 11, cellPadding: 3 },
       columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } }
     });
 
@@ -637,7 +637,7 @@ export default function DailySummary() {
       ['Total Card Sales', `£${summaryData.totals.card_sales.toFixed(2)}`],
       ['Account Paid Card (Backdate)', `£${summaryData.customer_payments.reduce((s, p) => s + p.card_amount, 0).toFixed(2)}`],
     ], {
-      styles: { fontSize: 10, cellPadding: 3 },
+      styles: { fontSize: 11, cellPadding: 3 },
       columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } }
     });
 
@@ -649,7 +649,7 @@ export default function DailySummary() {
       ['Customer Bank Transfer Payments', `£${(summaryData.totals.bank_transfer_payments || 0).toFixed(2)}`],
       ['Total Bank Transfer Received', `£${totalBankTransfer.toFixed(2)}`],
     ], {
-      styles: { fontSize: 10, cellPadding: 3 },
+      styles: { fontSize: 11, cellPadding: 3 },
       columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } }
     });
 
@@ -665,12 +665,12 @@ export default function DailySummary() {
       ['Total Expense (Paid Out)', `-£${(summaryData.totals.expense_payments_paid_out || 0).toFixed(2)}`],
       ['Total Banking', `£${summaryData.totals.banking_total.toFixed(2)}`],
     ], {
-      styles: { fontSize: 10, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.15 },
+      styles: { fontSize: 11, cellPadding: 3, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.15 },
       columnStyles: { 0: { fontStyle: 'bold' }, 1: { fontStyle: 'bold', halign: 'right' } },
       didParseCell: (data: any) => {
         if (data.row.index === 7) {
           data.cell.styles.fillColor = [173, 216, 230];
-          data.cell.styles.fontSize = 12;
+          data.cell.styles.fontSize = 13;
           data.cell.styles.fontStyle = 'bold';
         }
       }
@@ -743,12 +743,12 @@ export default function DailySummary() {
         processedData,
         {
           theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          styles: { fontSize: 8, cellPadding: 1, fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
           headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.2 },
           columnStyles: {
-            0: { cellWidth: 25 }, 1: { cellWidth: 35 }, 2: { cellWidth: 18 },
-            3: { cellWidth: 18 }, 4: { cellWidth: 35 }, 5: { cellWidth: 18 },
-            6: { cellWidth: 22 }, 7: { cellWidth: 22 },
+            0: { cellWidth: 24 }, 1: { cellWidth: 34 }, 2: { cellWidth: 15 },
+            3: { cellWidth: 15 }, 4: { cellWidth: 36 }, 5: { cellWidth: 16 },
+            6: { cellWidth: 20 }, 7: { cellWidth: 20 },
           },
           didParseCell: (data: any) => {
             const r = processedData[data.row.index];
@@ -803,7 +803,7 @@ export default function DailySummary() {
         ],
         {
           theme: 'grid',
-          styles: { fontSize: 7, cellPadding: 1, lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
+          styles: { fontSize: 8, cellPadding: 1, fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.1 },
           headStyles: { fillColor: [255, 255, 255] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: 'bold', lineColor: [0, 0, 0] as [number, number, number], lineWidth: 0.2 },
           columnStyles: {
             0: { cellWidth: 12 }, 1: { cellWidth: 38 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 },
