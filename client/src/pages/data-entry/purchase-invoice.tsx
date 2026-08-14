@@ -26,6 +26,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { subDays, format } from 'date-fns';
 
+const broadcastStockUpdated = () => {
+  try {
+    const channel = new BroadcastChannel('sales-updates');
+    channel.postMessage({ type: 'STOCK_UPDATED', timestamp: Date.now() });
+    channel.close();
+  } catch (error) {
+    console.error('Failed to broadcast stock update:', error);
+  }
+};
+
 export default function PurchaseInvoice() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -279,6 +289,12 @@ export default function PurchaseInvoice() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock-movements"] });
+      // Invalidate stock used by sales invoice page (otherwise it shows stale stock until refresh)
+      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/regular_products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/non_products"] });
+      // Notify other open tabs (e.g. sales invoice page) that stock changed
+      broadcastStockUpdated();
 
       toast({
         title: "Success",
@@ -310,12 +326,18 @@ export default function PurchaseInvoice() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stock-movements"] });
+      // Invalidate stock used by sales invoice page (otherwise it shows stale stock until refresh)
+      queryClient.invalidateQueries({ queryKey: ["currentStock"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/regular_products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/non_products"] });
       // Invalidate daily book purchase queries
       queryClient.invalidateQueries({ queryKey: ["daily-book-purchase"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/daily-book-purchase"] });
       // Invalidate stock check queries
       queryClient.invalidateQueries({ queryKey: ["stock-check"] });
       queryClient.invalidateQueries({ queryKey: ["/api/reports/stock-check"] });
+      // Notify other open tabs (e.g. sales invoice page) that stock changed
+      broadcastStockUpdated();
 
       toast({ title: "Deleted", description: "Invoice deleted successfully" });
       setLocation("/data-entry/purchase-entry");

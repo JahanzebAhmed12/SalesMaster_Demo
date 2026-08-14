@@ -22,6 +22,10 @@ export const useCrossTabSync = () => {
             invalidateCustomerQueries(data.customerId);
           }
           break;
+        case 'STOCK_UPDATED':
+          console.log('Cross-tab sync: Stock update detected, invalidating queries');
+          invalidateAllSalesQueries();
+          break;
         case 'PAYMENT_UPDATED':
           console.log('Cross-tab sync: Payment update detected, invalidating queries');
           invalidateAllSalesQueries();
