@@ -585,7 +585,7 @@ export default function ReturnFromCustomer() {
                       />
                       {showProductDropdown && filteredProducts.length > 0 && (
                         <div
-                          className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto"
+                          className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
                         >
                           {filteredProducts.map((product: RegularProduct | NonProduct, idx: number) => (
                             <div
