@@ -20,6 +20,7 @@ import { Link } from "wouter";
 import { Table, TableHeader, TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { usePagination } from "@/hooks/usePagination";
 import { Switch } from "@/components/ui/switch";
 import { Controller } from "react-hook-form";
 
@@ -100,8 +101,6 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState<RegularProduct | null>(null);
   const [sortField, setSortField] = useState<"productCode" | "description" | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(productSchema),
@@ -231,12 +230,17 @@ export default function Products() {
     return filtered;
   }, [products, searchTerm, sortField, sortDirection]);
 
-  const paginatedProducts = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredProducts.slice(start, start + pageSize);
-  }, [filteredProducts, currentPage, pageSize]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const {
+    currentPage,
+    totalPages,
+    itemsPerPage: pageSize,
+    paginatedData: paginatedProducts,
+    goToPage,
+    setItemsPerPage: setPageSize,
+  } = usePagination({
+    data: filteredProducts,
+    initialItemsPerPage: 10,
+  });
 
   const handleSort = (field: "productCode" | "description") => {
     if (sortField === field) {
@@ -245,7 +249,7 @@ export default function Products() {
       setSortField(field);
       setSortDirection('asc');
     }
-    setCurrentPage(1);
+    goToPage(1);
   };
 
   const SortIcon = ({ field }: { field: string }) => {
@@ -657,7 +661,7 @@ export default function Products() {
                     <select
                       className="border rounded px-2 py-1 text-sm"
                       value={pageSize}
-                      onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
                     >
                       <option value={10}>10</option>
                       <option value={20}>20</option>
@@ -673,7 +677,7 @@ export default function Products() {
                       variant="outline"
                       size="sm"
                       disabled={currentPage <= 1}
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      onClick={() => goToPage(currentPage - 1)}
                     >
                       Previous
                     </Button>
@@ -693,7 +697,7 @@ export default function Products() {
                           key={pageNum}
                           variant={currentPage === pageNum ? "default" : "outline"}
                           size="sm"
-                          onClick={() => setCurrentPage(pageNum)}
+                          onClick={() => goToPage(pageNum)}
                         >
                           {pageNum}
                         </Button>
@@ -703,7 +707,7 @@ export default function Products() {
                       variant="outline"
                       size="sm"
                       disabled={currentPage >= totalPages}
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      onClick={() => goToPage(currentPage + 1)}
                     >
                       Next
                     </Button>

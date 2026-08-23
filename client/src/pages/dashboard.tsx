@@ -7,11 +7,14 @@ import { Pagination } from "@/components/ui/pagination";
 import { TrendingUp, AlertTriangle, Calendar, User, Settings } from "lucide-react";
 import React from "react";
 import { useAuth } from "@/lib/auth";
-import { useBusinessDate } from "@/hooks/useBusinessDate";
+import { useBusinessDate } from "@/hooks/use-business-date";
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
+  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate({
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
 
   // Pagination states for each section
   const [holidayCurrentPage, setHolidayCurrentPage] = React.useState(1);

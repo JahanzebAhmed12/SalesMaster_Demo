@@ -9,19 +9,17 @@ import { printHtmlTable } from "@/lib/export-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
 import type { Supplier } from "@shared/schema";
+import DataTable, { type DataTableColumn } from "@/components/common/data-table";
 
 export default function Suppliers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<"supplier_code" | "supplier_name" | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
   const { broadcastSupplierOperation } = useAdminCrossTabSync();
@@ -80,13 +78,6 @@ export default function Suppliers() {
     });
   }, [suppliers, sortField, sortDirection]);
 
-  const paginatedSuppliers = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return sortedSuppliers.slice(start, start + pageSize);
-  }, [sortedSuppliers, currentPage, pageSize]);
-
-  const totalPages = Math.max(1, Math.ceil(sortedSuppliers.length / pageSize));
-
   const handleSort = (field: "supplier_code" | "supplier_name") => {
     if (sortField === field) {
       setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
@@ -94,7 +85,6 @@ export default function Suppliers() {
       setSortField(field);
       setSortDirection('asc');
     }
-    setCurrentPage(1);
   };
 
   const SortIcon = ({ field }: { field: string }) => {
@@ -429,135 +419,49 @@ export default function Suppliers() {
       </Card>
       
       <Card className="shadow-sm border border-gray-200 overflow-hidden">
-        <Table>
-          <TableHeader className="bg-gray-50">
-            <TableRow>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Sl.No</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort("supplier_code")}>
-                Supplier Code <SortIcon field="supplier_code" />
-              </TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Sage Code</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:bg-gray-100" onClick={() => handleSort("supplier_name")}>
-                Supplier Name <SortIcon field="supplier_name" />
-              </TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Telephone</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Email</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">EEC Group</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">View</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Edit</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Delete</TableHead>
-              <TableHead className="text-xs font-medium text-gray-500 uppercase">Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedSuppliers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={11} className="text-center py-8 text-gray-500">
-                  {searchTerm ? "No suppliers found matching your search." : "No suppliers found. Click 'Add' to create your first supplier."}
-                </TableCell>
-              </TableRow>
-            ) : (
-              paginatedSuppliers.map((supplier, index) => (
-                <TableRow key={supplier.id} className="table-hover">
-                  <TableCell className="text-sm text-gray-900">{(currentPage - 1) * pageSize + index + 1}</TableCell>
-                  <TableCell className="text-sm text-gray-900">{supplier.supplier_code}</TableCell>
-                  <TableCell className="text-sm text-gray-900">{supplier.sage_code || "-"}</TableCell>
-                  <TableCell className="text-sm text-gray-900">{supplier.supplier_name}</TableCell>
-                  <TableCell className="text-sm text-gray-900">{supplier.telephone || "-"}</TableCell>
-                  <TableCell className="text-sm text-gray-900">{supplier.email || "-"}</TableCell>
-                  <TableCell className="text-sm text-gray-900">{supplier.eec_group || "-"}</TableCell>
-                  <TableCell>
-                    <Link href={`/admin/supplier-database-edit/${supplier.id}?view=true`}>
-                      <Eye className="h-4 w-4 btn-view" />
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/admin/supplier-database-edit/${supplier.id}`}>
-                      <Edit className="h-4 w-4 btn-edit" />
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <button
-                      onClick={() => handleDelete(supplier.id, supplier.supplier_name)}
-                      disabled={deleteMutation.isPending}
-                      className="disabled:opacity-50"
-                    >
-                      <Trash2 className="h-4 w-4 btn-delete" />
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <Badge 
-                      className={supplier.is_active === "Yes" ? "status-active" : "status-inactive"}
-                    >
-                      {supplier.is_active === "Yes" ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-        
-        {sortedSuppliers.length > 0 && (
-          <div className="bg-gray-50 px-4 py-3 border-t border-gray-200 flex items-center justify-between text-sm text-gray-500">
-            <div className="flex items-center gap-2">
-              <span>Show</span>
-              <select
-                className="border rounded px-2 py-1 text-sm"
-                value={pageSize}
-                onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-              <span>entries</span>
-            </div>
-            <div>
-              Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, sortedSuppliers.length)} of {sortedSuppliers.length} entries
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              >
-                Previous
-              </Button>
-              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                let pageNum: number;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                return (
-                  <Button
-                    key={pageNum}
-                    variant={currentPage === pageNum ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentPage(pageNum)}
-                  >
-                    {pageNum}
-                  </Button>
-                );
-              })}
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
+        <CardContent className="p-0">
+          <DataTable<Supplier>
+            data={sortedSuppliers}
+            resetKey={`${searchTerm}|${sortField ?? ""}|${sortDirection}`}
+            initialItemsPerPage={10}
+            itemsPerPageOptions={[10, 20, 50]}
+            emptyMessage={searchTerm ? "No suppliers found matching your search." : "No suppliers found. Click 'Add' to create your first supplier."}
+            rowClassName={() => "table-hover"}
+            columns={[
+              {
+                key: "serial",
+                header: "Sl.No",
+                headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500",
+                className: "text-sm text-gray-900",
+                render: (_supplier, _index, absoluteIndex) => absoluteIndex + 1,
+              },
+              {
+                key: "supplier_code",
+                header: <>Supplier Code <SortIcon field="supplier_code" /></>,
+                headerClassName: "cursor-pointer select-none bg-gray-50 text-xs font-medium uppercase text-gray-500 hover:bg-gray-100",
+                className: "text-sm text-gray-900",
+                onHeaderClick: () => handleSort("supplier_code"),
+                ariaSort: sortField === "supplier_code" ? (sortDirection === "asc" ? "ascending" : "descending") : "none",
+              },
+              { key: "sage_code", header: "Sage Code", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", className: "text-sm text-gray-900", render: (supplier) => supplier.sage_code || "-" },
+              {
+                key: "supplier_name",
+                header: <>Supplier Name <SortIcon field="supplier_name" /></>,
+                headerClassName: "cursor-pointer select-none bg-gray-50 text-xs font-medium uppercase text-gray-500 hover:bg-gray-100",
+                className: "text-sm text-gray-900",
+                onHeaderClick: () => handleSort("supplier_name"),
+                ariaSort: sortField === "supplier_name" ? (sortDirection === "asc" ? "ascending" : "descending") : "none",
+              },
+              { key: "telephone", header: "Telephone", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", className: "text-sm text-gray-900", render: (supplier) => supplier.telephone || "-" },
+              { key: "email", header: "Email", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", className: "text-sm text-gray-900", render: (supplier) => supplier.email || "-" },
+              { key: "eec_group", header: "EEC Group", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", className: "text-sm text-gray-900", render: (supplier) => supplier.eec_group || "-" },
+              { key: "view", header: "View", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", render: (supplier) => <Link href={`/admin/supplier-database-edit/${supplier.id}?view=true`}><Eye className="h-4 w-4 btn-view" /></Link> },
+              { key: "edit", header: "Edit", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", render: (supplier) => <Link href={`/admin/supplier-database-edit/${supplier.id}`}><Edit className="h-4 w-4 btn-edit" /></Link> },
+              { key: "delete", header: "Delete", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", render: (supplier) => <button onClick={() => handleDelete(supplier.id, supplier.supplier_name)} disabled={deleteMutation.isPending} className="disabled:opacity-50"><Trash2 className="h-4 w-4 btn-delete" /></button> },
+              { key: "status", header: "Status", headerClassName: "bg-gray-50 text-xs font-medium uppercase text-gray-500", render: (supplier) => <Badge className={supplier.is_active === "Yes" ? "status-active" : "status-inactive"}>{supplier.is_active === "Yes" ? "Active" : "Inactive"}</Badge> },
+            ] satisfies DataTableColumn<Supplier>[]}
+          />
+        </CardContent>
       </Card>
     </div>
   );

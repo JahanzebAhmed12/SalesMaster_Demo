@@ -16,6 +16,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { printHtmlTable } from "@/lib/export-utils";
+import DataTable, { type DataTableColumn } from "@/components/common/data-table";
 
 // Helper function to format multiple emails for display
 const formatEmails = (emailString: string) => {
@@ -57,8 +58,6 @@ export default function Customers() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<"customer_code" | "customer_name" | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { broadcastCustomerOperation } = useAdminCrossTabSync();
@@ -95,13 +94,6 @@ export default function Customers() {
     return filtered;
   }, [customers, searchTerm, sortField, sortDirection]);
 
-  const paginatedCustomers = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredCustomers.slice(start, start + pageSize);
-  }, [filteredCustomers, currentPage, pageSize]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / pageSize));
-
   const handleSort = (field: "customer_code" | "customer_name") => {
     if (sortField === field) {
       setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
@@ -109,7 +101,6 @@ export default function Customers() {
       setSortField(field);
       setSortDirection('asc');
     }
-    setCurrentPage(1);
   };
 
   const SortIcon = ({ field }: { field: string }) => {
@@ -424,137 +415,47 @@ export default function Customers() {
 
             <Card>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="border-b bg-gray-50">
-                        <th className="text-left p-3 border-r">Sl.No</th>
-                        <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("customer_code")}>
-                          Customer Code <SortIcon field="customer_code" />
-                        </th>
-                        <th className="text-left p-3 border-r cursor-pointer select-none hover:bg-gray-200" onClick={() => handleSort("customer_name")}>
-                          Customer Name <SortIcon field="customer_name" />
-                        </th>
-                        <th className="text-left p-3 border-r">City</th>
-                        <th className="text-left p-3 border-r">Country</th>
-                        <th className="text-left p-3 border-r">Currency</th>
-                        <th className="text-left p-3 border-r">Running Balance</th>
-                        <th className="text-left p-3 border-r">Email</th>
-                        <th className="text-left p-3 border-r">Telephone</th>
-                        <th className="text-left p-3 border-r">Edit</th>
-                        <th className="text-left p-3 border-r">Delete</th>
-                        <th className="text-left p-3">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedCustomers.length === 0 ? (
-                        <tr>
-                          <td colSpan={12} className="p-6 text-center text-gray-500">No customers found.</td>
-                        </tr>
-                      ) : (
-                        paginatedCustomers.map((customer, index) => (
-                        <tr key={customer.id} className="border-b hover:bg-gray-50">
-                          <td className="p-3 border-r">{(currentPage - 1) * pageSize + index + 1}</td>
-                          <td className="p-3 border-r">{customer.customer_code}</td>
-                          <td className="p-3 border-r">{customer.customer_name}</td>
-                          <td className="p-3 border-r">{customer.customer_city || "-"}</td>
-                          <td className="p-3 border-r">{customer.customer_country || "-"}</td>
-                          <td className="p-3 border-r">{customer.customer_currency}</td>
-                          <td className="p-3 border-r">£{(customer.runningBalance || 0).toFixed(2)}</td>
-                          <td className="p-3 border-r" title={customer.email || ""}>
-                            {formatEmails(customer.email || "")}
-                          </td>
-                          <td className="p-3 border-r">{customer.telephone || "-"}</td>
-                          <td className="p-3 border-r">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleEdit(customer.id)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </td>
-                          <td className="p-3 border-r">
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleDelete(customer.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                          <td className="p-3">
-                            <Badge 
-                              variant="secondary" 
-                              className={customer.is_active === "yes" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}
-                            >
-                              {customer.is_active === "yes" ? "Active" : "Inactive"}
-                            </Badge>
-                          </td>
-                        </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="p-3 border-t flex items-center justify-between text-sm text-gray-500">
-                  <div className="flex items-center gap-2">
-                    <span>Show</span>
-                    <select
-                      className="border rounded px-2 py-1 text-sm"
-                      value={pageSize}
-                      onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                    </select>
-                    <span>entries</span>
-                  </div>
-                  <div>
-                    Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, filteredCustomers.length)} of {filteredCustomers.length} entries
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={currentPage <= 1}
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    >
-                      Previous
-                    </Button>
-                    {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                      let pageNum: number;
-                      if (totalPages <= 5) {
-                        pageNum = i + 1;
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1;
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNum = totalPages - 4 + i;
-                      } else {
-                        pageNum = currentPage - 2 + i;
-                      }
-                      return (
-                        <Button
-                          key={pageNum}
-                          variant={currentPage === pageNum ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setCurrentPage(pageNum)}
-                        >
-                          {pageNum}
-                        </Button>
-                      );
-                    })}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={currentPage >= totalPages}
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </div>
+                <DataTable<Customer>
+                  data={filteredCustomers}
+                  resetKey={`${searchTerm}|${sortField ?? ""}|${sortDirection}`}
+                  initialItemsPerPage={10}
+                  itemsPerPageOptions={[10, 20, 50]}
+                  emptyMessage="No customers found."
+                  rowClassName={() => "border-b hover:bg-gray-50"}
+                  columns={[
+                    {
+                      key: "serial",
+                      header: "Sl.No",
+                      className: "border-r p-3",
+                      render: (_customer, _index, absoluteIndex) => absoluteIndex + 1,
+                    },
+                    {
+                      key: "customer_code",
+                      header: <>Customer Code <SortIcon field="customer_code" /></>,
+                      className: "border-r p-3",
+                      headerClassName: "cursor-pointer select-none hover:bg-gray-200",
+                      onHeaderClick: () => handleSort("customer_code"),
+                      ariaSort: sortField === "customer_code" ? (sortDirection === "asc" ? "ascending" : "descending") : "none",
+                    },
+                    {
+                      key: "customer_name",
+                      header: <>Customer Name <SortIcon field="customer_name" /></>,
+                      className: "border-r p-3",
+                      headerClassName: "cursor-pointer select-none hover:bg-gray-200",
+                      onHeaderClick: () => handleSort("customer_name"),
+                      ariaSort: sortField === "customer_name" ? (sortDirection === "asc" ? "ascending" : "descending") : "none",
+                    },
+                    { key: "customer_city", header: "City", className: "border-r p-3", render: (customer) => customer.customer_city || "-" },
+                    { key: "customer_country", header: "Country", className: "border-r p-3", render: (customer) => customer.customer_country || "-" },
+                    { key: "customer_currency", header: "Currency", className: "border-r p-3" },
+                    { key: "runningBalance", header: "Running Balance", className: "border-r p-3", render: (customer) => `£${(customer.runningBalance || 0).toFixed(2)}` },
+                    { key: "email", header: "Email", className: "border-r p-3", render: (customer) => <span title={customer.email || ""}>{formatEmails(customer.email || "")}</span> },
+                    { key: "telephone", header: "Telephone", className: "border-r p-3", render: (customer) => customer.telephone || "-" },
+                    { key: "edit", header: "Edit", className: "border-r p-3", render: (customer) => <Button variant="ghost" size="sm" onClick={() => handleEdit(customer.id)}><Edit className="h-4 w-4" /></Button> },
+                    { key: "delete", header: "Delete", className: "border-r p-3", render: (customer) => <Button variant="ghost" size="sm" onClick={() => handleDelete(customer.id)}><Trash2 className="h-4 w-4" /></Button> },
+                    { key: "status", header: "Status", className: "p-3", render: (customer) => <Badge variant="secondary" className={customer.is_active === "yes" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>{customer.is_active === "yes" ? "Active" : "Inactive"}</Badge> },
+                  ] satisfies DataTableColumn<Customer>[]}
+                />
               </CardContent>
             </Card>
           </>

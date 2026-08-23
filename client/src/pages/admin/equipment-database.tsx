@@ -9,6 +9,7 @@ import { Pencil, Trash2, Plus, Search, Download, FileText, Printer, ChevronUp, C
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { usePagination } from "@/hooks/usePagination";
 import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
 import { format } from "date-fns";
 import type { Equipment } from "@shared/schema";
@@ -24,8 +25,6 @@ export default function EquipmentDatabase() {
   const [isExporting, setIsExporting] = useState(false);
   const [sortField, setSortField] = useState<"description" | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { broadcastEquipmentOperation } = useAdminCrossTabSync();
@@ -76,12 +75,17 @@ export default function EquipmentDatabase() {
     return filtered;
   }, [equipment, searchTerm, sortField, sortDirection]);
 
-  const paginatedEquipment = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredEquipment.slice(start, start + pageSize);
-  }, [filteredEquipment, currentPage, pageSize]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredEquipment.length / pageSize));
+  const {
+    currentPage,
+    totalPages,
+    itemsPerPage: pageSize,
+    paginatedData: paginatedEquipment,
+    goToPage,
+    setItemsPerPage: setPageSize,
+  } = usePagination({
+    data: filteredEquipment,
+    initialItemsPerPage: 10,
+  });
 
   const handleSort = (field: "description") => {
     if (sortField === field) {
@@ -90,7 +94,7 @@ export default function EquipmentDatabase() {
       setSortField(field);
       setSortDirection('asc');
     }
-    setCurrentPage(1);
+    goToPage(1);
   };
 
   const SortIcon = ({ field }: { field: string }) => {
@@ -605,7 +609,7 @@ export default function EquipmentDatabase() {
                   <select
                     className="border rounded px-2 py-1 text-sm"
                     value={pageSize}
-                    onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
                   >
                     <option value={10}>10</option>
                     <option value={20}>20</option>
@@ -621,7 +625,7 @@ export default function EquipmentDatabase() {
                     variant="outline"
                     size="sm"
                     disabled={currentPage <= 1}
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    onClick={() => goToPage(currentPage - 1)}
                   >
                     Previous
                   </Button>
@@ -641,7 +645,7 @@ export default function EquipmentDatabase() {
                         key={pageNum}
                         variant={currentPage === pageNum ? "default" : "outline"}
                         size="sm"
-                        onClick={() => setCurrentPage(pageNum)}
+                        onClick={() => goToPage(pageNum)}
                       >
                         {pageNum}
                       </Button>
@@ -651,7 +655,7 @@ export default function EquipmentDatabase() {
                     variant="outline"
                     size="sm"
                     disabled={currentPage >= totalPages}
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    onClick={() => goToPage(currentPage + 1)}
                   >
                     Next
                   </Button>

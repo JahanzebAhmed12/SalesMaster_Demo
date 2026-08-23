@@ -6,34 +6,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Eye, Edit, Trash2, Download, FileText, Upload, UserPlus, Printer, ChevronUp, ChevronDown } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getApiUrl } from "@/lib/config";
 import { Employee } from "@shared/schema";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { usePagination } from "@/hooks/usePagination";
 import { useAdminCrossTabSync } from "@/hooks/useAdminCrossTabSync";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { printHtmlTable } from "@/lib/export-utils";
-
-// Helper to get the correct API URL
-const getApiUrl = (endpoint: string) => {
-  // Use the same base URL as the current page, but for API calls
-  const protocol = window.location.protocol;
-  const hostname = window.location.hostname;
-  const port = window.location.port;
-  
-  // In development, use localhost:5000, in production use the same host
-  let API_BASE_URL;
-  if (hostname === 'localhost' || hostname === '127.0.0.1') {
-    API_BASE_URL = "http://localhost:5000";
-  } else {
-    // Production - use the same protocol and host as the frontend
-    API_BASE_URL = `${protocol}//${hostname}${port ? ':' + port : ''}`;
-  }
-  
-  return `${API_BASE_URL}${endpoint}`;
-};
 
 // DocumentsCell component for managing employee documents
 const DocumentsCell = ({ employeeId }: { employeeId: number }) => {
@@ -221,8 +204,6 @@ export default function EmployeeDatabase() {
   const [isExporting, setIsExporting] = useState(false);
   const [sortField, setSortField] = useState<"fullName" | "department" | "status" | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const { broadcastEmployeeOperation } = useAdminCrossTabSync();
 
   const { data: employees = [], isLoading, error } = useQuery<Employee[]>({
@@ -261,12 +242,17 @@ export default function EmployeeDatabase() {
     return filtered;
   }, [employees, searchTerm, sortField, sortDirection]);
 
-  const paginatedEmployees = React.useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredEmployees.slice(start, start + pageSize);
-  }, [filteredEmployees, currentPage, pageSize]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / pageSize));
+  const {
+    currentPage,
+    totalPages,
+    itemsPerPage: pageSize,
+    paginatedData: paginatedEmployees,
+    goToPage,
+    setItemsPerPage: setPageSize,
+  } = usePagination({
+    data: filteredEmployees,
+    initialItemsPerPage: 10,
+  });
 
   const handleSort = (field: "fullName" | "department" | "status") => {
     if (sortField === field) {
@@ -275,7 +261,7 @@ export default function EmployeeDatabase() {
       setSortField(field);
       setSortDirection('asc');
     }
-    setCurrentPage(1);
+    goToPage(1);
   };
 
   const SortIcon = ({ field }: { field: string }) => {
@@ -713,7 +699,7 @@ export default function EmployeeDatabase() {
                 <select
                   className="border rounded px-2 py-1 text-sm"
                   value={pageSize}
-                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
                 >
                   <option value={10}>10</option>
                   <option value={20}>20</option>
@@ -730,7 +716,7 @@ export default function EmployeeDatabase() {
                   variant="outline"
                   size="sm"
                   disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onClick={() => goToPage(currentPage - 1)}
                 >
                   Previous
                 </Button>
@@ -750,7 +736,7 @@ export default function EmployeeDatabase() {
                       key={pageNum}
                       variant={currentPage === pageNum ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setCurrentPage(pageNum)}
+                      onClick={() => goToPage(pageNum)}
                     >
                       {pageNum}
                     </Button>
@@ -760,7 +746,7 @@ export default function EmployeeDatabase() {
                   variant="outline"
                   size="sm"
                   disabled={currentPage >= totalPages}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  onClick={() => goToPage(currentPage + 1)}
                 >
                   Next
                 </Button>

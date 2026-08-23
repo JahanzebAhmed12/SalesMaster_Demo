@@ -2,14 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import type { EmployeeWithAttendance } from "@shared/schema";
 import AttendanceTable from "@/components/layout/attendance-table";
-import { useBusinessDate } from "@/hooks/useBusinessDate";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import { format } from "date-fns";
 
 // NOTE: This page shows employee attendance data
 // The data is fetched from the employees endpoint which includes attendance information
 
 export default function Payroll() {
-  const { businessDate, isNextDay, isLoading: isLoadingBusinessDate } = useBusinessDate();
+  const { businessDate, isNextDay, isLoading: isLoadingBusinessDate } = useBusinessDate({
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
+  const effectiveBusinessDate = businessDate ?? new Date();
   
   const { data: employees, isLoading } = useQuery<EmployeeWithAttendance[]>({
     queryKey: ["/api/employees/attendance"],
@@ -34,7 +38,7 @@ export default function Payroll() {
               {isLoadingBusinessDate ? (
                 "Loading..."
               ) : (
-                format(businessDate, 'EEEE, MMMM do, yyyy')
+                format(effectiveBusinessDate, 'EEEE, MMMM do, yyyy')
               )}
             </p>
             <div className="flex flex-col gap-1 mt-1">
@@ -59,9 +63,9 @@ export default function Payroll() {
       ) : (
         <AttendanceTable 
           employees={employees || []} 
-          dateRange={{ from: businessDate, to: businessDate }}
+          dateRange={{ from: effectiveBusinessDate, to: effectiveBusinessDate }}
           viewMode="day"
-          businessDate={businessDate}
+          businessDate={effectiveBusinessDate}
         />
       )}
     </div>

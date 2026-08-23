@@ -21,7 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import { isPastDate } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { useBusinessDate } from "@/hooks/useBusinessDate";
+import { useBusinessDate } from "@/hooks/use-business-date";
 import type { Customer, Sale, Payment, InsertPayment } from "@shared/schema";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -89,7 +89,10 @@ export default function CustomerPayment() {
   const { user } = useAuth();
 
   // Business date
-  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
+  const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate({
+    refetchInterval: 60000,
+    staleTime: 30000,
+  });
 
   // Backdate permissions
   const { canEditBackdate } = useBackdatePermissions();
@@ -139,7 +142,7 @@ export default function CustomerPayment() {
   // Set initial payment date to business date (only when paymentDate is still undefined and API has loaded)
   useEffect(() => {
     if (businessDate && !isLoadingBusinessDate && paymentDate === undefined) {
-      setPaymentDate(businessDate);
+      setPaymentDate(businessDate ?? undefined);
     }
   }, [businessDate, isLoadingBusinessDate, paymentDate]);
 
@@ -1411,7 +1414,7 @@ export default function CustomerPayment() {
                           setPaymentDate(date);
                         }}
                         disabled={(date) => !canCreatePaymentForDate(date)}
-                        defaultMonth={businessDate}
+                        defaultMonth={businessDate ?? new Date()}
                         initialFocus
                       />
                     </PopoverContent>
