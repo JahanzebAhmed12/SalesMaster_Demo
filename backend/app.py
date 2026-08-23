@@ -81,7 +81,7 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'connect_args': {
         'timeout': 60,  # Increased timeout to 60 seconds
         'check_same_thread': False,  # Allow multiple threads
-        'isolation_level': None,  # Autocommit mode
+        # Keep SQLite transactions enabled so request-level rollback is real.
         'cached_statements': 128,  # Cache prepared statements
     }
 }
@@ -6186,7 +6186,9 @@ def create_purchase_invoice():
         date=invoice_date
     )
     db.session.add(invoice)
-    db.session.commit()
+    # Assign invoice.id without committing. The header must roll back if
+    # any item or stock update fails later in this request.
+    db.session.flush()
     
     # Process invoice items and update stock
     for item in data['items']:
