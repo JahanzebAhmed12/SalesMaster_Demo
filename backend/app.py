@@ -7672,6 +7672,7 @@ def save_closing_stock_entries():
                     manual_entry=True
                 )
                 db.session.add(entry)
+                db.session.flush()  # Link the movement to this ClosingStock row.
 
                 qty = float(item['quantity'])
                 if item['productType'] == 'regular':
@@ -7687,7 +7688,7 @@ def save_closing_stock_entries():
                         product_type=item['productType'],
                         movement_type='closing_stock_adjustment',
                         quantity=qty - old_stock,
-                        reference_id=None,
+                        reference_id=entry.id,
                         reference_type='closing_stock',
                         previous_stock=old_stock,
                         new_stock=qty,
@@ -7707,6 +7708,7 @@ def save_closing_stock_entries():
 
                 if existing:
                     existing.quantity = item['quantity']
+                    entry = existing
                 else:
                     entry = ClosingStock(
                         product_id=item['productId'],
@@ -7716,6 +7718,7 @@ def save_closing_stock_entries():
                         manual_entry=True
                     )
                     db.session.add(entry)
+                    db.session.flush()  # Link the movement to this ClosingStock row.
 
                 qty = float(item['quantity'])
                 if item['productType'] == 'regular':
@@ -7731,7 +7734,7 @@ def save_closing_stock_entries():
                         product_type=item['productType'],
                         movement_type='closing_stock_adjustment',
                         quantity=qty - old_stock,
-                        reference_id=None,
+                        reference_id=entry.id,
                         reference_type='closing_stock',
                         previous_stock=old_stock,
                         new_stock=qty,
@@ -7774,34 +7777,46 @@ def delete_closing_stock_entry():
         if not closing_stock:
             return jsonify({"error": "Closing stock entry not found"}), 404
 
-        # Find and reverse the associated stock movement
-        stock_movement = StockMovement.query.filter(
+        # Find the adjustment movement(s) belonging to this ClosingStock row.
+        # New saves carry the row ID. The date/product fallback supports rows
+        # created before E6 was fixed, which used a NULL reference_id.
+        movement_query = StockMovement.query.filter(
             StockMovement.product_id == product_id,
             StockMovement.product_type == product_type,
-            StockMovement.reference_id == closing_stock.id,
             StockMovement.reference_type == 'closing_stock',
             StockMovement.movement_type == 'closing_stock_adjustment'
-        ).first()
+        )
+        linked_movements = movement_query.filter(
+            StockMovement.reference_id == closing_stock.id
+        ).all()
+        if not linked_movements:
+            linked_movements = movement_query.filter(
+                StockMovement.reference_id.is_(None),
+                StockMovement.movement_date == date
+            ).order_by(StockMovement.id.asc()).all()
 
-        if stock_movement:
-            # Reverse the stock delta using update_product_stock for proper locking
-            reversed_delta = -safe_float(stock_movement.quantity)
-            success, result = update_product_stock(
-                product_id=product_id,
-                product_type=product_type,
-                quantity_change=reversed_delta,
-                movement_type='closing_stock_reversal',
-                reference_id=closing_stock.id,
-                reference_type='closing_stock_reversal',
-                remarks=f"Reversed closing stock adjustment for {date_str}",
-                user_id=user_id,
-                movement_date=date
-            )
-            if not success:
-                return jsonify({"error": f"Failed to reverse closing stock: {result}"}), 400
+        if linked_movements:
+            # Reverse the total recorded delta using the normal stock helper.
+            # This preserves the existing direct-overwrite save behavior while
+            # making deletion restore the pre-save stock snapshot.
+            reversed_delta = -sum(safe_float(m.quantity) for m in linked_movements)
+            if abs(reversed_delta) > 0.001:
+                success, result = update_product_stock(
+                    product_id=product_id,
+                    product_type=product_type,
+                    quantity_change=reversed_delta,
+                    movement_type='closing_stock_reversal',
+                    reference_id=closing_stock.id,
+                    reference_type='closing_stock_reversal',
+                    remarks=f"Reversed closing stock adjustment for {date_str}",
+                    user_id=user_id,
+                    movement_date=date
+                )
+                if not success:
+                    return jsonify({"error": f"Failed to reverse closing stock: {result}"}), 400
 
-            # Remove the original stock movement
-            db.session.delete(stock_movement)
+            for movement in linked_movements:
+                db.session.delete(movement)
 
         # Delete the closing stock entry
         db.session.delete(closing_stock)
