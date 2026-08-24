@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { format } from "date-fns";
 import { cn, formatQuantity, formatSmartQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
+import { getApiUrl } from "@/lib/config";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCompanyDetails } from "@/hooks/use-company-details";
@@ -421,9 +422,7 @@ export default function DailySummary() {
         throw new Error('No authentication token found');
       }
 
-      // Use the correct backend URL
-      const backendUrl = window.location.origin.replace(':5173', ':5000');
-      const url = `${backendUrl}/api/reports/daily-summary/pdf?date=${format(selectedDate, "yyyy-MM-dd")}&token=${token}&includeStock=true&includePurchase=true`;
+      const url = getApiUrl(`/api/reports/daily-summary/pdf?date=${format(selectedDate, "yyyy-MM-dd")}&token=${token}&includeStock=true&includePurchase=true`);
 
       // Open in new window for printing
       const printWindow = window.open(

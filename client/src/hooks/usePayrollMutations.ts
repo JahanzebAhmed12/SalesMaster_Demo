@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePayrollState } from '@/components/payroll/PayrollStateProvider';
 import { apiRequest, scheduleAuthError } from '@/lib/queryClient';
+import { getApiUrl } from '@/lib/config';
 import { useToast } from '@/hooks/use-toast';
 
 /**
@@ -94,13 +95,8 @@ export const usePayrollMutations = () => {
         const formData = new FormData();
         formData.append('signedForm', file);
         
-        // Use the same URL logic as apiRequest
-        const useRelativeUrls = () => {
-          return window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-        };
+                const url = getApiUrl(`/api/holiday-requests/${id}/upload-signed-form`);
 
-        const API_BASE_URL = 'http://localhost:5000';
-        const url = useRelativeUrls() ? `/api/holiday-requests/${id}/upload-signed-form` : `${API_BASE_URL}/api/holiday-requests/${id}/upload-signed-form`;
 
         const token = localStorage.getItem('jwt_token');
         const headers: Record<string, string> = {};

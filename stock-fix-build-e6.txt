@@ -1,0 +1,28 @@
+
+> sales-master-dashboard@1.0.0 build
+> vite build
+
+vite v5.4.14 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 22 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+✓ 3083 modules transformed.
+rendering chunks...
+[plugin:vite:reporter] [plugin vite:reporter] 
+(!) /home/ubuntu/SalesMasterDashboard/client/src/lib/config.ts is dynamically imported by /home/ubuntu/SalesMasterDashboard/client/src/pages/print/dot-matrix-invoice.tsx but also statically imported by /home/ubuntu/SalesMasterDashboard/client/src/hooks/usePayrollMutations.ts, /home/ubuntu/SalesMasterDashboard/client/src/lib/auth.ts, /home/ubuntu/SalesMasterDashboard/client/src/lib/queryClient.ts, /home/ubuntu/SalesMasterDashboard/client/src/pages/admin/employee-database-edit.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/admin/employee-database.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/daily-report/daily-summary.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/data-entry/sales-invoice.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/payroll/holiday-requests.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/a5-invoice.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/daily-summary-print.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/delivery-note.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/invoice.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/packing-list.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/payment-receipt-print.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/purchase-invoice.tsx, /home/ubuntu/SalesMasterDashboard/client/src/pages/print/supplier-payment-receipt.tsx, dynamic import will not move module into another chunk.
+
+computing gzip size...
+../dist/public/index.html                              0.39 kB │ gzip:   0.26 kB
+../dist/public/assets/printlogo-Ljh6UthL.png          75.89 kB
+../dist/public/assets/index-BoNFq0rw.css             135.13 kB │ gzip:  40.79 kB
+../dist/public/assets/purify.es-BFmuJLeH.js           21.93 kB │ gzip:   8.62 kB
+../dist/public/assets/index.es-CtORMXFZ.js           150.53 kB │ gzip:  51.48 kB
+../dist/public/assets/html2canvas.esm-CBrSDip1.js    201.42 kB │ gzip:  48.03 kB
+../dist/public/assets/index-C8CuVGiq.js            2,766.93 kB │ gzip: 724.46 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 13.35s

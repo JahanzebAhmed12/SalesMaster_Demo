@@ -1,5 +1,5 @@
 import { QueryClient, useMutation, useQueryClient, UseMutationOptions, UseMutationResult } from "@tanstack/react-query";
-import { API_BASE_URL, useRelativeUrls } from "./config";
+import { getApiUrl } from "./config";
 import { handleAuthError, useAuth } from "./auth";
 
 // ── 401 de-bounce ────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ export function useInvalidateMutation<TData, TVariables = void, TError = unknown
 export const apiRequest = async <T = any>(method: string, endpoint: string, data?: any, options?: { signal?: AbortSignal }): Promise<T> => {
   // For production with Nginx reverse proxy, use relative URLs
   // For development, use full URL to backend server
-  const url = useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const url = getApiUrl(endpoint);
   const token = localStorage.getItem('jwt_token');
 
   const headers: Record<string, string> = {

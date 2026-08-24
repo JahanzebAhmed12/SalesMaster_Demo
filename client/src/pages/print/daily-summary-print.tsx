@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { getApiUrl } from "@/lib/config";
 
 export default function DailySummaryPrintPage() {
 	const [redirectUrl, setRedirectUrl] = useState<string>("");
@@ -19,13 +20,13 @@ export default function DailySummaryPrintPage() {
 				setError("Missing auth token. Please login again.");
 				return;
 			}
-			const origin = window.location.origin;
-			const backendOrigin = origin.includes(":5173") ? origin.replace(":5173", ":5000") : origin;
-			const url = `${backendOrigin}/api/reports/daily-summary/pdf?date=${encodeURIComponent(
+							const url = getApiUrl(`/api/reports/daily-summary/pdf?date=${encodeURIComponent(
+
 				date
 			)}&includeStock=${includeStock}&includePurchase=${includePurchase}&token=${encodeURIComponent(
 				token
-			)}`;
+							)}`);
+
 			setRedirectUrl(url);
 			// Redirect to backend HTML for printing
 			window.location.replace(url);

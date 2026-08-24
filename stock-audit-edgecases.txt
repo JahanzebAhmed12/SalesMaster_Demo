@@ -1,0 +1,30 @@
+/home/ubuntu/SalesMasterDashboard/.venv/lib/python3.12/site-packages/pydantic/_internal/_config.py:322: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+/home/ubuntu/SalesMasterDashboard/probe_sale_closing_purchase_edgecases.py:21: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  return float(model.query.get(product_id).current_stock)
+[EMAIL CONFIG] Mode: Brevo API
+[EMAIL CONFIG] From: Tropifruituk@tropifruituk.net
+[EMAIL CONFIG] API key configured: True
+negative_sale_create_http= 500 body= {'error': 'Failed to create sale: A transaction is already begun on this Session.'}
+negative_sale_create_stock= 100.0
+negative_sale_create_returns= 0
+negative_sale_create_movements= []
+negative_sale_delete_http= 405 body= None
+negative_sale_delete_stock= 100.0 expected=100
+negative_sale_delete_returns= 0
+negative_sale_delete_movements= []
+closing_save_http= 200 stock= 80.0
+closing_delete_http= 200 stock= 80.0 expected=100
+closing_rows= 0
+closing_movements= [('closing_stock_adjustment', 'closing_stock', None, -20.0)]
+[DEBUG] Creating stock movement for product 1 (regular): quantity=5, movement_type=purchase
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=5, movement_type=purchase
+[DEBUG] Stock validation PASSED for movement_type=purchase
+[DEBUG] Updated product stock: 80.0 -> 85.0
+[DEBUG] Created stock movement: purchase, quantity=5.0, reference_id=1
+[DEBUG] Stock movement created successfully for product 1: 85.0
+non_product_purchase_http= 201
+non_product_purchase_stock_regular= 85.0 before= 80.0
+non_product_purchase_stock_non= 20.0 before= 20.0
+non_product_purchase_movements= [(1, 'regular', 'closing_stock_adjustment', -20.0), (1, 'regular', 'purchase', 5.0)]

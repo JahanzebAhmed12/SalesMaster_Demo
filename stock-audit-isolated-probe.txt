@@ -1,0 +1,11 @@
+/home/ubuntu/SalesMasterDashboard/.venv/lib/python3.12/site-packages/pydantic/_internal/_config.py:322: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+[EMAIL CONFIG] Mode: Brevo API
+[EMAIL CONFIG] From: Tropifruituk@tropifruituk.net
+[EMAIL CONFIG] API key configured: True
+[DEBUG] Stock check report: from_dt=2026-06-02 00:00:00, to_dt=2026-06-02 23:59:59.999999
+status 200
+{"clStock": 236.0, "crtn": 0, "dmps": 0, "id": 1, "ns": 150.0, "os": 93.0, "productDescription": "Test Product A", "productType": "regular", "result": "extra 3.0", "sales": 10.0, "slNo": 1, "srtn": 0, "status": "excess", "stock": 233.0}
+{"clStock": 0, "crtn": 0, "dmps": 0, "id": 2, "ns": 0, "os": 68.0, "productDescription": "Test Product B", "productType": "regular", "result": "short 68.0", "sales": 0, "slNo": 2, "srtn": 0, "status": "short", "stock": 68.0}
+{"clStock": 175.0, "crtn": 0, "dmps": 0, "id": 3, "ns": 0, "os": 175.0, "productDescription": "Test Product C", "productType": "regular", "result": "\u2713", "sales": 0, "slNo": 3, "srtn": 0, "status": "correct", "stock": 175.0}

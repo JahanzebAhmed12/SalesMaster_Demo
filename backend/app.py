@@ -49,9 +49,12 @@ app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')  # Change this 
 META_TOKEN = os.getenv('META_TOKEN')
 PHONE_NUMBER_ID = os.getenv('PHONE_NUMBER_ID')
 # Configure CORS
-CORS(app, 
+cors_origins = ["http://localhost:5173"]
+if os.getenv("FRONTEND_ORIGIN"):
+    cors_origins.append(os.environ["FRONTEND_ORIGIN"])
+CORS(app,
      resources={r"/api/*": {
-         "origins": ["http://localhost:5173"],
+         "origins": cors_origins,
          "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
          "allow_headers": ["Content-Type", "Authorization"],
          "supports_credentials": True
@@ -62,9 +65,11 @@ CORS(app,
 def handle_preflight():
     if request.method == "OPTIONS":
         response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "http://localhost:5173")
-        response.headers.add('Access-Control-Allow-Headers', "Content-Type,Authorization")
-        response.headers.add('Access-Control-Allow-Methods', "GET,PUT,POST,DELETE,PATCH,OPTIONS")
+        origin = request.headers.get("Origin")
+        if origin in cors_origins:
+            response.headers.add("Access-Control-Allow-Origin", origin)
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type,Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,PATCH,OPTIONS")
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response
 

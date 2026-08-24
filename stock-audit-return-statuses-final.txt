@@ -1,0 +1,39 @@
+/home/ubuntu/SalesMasterDashboard/.venv/lib/python3.12/site-packages/pydantic/_internal/_config.py:322: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+/tmp/probe_return_statuses_final.py:16: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  return float(RegularProduct.query.get(product_id).current_stock)
+[EMAIL CONFIG] Mode: Brevo API
+[EMAIL CONFIG] From: Tropifruituk@tropifruituk.net
+[EMAIL CONFIG] API key configured: True
+customer_pending_create: http=201, current_stock=100.0, expected=100, body={'createdAt': '2026-08-23T17:12:49.766131', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'customerId': 1, 'customerName': 'Return Status Customer', 'date': '2026-08-23', 'description': 'pending customer return', 'id': 1, 'invoiceNumber': None, 'productDescription': 'pending customer return', 'productId': 1, 'productType': 'regular', 'quantity': 5.0, 'refNumber': 'CR0001', 'remarks': None, 'returnReason': None, 'saleId': None, 'status': 'pending', 'totalValue': 5.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.766136'}
+customer_pending_reject: http=200, current_stock=100.0, expected=100, body={'createdAt': '2026-08-23T17:12:49.766131', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'customerId': 1, 'customerName': 'Return Status Customer', 'date': '2026-08-23', 'description': 'pending customer return', 'id': 1, 'invoiceNumber': None, 'productDescription': 'pending customer return', 'productId': 1, 'productType': 'regular', 'quantity': 5.0, 'refNumber': 'CR0001', 'remarks': 'probe', 'returnReason': None, 'saleId': None, 'status': 'rejected', 'totalValue': 5.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.775254'}
+customer_rejected_delete: http=200, current_stock=100.0, expected=100, body={'message': 'Customer return deleted successfully'}
+customer_pending2_create: http=201, current_stock=100.0, expected=100, body={'createdAt': '2026-08-23T17:12:49.789419', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'customerId': 1, 'customerName': 'Return Status Customer', 'date': '2026-08-23', 'description': 'editable pending customer return', 'id': 1, 'invoiceNumber': None, 'productDescription': 'editable pending customer return', 'productId': 1, 'productType': 'regular', 'quantity': 5.0, 'refNumber': 'CR0001', 'remarks': None, 'returnReason': None, 'saleId': None, 'status': 'pending', 'totalValue': 5.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.789423'}
+customer_pending2_edit_5_to_7: http=200, current_stock=100.0, expected=100, body={'createdAt': '2026-08-23T17:12:49.789419', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'customerId': 1, 'customerName': 'Return Status Customer', 'date': '2026-08-23', 'description': 'editable pending customer return', 'id': 1, 'invoiceNumber': None, 'productDescription': 'editable pending customer return', 'productId': 1, 'productType': 'regular', 'quantity': 7.0, 'refNumber': 'CR0001', 'remarks': None, 'returnReason': None, 'saleId': None, 'status': 'pending', 'totalValue': 7.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.794153'}
+customer_pending2_approve: http=200, current_stock=100.0, expected=107, body={'createdAt': '2026-08-23T17:12:49.789419', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'customerId': 1, 'customerName': 'Return Status Customer', 'date': '2026-08-23', 'description': 'editable pending customer return', 'id': 1, 'invoiceNumber': None, 'productDescription': 'editable pending customer return', 'productId': 1, 'productType': 'regular', 'quantity': 7.0, 'refNumber': 'CR0001', 'remarks': None, 'returnReason': None, 'saleId': None, 'status': 'approved', 'totalValue': 7.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.798338'}
+[DEBUG] Supplier: <Supplier 1>
+[DEBUG] Product: <RegularProduct 1>
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=-5.0, movement_type=supplier_return
+[DEBUG] Stock validation PASSED for movement_type=supplier_return
+[DEBUG] Updated product stock: 100.0 -> 95.0
+[DEBUG] Created stock movement: supplier_return, quantity=-5.0, reference_id=1
+supplier_pending_create: http=201, current_stock=95.0, expected=95, body={'createdAt': '2026-08-23T17:12:49.808308', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'date': '2026-08-23', 'description': 'pending supplier return', 'id': 1, 'invoiceNumber': None, 'productId': 1, 'productType': 'regular', 'purchaseInvoiceId': None, 'quantity': '5.000', 'refNumber': 'SR0001', 'remarks': None, 'returnReason': None, 'status': 'pending', 'supplierId': 1, 'supplierName': 'Return Status Supplier', 'totalValue': 5.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.808312'}
+supplier_pending_approve: http=200, current_stock=95.0, expected=95, body={'createdAt': '2026-08-23T17:12:49.808308', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'date': '2026-08-23', 'description': 'pending supplier return', 'id': 1, 'invoiceNumber': None, 'productId': 1, 'productType': 'regular', 'purchaseInvoiceId': None, 'quantity': '5.000', 'refNumber': 'SR0001', 'remarks': None, 'returnReason': None, 'status': 'approved', 'supplierId': 1, 'supplierName': 'Return Status Supplier', 'totalValue': 5.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.820483'}
+[DEBUG] Supplier: <Supplier 1>
+[DEBUG] Product: <RegularProduct 1>
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=-4.0, movement_type=supplier_return
+[DEBUG] Stock validation PASSED for movement_type=supplier_return
+[DEBUG] Updated product stock: 95.0 -> 91.0
+[DEBUG] Created stock movement: supplier_return, quantity=-4.0, reference_id=2
+supplier_pending2_create: http=201, current_stock=91.0, expected=86, body={'createdAt': '2026-08-23T17:12:49.825719', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'date': '2026-08-23', 'description': 'rejectable supplier return', 'id': 2, 'invoiceNumber': None, 'productId': 1, 'productType': 'regular', 'purchaseInvoiceId': None, 'quantity': '4.000', 'refNumber': 'SR0002', 'remarks': None, 'returnReason': None, 'status': 'pending', 'supplierId': 1, 'supplierName': 'Return Status Supplier', 'totalValue': 4.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.825723'}
+supplier_pending2_reject: http=200, current_stock=91.0, expected=86, body={'createdAt': '2026-08-23T17:12:49.825719', 'createdBy': 1, 'creditNoteAmount': 0, 'creditNoteIssued': False, 'date': '2026-08-23', 'description': 'rejectable supplier return', 'id': 2, 'invoiceNumber': None, 'productId': 1, 'productType': 'regular', 'purchaseInvoiceId': None, 'quantity': '4.000', 'refNumber': 'SR0002', 'remarks': 'probe', 'returnReason': None, 'status': 'rejected', 'supplierId': 1, 'supplierName': 'Return Status Supplier', 'totalValue': 4.0, 'unitPrice': 1.0, 'updatedAt': '2026-08-23T17:12:49.832698'}
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=4.0, movement_type=supplier_return_cancellation
+[DEBUG] Stock validation PASSED for movement_type=supplier_return_cancellation
+[DEBUG] Updated product stock: 91.0 -> 95.0
+[DEBUG] Created stock movement: supplier_return_cancellation, quantity=4.0, reference_id=2
+supplier_rejected_delete: http=200, current_stock=95.0, expected=82, body={'message': 'Supplier return deleted successfully'}
+customer_pending_rejected_movements []
+customer_pending_edited_movements []
+supplier_pending_approved_movements [('supplier_return', -5.0)]
+supplier_pending_rejected_movements [('supplier_return', -4.0), ('supplier_return_cancellation', 4.0)]

@@ -1,0 +1,2746 @@
+[
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.9365,
+    "left_lines": 551,
+    "right_lines": 583
+  },
+  {
+    "left": "print/a5-invoice.tsx",
+    "right": "print/invoice.tsx",
+    "similarity": 0.8384,
+    "left_lines": 190,
+    "right_lines": 237
+  },
+  {
+    "left": "data-entry/on-acc-customer.tsx",
+    "right": "data-entry/on-acc-supplier.tsx",
+    "similarity": 0.8367,
+    "left_lines": 394,
+    "right_lines": 359
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.8312,
+    "left_lines": 375,
+    "right_lines": 407
+  },
+  {
+    "left": "admin/expenses-database.tsx",
+    "right": "admin/supplier-database.tsx",
+    "similarity": 0.7844,
+    "left_lines": 374,
+    "right_lines": 521
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "daily-report/product-purchase-full-view.tsx",
+    "similarity": 0.7208,
+    "left_lines": 521,
+    "right_lines": 489
+  },
+  {
+    "left": "print/delivery-note.tsx",
+    "right": "print/purchase-invoice.tsx",
+    "similarity": 0.7083,
+    "left_lines": 168,
+    "right_lines": 168
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "daily-report/product-sales-report.tsx",
+    "similarity": 0.7065,
+    "left_lines": 654,
+    "right_lines": 535
+  },
+  {
+    "left": "admin/user-database-add.tsx",
+    "right": "admin/user-database-edit.tsx",
+    "similarity": 0.6968,
+    "left_lines": 246,
+    "right_lines": 219
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.6966,
+    "left_lines": 425,
+    "right_lines": 333
+  },
+  {
+    "left": "admin/customer-database.tsx",
+    "right": "admin/supplier-database.tsx",
+    "similarity": 0.6904,
+    "left_lines": 519,
+    "right_lines": 521
+  },
+  {
+    "left": "admin/customer-database.tsx",
+    "right": "admin/employee-database.tsx",
+    "similarity": 0.671,
+    "left_lines": 519,
+    "right_lines": 700
+  },
+  {
+    "left": "historical-reports/eec-report.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.6675,
+    "left_lines": 418,
+    "right_lines": 421
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/customer-aging-rpt.tsx",
+    "similarity": 0.6624,
+    "left_lines": 702,
+    "right_lines": 551
+  },
+  {
+    "left": "print/delivery-note.tsx",
+    "right": "print/packing-list.tsx",
+    "similarity": 0.6581,
+    "left_lines": 168,
+    "right_lines": 145
+  },
+  {
+    "left": "historical-reports/full-analysis.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.6578,
+    "left_lines": 421,
+    "right_lines": 333
+  },
+  {
+    "left": "print/packing-list.tsx",
+    "right": "print/purchase-invoice.tsx",
+    "similarity": 0.6518,
+    "left_lines": 145,
+    "right_lines": 168
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.6506,
+    "left_lines": 702,
+    "right_lines": 583
+  },
+  {
+    "left": "admin/employee-database.tsx",
+    "right": "admin/supplier-database.tsx",
+    "similarity": 0.6241,
+    "left_lines": 700,
+    "right_lines": 521
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.6241,
+    "left_lines": 425,
+    "right_lines": 421
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.6161,
+    "left_lines": 457,
+    "right_lines": 413
+  },
+  {
+    "left": "admin/customer-database.tsx",
+    "right": "admin/expenses-database.tsx",
+    "similarity": 0.6137,
+    "left_lines": 519,
+    "right_lines": 374
+  },
+  {
+    "left": "admin/user-database-edit.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.5981,
+    "left_lines": 219,
+    "right_lines": 209
+  },
+  {
+    "left": "historical-reports/eec-report.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.5885,
+    "left_lines": 418,
+    "right_lines": 333
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "daily-report/supplier-purchase-history.tsx",
+    "similarity": 0.5855,
+    "left_lines": 375,
+    "right_lines": 175
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.5827,
+    "left_lines": 476,
+    "right_lines": 413
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.5742,
+    "left_lines": 654,
+    "right_lines": 809
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.5728,
+    "left_lines": 425,
+    "right_lines": 413
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.571,
+    "left_lines": 413,
+    "right_lines": 333
+  },
+  {
+    "left": "admin/customer-database.tsx",
+    "right": "admin/equipment-database.tsx",
+    "similarity": 0.5683,
+    "left_lines": 519,
+    "right_lines": 586
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.567,
+    "left_lines": 476,
+    "right_lines": 628
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.562,
+    "left_lines": 457,
+    "right_lines": 333
+  },
+  {
+    "left": "payments/customer-payment-history.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.552,
+    "left_lines": 516,
+    "right_lines": 484
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.5488,
+    "left_lines": 476,
+    "right_lines": 457
+  },
+  {
+    "left": "print/a5-invoice.tsx",
+    "right": "print/payment-receipt-print.tsx",
+    "similarity": 0.5442,
+    "left_lines": 190,
+    "right_lines": 229
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.542,
+    "left_lines": 457,
+    "right_lines": 425
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.5417,
+    "left_lines": 535,
+    "right_lines": 809
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.5399,
+    "left_lines": 457,
+    "right_lines": 421
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.5372,
+    "left_lines": 413,
+    "right_lines": 421
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "historical-reports/eec-report.tsx",
+    "similarity": 0.5267,
+    "left_lines": 425,
+    "right_lines": 418
+  },
+  {
+    "left": "admin/employee-database.tsx",
+    "right": "admin/expenses-database.tsx",
+    "similarity": 0.5196,
+    "left_lines": 700,
+    "right_lines": 374
+  },
+  {
+    "left": "admin/equipment-database.tsx",
+    "right": "admin/supplier-database.tsx",
+    "similarity": 0.5185,
+    "left_lines": 586,
+    "right_lines": 521
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.513,
+    "left_lines": 791,
+    "right_lines": 628
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.5072,
+    "left_lines": 413,
+    "right_lines": 628
+  },
+  {
+    "left": "print/invoice.tsx",
+    "right": "print/payment-receipt-print.tsx",
+    "similarity": 0.5064,
+    "left_lines": 237,
+    "right_lines": 229
+  },
+  {
+    "left": "admin/employee-database.tsx",
+    "right": "admin/equipment-database.tsx",
+    "similarity": 0.5054,
+    "left_lines": 700,
+    "right_lines": 586
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.5022,
+    "left_lines": 791,
+    "right_lines": 790
+  },
+  {
+    "left": "daily-report/product-sales-history.tsx",
+    "right": "daily-report/supplier-purchase-history.tsx",
+    "similarity": 0.5017,
+    "left_lines": 407,
+    "right_lines": 175
+  },
+  {
+    "left": "admin/customer-database.tsx",
+    "right": "admin/products-database.tsx",
+    "similarity": 0.4991,
+    "left_lines": 519,
+    "right_lines": 1060
+  },
+  {
+    "left": "print/bulk-dot-matrix.tsx",
+    "right": "print/dot-matrix-invoice.tsx",
+    "similarity": 0.4987,
+    "left_lines": 547,
+    "right_lines": 1045
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/eec-report.tsx",
+    "similarity": 0.496,
+    "left_lines": 457,
+    "right_lines": 418
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "daily-report/product-sales-report.tsx",
+    "similarity": 0.4946,
+    "left_lines": 488,
+    "right_lines": 535
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.4913,
+    "left_lines": 375,
+    "right_lines": 484
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "historical-reports/eec-report.tsx",
+    "similarity": 0.491,
+    "left_lines": 413,
+    "right_lines": 418
+  },
+  {
+    "left": "admin/customer-database-edit.tsx",
+    "right": "admin/supplier-database-edit.tsx",
+    "similarity": 0.4891,
+    "left_lines": 578,
+    "right_lines": 620
+  },
+  {
+    "left": "historical-reports/purchase-history.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.4866,
+    "left_lines": 628,
+    "right_lines": 790
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "daily-report/product-purchase-report.tsx",
+    "similarity": 0.4851,
+    "left_lines": 488,
+    "right_lines": 654
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.4829,
+    "left_lines": 457,
+    "right_lines": 628
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.4803,
+    "left_lines": 476,
+    "right_lines": 790
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.4796,
+    "left_lines": 476,
+    "right_lines": 333
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.4772,
+    "left_lines": 476,
+    "right_lines": 425
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/customer-statement.tsx",
+    "similarity": 0.4767,
+    "left_lines": 476,
+    "right_lines": 791
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/eec-report.tsx",
+    "similarity": 0.4743,
+    "left_lines": 476,
+    "right_lines": 418
+  },
+  {
+    "left": "daily-report/product-sales-history.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.4736,
+    "left_lines": 407,
+    "right_lines": 484
+  },
+  {
+    "left": "admin/add-nonproduct.tsx",
+    "right": "payroll/holiday-request-form.tsx",
+    "similarity": 0.4733,
+    "left_lines": 554,
+    "right_lines": 570
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.472,
+    "left_lines": 702,
+    "right_lines": 476
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.4714,
+    "left_lines": 375,
+    "right_lines": 516
+  },
+  {
+    "left": "historical-reports/customer-history.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.467,
+    "left_lines": 756,
+    "right_lines": 790
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "daily-report/supplier-purchase-history.tsx",
+    "similarity": 0.465,
+    "left_lines": 225,
+    "right_lines": 175
+  },
+  {
+    "left": "daily-report/product-sales-history.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.4637,
+    "left_lines": 407,
+    "right_lines": 516
+  },
+  {
+    "left": "historical-reports/prod-customer-history.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.4607,
+    "left_lines": 431,
+    "right_lines": 333
+  },
+  {
+    "left": "admin/employee-database.tsx",
+    "right": "admin/products-database.tsx",
+    "similarity": 0.458,
+    "left_lines": 700,
+    "right_lines": 1060
+  },
+  {
+    "left": "admin/products-database.tsx",
+    "right": "admin/supplier-database.tsx",
+    "similarity": 0.4579,
+    "left_lines": 1060,
+    "right_lines": 521
+  },
+  {
+    "left": "admin/user-database-add.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.4571,
+    "left_lines": 246,
+    "right_lines": 209
+  },
+  {
+    "left": "print/dot-matrix-invoice.tsx",
+    "right": "print/dot-matrix-payment.tsx",
+    "similarity": 0.4523,
+    "left_lines": 1045,
+    "right_lines": 547
+  },
+  {
+    "left": "historical-reports/customer-history.tsx",
+    "right": "historical-reports/customer-statement.tsx",
+    "similarity": 0.4486,
+    "left_lines": 756,
+    "right_lines": 791
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "daily-report/profit-loss.tsx",
+    "similarity": 0.4448,
+    "left_lines": 535,
+    "right_lines": 598
+  },
+  {
+    "left": "admin/equipment-database.tsx",
+    "right": "admin/expenses-database.tsx",
+    "similarity": 0.4396,
+    "left_lines": 586,
+    "right_lines": 374
+  },
+  {
+    "left": "historical-reports/eec-report.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.4382,
+    "left_lines": 418,
+    "right_lines": 431
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "daily-report/product-sales-report.tsx",
+    "similarity": 0.4375,
+    "left_lines": 521,
+    "right_lines": 535
+  },
+  {
+    "left": "admin/expenses-database-edit.tsx",
+    "right": "admin/user-database-edit.tsx",
+    "similarity": 0.4338,
+    "left_lines": 219,
+    "right_lines": 219
+  },
+  {
+    "left": "historical-reports/prod-customer-history.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.4306,
+    "left_lines": 431,
+    "right_lines": 628
+  },
+  {
+    "left": "print/a5-invoice.tsx",
+    "right": "print/purchase-invoice.tsx",
+    "similarity": 0.4302,
+    "left_lines": 190,
+    "right_lines": 168
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "daily-report/profit-loss.tsx",
+    "similarity": 0.4297,
+    "left_lines": 654,
+    "right_lines": 598
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "daily-report/product-purchase-report.tsx",
+    "similarity": 0.4255,
+    "left_lines": 521,
+    "right_lines": 654
+  },
+  {
+    "left": "print/a5-invoice.tsx",
+    "right": "print/delivery-note.tsx",
+    "similarity": 0.4246,
+    "left_lines": 190,
+    "right_lines": 168
+  },
+  {
+    "left": "admin/user-database-edit.tsx",
+    "right": "admin/user-database.tsx",
+    "similarity": 0.4216,
+    "left_lines": 219,
+    "right_lines": 189
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.4214,
+    "left_lines": 476,
+    "right_lines": 421
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/supplier-database-edit.tsx",
+    "similarity": 0.4199,
+    "left_lines": 547,
+    "right_lines": 620
+  },
+  {
+    "left": "historical-reports/full-analysis.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.4178,
+    "left_lines": 421,
+    "right_lines": 431
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.4148,
+    "left_lines": 488,
+    "right_lines": 809
+  },
+  {
+    "left": "print/invoice.tsx",
+    "right": "print/purchase-invoice.tsx",
+    "similarity": 0.4148,
+    "left_lines": 237,
+    "right_lines": 168
+  },
+  {
+    "left": "print/a5-invoice.tsx",
+    "right": "print/packing-list.tsx",
+    "similarity": 0.4119,
+    "left_lines": 190,
+    "right_lines": 145
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "data-entry/expenses.tsx",
+    "similarity": 0.4114,
+    "left_lines": 488,
+    "right_lines": 703
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.4099,
+    "left_lines": 457,
+    "right_lines": 431
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.4089,
+    "left_lines": 425,
+    "right_lines": 431
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.4005,
+    "left_lines": 413,
+    "right_lines": 431
+  },
+  {
+    "left": "print/delivery-note.tsx",
+    "right": "print/invoice.tsx",
+    "similarity": 0.4,
+    "left_lines": 168,
+    "right_lines": 237
+  },
+  {
+    "left": "data-entry/dumps.tsx",
+    "right": "data-entry/expenses.tsx",
+    "similarity": 0.3982,
+    "left_lines": 643,
+    "right_lines": 703
+  },
+  {
+    "left": "admin/add-nonproduct.tsx",
+    "right": "admin/employee-database-edit.tsx",
+    "similarity": 0.3979,
+    "left_lines": 554,
+    "right_lines": 999
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/customer-database-edit.tsx",
+    "similarity": 0.3964,
+    "left_lines": 547,
+    "right_lines": 578
+  },
+  {
+    "left": "admin/user-database-add.tsx",
+    "right": "admin/user-database.tsx",
+    "similarity": 0.3954,
+    "left_lines": 246,
+    "right_lines": 189
+  },
+  {
+    "left": "print/delivery-note.tsx",
+    "right": "print/payment-receipt-print.tsx",
+    "similarity": 0.3929,
+    "left_lines": 168,
+    "right_lines": 229
+  },
+  {
+    "left": "daily-report/product-purchase-full-view.tsx",
+    "right": "daily-report/product-sales-report.tsx",
+    "similarity": 0.3926,
+    "left_lines": 489,
+    "right_lines": 535
+  },
+  {
+    "left": "admin/expenses-database.tsx",
+    "right": "admin/products-database.tsx",
+    "similarity": 0.3891,
+    "left_lines": 374,
+    "right_lines": 1060
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/expenses-database.tsx",
+    "similarity": 0.3887,
+    "left_lines": 547,
+    "right_lines": 374
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/customer-database.tsx",
+    "similarity": 0.3865,
+    "left_lines": 547,
+    "right_lines": 519
+  },
+  {
+    "left": "admin/equipment-database.tsx",
+    "right": "admin/products-database.tsx",
+    "similarity": 0.3864,
+    "left_lines": 586,
+    "right_lines": 1060
+  },
+  {
+    "left": "daily-report/profit-loss.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.3838,
+    "left_lines": 598,
+    "right_lines": 809
+  },
+  {
+    "left": "data-entry/dumps.tsx",
+    "right": "data-entry/return-to-supplier.tsx",
+    "similarity": 0.3833,
+    "left_lines": 643,
+    "right_lines": 917
+  },
+  {
+    "left": "print/payment-receipt-print.tsx",
+    "right": "print/purchase-invoice.tsx",
+    "similarity": 0.3829,
+    "left_lines": 229,
+    "right_lines": 168
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/customer-history.tsx",
+    "similarity": 0.3799,
+    "left_lines": 476,
+    "right_lines": 756
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3799,
+    "left_lines": 425,
+    "right_lines": 628
+  },
+  {
+    "left": "daily-report/product-purchase-full-view.tsx",
+    "right": "daily-report/product-purchase-report.tsx",
+    "similarity": 0.3797,
+    "left_lines": 489,
+    "right_lines": 654
+  },
+  {
+    "left": "print/packing-list.tsx",
+    "right": "print/supplier-payment-receipt.tsx",
+    "similarity": 0.3796,
+    "left_lines": 145,
+    "right_lines": 129
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "data-entry/expenses.tsx",
+    "similarity": 0.3788,
+    "left_lines": 654,
+    "right_lines": 703
+  },
+  {
+    "left": "payments/customer-payment.tsx",
+    "right": "payments/supplier-payment.tsx",
+    "similarity": 0.3787,
+    "left_lines": 1664,
+    "right_lines": 987
+  },
+  {
+    "left": "data-entry/purchase-entry.tsx",
+    "right": "data-entry/sales-entry.tsx",
+    "similarity": 0.3779,
+    "left_lines": 214,
+    "right_lines": 220
+  },
+  {
+    "left": "print/a5-invoice.tsx",
+    "right": "print/supplier-payment-receipt.tsx",
+    "similarity": 0.3762,
+    "left_lines": 190,
+    "right_lines": 129
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.3757,
+    "left_lines": 410,
+    "right_lines": 431
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.3749,
+    "left_lines": 476,
+    "right_lines": 431
+  },
+  {
+    "left": "admin/customer-database-edit.tsx",
+    "right": "admin/user-database-edit.tsx",
+    "similarity": 0.3739,
+    "left_lines": 578,
+    "right_lines": 219
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.3728,
+    "left_lines": 809,
+    "right_lines": 484
+  },
+  {
+    "left": "admin/customer-database-edit.tsx",
+    "right": "admin/user-database-add.tsx",
+    "similarity": 0.3714,
+    "left_lines": 578,
+    "right_lines": 246
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3714,
+    "left_lines": 702,
+    "right_lines": 628
+  },
+  {
+    "left": "print/delivery-note.tsx",
+    "right": "print/supplier-payment-receipt.tsx",
+    "similarity": 0.3704,
+    "left_lines": 168,
+    "right_lines": 129
+  },
+  {
+    "left": "admin/expenses-database.tsx",
+    "right": "admin/user-database.tsx",
+    "similarity": 0.3694,
+    "left_lines": 374,
+    "right_lines": 189
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.3691,
+    "left_lines": 654,
+    "right_lines": 484
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "admin/user-database-edit.tsx",
+    "similarity": 0.369,
+    "left_lines": 220,
+    "right_lines": 219
+  },
+  {
+    "left": "historical-reports/purchase-history.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.3684,
+    "left_lines": 628,
+    "right_lines": 333
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/customer-aging-rpt.tsx",
+    "similarity": 0.3681,
+    "left_lines": 476,
+    "right_lines": 551
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.3677,
+    "left_lines": 702,
+    "right_lines": 413
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.3673,
+    "left_lines": 220,
+    "right_lines": 232
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/eec-report.tsx",
+    "similarity": 0.3671,
+    "left_lines": 410,
+    "right_lines": 418
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/supplier-database.tsx",
+    "similarity": 0.367,
+    "left_lines": 547,
+    "right_lines": 521
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.367,
+    "left_lines": 410,
+    "right_lines": 413
+  },
+  {
+    "left": "admin/expenses-database-edit.tsx",
+    "right": "admin/user-database-add.tsx",
+    "similarity": 0.3656,
+    "left_lines": 219,
+    "right_lines": 246
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.3654,
+    "left_lines": 488,
+    "right_lines": 333
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/all-customer-history.tsx",
+    "similarity": 0.3653,
+    "left_lines": 809,
+    "right_lines": 702
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.3651,
+    "left_lines": 488,
+    "right_lines": 476
+  },
+  {
+    "left": "payroll/holiday-request-view.tsx",
+    "right": "restricted-landing.tsx",
+    "similarity": 0.3646,
+    "left_lines": 229,
+    "right_lines": 166
+  },
+  {
+    "left": "historical-reports/supplier-return.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.3623,
+    "left_lines": 333,
+    "right_lines": 484
+  },
+  {
+    "left": "historical-reports/full-analysis.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3622,
+    "left_lines": 421,
+    "right_lines": 628
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.3621,
+    "left_lines": 791,
+    "right_lines": 413
+  },
+  {
+    "left": "historical-reports/customer-history.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3613,
+    "left_lines": 756,
+    "right_lines": 628
+  },
+  {
+    "left": "print/invoice.tsx",
+    "right": "print/packing-list.tsx",
+    "similarity": 0.3613,
+    "left_lines": 237,
+    "right_lines": 145
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "daily-report/product-sales-report.tsx",
+    "similarity": 0.3604,
+    "left_lines": 375,
+    "right_lines": 535
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "data-entry/purchase-entry.tsx",
+    "similarity": 0.3594,
+    "left_lines": 220,
+    "right_lines": 214
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.3585,
+    "left_lines": 702,
+    "right_lines": 425
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3562,
+    "left_lines": 551,
+    "right_lines": 628
+  },
+  {
+    "left": "print/packing-list.tsx",
+    "right": "print/payment-receipt-print.tsx",
+    "similarity": 0.3529,
+    "left_lines": 145,
+    "right_lines": 229
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.3527,
+    "left_lines": 488,
+    "right_lines": 425
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.3521,
+    "left_lines": 410,
+    "right_lines": 476
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.352,
+    "left_lines": 535,
+    "right_lines": 431
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.3519,
+    "left_lines": 521,
+    "right_lines": 809
+  },
+  {
+    "left": "admin/user-database-edit.tsx",
+    "right": "data-entry/purchase-entry.tsx",
+    "similarity": 0.351,
+    "left_lines": 219,
+    "right_lines": 214
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.3507,
+    "left_lines": 488,
+    "right_lines": 413
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "data-entry/dumps.tsx",
+    "similarity": 0.3501,
+    "left_lines": 488,
+    "right_lines": 643
+  },
+  {
+    "left": "historical-reports/eec-report.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3499,
+    "left_lines": 418,
+    "right_lines": 628
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.3497,
+    "left_lines": 220,
+    "right_lines": 209
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.3497,
+    "left_lines": 410,
+    "right_lines": 425
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.3491,
+    "left_lines": 521,
+    "right_lines": 407
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/customer-aging-rpt.tsx",
+    "similarity": 0.3485,
+    "left_lines": 809,
+    "right_lines": 551
+  },
+  {
+    "left": "daily-report/product-sales-history.tsx",
+    "right": "daily-report/product-sales-report.tsx",
+    "similarity": 0.3482,
+    "left_lines": 407,
+    "right_lines": 535
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.3475,
+    "left_lines": 476,
+    "right_lines": 583
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "daily-report/sales-analysis.tsx",
+    "similarity": 0.3474,
+    "left_lines": 488,
+    "right_lines": 410
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "data-entry/expenses.tsx",
+    "similarity": 0.3473,
+    "left_lines": 535,
+    "right_lines": 703
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.3469,
+    "left_lines": 702,
+    "right_lines": 457
+  },
+  {
+    "left": "admin/employee-database-edit.tsx",
+    "right": "payroll/holiday-request-form.tsx",
+    "similarity": 0.3467,
+    "left_lines": 999,
+    "right_lines": 570
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.3454,
+    "left_lines": 413,
+    "right_lines": 583
+  },
+  {
+    "left": "admin/view-nonproduct.tsx",
+    "right": "payroll/holiday-request-view.tsx",
+    "similarity": 0.3447,
+    "left_lines": 183,
+    "right_lines": 229
+  },
+  {
+    "left": "admin/user-database-edit.tsx",
+    "right": "admin/view-nonproduct.tsx",
+    "similarity": 0.3433,
+    "left_lines": 219,
+    "right_lines": 183
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "daily-report/product-purchase-history.tsx",
+    "similarity": 0.3415,
+    "left_lines": 521,
+    "right_lines": 375
+  },
+  {
+    "left": "admin/expenses-database-edit.tsx",
+    "right": "login.tsx",
+    "similarity": 0.3413,
+    "left_lines": 219,
+    "right_lines": 115
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.341,
+    "left_lines": 425,
+    "right_lines": 484
+  },
+  {
+    "left": "historical-reports/customer-history.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.3405,
+    "left_lines": 756,
+    "right_lines": 413
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/customer-statement.tsx",
+    "similarity": 0.3403,
+    "left_lines": 702,
+    "right_lines": 791
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "daily-report/product-purchase-history.tsx",
+    "similarity": 0.34,
+    "left_lines": 225,
+    "right_lines": 375
+  },
+  {
+    "left": "payroll/holiday-request-view.tsx",
+    "right": "print/holiday-request-print.tsx",
+    "similarity": 0.3396,
+    "left_lines": 229,
+    "right_lines": 248
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "admin/user-database-add.tsx",
+    "similarity": 0.3391,
+    "left_lines": 220,
+    "right_lines": 246
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.3385,
+    "left_lines": 654,
+    "right_lines": 516
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.3382,
+    "left_lines": 551,
+    "right_lines": 413
+  },
+  {
+    "left": "daily-report/product-purchase-full-view.tsx",
+    "right": "daily-report/product-purchase-history.tsx",
+    "similarity": 0.338,
+    "left_lines": 489,
+    "right_lines": 375
+  },
+  {
+    "left": "admin/supplier-database-edit.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.3378,
+    "left_lines": 620,
+    "right_lines": 209
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.3376,
+    "left_lines": 535,
+    "right_lines": 484
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "data-entry/expenses.tsx",
+    "similarity": 0.3373,
+    "left_lines": 809,
+    "right_lines": 703
+  },
+  {
+    "left": "admin/user-database-edit.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.337,
+    "left_lines": 219,
+    "right_lines": 232
+  },
+  {
+    "left": "historical-reports/prod-customer-history.tsx",
+    "right": "historical-reports/product-history.tsx",
+    "similarity": 0.3366,
+    "left_lines": 431,
+    "right_lines": 888
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/customer-statement.tsx",
+    "similarity": 0.3365,
+    "left_lines": 457,
+    "right_lines": 791
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.3354,
+    "left_lines": 702,
+    "right_lines": 431
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.3352,
+    "left_lines": 457,
+    "right_lines": 790
+  },
+  {
+    "left": "data-entry/cash-cf.tsx",
+    "right": "data-entry/on-acc-supplier.tsx",
+    "similarity": 0.335,
+    "left_lines": 232,
+    "right_lines": 359
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.3344,
+    "left_lines": 488,
+    "right_lines": 457
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "admin/view-nonproduct.tsx",
+    "similarity": 0.3333,
+    "left_lines": 189,
+    "right_lines": 183
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "data-entry/return-to-supplier.tsx",
+    "similarity": 0.3331,
+    "left_lines": 488,
+    "right_lines": 917
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.333,
+    "left_lines": 654,
+    "right_lines": 457
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.3327,
+    "left_lines": 809,
+    "right_lines": 790
+  },
+  {
+    "left": "historical-reports/purchase-history.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.332,
+    "left_lines": 628,
+    "right_lines": 583
+  },
+  {
+    "left": "data-entry/purchase-entry.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.331,
+    "left_lines": 214,
+    "right_lines": 209
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.3308,
+    "left_lines": 413,
+    "right_lines": 790
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "closing-time.tsx",
+    "similarity": 0.3307,
+    "left_lines": 220,
+    "right_lines": 294
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.3306,
+    "left_lines": 791,
+    "right_lines": 431
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "daily-report/product-purchase-report.tsx",
+    "similarity": 0.3304,
+    "left_lines": 375,
+    "right_lines": 654
+  },
+  {
+    "left": "print/purchase-invoice.tsx",
+    "right": "print/supplier-payment-receipt.tsx",
+    "similarity": 0.33,
+    "left_lines": 168,
+    "right_lines": 129
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3295,
+    "left_lines": 410,
+    "right_lines": 628
+  },
+  {
+    "left": "data-entry/return-from-customer.tsx",
+    "right": "data-entry/return-to-supplier.tsx",
+    "similarity": 0.3294,
+    "left_lines": 698,
+    "right_lines": 917
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.3292,
+    "left_lines": 535,
+    "right_lines": 516
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "login.tsx",
+    "similarity": 0.3289,
+    "left_lines": 189,
+    "right_lines": 115
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "admin/expenses-database-edit.tsx",
+    "similarity": 0.328,
+    "left_lines": 220,
+    "right_lines": 219
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/customer-statement.tsx",
+    "similarity": 0.3279,
+    "left_lines": 551,
+    "right_lines": 791
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.3276,
+    "left_lines": 809,
+    "right_lines": 583
+  },
+  {
+    "left": "daily-report/profit-loss.tsx",
+    "right": "daily-report/sales-analysis.tsx",
+    "similarity": 0.3274,
+    "left_lines": 598,
+    "right_lines": 410
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "data-entry/dumps.tsx",
+    "similarity": 0.3269,
+    "left_lines": 654,
+    "right_lines": 643
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/customer-history.tsx",
+    "similarity": 0.3265,
+    "left_lines": 702,
+    "right_lines": 756
+  },
+  {
+    "left": "data-entry/cash-cf.tsx",
+    "right": "data-entry/on-acc-customer.tsx",
+    "similarity": 0.3259,
+    "left_lines": 232,
+    "right_lines": 394
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.3257,
+    "left_lines": 703,
+    "right_lines": 476
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/all-customer-history.tsx",
+    "similarity": 0.325,
+    "left_lines": 535,
+    "right_lines": 702
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.3247,
+    "left_lines": 488,
+    "right_lines": 516
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "data-entry/return-to-supplier.tsx",
+    "similarity": 0.3247,
+    "left_lines": 703,
+    "right_lines": 917
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.3244,
+    "left_lines": 654,
+    "right_lines": 425
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/employee-database.tsx",
+    "similarity": 0.324,
+    "left_lines": 547,
+    "right_lines": 700
+  },
+  {
+    "left": "daily-report/product-purchase-full-view.tsx",
+    "right": "daily-report/profit-loss.tsx",
+    "similarity": 0.3238,
+    "left_lines": 489,
+    "right_lines": 598
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "daily-report/profit-loss.tsx",
+    "similarity": 0.3235,
+    "left_lines": 521,
+    "right_lines": 598
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.3231,
+    "left_lines": 791,
+    "right_lines": 583
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3229,
+    "left_lines": 809,
+    "right_lines": 628
+  },
+  {
+    "left": "data-entry/cash-cf.tsx",
+    "right": "login.tsx",
+    "similarity": 0.3228,
+    "left_lines": 232,
+    "right_lines": 115
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "admin/user-database.tsx",
+    "similarity": 0.3227,
+    "left_lines": 220,
+    "right_lines": 189
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.3226,
+    "left_lines": 375,
+    "right_lines": 809
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.3226,
+    "left_lines": 654,
+    "right_lines": 431
+  },
+  {
+    "left": "data-entry/banking.tsx",
+    "right": "data-entry/expenses.tsx",
+    "similarity": 0.3226,
+    "left_lines": 729,
+    "right_lines": 703
+  },
+  {
+    "left": "admin/expenses-database-edit.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.3224,
+    "left_lines": 219,
+    "right_lines": 209
+  },
+  {
+    "left": "print/invoice.tsx",
+    "right": "print/supplier-payment-receipt.tsx",
+    "similarity": 0.3224,
+    "left_lines": 237,
+    "right_lines": 129
+  },
+  {
+    "left": "closing-time.tsx",
+    "right": "restricted-landing.tsx",
+    "similarity": 0.3217,
+    "left_lines": 294,
+    "right_lines": 166
+  },
+  {
+    "left": "historical-reports/customer-history.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.3215,
+    "left_lines": 756,
+    "right_lines": 457
+  },
+  {
+    "left": "historical-reports/daily-book-history.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.3209,
+    "left_lines": 425,
+    "right_lines": 516
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.3208,
+    "left_lines": 535,
+    "right_lines": 425
+  },
+  {
+    "left": "admin/customer-database-edit.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.3202,
+    "left_lines": 578,
+    "right_lines": 209
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.32,
+    "left_lines": 809,
+    "right_lines": 516
+  },
+  {
+    "left": "admin/user-database-edit.tsx",
+    "right": "closing-time.tsx",
+    "similarity": 0.3197,
+    "left_lines": 219,
+    "right_lines": 294
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "data-entry/dumps.tsx",
+    "similarity": 0.3196,
+    "left_lines": 809,
+    "right_lines": 643
+  },
+  {
+    "left": "daily-report/product-purchase-full-view.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.3192,
+    "left_lines": 489,
+    "right_lines": 407
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "daily-report/supplier-purchase-history.tsx",
+    "similarity": 0.3187,
+    "left_lines": 189,
+    "right_lines": 175
+  },
+  {
+    "left": "print/payment-receipt-print.tsx",
+    "right": "print/supplier-payment-receipt.tsx",
+    "similarity": 0.3184,
+    "left_lines": 229,
+    "right_lines": 129
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/all-customer-history.tsx",
+    "similarity": 0.3176,
+    "left_lines": 488,
+    "right_lines": 702
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.3167,
+    "left_lines": 654,
+    "right_lines": 407
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.3154,
+    "left_lines": 225,
+    "right_lines": 333
+  },
+  {
+    "left": "historical-reports/customer-history.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.3151,
+    "left_lines": 756,
+    "right_lines": 431
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.3145,
+    "left_lines": 551,
+    "right_lines": 333
+  },
+  {
+    "left": "daily-report/product-purchase-full-view.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.3143,
+    "left_lines": 489,
+    "right_lines": 809
+  },
+  {
+    "left": "historical-reports/full-analysis.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.3138,
+    "left_lines": 421,
+    "right_lines": 484
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.3137,
+    "left_lines": 702,
+    "right_lines": 790
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "daily-report/sales-analysis.tsx",
+    "similarity": 0.3132,
+    "left_lines": 535,
+    "right_lines": 410
+  },
+  {
+    "left": "historical-reports/all-customer-history.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.313,
+    "left_lines": 702,
+    "right_lines": 333
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "admin/view-nonproduct.tsx",
+    "similarity": 0.3127,
+    "left_lines": 220,
+    "right_lines": 183
+  },
+  {
+    "left": "admin/supplier-database.tsx",
+    "right": "admin/user-database.tsx",
+    "similarity": 0.3127,
+    "left_lines": 521,
+    "right_lines": 189
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "data-entry/purchase-entry.tsx",
+    "similarity": 0.3127,
+    "left_lines": 189,
+    "right_lines": 214
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/equipment-database.tsx",
+    "similarity": 0.3124,
+    "left_lines": 547,
+    "right_lines": 586
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/all-customer-history.tsx",
+    "similarity": 0.3112,
+    "left_lines": 654,
+    "right_lines": 702
+  },
+  {
+    "left": "daily-report/supplier-purchase-history.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.311,
+    "left_lines": 175,
+    "right_lines": 333
+  },
+  {
+    "left": "daily-report/profit-loss.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.3105,
+    "left_lines": 598,
+    "right_lines": 484
+  },
+  {
+    "left": "admin/view-nonproduct.tsx",
+    "right": "closing-time.tsx",
+    "similarity": 0.3103,
+    "left_lines": 183,
+    "right_lines": 294
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.3103,
+    "left_lines": 703,
+    "right_lines": 457
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/customer-aging-rpt.tsx",
+    "similarity": 0.3099,
+    "left_lines": 488,
+    "right_lines": 551
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/customer-history.tsx",
+    "similarity": 0.3092,
+    "left_lines": 654,
+    "right_lines": 756
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.3091,
+    "left_lines": 410,
+    "right_lines": 457
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.3088,
+    "left_lines": 535,
+    "right_lines": 333
+  },
+  {
+    "left": "admin/expenses-database-edit.tsx",
+    "right": "admin/view-nonproduct.tsx",
+    "similarity": 0.3085,
+    "left_lines": 219,
+    "right_lines": 183
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.3082,
+    "left_lines": 809,
+    "right_lines": 476
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/customer-history.tsx",
+    "similarity": 0.3076,
+    "left_lines": 551,
+    "right_lines": 756
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.3074,
+    "left_lines": 551,
+    "right_lines": 425
+  },
+  {
+    "left": "historical-reports/supplier-return.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.3062,
+    "left_lines": 333,
+    "right_lines": 516
+  },
+  {
+    "left": "data-entry/sales-entry.tsx",
+    "right": "restricted-landing.tsx",
+    "similarity": 0.3057,
+    "left_lines": 220,
+    "right_lines": 166
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.3044,
+    "left_lines": 535,
+    "right_lines": 457
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.3036,
+    "left_lines": 488,
+    "right_lines": 421
+  },
+  {
+    "left": "historical-reports/supplier-aging-rpt.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.3035,
+    "left_lines": 583,
+    "right_lines": 333
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.3032,
+    "left_lines": 703,
+    "right_lines": 425
+  },
+  {
+    "left": "historical-reports/prod-customer-history.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.303,
+    "left_lines": 431,
+    "right_lines": 790
+  },
+  {
+    "left": "admin/supplier-database-edit.tsx",
+    "right": "admin/user-database-edit.tsx",
+    "similarity": 0.3027,
+    "left_lines": 620,
+    "right_lines": 219
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/customer-statement.tsx",
+    "similarity": 0.3014,
+    "left_lines": 410,
+    "right_lines": 791
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.3013,
+    "left_lines": 551,
+    "right_lines": 790
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.3011,
+    "left_lines": 488,
+    "right_lines": 628
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.301,
+    "left_lines": 413,
+    "right_lines": 484
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.3006,
+    "left_lines": 225,
+    "right_lines": 407
+  },
+  {
+    "left": "data-entry/cash-cf.tsx",
+    "right": "data-entry/purchase-entry.tsx",
+    "similarity": 0.3004,
+    "left_lines": 232,
+    "right_lines": 214
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/user-database-edit.tsx",
+    "similarity": 0.3003,
+    "left_lines": 547,
+    "right_lines": 219
+  },
+  {
+    "left": "admin/expenses-database.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.3003,
+    "left_lines": 374,
+    "right_lines": 232
+  },
+  {
+    "left": "daily-report/product-sales-history.tsx",
+    "right": "daily-report/stock-check.tsx",
+    "similarity": 0.2993,
+    "left_lines": 407,
+    "right_lines": 809
+  },
+  {
+    "left": "historical-reports/eec-report.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.2993,
+    "left_lines": 418,
+    "right_lines": 484
+  },
+  {
+    "left": "admin/user-database-edit.tsx",
+    "right": "payroll/holiday-request-view.tsx",
+    "similarity": 0.2991,
+    "left_lines": 219,
+    "right_lines": 229
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.2991,
+    "left_lines": 654,
+    "right_lines": 476
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "data-entry/return-to-supplier.tsx",
+    "similarity": 0.299,
+    "left_lines": 809,
+    "right_lines": 917
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.299,
+    "left_lines": 703,
+    "right_lines": 628
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "daily-report/sales-analysis.tsx",
+    "similarity": 0.2989,
+    "left_lines": 654,
+    "right_lines": 410
+  },
+  {
+    "left": "daily-report/product-purchase-full-view.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.298,
+    "left_lines": 489,
+    "right_lines": 484
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "daily-report/profit-loss.tsx",
+    "similarity": 0.298,
+    "left_lines": 375,
+    "right_lines": 598
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "daily-report/product-purchase-history.tsx",
+    "similarity": 0.2979,
+    "left_lines": 189,
+    "right_lines": 375
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.2979,
+    "left_lines": 654,
+    "right_lines": 333
+  },
+  {
+    "left": "print/employee-contract-print.tsx",
+    "right": "print/holiday-request-print.tsx",
+    "similarity": 0.2977,
+    "left_lines": 585,
+    "right_lines": 248
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "daily-report/daily-book-purchase.tsx",
+    "similarity": 0.2973,
+    "left_lines": 225,
+    "right_lines": 488
+  },
+  {
+    "left": "admin/user-database-add.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.2971,
+    "left_lines": 246,
+    "right_lines": 232
+  },
+  {
+    "left": "historical-reports/date-wise-sales.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.2971,
+    "left_lines": 413,
+    "right_lines": 516
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.2967,
+    "left_lines": 535,
+    "right_lines": 476
+  },
+  {
+    "left": "admin/expenses-database-edit.tsx",
+    "right": "closing-time.tsx",
+    "similarity": 0.2963,
+    "left_lines": 219,
+    "right_lines": 294
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.2962,
+    "left_lines": 225,
+    "right_lines": 484
+  },
+  {
+    "left": "historical-reports/all-supplier-history.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.2958,
+    "left_lines": 476,
+    "right_lines": 484
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "data-entry/on-acc-customer.tsx",
+    "similarity": 0.2954,
+    "left_lines": 703,
+    "right_lines": 394
+  },
+  {
+    "left": "admin/view-nonproduct.tsx",
+    "right": "login.tsx",
+    "similarity": 0.2953,
+    "left_lines": 183,
+    "right_lines": 115
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/customer-aging-rpt.tsx",
+    "similarity": 0.2951,
+    "left_lines": 703,
+    "right_lines": 551
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "daily-report/compare-with-purchase.tsx",
+    "similarity": 0.2947,
+    "left_lines": 189,
+    "right_lines": 225
+  },
+  {
+    "left": "closing-time.tsx",
+    "right": "payroll/holiday-request-view.tsx",
+    "similarity": 0.2945,
+    "left_lines": 294,
+    "right_lines": 229
+  },
+  {
+    "left": "daily-report/daily-sales-full-view.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.2945,
+    "left_lines": 521,
+    "right_lines": 484
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "payments/customer-payment-history.tsx",
+    "similarity": 0.2942,
+    "left_lines": 225,
+    "right_lines": 516
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/customer-history.tsx",
+    "similarity": 0.2942,
+    "left_lines": 488,
+    "right_lines": 756
+  },
+  {
+    "left": "historical-reports/customer-history.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.2942,
+    "left_lines": 756,
+    "right_lines": 583
+  },
+  {
+    "left": "admin/expenses-database-edit.tsx",
+    "right": "admin/user-database.tsx",
+    "similarity": 0.2941,
+    "left_lines": 219,
+    "right_lines": 189
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "data-entry/return-to-supplier.tsx",
+    "similarity": 0.2941,
+    "left_lines": 654,
+    "right_lines": 917
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "data-entry/dumps.tsx",
+    "similarity": 0.2937,
+    "left_lines": 535,
+    "right_lines": 643
+  },
+  {
+    "left": "daily-report/product-purchase-history.tsx",
+    "right": "data-entry/closing-stock.tsx",
+    "similarity": 0.2936,
+    "left_lines": 375,
+    "right_lines": 422
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.2933,
+    "left_lines": 225,
+    "right_lines": 457
+  },
+  {
+    "left": "data-entry/banking.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.2929,
+    "left_lines": 729,
+    "right_lines": 425
+  },
+  {
+    "left": "print/employee-joining-form.tsx",
+    "right": "print/holiday-request-print.tsx",
+    "similarity": 0.2928,
+    "left_lines": 278,
+    "right_lines": 248
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "data-entry/on-acc-supplier.tsx",
+    "similarity": 0.2919,
+    "left_lines": 703,
+    "right_lines": 359
+  },
+  {
+    "left": "admin/user-database-add.tsx",
+    "right": "data-entry/sales-entry.tsx",
+    "similarity": 0.2918,
+    "left_lines": 246,
+    "right_lines": 220
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/customer-return.tsx",
+    "similarity": 0.2917,
+    "left_lines": 551,
+    "right_lines": 457
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/customer-history.tsx",
+    "similarity": 0.2914,
+    "left_lines": 809,
+    "right_lines": 756
+  },
+  {
+    "left": "admin/user-database-add.tsx",
+    "right": "data-entry/purchase-entry.tsx",
+    "similarity": 0.2913,
+    "left_lines": 246,
+    "right_lines": 214
+  },
+  {
+    "left": "admin/customer-database.tsx",
+    "right": "admin/user-database.tsx",
+    "similarity": 0.291,
+    "left_lines": 519,
+    "right_lines": 189
+  },
+  {
+    "left": "closing-time.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.2903,
+    "left_lines": 294,
+    "right_lines": 209
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.2902,
+    "left_lines": 654,
+    "right_lines": 628
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.29,
+    "left_lines": 791,
+    "right_lines": 333
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "daily-report/product-purchase-history.tsx",
+    "similarity": 0.2897,
+    "left_lines": 488,
+    "right_lines": 375
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "data-entry/return-to-supplier.tsx",
+    "similarity": 0.2893,
+    "left_lines": 535,
+    "right_lines": 917
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.2887,
+    "left_lines": 654,
+    "right_lines": 413
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.2884,
+    "left_lines": 547,
+    "right_lines": 209
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.2884,
+    "left_lines": 225,
+    "right_lines": 413
+  },
+  {
+    "left": "admin/add-nonproduct.tsx",
+    "right": "admin/view-nonproduct.tsx",
+    "similarity": 0.2877,
+    "left_lines": 554,
+    "right_lines": 183
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/customer-statement.tsx",
+    "similarity": 0.2875,
+    "left_lines": 809,
+    "right_lines": 791
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "login.tsx",
+    "similarity": 0.2866,
+    "left_lines": 220,
+    "right_lines": 115
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "profile/user-profile.tsx",
+    "similarity": 0.2864,
+    "left_lines": 189,
+    "right_lines": 209
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.2864,
+    "left_lines": 809,
+    "right_lines": 413
+  },
+  {
+    "left": "payroll/holiday-request-view.tsx",
+    "right": "payroll/holiday-requests.tsx",
+    "similarity": 0.2864,
+    "left_lines": 229,
+    "right_lines": 637
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "daily-report/product-purchase-history.tsx",
+    "similarity": 0.2857,
+    "left_lines": 220,
+    "right_lines": 375
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "closing-time.tsx",
+    "similarity": 0.2857,
+    "left_lines": 189,
+    "right_lines": 294
+  },
+  {
+    "left": "data-entry/banking.tsx",
+    "right": "payments/supplier-payment.tsx",
+    "similarity": 0.2855,
+    "left_lines": 729,
+    "right_lines": 987
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.2852,
+    "left_lines": 189,
+    "right_lines": 407
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "payroll/holiday-requests.tsx",
+    "similarity": 0.2847,
+    "left_lines": 220,
+    "right_lines": 637
+  },
+  {
+    "left": "payroll/holiday-request-view.tsx",
+    "right": "print/employee-joining-form.tsx",
+    "similarity": 0.284,
+    "left_lines": 229,
+    "right_lines": 278
+  },
+  {
+    "left": "admin/user-database.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.2834,
+    "left_lines": 189,
+    "right_lines": 425
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/eec-report.tsx",
+    "similarity": 0.2833,
+    "left_lines": 535,
+    "right_lines": 418
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.2827,
+    "left_lines": 535,
+    "right_lines": 413
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.2824,
+    "left_lines": 535,
+    "right_lines": 421
+  },
+  {
+    "left": "daily-report/supplier-purchase-history.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.2822,
+    "left_lines": 175,
+    "right_lines": 484
+  },
+  {
+    "left": "daily-report/stock-check.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.282,
+    "left_lines": 809,
+    "right_lines": 333
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.2817,
+    "left_lines": 488,
+    "right_lines": 790
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/all-customer-history.tsx",
+    "similarity": 0.2804,
+    "left_lines": 703,
+    "right_lines": 702
+  },
+  {
+    "left": "payroll/holiday-request-form.tsx",
+    "right": "payroll/holiday-request-view.tsx",
+    "similarity": 0.2804,
+    "left_lines": 570,
+    "right_lines": 229
+  },
+  {
+    "left": "daily-report/supplier-purchase-history.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.2801,
+    "left_lines": 175,
+    "right_lines": 232
+  },
+  {
+    "left": "historical-reports/supplier-aging-rpt.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.2797,
+    "left_lines": 583,
+    "right_lines": 790
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "historical-reports/all-supplier-history.tsx",
+    "similarity": 0.2796,
+    "left_lines": 225,
+    "right_lines": 476
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.2793,
+    "left_lines": 488,
+    "right_lines": 407
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.2791,
+    "left_lines": 654,
+    "right_lines": 421
+  },
+  {
+    "left": "data-entry/purchase-entry.tsx",
+    "right": "data-entry/return-from-customer.tsx",
+    "similarity": 0.2785,
+    "left_lines": 214,
+    "right_lines": 698
+  },
+  {
+    "left": "daily-report/product-purchase-report.tsx",
+    "right": "historical-reports/supplier-history.tsx",
+    "similarity": 0.2784,
+    "left_lines": 654,
+    "right_lines": 790
+  },
+  {
+    "left": "daily-report/product-sales-history.tsx",
+    "right": "data-entry/closing-stock.tsx",
+    "similarity": 0.2774,
+    "left_lines": 407,
+    "right_lines": 422
+  },
+  {
+    "left": "daily-report/profit-loss.tsx",
+    "right": "historical-reports/date-wise-sales.tsx",
+    "similarity": 0.277,
+    "left_lines": 598,
+    "right_lines": 413
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.2763,
+    "left_lines": 791,
+    "right_lines": 425
+  },
+  {
+    "left": "daily-report/daily-accounts.tsx",
+    "right": "daily-report/sales-analysis.tsx",
+    "similarity": 0.2762,
+    "left_lines": 488,
+    "right_lines": 410
+  },
+  {
+    "left": "data-entry/cash-cf.tsx",
+    "right": "data-entry/expenses.tsx",
+    "similarity": 0.2759,
+    "left_lines": 232,
+    "right_lines": 703
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.2757,
+    "left_lines": 225,
+    "right_lines": 232
+  },
+  {
+    "left": "historical-reports/customer-aging-rpt.tsx",
+    "right": "historical-reports/prod-customer-history.tsx",
+    "similarity": 0.2749,
+    "left_lines": 551,
+    "right_lines": 431
+  },
+  {
+    "left": "admin/view-nonproduct.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.2747,
+    "left_lines": 183,
+    "right_lines": 232
+  },
+  {
+    "left": "daily-report/product-sales-history.tsx",
+    "right": "daily-report/profit-loss.tsx",
+    "similarity": 0.2746,
+    "left_lines": 407,
+    "right_lines": 598
+  },
+  {
+    "left": "daily-report/daily-book-purchase.tsx",
+    "right": "daily-report/profit-loss.tsx",
+    "similarity": 0.2744,
+    "left_lines": 488,
+    "right_lines": 598
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.2744,
+    "left_lines": 410,
+    "right_lines": 421
+  },
+  {
+    "left": "admin/equipment-database-edit.tsx",
+    "right": "daily-report/product-sales-history.tsx",
+    "similarity": 0.2743,
+    "left_lines": 220,
+    "right_lines": 407
+  },
+  {
+    "left": "data-entry/cash-cf.tsx",
+    "right": "data-entry/sales-entry.tsx",
+    "similarity": 0.2743,
+    "left_lines": 232,
+    "right_lines": 220
+  },
+  {
+    "left": "historical-reports/customer-return.tsx",
+    "right": "payments/sup-payment-history.tsx",
+    "similarity": 0.2742,
+    "left_lines": 457,
+    "right_lines": 484
+  },
+  {
+    "left": "historical-reports/customer-statement.tsx",
+    "right": "historical-reports/full-analysis.tsx",
+    "similarity": 0.2739,
+    "left_lines": 791,
+    "right_lines": 421
+  },
+  {
+    "left": "closing-time.tsx",
+    "right": "data-entry/cash-cf.tsx",
+    "similarity": 0.2738,
+    "left_lines": 294,
+    "right_lines": 232
+  },
+  {
+    "left": "daily-report/compare-with-purchase.tsx",
+    "right": "historical-reports/daily-book-history.tsx",
+    "similarity": 0.2738,
+    "left_lines": 225,
+    "right_lines": 425
+  },
+  {
+    "left": "payroll/holiday-request-form.tsx",
+    "right": "payroll/holiday-requests.tsx",
+    "similarity": 0.2734,
+    "left_lines": 570,
+    "right_lines": 637
+  },
+  {
+    "left": "daily-report/supplier-purchase-history.tsx",
+    "right": "historical-reports/eec-report.tsx",
+    "similarity": 0.2732,
+    "left_lines": 175,
+    "right_lines": 418
+  },
+  {
+    "left": "admin/company-details.tsx",
+    "right": "admin/products-database.tsx",
+    "similarity": 0.2726,
+    "left_lines": 547,
+    "right_lines": 1060
+  },
+  {
+    "left": "daily-report/profit-loss.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.2724,
+    "left_lines": 598,
+    "right_lines": 628
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/supplier-aging-rpt.tsx",
+    "similarity": 0.2722,
+    "left_lines": 703,
+    "right_lines": 583
+  },
+  {
+    "left": "data-entry/banking.tsx",
+    "right": "data-entry/on-acc-supplier.tsx",
+    "similarity": 0.2721,
+    "left_lines": 729,
+    "right_lines": 359
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "data-entry/closing-stock.tsx",
+    "similarity": 0.2717,
+    "left_lines": 535,
+    "right_lines": 422
+  },
+  {
+    "left": "daily-report/product-sales-report.tsx",
+    "right": "historical-reports/purchase-history.tsx",
+    "similarity": 0.2717,
+    "left_lines": 535,
+    "right_lines": 628
+  },
+  {
+    "left": "daily-report/sales-analysis.tsx",
+    "right": "historical-reports/all-customer-history.tsx",
+    "similarity": 0.2716,
+    "left_lines": 410,
+    "right_lines": 702
+  },
+  {
+    "left": "data-entry/banking.tsx",
+    "right": "historical-reports/supplier-return.tsx",
+    "similarity": 0.2712,
+    "left_lines": 729,
+    "right_lines": 333
+  },
+  {
+    "left": "data-entry/cash-cf.tsx",
+    "right": "historical-reports/customer-aging-rpt.tsx",
+    "similarity": 0.2708,
+    "left_lines": 232,
+    "right_lines": 551
+  },
+  {
+    "left": "data-entry/expenses.tsx",
+    "right": "historical-reports/customer-history.tsx",
+    "similarity": 0.27,
+    "left_lines": 703,
+    "right_lines": 756
+  }
+]

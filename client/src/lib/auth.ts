@@ -1,11 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { API_BASE_URL, useRelativeUrls } from "./config";
+import { getApiUrl } from "./config";
 
-// Helper to get the correct API URL
-const getApiUrl = (endpoint: string) => {
-  return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
-};
 interface User {
   id: number;
   username: string;

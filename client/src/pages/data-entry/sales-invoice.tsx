@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import PaymentDetailsDrawer from "@/components/layout/payment-details-drawer";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
+import { getApiUrl } from "@/lib/config";
 import { useToast } from "@/hooks/use-toast";
 import { formatQuantity, formatPrice } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";

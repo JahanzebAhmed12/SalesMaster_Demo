@@ -2,13 +2,10 @@ import { useEffect, useState, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
 import logo from "@/public/printlogo.png";
 import { apiRequest } from "@/lib/queryClient";
-import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
+import { getApiUrl } from "@/lib/config";
 import { formatQuantity } from "@/lib/utils";
 
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
-  const getApiUrl = (endpoint: string) => {
-    return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
-  };
   const url = getApiUrl(endpoint);
   const response = await fetch(url, {
     method,

@@ -1,0 +1,9 @@
+/home/ubuntu/SalesMasterDashboard/.venv/lib/python3.12/site-packages/pydantic/_internal/_config.py:322: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+[EMAIL CONFIG] Mode: Brevo API
+[EMAIL CONFIG] From: Tropifruituk@tropifruituk.net
+[EMAIL CONFIG] API key configured: True
+/api/stock/customer-return 404
+/api/stock/dump 404
+/api/stock/supplier-return 404

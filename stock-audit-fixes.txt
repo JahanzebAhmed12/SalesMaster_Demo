@@ -1,0 +1,55 @@
+/home/ubuntu/SalesMasterDashboard/.venv/lib/python3.12/site-packages/pydantic/_internal/_config.py:322: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+/home/ubuntu/SalesMasterDashboard/probe_stock_fixes.py:17: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  return float(model.query.get(product_id).current_stock)
+[EMAIL CONFIG] Mode: Brevo API
+[EMAIL CONFIG] From: Tropifruituk@tropifruituk.net
+[EMAIL CONFIG] API key configured: True
+PASS customer pending create: 100.0
+PASS customer approve: 100.0
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=5.0, movement_type=customer_return
+[DEBUG] Stock validation PASSED for movement_type=customer_return
+[DEBUG] Updated product stock: 100.0 -> 105.0
+[DEBUG] Created stock movement: customer_return, quantity=5.0, reference_id=1
+PASS customer complete: 105.0
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=-5.0, movement_type=customer_return_cancellation
+[DEBUG] Stock validation PASSED for movement_type=customer_return_cancellation
+[DEBUG] Updated product stock: 105.0 -> 100.0
+[DEBUG] Created stock movement: customer_return_cancellation, quantity=-5.0, reference_id=1
+PASS customer completed delete: 100.0
+PASS customer pending quantity edit: 100.0
+PASS customer rejected delete: 100.0
+[DEBUG] Supplier: <Supplier 1>
+[DEBUG] Product: <RegularProduct 1>
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=-5.0, movement_type=supplier_return
+[DEBUG] Stock validation PASSED for movement_type=supplier_return
+[DEBUG] Updated product stock: 100.0 -> 95.0
+[DEBUG] Created stock movement: supplier_return, quantity=-5.0, reference_id=1
+PASS supplier pending create: 95.0
+PASS supplier approve and complete: 95.0
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=5.0, movement_type=supplier_return_cancellation
+[DEBUG] Stock validation PASSED for movement_type=supplier_return_cancellation
+[DEBUG] Updated product stock: 95.0 -> 100.0
+[DEBUG] Created stock movement: supplier_return_cancellation, quantity=5.0, reference_id=1
+PASS supplier completed delete: 100.0
+[DEBUG] Supplier: <Supplier 1>
+[DEBUG] Product: <RegularProduct 1>
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=-5.0, movement_type=supplier_return
+[DEBUG] Stock validation PASSED for movement_type=supplier_return
+[DEBUG] Updated product stock: 100.0 -> 95.0
+[DEBUG] Created stock movement: supplier_return, quantity=-5.0, reference_id=1
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=-2.0, movement_type=supplier_return_adjustment
+[DEBUG] Stock validation PASSED for movement_type=supplier_return_adjustment
+[DEBUG] Updated product stock: 95.0 -> 93.0
+[DEBUG] Created stock movement: supplier_return_adjustment, quantity=-2.0, reference_id=1
+PASS supplier quantity edit: 93.0
+PASS supplier reject: 93.0
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=7.0, movement_type=supplier_return_cancellation
+[DEBUG] Stock validation PASSED for movement_type=supplier_return_cancellation
+[DEBUG] Updated product stock: 93.0 -> 100.0
+[DEBUG] Created stock movement: supplier_return_cancellation, quantity=7.0, reference_id=1
+PASS supplier rejected delete: 100.0
+negative sale create: 500 {'error': 'Failed to create sale: A transaction is already begun on this Session.'}
+negative sale route reproduction did not complete; return-transition assertions above remain valid
+ALL_COMPLETED_STOCK_FIX_PROBES_PASSED

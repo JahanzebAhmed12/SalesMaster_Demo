@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { API_BASE_URL, useRelativeUrls } from "@/lib/config";
+import { getApiUrl } from "@/lib/config";
 import { insertEmployeeSchema, Employee, InsertEmployee, employeeSchema } from "@shared/schema";
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, Upload, Download, Eye, FileText } from "lucide-react";
@@ -47,10 +47,6 @@ const EmployeeDatabaseEdit = () => {
   }, [documents]);
 
   // Helper to get the correct API URL for file operations
-  const getApiUrl = (endpoint: string) => {
-    return useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
-  };
-
   // File upload handler
   const handleFileUpload = async (file: File, documentName: string, startDate?: string, endDate?: string) => {
     if (!employeeId) {

@@ -19,6 +19,10 @@ export const API_BASE_URL = getApiBaseUrl();
 // Helper to determine if we should use relative URLs
 export const useRelativeUrls = () => import.meta.env.PROD && !import.meta.env.VITE_API_BASE_URL;
 
+// Resolve an API endpoint consistently across local development, preview, and production.
+export const getApiUrl = (endpoint: string): string =>
+    useRelativeUrls() ? endpoint : `${API_BASE_URL}${endpoint}`;
+
 export const config = {
     apiBaseUrl: API_BASE_URL,
     isDevelopment: import.meta.env.DEV,

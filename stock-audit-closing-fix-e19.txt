@@ -1,0 +1,24 @@
+/home/ubuntu/SalesMasterDashboard/.venv/lib/python3.12/site-packages/pydantic/_internal/_config.py:322: UserWarning: Valid config keys have changed in V2:
+* 'orm_mode' has been renamed to 'from_attributes'
+  warnings.warn(message, UserWarning)
+/tmp/probe_closing_fix_e19.py:16: LegacyAPIWarning: The Query.get() method is considered legacy as of the 1.x series of SQLAlchemy and becomes a legacy construct in 2.0. The method is now available as Session.get() (deprecated since: 2.0) (Background on SQLAlchemy 2.0 at: https://sqlalche.me/e/b8d9)
+  return float(RegularProduct.query.get(product_id).current_stock)
+[EMAIL CONFIG] Mode: Brevo API
+[EMAIL CONFIG] From: Tropifruituk@tropifruituk.net
+[EMAIL CONFIG] API key configured: True
+PASS closing save to 80: 80.0
+PASS closing movement linked: 1
+PASS closing overwrite to 70: 70.0
+PASS repeated closing adjustment count: 2
+[DEBUG] update_product_stock called: product_id=1, product_type=regular, quantity_change=30.0, movement_type=closing_stock_reversal
+[DEBUG] Stock validation PASSED for movement_type=closing_stock_reversal
+[DEBUG] Updated product stock: 70.0 -> 100.0
+[DEBUG] Created stock movement: closing_stock_reversal, quantity=30.0, reference_id=1
+PASS closing delete restores pre-save stock: 100.0
+PASS closing reversal movement count: 1
+[DEBUG] update_product_stock called: product_id=2, product_type=regular, quantity_change=20.0, movement_type=closing_stock_reversal
+[DEBUG] Stock validation PASSED for movement_type=closing_stock_reversal
+[DEBUG] Updated product stock: 80.0 -> 100.0
+[DEBUG] Created stock movement: closing_stock_reversal, quantity=20.0, reference_id=1
+PASS legacy closing delete restores stock: 100.0
+ALL_CLOSING_STOCK_FIX_PROBES_PASSED

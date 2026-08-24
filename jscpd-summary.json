@@ -1,0 +1,2842 @@
+{
+  "summary": {
+    "detectionDate": "2026-08-23T13:08:46.717Z",
+    "formats": {
+      "tsx": {
+        "clones": 543,
+        "duplicatedLines": 9455,
+        "duplicatedTokens": 58828,
+        "lines": 65015,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 14.542797815888642,
+        "percentageTokens": 14.398300438596493,
+        "sources": 166,
+        "tokens": 408576
+      },
+      "typescript": {
+        "clones": 8,
+        "duplicatedLines": 110,
+        "duplicatedTokens": 596,
+        "lines": 4288,
+        "newClones": 0,
+        "newDuplicatedLines": 0,
+        "percentage": 2.565298507462687,
+        "percentageTokens": 2.515617085936181,
+        "sources": 31,
+        "tokens": 23692
+      }
+    },
+    "total": {
+      "clones": 551,
+      "duplicatedLines": 9565,
+      "duplicatedTokens": 59424,
+      "lines": 69303,
+      "newClones": 0,
+      "newDuplicatedLines": 0,
+      "percentage": 13.801711325628037,
+      "percentageTokens": 13.74702730713354,
+      "sources": 197,
+      "tokens": 432268
+    }
+  },
+  "clone_count": 551,
+  "top_pairs": [
+    {
+      "files": [
+        "pages/historical-reports/customer-aging-rpt.tsx",
+        "pages/historical-reports/supplier-aging-rpt.tsx"
+      ],
+      "clone_count": 16,
+      "duplicated_lines": 448,
+      "max_lines": 79,
+      "examples": [
+        {
+          "first": "pages/historical-reports/customer-aging-rpt.tsx:1-11",
+          "second": "pages/historical-reports/supplier-aging-rpt.tsx:1-11",
+          "lines": 11,
+          "tokens": 104
+        },
+        {
+          "first": "pages/historical-reports/customer-aging-rpt.tsx:11-23",
+          "second": "pages/historical-reports/supplier-aging-rpt.tsx:11-23",
+          "lines": 13,
+          "tokens": 73
+        },
+        {
+          "first": "pages/historical-reports/customer-aging-rpt.tsx:43-63",
+          "second": "pages/historical-reports/supplier-aging-rpt.tsx:43-63",
+          "lines": 21,
+          "tokens": 76
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/daily-report/product-purchase-full-view.tsx"
+      ],
+      "clone_count": 12,
+      "duplicated_lines": 393,
+      "max_lines": 106,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:47-62",
+          "second": "pages/daily-report/product-purchase-full-view.tsx:44-58",
+          "lines": 16,
+          "tokens": 62
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:60-68",
+          "second": "pages/daily-report/product-purchase-full-view.tsx:58-64",
+          "lines": 9,
+          "tokens": 50
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:127-148",
+          "second": "pages/daily-report/product-purchase-full-view.tsx:89-109",
+          "lines": 22,
+          "tokens": 124
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/payroll/monthly-reports.tsx",
+        "pages/payroll/monthly-reports.tsx"
+      ],
+      "clone_count": 8,
+      "duplicated_lines": 267,
+      "max_lines": 103,
+      "examples": [
+        {
+          "first": "pages/payroll/monthly-reports.tsx:188-197",
+          "second": "pages/payroll/monthly-reports.tsx:547-557",
+          "lines": 10,
+          "tokens": 68
+        },
+        {
+          "first": "pages/payroll/monthly-reports.tsx:205-252",
+          "second": "pages/payroll/monthly-reports.tsx:562-608",
+          "lines": 48,
+          "tokens": 331
+        },
+        {
+          "first": "pages/payroll/monthly-reports.tsx:236-248",
+          "second": "pages/payroll/monthly-reports.tsx:394-406",
+          "lines": 13,
+          "tokens": 85
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-history.tsx",
+        "pages/daily-report/product-sales-history.tsx"
+      ],
+      "clone_count": 13,
+      "duplicated_lines": 250,
+      "max_lines": 43,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:1-10",
+          "second": "pages/daily-report/product-sales-history.tsx:1-10",
+          "lines": 10,
+          "tokens": 82
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:20-31",
+          "second": "pages/daily-report/product-sales-history.tsx:21-30",
+          "lines": 12,
+          "tokens": 117
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:31-39",
+          "second": "pages/daily-report/product-sales-history.tsx:52-60",
+          "lines": 9,
+          "tokens": 63
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/data-entry/on-acc-customer.tsx",
+        "pages/data-entry/on-acc-supplier.tsx"
+      ],
+      "clone_count": 12,
+      "duplicated_lines": 240,
+      "max_lines": 59,
+      "examples": [
+        {
+          "first": "pages/data-entry/on-acc-customer.tsx:1-13",
+          "second": "pages/data-entry/on-acc-supplier.tsx:1-13",
+          "lines": 13,
+          "tokens": 123
+        },
+        {
+          "first": "pages/data-entry/on-acc-customer.tsx:104-113",
+          "second": "pages/data-entry/on-acc-supplier.tsx:103-112",
+          "lines": 10,
+          "tokens": 51
+        },
+        {
+          "first": "pages/data-entry/on-acc-customer.tsx:150-180",
+          "second": "pages/data-entry/on-acc-supplier.tsx:124-154",
+          "lines": 31,
+          "tokens": 174
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/data-entry/sales-invoice.tsx",
+        "pages/data-entry/sales-invoice.tsx"
+      ],
+      "clone_count": 13,
+      "duplicated_lines": 209,
+      "max_lines": 26,
+      "examples": [
+        {
+          "first": "pages/data-entry/sales-invoice.tsx:281-294",
+          "second": "pages/data-entry/sales-invoice.tsx:1111-1125",
+          "lines": 14,
+          "tokens": 97
+        },
+        {
+          "first": "pages/data-entry/sales-invoice.tsx:282-293",
+          "second": "pages/data-entry/sales-invoice.tsx:1221-1232",
+          "lines": 12,
+          "tokens": 71
+        },
+        {
+          "first": "pages/data-entry/sales-invoice.tsx:515-524",
+          "second": "pages/data-entry/sales-invoice.tsx:529-538",
+          "lines": 10,
+          "tokens": 58
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/customer-database.tsx",
+        "pages/admin/products-database.tsx"
+      ],
+      "clone_count": 10,
+      "duplicated_lines": 208,
+      "max_lines": 47,
+      "examples": [
+        {
+          "first": "pages/admin/customer-database.tsx:86-96",
+          "second": "pages/admin/products-database.tsx:222-232",
+          "lines": 11,
+          "tokens": 91
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:181-217",
+          "second": "pages/admin/products-database.tsx:299-335",
+          "lines": 37,
+          "tokens": 197
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:238-247",
+          "second": "pages/admin/products-database.tsx:358-367",
+          "lines": 10,
+          "tokens": 81
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/admin-functions.tsx",
+        "pages/admin/admin-functions.tsx"
+      ],
+      "clone_count": 13,
+      "duplicated_lines": 176,
+      "max_lines": 19,
+      "examples": [
+        {
+          "first": "pages/admin/admin-functions.tsx:756-767",
+          "second": "pages/admin/admin-functions.tsx:854-865",
+          "lines": 12,
+          "tokens": 84
+        },
+        {
+          "first": "pages/admin/admin-functions.tsx:756-767",
+          "second": "pages/admin/admin-functions.tsx:947-958",
+          "lines": 12,
+          "tokens": 84
+        },
+        {
+          "first": "pages/admin/admin-functions.tsx:756-767",
+          "second": "pages/admin/admin-functions.tsx:1002-1013",
+          "lines": 12,
+          "tokens": 84
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-sales.tsx",
+        "pages/daily-report/daily-book-sales.tsx"
+      ],
+      "clone_count": 11,
+      "duplicated_lines": 165,
+      "max_lines": 16,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-sales.tsx:620-635",
+          "second": "pages/daily-report/daily-book-sales.tsx:663-678",
+          "lines": 16,
+          "tokens": 110
+        },
+        {
+          "first": "pages/daily-report/daily-book-sales.tsx:620-635",
+          "second": "pages/daily-report/daily-book-sales.tsx:706-721",
+          "lines": 16,
+          "tokens": 110
+        },
+        {
+          "first": "pages/daily-report/daily-book-sales.tsx:620-635",
+          "second": "pages/daily-report/daily-book-sales.tsx:749-764",
+          "lines": 16,
+          "tokens": 110
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-purchase.tsx",
+        "pages/daily-report/product-purchase-report.tsx"
+      ],
+      "clone_count": 5,
+      "duplicated_lines": 161,
+      "max_lines": 52,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:219-251",
+          "second": "pages/daily-report/product-purchase-report.tsx:200-232",
+          "lines": 33,
+          "tokens": 135
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:284-326",
+          "second": "pages/daily-report/product-purchase-report.tsx:275-317",
+          "lines": 43,
+          "tokens": 225
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:287-338",
+          "second": "pages/daily-report/product-purchase-report.tsx:379-430",
+          "lines": 52,
+          "tokens": 315
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/bulk-dot-matrix.tsx",
+        "pages/print/dot-matrix-invoice.tsx"
+      ],
+      "clone_count": 8,
+      "duplicated_lines": 157,
+      "max_lines": 30,
+      "examples": [
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:1-21",
+          "second": "pages/print/dot-matrix-invoice.tsx:2-22",
+          "lines": 21,
+          "tokens": 77
+        },
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:18-42",
+          "second": "pages/print/dot-matrix-invoice.tsx:26-50",
+          "lines": 25,
+          "tokens": 213
+        },
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:23-52",
+          "second": "pages/print/dot-matrix-invoice.tsx:88-112",
+          "lines": 30,
+          "tokens": 265
+        }
+      ]
+    },
+    {
+      "files": [
+        "components/ui/customer-search.tsx",
+        "components/ui/supplier-search.tsx"
+      ],
+      "clone_count": 9,
+      "duplicated_lines": 156,
+      "max_lines": 63,
+      "examples": [
+        {
+          "first": "components/ui/customer-search.tsx:12-22",
+          "second": "components/ui/supplier-search.tsx:21-31",
+          "lines": 11,
+          "tokens": 56
+        },
+        {
+          "first": "components/ui/customer-search.tsx:46-55",
+          "second": "components/ui/supplier-search.tsx:47-56",
+          "lines": 10,
+          "tokens": 70
+        },
+        {
+          "first": "components/ui/customer-search.tsx:56-64",
+          "second": "components/ui/supplier-search.tsx:57-65",
+          "lines": 9,
+          "tokens": 57
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-report.tsx",
+        "pages/daily-report/product-sales-report.tsx"
+      ],
+      "clone_count": 6,
+      "duplicated_lines": 152,
+      "max_lines": 84,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:45-55",
+          "second": "pages/daily-report/product-sales-report.tsx:38-50",
+          "lines": 11,
+          "tokens": 52
+        },
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:69-79",
+          "second": "pages/daily-report/product-sales-report.tsx:54-64",
+          "lines": 11,
+          "tokens": 51
+        },
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:170-184",
+          "second": "pages/daily-report/product-sales-report.tsx:134-148",
+          "lines": 15,
+          "tokens": 90
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/payments/customer-payment.tsx",
+        "pages/payments/supplier-payment.tsx"
+      ],
+      "clone_count": 7,
+      "duplicated_lines": 139,
+      "max_lines": 44,
+      "examples": [
+        {
+          "first": "pages/payments/customer-payment.tsx:334-347",
+          "second": "pages/payments/supplier-payment.tsx:191-204",
+          "lines": 14,
+          "tokens": 54
+        },
+        {
+          "first": "pages/payments/customer-payment.tsx:347-368",
+          "second": "pages/payments/supplier-payment.tsx:204-223",
+          "lines": 22,
+          "tokens": 68
+        },
+        {
+          "first": "pages/payments/customer-payment.tsx:628-641",
+          "second": "pages/payments/supplier-payment.tsx:322-335",
+          "lines": 14,
+          "tokens": 53
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-report.tsx",
+        "pages/daily-report/stock-check.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 132,
+      "max_lines": 118,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:372-489",
+          "second": "pages/daily-report/stock-check.tsx:396-494",
+          "lines": 118,
+          "tokens": 682
+        },
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:679-692",
+          "second": "pages/daily-report/stock-check.tsx:750-763",
+          "lines": 14,
+          "tokens": 70
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/customer-history.tsx",
+        "pages/historical-reports/customer-statement.tsx"
+      ],
+      "clone_count": 7,
+      "duplicated_lines": 129,
+      "max_lines": 49,
+      "examples": [
+        {
+          "first": "pages/historical-reports/customer-history.tsx:34-51",
+          "second": "pages/historical-reports/customer-statement.tsx:43-59",
+          "lines": 18,
+          "tokens": 75
+        },
+        {
+          "first": "pages/historical-reports/customer-history.tsx:59-107",
+          "second": "pages/historical-reports/customer-statement.tsx:157-205",
+          "lines": 49,
+          "tokens": 261
+        },
+        {
+          "first": "pages/historical-reports/customer-history.tsx:233-244",
+          "second": "pages/historical-reports/customer-statement.tsx:226-237",
+          "lines": 12,
+          "tokens": 53
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/customer-database.tsx",
+        "pages/admin/employee-database.tsx"
+      ],
+      "clone_count": 8,
+      "duplicated_lines": 117,
+      "max_lines": 25,
+      "examples": [
+        {
+          "first": "pages/admin/customer-database.tsx:84-96",
+          "second": "pages/admin/employee-database.tsx:250-262",
+          "lines": 13,
+          "tokens": 93
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:105-120",
+          "second": "pages/admin/employee-database.tsx:271-286",
+          "lines": 16,
+          "tokens": 93
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:181-205",
+          "second": "pages/admin/employee-database.tsx:328-354",
+          "lines": 25,
+          "tokens": 89
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/supplier-database-edit.tsx",
+        "pages/admin/supplier-database-edit.tsx"
+      ],
+      "clone_count": 11,
+      "duplicated_lines": 117,
+      "max_lines": 12,
+      "examples": [
+        {
+          "first": "pages/admin/supplier-database-edit.tsx:279-287",
+          "second": "pages/admin/supplier-database-edit.tsx:465-473",
+          "lines": 9,
+          "tokens": 55
+        },
+        {
+          "first": "pages/admin/supplier-database-edit.tsx:279-288",
+          "second": "pages/admin/supplier-database-edit.tsx:513-522",
+          "lines": 10,
+          "tokens": 60
+        },
+        {
+          "first": "pages/admin/supplier-database-edit.tsx:294-304",
+          "second": "pages/admin/supplier-database-edit.tsx:307-317",
+          "lines": 11,
+          "tokens": 60
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-purchase.tsx",
+        "pages/daily-report/daily-book-sales.tsx"
+      ],
+      "clone_count": 6,
+      "duplicated_lines": 109,
+      "max_lines": 30,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:49-78",
+          "second": "pages/daily-report/daily-book-sales.tsx:147-178",
+          "lines": 30,
+          "tokens": 127
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:138-147",
+          "second": "pages/daily-report/daily-book-sales.tsx:363-372",
+          "lines": 10,
+          "tokens": 61
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:185-197",
+          "second": "pages/daily-report/daily-book-sales.tsx:987-999",
+          "lines": 13,
+          "tokens": 79
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/user-database-add.tsx",
+        "pages/admin/user-database-edit.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 107,
+      "max_lines": 53,
+      "examples": [
+        {
+          "first": "pages/admin/user-database-add.tsx:148-163",
+          "second": "pages/admin/user-database-edit.tsx:116-131",
+          "lines": 16,
+          "tokens": 66
+        },
+        {
+          "first": "pages/admin/user-database-add.tsx:166-218",
+          "second": "pages/admin/user-database-edit.tsx:134-186",
+          "lines": 53,
+          "tokens": 313
+        },
+        {
+          "first": "pages/admin/user-database-add.tsx:218-255",
+          "second": "pages/admin/user-database-edit.tsx:186-223",
+          "lines": 38,
+          "tokens": 199
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-purchase.tsx",
+        "pages/daily-report/stock-check.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 106,
+      "max_lines": 43,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:14-22",
+          "second": "pages/daily-report/stock-check.tsx:15-23",
+          "lines": 9,
+          "tokens": 51
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:219-251",
+          "second": "pages/daily-report/stock-check.tsx:204-236",
+          "lines": 33,
+          "tokens": 134
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:284-326",
+          "second": "pages/daily-report/stock-check.tsx:283-325",
+          "lines": 43,
+          "tokens": 225
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-purchase.tsx",
+        "pages/data-entry/expenses.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 100,
+      "max_lines": 43,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:37-45",
+          "second": "pages/data-entry/expenses.tsx:41-46",
+          "lines": 9,
+          "tokens": 52
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:219-251",
+          "second": "pages/data-entry/expenses.tsx:254-284",
+          "lines": 33,
+          "tokens": 134
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:284-326",
+          "second": "pages/data-entry/expenses.tsx:328-370",
+          "lines": 43,
+          "tokens": 225
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/expenses-database.tsx",
+        "pages/admin/supplier-database.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 97,
+      "max_lines": 50,
+      "examples": [
+        {
+          "first": "pages/admin/expenses-database.tsx:4-16",
+          "second": "pages/admin/supplier-database.tsx:4-16",
+          "lines": 13,
+          "tokens": 92
+        },
+        {
+          "first": "pages/admin/expenses-database.tsx:228-248",
+          "second": "pages/admin/supplier-database.tsx:315-335",
+          "lines": 21,
+          "tokens": 96
+        },
+        {
+          "first": "pages/admin/expenses-database.tsx:285-334",
+          "second": "pages/admin/supplier-database.tsx:371-420",
+          "lines": 50,
+          "tokens": 225
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/daily-report/product-purchase-report.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 96,
+      "max_lines": 38,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:336-357",
+          "second": "pages/daily-report/product-purchase-report.tsx:456-478",
+          "lines": 22,
+          "tokens": 116
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:355-375",
+          "second": "pages/daily-report/product-purchase-report.tsx:481-501",
+          "lines": 21,
+          "tokens": 70
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:378-392",
+          "second": "pages/daily-report/product-purchase-report.tsx:504-518",
+          "lines": 15,
+          "tokens": 63
+        }
+      ]
+    },
+    {
+      "files": [
+        "components/ui/customer-search.tsx",
+        "components/ui/product-search.tsx"
+      ],
+      "clone_count": 6,
+      "duplicated_lines": 96,
+      "max_lines": 30,
+      "examples": [
+        {
+          "first": "components/ui/customer-search.tsx:12-21",
+          "second": "components/ui/product-search.tsx:14-23",
+          "lines": 10,
+          "tokens": 55
+        },
+        {
+          "first": "components/ui/customer-search.tsx:77-87",
+          "second": "components/ui/product-search.tsx:76-83",
+          "lines": 11,
+          "tokens": 51
+        },
+        {
+          "first": "components/ui/customer-search.tsx:142-154",
+          "second": "components/ui/product-search.tsx:161-171",
+          "lines": 13,
+          "tokens": 62
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/a5-invoice.tsx",
+        "pages/print/invoice.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 95,
+      "max_lines": 45,
+      "examples": [
+        {
+          "first": "pages/print/a5-invoice.tsx:1-27",
+          "second": "pages/print/invoice.tsx:1-34",
+          "lines": 27,
+          "tokens": 177
+        },
+        {
+          "first": "pages/print/a5-invoice.tsx:30-74",
+          "second": "pages/print/invoice.tsx:87-132",
+          "lines": 45,
+          "tokens": 311
+        },
+        {
+          "first": "pages/print/a5-invoice.tsx:131-141",
+          "second": "pages/print/invoice.tsx:192-202",
+          "lines": 11,
+          "tokens": 207
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/daily-book-history.tsx",
+        "pages/historical-reports/supplier-return.tsx"
+      ],
+      "clone_count": 5,
+      "duplicated_lines": 94,
+      "max_lines": 39,
+      "examples": [
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:70-79",
+          "second": "pages/historical-reports/supplier-return.tsx:63-72",
+          "lines": 10,
+          "tokens": 64
+        },
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:140-151",
+          "second": "pages/historical-reports/supplier-return.tsx:113-124",
+          "lines": 12,
+          "tokens": 112
+        },
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:198-210",
+          "second": "pages/historical-reports/supplier-return.tsx:171-183",
+          "lines": 13,
+          "tokens": 75
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/daily-report/profit-loss.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 93,
+      "max_lines": 38,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:338-359",
+          "second": "pages/daily-report/profit-loss.tsx:449-471",
+          "lines": 22,
+          "tokens": 115
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:355-375",
+          "second": "pages/daily-report/profit-loss.tsx:472-492",
+          "lines": 21,
+          "tokens": 70
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:378-389",
+          "second": "pages/daily-report/profit-loss.tsx:495-506",
+          "lines": 12,
+          "tokens": 63
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/daily-book-history.tsx",
+        "pages/historical-reports/full-analysis.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 91,
+      "max_lines": 47,
+      "examples": [
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:70-79",
+          "second": "pages/historical-reports/full-analysis.tsx:55-64",
+          "lines": 10,
+          "tokens": 64
+        },
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:140-148",
+          "second": "pages/historical-reports/full-analysis.tsx:140-149",
+          "lines": 9,
+          "tokens": 81
+        },
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:241-265",
+          "second": "pages/historical-reports/full-analysis.tsx:321-351",
+          "lines": 25,
+          "tokens": 137
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-history.tsx",
+        "pages/daily-report/supplier-purchase-history.tsx"
+      ],
+      "clone_count": 7,
+      "duplicated_lines": 91,
+      "max_lines": 19,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:129-143",
+          "second": "pages/daily-report/supplier-purchase-history.tsx:55-68",
+          "lines": 15,
+          "tokens": 87
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:149-160",
+          "second": "pages/daily-report/supplier-purchase-history.tsx:73-84",
+          "lines": 12,
+          "tokens": 90
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:168-176",
+          "second": "pages/daily-report/supplier-purchase-history.tsx:91-99",
+          "lines": 9,
+          "tokens": 51
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/daily-report/daily-sales-full-view.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 90,
+      "max_lines": 90,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:155-244",
+          "second": "pages/daily-report/daily-sales-full-view.tsx:249-338",
+          "lines": 90,
+          "tokens": 668
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-purchase.tsx",
+        "pages/data-entry/return-to-supplier.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 90,
+      "max_lines": 43,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:219-251",
+          "second": "pages/data-entry/return-to-supplier.tsx:345-376",
+          "lines": 33,
+          "tokens": 134
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:284-326",
+          "second": "pages/data-entry/return-to-supplier.tsx:422-464",
+          "lines": 43,
+          "tokens": 225
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:444-457",
+          "second": "pages/data-entry/return-to-supplier.tsx:628-641",
+          "lines": 14,
+          "tokens": 138
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/product-history.tsx",
+        "pages/historical-reports/product-history.tsx"
+      ],
+      "clone_count": 7,
+      "duplicated_lines": 90,
+      "max_lines": 14,
+      "examples": [
+        {
+          "first": "pages/historical-reports/product-history.tsx:671-684",
+          "second": "pages/historical-reports/product-history.tsx:745-758",
+          "lines": 14,
+          "tokens": 110
+        },
+        {
+          "first": "pages/historical-reports/product-history.tsx:672-682",
+          "second": "pages/historical-reports/product-history.tsx:808-818",
+          "lines": 11,
+          "tokens": 80
+        },
+        {
+          "first": "pages/historical-reports/product-history.tsx:725-738",
+          "second": "pages/historical-reports/product-history.tsx:788-801",
+          "lines": 14,
+          "tokens": 71
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/daily-report/product-sales-report.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 89,
+      "max_lines": 36,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:338-359",
+          "second": "pages/daily-report/product-sales-report.tsx:395-417",
+          "lines": 22,
+          "tokens": 116
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:355-375",
+          "second": "pages/daily-report/product-sales-report.tsx:418-438",
+          "lines": 21,
+          "tokens": 70
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:392-427",
+          "second": "pages/daily-report/product-sales-report.tsx:455-490",
+          "lines": 36,
+          "tokens": 146
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/payments/customer-payment.tsx",
+        "pages/payments/customer-payment.tsx"
+      ],
+      "clone_count": 5,
+      "duplicated_lines": 88,
+      "max_lines": 37,
+      "examples": [
+        {
+          "first": "pages/payments/customer-payment.tsx:323-332",
+          "second": "pages/payments/customer-payment.tsx:1055-1064",
+          "lines": 10,
+          "tokens": 61
+        },
+        {
+          "first": "pages/payments/customer-payment.tsx:450-469",
+          "second": "pages/payments/customer-payment.tsx:500-518",
+          "lines": 20,
+          "tokens": 109
+        },
+        {
+          "first": "pages/payments/customer-payment.tsx:1128-1164",
+          "second": "pages/payments/customer-payment.tsx:1209-1245",
+          "lines": 37,
+          "tokens": 351
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/customer-statement.tsx",
+        "pages/historical-reports/supplier-history.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 87,
+      "max_lines": 49,
+      "examples": [
+        {
+          "first": "pages/historical-reports/customer-statement.tsx:364-377",
+          "second": "pages/historical-reports/supplier-history.tsx:430-443",
+          "lines": 14,
+          "tokens": 73
+        },
+        {
+          "first": "pages/historical-reports/customer-statement.tsx:383-395",
+          "second": "pages/historical-reports/supplier-history.tsx:448-460",
+          "lines": 13,
+          "tokens": 63
+        },
+        {
+          "first": "pages/historical-reports/customer-statement.tsx:396-444",
+          "second": "pages/historical-reports/supplier-history.tsx:460-508",
+          "lines": 49,
+          "tokens": 423
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-history.tsx",
+        "pages/payments/customer-payment-history.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 87,
+      "max_lines": 35,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:205-239",
+          "second": "pages/payments/customer-payment-history.tsx:227-261",
+          "lines": 35,
+          "tokens": 183
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:242-263",
+          "second": "pages/payments/customer-payment-history.tsx:264-285",
+          "lines": 22,
+          "tokens": 74
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:266-275",
+          "second": "pages/payments/customer-payment-history.tsx:288-297",
+          "lines": 10,
+          "tokens": 52
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-supplier-history.tsx",
+        "pages/historical-reports/customer-statement.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 84,
+      "max_lines": 44,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:152-163",
+          "second": "pages/historical-reports/customer-statement.tsx:330-341",
+          "lines": 12,
+          "tokens": 74
+        },
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:211-254",
+          "second": "pages/historical-reports/customer-statement.tsx:401-444",
+          "lines": 44,
+          "tokens": 389
+        },
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:254-266",
+          "second": "pages/historical-reports/customer-statement.tsx:444-456",
+          "lines": 13,
+          "tokens": 113
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/customer-database-edit.tsx",
+        "pages/admin/customer-database-edit.tsx"
+      ],
+      "clone_count": 6,
+      "duplicated_lines": 77,
+      "max_lines": 19,
+      "examples": [
+        {
+          "first": "pages/admin/customer-database-edit.tsx:255-264",
+          "second": "pages/admin/customer-database-edit.tsx:385-394",
+          "lines": 10,
+          "tokens": 52
+        },
+        {
+          "first": "pages/admin/customer-database-edit.tsx:294-306",
+          "second": "pages/admin/customer-database-edit.tsx:345-357",
+          "lines": 13,
+          "tokens": 62
+        },
+        {
+          "first": "pages/admin/customer-database-edit.tsx:332-342",
+          "second": "pages/admin/customer-database-edit.tsx:422-432",
+          "lines": 11,
+          "tokens": 57
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-purchase.tsx",
+        "pages/daily-report/product-sales-report.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 76,
+      "max_lines": 43,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:219-251",
+          "second": "pages/daily-report/product-sales-report.tsx:158-190",
+          "lines": 33,
+          "tokens": 135
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:284-326",
+          "second": "pages/daily-report/product-sales-report.tsx:229-271",
+          "lines": 43,
+          "tokens": 225
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-purchase.tsx",
+        "pages/data-entry/dumps.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 76,
+      "max_lines": 43,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:219-251",
+          "second": "pages/data-entry/dumps.tsx:194-225",
+          "lines": 33,
+          "tokens": 134
+        },
+        {
+          "first": "pages/daily-report/daily-book-purchase.tsx:284-326",
+          "second": "pages/data-entry/dumps.tsx:273-315",
+          "lines": 43,
+          "tokens": 225
+        }
+      ]
+    },
+    {
+      "files": [
+        "components/layout/sidebar.tsx",
+        "pages/admin/admin-functions.tsx"
+      ],
+      "clone_count": 5,
+      "duplicated_lines": 72,
+      "max_lines": 22,
+      "examples": [
+        {
+          "first": "components/layout/sidebar.tsx:47-57",
+          "second": "pages/admin/admin-functions.tsx:42-52",
+          "lines": 11,
+          "tokens": 94
+        },
+        {
+          "first": "components/layout/sidebar.tsx:62-76",
+          "second": "pages/admin/admin-functions.tsx:58-73",
+          "lines": 15,
+          "tokens": 103
+        },
+        {
+          "first": "components/layout/sidebar.tsx:77-98",
+          "second": "pages/admin/admin-functions.tsx:73-95",
+          "lines": 22,
+          "tokens": 173
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-customer-history.tsx",
+        "pages/historical-reports/prod-customer-history.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 69,
+      "max_lines": 52,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:93-109",
+          "second": "pages/historical-reports/prod-customer-history.tsx:31-47",
+          "lines": 17,
+          "tokens": 71
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:134-185",
+          "second": "pages/historical-reports/prod-customer-history.tsx:94-145",
+          "lines": 52,
+          "tokens": 270
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/data-entry/purchase-invoice.tsx",
+        "pages/data-entry/sales-invoice.tsx"
+      ],
+      "clone_count": 5,
+      "duplicated_lines": 69,
+      "max_lines": 17,
+      "examples": [
+        {
+          "first": "pages/data-entry/purchase-invoice.tsx:197-212",
+          "second": "pages/data-entry/sales-invoice.tsx:582-597",
+          "lines": 16,
+          "tokens": 124
+        },
+        {
+          "first": "pages/data-entry/purchase-invoice.tsx:223-239",
+          "second": "pages/data-entry/sales-invoice.tsx:621-637",
+          "lines": 17,
+          "tokens": 76
+        },
+        {
+          "first": "pages/data-entry/purchase-invoice.tsx:492-506",
+          "second": "pages/data-entry/sales-invoice.tsx:2195-2209",
+          "lines": 15,
+          "tokens": 83
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/profit-loss.tsx",
+        "pages/daily-report/profit-loss.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 66,
+      "max_lines": 66,
+      "examples": [
+        {
+          "first": "pages/daily-report/profit-loss.tsx:251-316",
+          "second": "pages/daily-report/profit-loss.tsx:384-449",
+          "lines": 66,
+          "tokens": 523
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/customer-database.tsx",
+        "pages/admin/expenses-database.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 66,
+      "max_lines": 29,
+      "examples": [
+        {
+          "first": "pages/admin/customer-database.tsx:180-208",
+          "second": "pages/admin/expenses-database.tsx:91-121",
+          "lines": 29,
+          "tokens": 117
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:201-215",
+          "second": "pages/admin/expenses-database.tsx:114-128",
+          "lines": 15,
+          "tokens": 116
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:238-247",
+          "second": "pages/admin/expenses-database.tsx:151-160",
+          "lines": 10,
+          "tokens": 81
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-customer-history.tsx",
+        "pages/historical-reports/all-supplier-history.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 59,
+      "max_lines": 36,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:1-13",
+          "second": "pages/historical-reports/all-supplier-history.tsx:1-13",
+          "lines": 13,
+          "tokens": 118
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:504-513",
+          "second": "pages/historical-reports/all-supplier-history.tsx:320-329",
+          "lines": 10,
+          "tokens": 58
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:643-678",
+          "second": "pages/historical-reports/all-supplier-history.tsx:409-444",
+          "lines": 36,
+          "tokens": 250
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-history.tsx",
+        "pages/payments/sup-payment-history.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 58,
+      "max_lines": 31,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:209-239",
+          "second": "pages/payments/sup-payment-history.tsx:277-307",
+          "lines": 31,
+          "tokens": 141
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:266-275",
+          "second": "pages/payments/sup-payment-history.tsx:334-343",
+          "lines": 10,
+          "tokens": 52
+        },
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:275-291",
+          "second": "pages/payments/sup-payment-history.tsx:343-359",
+          "lines": 17,
+          "tokens": 66
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/customer-database.tsx",
+        "pages/admin/equipment-database.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 58,
+      "max_lines": 18,
+      "examples": [
+        {
+          "first": "pages/admin/customer-database.tsx:105-120",
+          "second": "pages/admin/equipment-database.tsx:86-101",
+          "lines": 16,
+          "tokens": 93
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:259-270",
+          "second": "pages/admin/equipment-database.tsx:304-315",
+          "lines": 12,
+          "tokens": 57
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:302-313",
+          "second": "pages/admin/equipment-database.tsx:354-367",
+          "lines": 12,
+          "tokens": 53
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/dot-matrix-invoice.tsx",
+        "pages/print/dot-matrix-invoice.tsx"
+      ],
+      "clone_count": 5,
+      "duplicated_lines": 58,
+      "max_lines": 13,
+      "examples": [
+        {
+          "first": "pages/print/dot-matrix-invoice.tsx:46-58",
+          "second": "pages/print/dot-matrix-invoice.tsx:103-114",
+          "lines": 13,
+          "tokens": 117
+        },
+        {
+          "first": "pages/print/dot-matrix-invoice.tsx:349-357",
+          "second": "pages/print/dot-matrix-invoice.tsx:374-381",
+          "lines": 9,
+          "tokens": 57
+        },
+        {
+          "first": "pages/print/dot-matrix-invoice.tsx:993-1004",
+          "second": "pages/print/dot-matrix-invoice.tsx:1058-1069",
+          "lines": 12,
+          "tokens": 56
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-customer-history.tsx",
+        "pages/historical-reports/supplier-history.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 57,
+      "max_lines": 31,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:93-109",
+          "second": "pages/historical-reports/supplier-history.tsx:46-62",
+          "lines": 17,
+          "tokens": 78
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:155-185",
+          "second": "pages/historical-reports/supplier-history.tsx:150-180",
+          "lines": 31,
+          "tokens": 151
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:505-513",
+          "second": "pages/historical-reports/supplier-history.tsx:591-599",
+          "lines": 9,
+          "tokens": 57
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/customer-history.tsx",
+        "pages/historical-reports/supplier-history.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 57,
+      "max_lines": 28,
+      "examples": [
+        {
+          "first": "pages/historical-reports/customer-history.tsx:63-77",
+          "second": "pages/historical-reports/supplier-history.tsx:136-150",
+          "lines": 15,
+          "tokens": 97
+        },
+        {
+          "first": "pages/historical-reports/customer-history.tsx:147-160",
+          "second": "pages/historical-reports/supplier-history.tsx:190-203",
+          "lines": 14,
+          "tokens": 64
+        },
+        {
+          "first": "pages/historical-reports/customer-history.tsx:716-743",
+          "second": "pages/historical-reports/supplier-history.tsx:756-783",
+          "lines": 28,
+          "tokens": 192
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/stock-check.tsx",
+        "pages/daily-report/stock-check.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 56,
+      "max_lines": 43,
+      "examples": [
+        {
+          "first": "pages/daily-report/stock-check.tsx:337-349",
+          "second": "pages/daily-report/stock-check.tsx:384-396",
+          "lines": 13,
+          "tokens": 56
+        },
+        {
+          "first": "pages/daily-report/stock-check.tsx:337-379",
+          "second": "pages/daily-report/stock-check.tsx:454-496",
+          "lines": 43,
+          "tokens": 318
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-customer-history.tsx",
+        "pages/historical-reports/customer-aging-rpt.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 56,
+      "max_lines": 30,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:101-115",
+          "second": "pages/historical-reports/customer-aging-rpt.tsx:77-90",
+          "lines": 15,
+          "tokens": 77
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:124-134",
+          "second": "pages/historical-reports/customer-aging-rpt.tsx:100-110",
+          "lines": 11,
+          "tokens": 68
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:774-803",
+          "second": "pages/historical-reports/customer-aging-rpt.tsx:590-619",
+          "lines": 30,
+          "tokens": 140
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/customer-database.tsx",
+        "pages/admin/supplier-database.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 56,
+      "max_lines": 18,
+      "examples": [
+        {
+          "first": "pages/admin/customer-database.tsx:105-120",
+          "second": "pages/admin/supplier-database.tsx:90-105",
+          "lines": 16,
+          "tokens": 93
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:238-247",
+          "second": "pages/admin/supplier-database.tsx:197-206",
+          "lines": 10,
+          "tokens": 81
+        },
+        {
+          "first": "pages/admin/customer-database.tsx:302-313",
+          "second": "pages/admin/supplier-database.tsx:286-297",
+          "lines": 12,
+          "tokens": 53
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-supplier-history.tsx",
+        "pages/historical-reports/purchase-history.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 54,
+      "max_lines": 19,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:148-163",
+          "second": "pages/historical-reports/purchase-history.tsx:237-252",
+          "lines": 16,
+          "tokens": 116
+        },
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:254-272",
+          "second": "pages/historical-reports/purchase-history.tsx:340-358",
+          "lines": 19,
+          "tokens": 135
+        },
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:358-376",
+          "second": "pages/historical-reports/purchase-history.tsx:532-550",
+          "lines": 19,
+          "tokens": 94
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/company-details.tsx",
+        "pages/admin/supplier-database.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 53,
+      "max_lines": 37,
+      "examples": [
+        {
+          "first": "pages/admin/company-details.tsx:167-203",
+          "second": "pages/admin/supplier-database.tsx:148-174",
+          "lines": 37,
+          "tokens": 162
+        },
+        {
+          "first": "pages/admin/company-details.tsx:209-224",
+          "second": "pages/admin/supplier-database.tsx:182-197",
+          "lines": 16,
+          "tokens": 68
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/payments/sup-payment-history.tsx",
+        "pages/payments/sup-payment-history.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 53,
+      "max_lines": 21,
+      "examples": [
+        {
+          "first": "pages/payments/sup-payment-history.tsx:138-146",
+          "second": "pages/payments/sup-payment-history.tsx:233-241",
+          "lines": 9,
+          "tokens": 83
+        },
+        {
+          "first": "pages/payments/sup-payment-history.tsx:147-167",
+          "second": "pages/payments/sup-payment-history.tsx:249-266",
+          "lines": 21,
+          "tokens": 183
+        },
+        {
+          "first": "pages/payments/sup-payment-history.tsx:152-165",
+          "second": "pages/payments/sup-payment-history.tsx:214-225",
+          "lines": 14,
+          "tokens": 143
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/customer-history.tsx",
+        "pages/historical-reports/purchase-history.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 52,
+      "max_lines": 52,
+      "examples": [
+        {
+          "first": "pages/historical-reports/customer-history.tsx:59-110",
+          "second": "pages/historical-reports/purchase-history.tsx:93-145",
+          "lines": 52,
+          "tokens": 275
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-accounts.tsx",
+        "pages/daily-report/daily-accounts.tsx"
+      ],
+      "clone_count": 5,
+      "duplicated_lines": 52,
+      "max_lines": 14,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-accounts.tsx:348-361",
+          "second": "pages/daily-report/daily-accounts.tsx:437-450",
+          "lines": 14,
+          "tokens": 75
+        },
+        {
+          "first": "pages/daily-report/daily-accounts.tsx:406-416",
+          "second": "pages/daily-report/daily-accounts.tsx:417-427",
+          "lines": 11,
+          "tokens": 53
+        },
+        {
+          "first": "pages/daily-report/daily-accounts.tsx:453-461",
+          "second": "pages/daily-report/daily-accounts.tsx:492-500",
+          "lines": 9,
+          "tokens": 52
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-accounts.tsx",
+        "pages/daily-report/sales-analysis.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 49,
+      "max_lines": 34,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-accounts.tsx:42-56",
+          "second": "pages/daily-report/sales-analysis.tsx:115-129",
+          "lines": 15,
+          "tokens": 81
+        },
+        {
+          "first": "pages/daily-report/daily-accounts.tsx:151-184",
+          "second": "pages/daily-report/sales-analysis.tsx:228-261",
+          "lines": 34,
+          "tokens": 202
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/full-analysis.tsx",
+        "pages/historical-reports/supplier-return.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 49,
+      "max_lines": 17,
+      "examples": [
+        {
+          "first": "pages/historical-reports/full-analysis.tsx:4-12",
+          "second": "pages/historical-reports/supplier-return.tsx:5-13",
+          "lines": 9,
+          "tokens": 74
+        },
+        {
+          "first": "pages/historical-reports/full-analysis.tsx:35-51",
+          "second": "pages/historical-reports/supplier-return.tsx:40-56",
+          "lines": 17,
+          "tokens": 132
+        },
+        {
+          "first": "pages/historical-reports/full-analysis.tsx:311-321",
+          "second": "pages/historical-reports/supplier-return.tsx:197-207",
+          "lines": 11,
+          "tokens": 59
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/admin/add-nonproduct.tsx",
+        "pages/admin/employee-database-edit.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 49,
+      "max_lines": 14,
+      "examples": [
+        {
+          "first": "pages/admin/add-nonproduct.tsx:283-293",
+          "second": "pages/admin/employee-database-edit.tsx:300-310",
+          "lines": 11,
+          "tokens": 50
+        },
+        {
+          "first": "pages/admin/add-nonproduct.tsx:315-327",
+          "second": "pages/admin/employee-database-edit.tsx:322-334",
+          "lines": 13,
+          "tokens": 78
+        },
+        {
+          "first": "pages/admin/add-nonproduct.tsx:536-546",
+          "second": "pages/admin/employee-database-edit.tsx:423-433",
+          "lines": 11,
+          "tokens": 53
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/payments/supplier-payment.tsx",
+        "pages/payments/supplier-payment.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 47,
+      "max_lines": 33,
+      "examples": [
+        {
+          "first": "pages/payments/supplier-payment.tsx:380-393",
+          "second": "pages/payments/supplier-payment.tsx:433-446",
+          "lines": 14,
+          "tokens": 56
+        },
+        {
+          "first": "pages/payments/supplier-payment.tsx:452-484",
+          "second": "pages/payments/supplier-payment.tsx:598-632",
+          "lines": 33,
+          "tokens": 264
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/data-entry/banking.tsx",
+        "pages/data-entry/banking.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 46,
+      "max_lines": 35,
+      "examples": [
+        {
+          "first": "pages/data-entry/banking.tsx:44-54",
+          "second": "pages/data-entry/banking.tsx:98-108",
+          "lines": 11,
+          "tokens": 65
+        },
+        {
+          "first": "pages/data-entry/banking.tsx:295-329",
+          "second": "pages/data-entry/banking.tsx:367-401",
+          "lines": 35,
+          "tokens": 293
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/customer-statement.tsx",
+        "pages/historical-reports/purchase-history.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 45,
+      "max_lines": 45,
+      "examples": [
+        {
+          "first": "pages/historical-reports/customer-statement.tsx:400-444",
+          "second": "pages/historical-reports/purchase-history.tsx:296-340",
+          "lines": 45,
+          "tokens": 395
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-customer-history.tsx",
+        "pages/historical-reports/date-wise-sales.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 45,
+      "max_lines": 35,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:504-513",
+          "second": "pages/historical-reports/date-wise-sales.tsx:243-252",
+          "lines": 10,
+          "tokens": 58
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:643-677",
+          "second": "pages/historical-reports/date-wise-sales.tsx:334-368",
+          "lines": 35,
+          "tokens": 243
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/daily-book-history.tsx",
+        "pages/historical-reports/eec-report.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 45,
+      "max_lines": 20,
+      "examples": [
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:45-59",
+          "second": "pages/historical-reports/eec-report.tsx:35-48",
+          "lines": 15,
+          "tokens": 77
+        },
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:100-109",
+          "second": "pages/historical-reports/eec-report.tsx:77-86",
+          "lines": 10,
+          "tokens": 83
+        },
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:241-260",
+          "second": "pages/historical-reports/eec-report.tsx:354-373",
+          "lines": 20,
+          "tokens": 98
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-summary.tsx",
+        "pages/daily-report/daily-summary.tsx"
+      ],
+      "clone_count": 4,
+      "duplicated_lines": 45,
+      "max_lines": 12,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-summary.tsx:324-333",
+          "second": "pages/daily-report/daily-summary.tsx:763-766",
+          "lines": 10,
+          "tokens": 51
+        },
+        {
+          "first": "pages/daily-report/daily-summary.tsx:374-385",
+          "second": "pages/daily-report/daily-summary.tsx:392-403",
+          "lines": 12,
+          "tokens": 54
+        },
+        {
+          "first": "pages/daily-report/daily-summary.tsx:1338-1348",
+          "second": "pages/daily-report/daily-summary.tsx:1394-1404",
+          "lines": 11,
+          "tokens": 76
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-customer-history.tsx",
+        "pages/historical-reports/purchase-history.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 44,
+      "max_lines": 35,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:2-10",
+          "second": "pages/historical-reports/purchase-history.tsx:4-12",
+          "lines": 9,
+          "tokens": 63
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:643-677",
+          "second": "pages/historical-reports/purchase-history.tsx:597-630",
+          "lines": 35,
+          "tokens": 242
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-report.tsx",
+        "pages/daily-report/product-purchase-report.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 44,
+      "max_lines": 29,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:89-103",
+          "second": "pages/daily-report/product-purchase-report.tsx:115-129",
+          "lines": 15,
+          "tokens": 74
+        },
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:331-359",
+          "second": "pages/daily-report/product-purchase-report.tsx:430-458",
+          "lines": 29,
+          "tokens": 181
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/a5-invoice.tsx",
+        "pages/print/purchase-invoice.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 43,
+      "max_lines": 26,
+      "examples": [
+        {
+          "first": "pages/print/a5-invoice.tsx:2-27",
+          "second": "pages/print/purchase-invoice.tsx:2-29",
+          "lines": 26,
+          "tokens": 161
+        },
+        {
+          "first": "pages/print/a5-invoice.tsx:57-73",
+          "second": "pages/print/purchase-invoice.tsx:167-180",
+          "lines": 17,
+          "tokens": 65
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-customer-history.tsx",
+        "pages/historical-reports/product-history.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 43,
+      "max_lines": 25,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:93-110",
+          "second": "pages/historical-reports/product-history.tsx:51-68",
+          "lines": 18,
+          "tokens": 82
+        },
+        {
+          "first": "pages/historical-reports/all-customer-history.tsx:134-158",
+          "second": "pages/historical-reports/product-history.tsx:115-139",
+          "lines": 25,
+          "tokens": 123
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/historical-reports/customer-history.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 43,
+      "max_lines": 20,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:81-91",
+          "second": "pages/historical-reports/customer-history.tsx:107-116",
+          "lines": 11,
+          "tokens": 57
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:88-107",
+          "second": "pages/historical-reports/customer-history.tsx:116-135",
+          "lines": 20,
+          "tokens": 82
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:555-566",
+          "second": "pages/historical-reports/customer-history.tsx:801-812",
+          "lines": 12,
+          "tokens": 62
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/delivery-note.tsx",
+        "pages/print/packing-list.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 41,
+      "max_lines": 26,
+      "examples": [
+        {
+          "first": "pages/print/delivery-note.tsx:124-149",
+          "second": "pages/print/packing-list.tsx:103-128",
+          "lines": 26,
+          "tokens": 140
+        },
+        {
+          "first": "pages/print/delivery-note.tsx:164-178",
+          "second": "pages/print/packing-list.tsx:143-157",
+          "lines": 15,
+          "tokens": 71
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/bulk-dot-matrix.tsx",
+        "pages/print/dot-matrix-payment.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 41,
+      "max_lines": 18,
+      "examples": [
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:27-36",
+          "second": "pages/print/dot-matrix-payment.tsx:41-50",
+          "lines": 10,
+          "tokens": 85
+        },
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:115-127",
+          "second": "pages/print/dot-matrix-payment.tsx:396-405",
+          "lines": 13,
+          "tokens": 53
+        },
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:131-148",
+          "second": "pages/print/dot-matrix-payment.tsx:409-425",
+          "lines": 18,
+          "tokens": 81
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/date-wise-sales.tsx",
+        "pages/historical-reports/full-analysis.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 40,
+      "max_lines": 15,
+      "examples": [
+        {
+          "first": "pages/historical-reports/date-wise-sales.tsx:12-24",
+          "second": "pages/historical-reports/full-analysis.tsx:8-20",
+          "lines": 13,
+          "tokens": 75
+        },
+        {
+          "first": "pages/historical-reports/date-wise-sales.tsx:46-60",
+          "second": "pages/historical-reports/full-analysis.tsx:37-51",
+          "lines": 15,
+          "tokens": 91
+        },
+        {
+          "first": "pages/historical-reports/date-wise-sales.tsx:241-252",
+          "second": "pages/historical-reports/full-analysis.tsx:283-294",
+          "lines": 12,
+          "tokens": 71
+        }
+      ]
+    },
+    {
+      "files": [
+        "components/layout/adjustment-details.tsx",
+        "components/layout/payment-details.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 39,
+      "max_lines": 39,
+      "examples": [
+        {
+          "first": "components/layout/adjustment-details.tsx:45-83",
+          "second": "components/layout/payment-details.tsx:62-100",
+          "lines": 39,
+          "tokens": 203
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/payments/supplier-payment.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 38,
+      "max_lines": 38,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:81-118",
+          "second": "pages/payments/supplier-payment.tsx:63-98",
+          "lines": 38,
+          "tokens": 181
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/a5-invoice.tsx",
+        "pages/print/delivery-note.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 37,
+      "max_lines": 22,
+      "examples": [
+        {
+          "first": "pages/print/a5-invoice.tsx:4-25",
+          "second": "pages/print/delivery-note.tsx:3-26",
+          "lines": 22,
+          "tokens": 145
+        },
+        {
+          "first": "pages/print/a5-invoice.tsx:59-73",
+          "second": "pages/print/delivery-note.tsx:167-178",
+          "lines": 15,
+          "tokens": 56
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-sales-full-view.tsx",
+        "pages/daily-report/stock-check.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 36,
+      "max_lines": 21,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:355-375",
+          "second": "pages/daily-report/stock-check.tsx:532-552",
+          "lines": 21,
+          "tokens": 70
+        },
+        {
+          "first": "pages/daily-report/daily-sales-full-view.tsx:392-406",
+          "second": "pages/daily-report/stock-check.tsx:579-593",
+          "lines": 15,
+          "tokens": 69
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/bulk-dot-matrix.tsx",
+        "pages/print/bulk-dot-matrix.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 36,
+      "max_lines": 12,
+      "examples": [
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:299-310",
+          "second": "pages/print/bulk-dot-matrix.tsx:361-372",
+          "lines": 12,
+          "tokens": 56
+        },
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:299-310",
+          "second": "pages/print/bulk-dot-matrix.tsx:397-408",
+          "lines": 12,
+          "tokens": 56
+        },
+        {
+          "first": "pages/print/bulk-dot-matrix.tsx:338-349",
+          "second": "pages/print/bulk-dot-matrix.tsx:377-388",
+          "lines": 12,
+          "tokens": 62
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-sales-report.tsx",
+        "pages/historical-reports/customer-aging-rpt.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 35,
+      "max_lines": 35,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-sales-report.tsx:134-168",
+          "second": "pages/historical-reports/customer-aging-rpt.tsx:131-161",
+          "lines": 35,
+          "tokens": 158
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/stock-check.tsx",
+        "pages/historical-reports/all-customer-history.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 35,
+      "max_lines": 22,
+      "examples": [
+        {
+          "first": "pages/daily-report/stock-check.tsx:75-87",
+          "second": "pages/historical-reports/all-customer-history.tsx:146-158",
+          "lines": 13,
+          "tokens": 63
+        },
+        {
+          "first": "pages/daily-report/stock-check.tsx:140-161",
+          "second": "pages/historical-reports/all-customer-history.tsx:161-182",
+          "lines": 22,
+          "tokens": 123
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/stock-check.tsx",
+        "pages/historical-reports/customer-history.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 33,
+      "max_lines": 33,
+      "examples": [
+        {
+          "first": "pages/daily-report/stock-check.tsx:74-106",
+          "second": "pages/historical-reports/customer-history.tsx:67-107",
+          "lines": 33,
+          "tokens": 218
+        }
+      ]
+    },
+    {
+      "files": [
+        "hooks/useAdminInvalidation.ts",
+        "hooks/usePaymentsInvalidation.ts"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 33,
+      "max_lines": 20,
+      "examples": [
+        {
+          "first": "hooks/useAdminInvalidation.ts:7-26",
+          "second": "hooks/usePaymentsInvalidation.ts:78-97",
+          "lines": 20,
+          "tokens": 99
+        },
+        {
+          "first": "hooks/useAdminInvalidation.ts:70-82",
+          "second": "hooks/usePaymentsInvalidation.ts:98-110",
+          "lines": 13,
+          "tokens": 80
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/dashboard.tsx",
+        "pages/dashboard.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 33,
+      "max_lines": 19,
+      "examples": [
+        {
+          "first": "pages/dashboard.tsx:122-140",
+          "second": "pages/dashboard.tsx:167-185",
+          "lines": 19,
+          "tokens": 94
+        },
+        {
+          "first": "pages/dashboard.tsx:140-153",
+          "second": "pages/dashboard.tsx:186-199",
+          "lines": 14,
+          "tokens": 65
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/dot-matrix-invoice.tsx",
+        "pages/print/dot-matrix-payment.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 32,
+      "max_lines": 21,
+      "examples": [
+        {
+          "first": "pages/print/dot-matrix-invoice.tsx:13-33",
+          "second": "pages/print/dot-matrix-payment.tsx:20-40",
+          "lines": 21,
+          "tokens": 79
+        },
+        {
+          "first": "pages/print/dot-matrix-invoice.tsx:362-372",
+          "second": "pages/print/dot-matrix-payment.tsx:185-195",
+          "lines": 11,
+          "tokens": 56
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/eec-report.tsx",
+        "pages/historical-reports/full-analysis.tsx"
+      ],
+      "clone_count": 3,
+      "duplicated_lines": 32,
+      "max_lines": 13,
+      "examples": [
+        {
+          "first": "pages/historical-reports/eec-report.tsx:191-203",
+          "second": "pages/historical-reports/full-analysis.tsx:204-216",
+          "lines": 13,
+          "tokens": 102
+        },
+        {
+          "first": "pages/historical-reports/eec-report.tsx:230-238",
+          "second": "pages/historical-reports/full-analysis.tsx:239-245",
+          "lines": 9,
+          "tokens": 57
+        },
+        {
+          "first": "pages/historical-reports/eec-report.tsx:471-480",
+          "second": "pages/historical-reports/full-analysis.tsx:460-469",
+          "lines": 10,
+          "tokens": 51
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-book-sales.tsx",
+        "pages/historical-reports/product-history.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 31,
+      "max_lines": 31,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-book-sales.tsx:112-142",
+          "second": "pages/historical-reports/product-history.tsx:151-181",
+          "lines": 31,
+          "tokens": 149
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/daily-book-history.tsx",
+        "pages/historical-reports/prod-customer-history.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 30,
+      "max_lines": 21,
+      "examples": [
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:100-108",
+          "second": "pages/historical-reports/prod-customer-history.tsx:149-157",
+          "lines": 9,
+          "tokens": 79
+        },
+        {
+          "first": "pages/historical-reports/daily-book-history.tsx:241-261",
+          "second": "pages/historical-reports/prod-customer-history.tsx:362-382",
+          "lines": 21,
+          "tokens": 102
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/print/a5-invoice.tsx",
+        "pages/print/payment-receipt-print.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 30,
+      "max_lines": 20,
+      "examples": [
+        {
+          "first": "pages/print/a5-invoice.tsx:6-25",
+          "second": "pages/print/payment-receipt-print.tsx:5-31",
+          "lines": 20,
+          "tokens": 129
+        },
+        {
+          "first": "pages/print/a5-invoice.tsx:52-61",
+          "second": "pages/print/payment-receipt-print.tsx:78-87",
+          "lines": 10,
+          "tokens": 54
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/data-entry/return-from-customer.tsx",
+        "pages/data-entry/return-from-customer.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 30,
+      "max_lines": 18,
+      "examples": [
+        {
+          "first": "pages/data-entry/return-from-customer.tsx:313-330",
+          "second": "pages/data-entry/return-from-customer.tsx:373-390",
+          "lines": 18,
+          "tokens": 86
+        },
+        {
+          "first": "pages/data-entry/return-from-customer.tsx:334-345",
+          "second": "pages/data-entry/return-from-customer.tsx:394-405",
+          "lines": 12,
+          "tokens": 69
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/profit-loss.tsx",
+        "pages/daily-report/sales-analysis.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 29,
+      "max_lines": 20,
+      "examples": [
+        {
+          "first": "pages/daily-report/profit-loss.tsx:13-21",
+          "second": "pages/daily-report/sales-analysis.tsx:11-19",
+          "lines": 9,
+          "tokens": 53
+        },
+        {
+          "first": "pages/daily-report/profit-loss.tsx:348-367",
+          "second": "pages/daily-report/sales-analysis.tsx:352-369",
+          "lines": 20,
+          "tokens": 81
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/daily-summary.tsx",
+        "pages/daily-report/stock-check.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 29,
+      "max_lines": 16,
+      "examples": [
+        {
+          "first": "pages/daily-report/daily-summary.tsx:56-71",
+          "second": "pages/daily-report/stock-check.tsx:25-40",
+          "lines": 16,
+          "tokens": 66
+        },
+        {
+          "first": "pages/daily-report/daily-summary.tsx:922-934",
+          "second": "pages/daily-report/stock-check.tsx:578-590",
+          "lines": 13,
+          "tokens": 51
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/historical-reports/all-supplier-history.tsx",
+        "pages/historical-reports/supplier-history.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 29,
+      "max_lines": 16,
+      "examples": [
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:148-163",
+          "second": "pages/historical-reports/supplier-history.tsx:393-408",
+          "lines": 16,
+          "tokens": 116
+        },
+        {
+          "first": "pages/historical-reports/all-supplier-history.tsx:254-266",
+          "second": "pages/historical-reports/supplier-history.tsx:508-520",
+          "lines": 13,
+          "tokens": 113
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-history.tsx",
+        "pages/daily-report/stock-check.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 28,
+      "max_lines": 28,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-history.tsx:212-239",
+          "second": "pages/daily-report/stock-check.tsx:500-527",
+          "lines": 28,
+          "tokens": 130
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/data-entry/expenses.tsx",
+        "pages/historical-reports/all-customer-history.tsx"
+      ],
+      "clone_count": 1,
+      "duplicated_lines": 28,
+      "max_lines": 28,
+      "examples": [
+        {
+          "first": "pages/data-entry/expenses.tsx:653-680",
+          "second": "pages/historical-reports/all-customer-history.tsx:648-675",
+          "lines": 28,
+          "tokens": 200
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/data-entry/banking.tsx",
+        "pages/data-entry/expenses.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 28,
+      "max_lines": 16,
+      "examples": [
+        {
+          "first": "pages/data-entry/banking.tsx:1-12",
+          "second": "pages/data-entry/expenses.tsx:2-13",
+          "lines": 12,
+          "tokens": 99
+        },
+        {
+          "first": "pages/data-entry/banking.tsx:439-454",
+          "second": "pages/data-entry/expenses.tsx:438-453",
+          "lines": 16,
+          "tokens": 115
+        }
+      ]
+    },
+    {
+      "files": [
+        "pages/daily-report/product-purchase-report.tsx",
+        "pages/data-entry/expenses.tsx"
+      ],
+      "clone_count": 2,
+      "duplicated_lines": 28,
+      "max_lines": 15,
+      "examples": [
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:647-659",
+          "second": "pages/data-entry/expenses.tsx:643-655",
+          "lines": 13,
+          "tokens": 77
+        },
+        {
+          "first": "pages/daily-report/product-purchase-report.tsx:765-779",
+          "second": "pages/data-entry/expenses.tsx:761-775",
+          "lines": 15,
+          "tokens": 108
+        }
+      ]
+    }
+  ],
+  "top_files": [
+    {
+      "file": "pages/daily-report/daily-sales-full-view.tsx",
+      "clone_lines": 1060
+    },
+    {
+      "file": "pages/daily-report/product-purchase-report.tsx",
+      "clone_lines": 793
+    },
+    {
+      "file": "pages/daily-report/daily-book-purchase.tsx",
+      "clone_lines": 774
+    },
+    {
+      "file": "pages/daily-report/daily-book-sales.tsx",
+      "clone_lines": 613
+    },
+    {
+      "file": "pages/historical-reports/customer-aging-rpt.tsx",
+      "clone_lines": 613
+    },
+    {
+      "file": "pages/daily-report/product-purchase-history.tsx",
+      "clone_lines": 555
+    },
+    {
+      "file": "pages/daily-report/stock-check.tsx",
+      "clone_lines": 539
+    },
+    {
+      "file": "pages/payroll/monthly-reports.tsx",
+      "clone_lines": 534
+    },
+    {
+      "file": "pages/admin/customer-database.tsx",
+      "clone_lines": 518
+    },
+    {
+      "file": "pages/historical-reports/all-customer-history.tsx",
+      "clone_lines": 517
+    },
+    {
+      "file": "pages/data-entry/sales-invoice.tsx",
+      "clone_lines": 506
+    },
+    {
+      "file": "pages/historical-reports/customer-statement.tsx",
+      "clone_lines": 468
+    },
+    {
+      "file": "pages/daily-report/product-purchase-full-view.tsx",
+      "clone_lines": 462
+    },
+    {
+      "file": "pages/historical-reports/supplier-aging-rpt.tsx",
+      "clone_lines": 457
+    },
+    {
+      "file": "pages/historical-reports/customer-history.tsx",
+      "clone_lines": 456
+    },
+    {
+      "file": "pages/admin/admin-functions.tsx",
+      "clone_lines": 424
+    },
+    {
+      "file": "pages/daily-report/product-sales-report.tsx",
+      "clone_lines": 386
+    },
+    {
+      "file": "pages/daily-report/product-sales-history.tsx",
+      "clone_lines": 341
+    },
+    {
+      "file": "pages/historical-reports/all-supplier-history.tsx",
+      "clone_lines": 336
+    },
+    {
+      "file": "pages/payments/customer-payment.tsx",
+      "clone_lines": 335
+    },
+    {
+      "file": "pages/daily-report/profit-loss.tsx",
+      "clone_lines": 328
+    },
+    {
+      "file": "pages/historical-reports/daily-book-history.tsx",
+      "clone_lines": 328
+    },
+    {
+      "file": "pages/payments/supplier-payment.tsx",
+      "clone_lines": 312
+    },
+    {
+      "file": "pages/print/dot-matrix-invoice.tsx",
+      "clone_lines": 305
+    },
+    {
+      "file": "pages/historical-reports/supplier-history.tsx",
+      "clone_lines": 285
+    },
+    {
+      "file": "pages/data-entry/on-acc-customer.tsx",
+      "clone_lines": 273
+    },
+    {
+      "file": "pages/print/bulk-dot-matrix.tsx",
+      "clone_lines": 270
+    },
+    {
+      "file": "pages/historical-reports/product-history.tsx",
+      "clone_lines": 264
+    },
+    {
+      "file": "components/ui/customer-search.tsx",
+      "clone_lines": 261
+    },
+    {
+      "file": "pages/data-entry/on-acc-supplier.tsx",
+      "clone_lines": 256
+    },
+    {
+      "file": "pages/admin/products-database.tsx",
+      "clone_lines": 255
+    },
+    {
+      "file": "pages/historical-reports/purchase-history.tsx",
+      "clone_lines": 241
+    },
+    {
+      "file": "pages/historical-reports/full-analysis.tsx",
+      "clone_lines": 238
+    },
+    {
+      "file": "pages/data-entry/expenses.tsx",
+      "clone_lines": 235
+    },
+    {
+      "file": "pages/admin/supplier-database-edit.tsx",
+      "clone_lines": 234
+    },
+    {
+      "file": "pages/payments/sup-payment-history.tsx",
+      "clone_lines": 230
+    },
+    {
+      "file": "pages/print/a5-invoice.tsx",
+      "clone_lines": 223
+    },
+    {
+      "file": "pages/admin/supplier-database.tsx",
+      "clone_lines": 206
+    },
+    {
+      "file": "pages/admin/expenses-database.tsx",
+      "clone_lines": 191
+    },
+    {
+      "file": "pages/data-entry/banking.tsx",
+      "clone_lines": 185
+    },
+    {
+      "file": "pages/historical-reports/supplier-return.tsx",
+      "clone_lines": 182
+    },
+    {
+      "file": "pages/historical-reports/date-wise-sales.tsx",
+      "clone_lines": 173
+    },
+    {
+      "file": "pages/daily-report/daily-summary.tsx",
+      "clone_lines": 168
+    },
+    {
+      "file": "pages/admin/customer-database-edit.tsx",
+      "clone_lines": 165
+    },
+    {
+      "file": "pages/data-entry/return-to-supplier.tsx",
+      "clone_lines": 165
+    },
+    {
+      "file": "pages/historical-reports/eec-report.tsx",
+      "clone_lines": 163
+    },
+    {
+      "file": "components/ui/supplier-search.tsx",
+      "clone_lines": 156
+    },
+    {
+      "file": "pages/admin/employee-database.tsx",
+      "clone_lines": 153
+    },
+    {
+      "file": "pages/daily-report/daily-accounts.tsx",
+      "clone_lines": 153
+    },
+    {
+      "file": "pages/admin/add-nonproduct.tsx",
+      "clone_lines": 147
+    }
+  ]
+}
