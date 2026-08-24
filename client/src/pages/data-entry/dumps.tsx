@@ -23,6 +23,7 @@ import autoTable from 'jspdf-autotable';
 import { printHtmlTable } from "@/lib/export-utils";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 
 interface Product {
   id: number;
@@ -66,6 +67,7 @@ export default function Dumps() {
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { notifyInventoryMutation } = useCrossTabSync({ enablePolling: false });
 
   // Fetch data
   const { data: dumpEntries = [], isLoading, refetch } = useQuery({
@@ -89,7 +91,12 @@ export default function Dumps() {
   // Mutations
   const createDumpMutation = useMutation({
     mutationFn: (data: InsertDumpEntry) => apiRequest('POST', '/api/dump-entries', data),
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      notifyInventoryMutation({
+        source: 'dump',
+        productId: variables?.productId,
+        productType: variables?.productType as 'regular' | 'non' | undefined,
+      });
       toast({
         title: "Success",
         description: "Dump entry created successfully",
@@ -123,6 +130,7 @@ export default function Dumps() {
   const deleteDumpMutation = useMutation({
     mutationFn: (id: number) => apiRequest('DELETE', `/api/dump-entries/${id}`),
     onSuccess: () => {
+      notifyInventoryMutation({ source: 'dump' });
       toast({
         title: "Success",
         description: "Dump entry deleted successfully",

@@ -7,6 +7,7 @@ import { ThemeProvider } from "next-themes";
 import { useAuth } from "@/lib/auth";
 import { useEffect } from "react";
 import { useAutoLogout } from "@/hooks/useAutoLogout";
+import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { SessionStatus } from "@/components/session-status";
 import DashboardLayout from "@/components/layout/dashboard-layout";
 import Login from "@/pages/login";
@@ -629,6 +630,16 @@ function Router() {
   );
 }
 
+function InventorySync() {
+  const { isAuthenticated } = useAuth();
+  useCrossTabSync({
+    enabled: isAuthenticated,
+    enablePolling: true,
+    pollingIntervalMs: 30000,
+  });
+  return null;
+}
+
 function App() {
   const { checkAuth } = useAuth();
   
@@ -646,6 +657,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <SessionStatus />
+          <InventorySync />
           <Router />
         </TooltipProvider>
       </ThemeProvider>

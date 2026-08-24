@@ -47,6 +47,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 
 // Form validation schema
 const supplierReturnSchema = z.object({
@@ -115,6 +116,7 @@ export default function ReturnToSupplier() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { notifyInventoryMutation } = useCrossTabSync({ enablePolling: false });
   const { selectedSupplier: selectedSupplierObj, handleSupplierSelect: handleSupplierSelectHook, supplierId } = useSupplierSearch();
   
   // Get business date
@@ -278,6 +280,11 @@ export default function ReturnToSupplier() {
   const createMutation = useMutation({
     mutationFn: createSupplierReturn,
     onSuccess: (newReturn) => {
+      notifyInventoryMutation({
+        source: 'supplier-return',
+        productId: newReturn?.productId,
+        productType: newReturn?.productType as 'regular' | 'non' | undefined,
+      });
       queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
         if (!old) return [newReturn];
         return [newReturn, ...old];
@@ -295,6 +302,11 @@ export default function ReturnToSupplier() {
   const updateMutation = useMutation({
     mutationFn: updateSupplierReturn,
     onSuccess: (updatedReturn) => {
+      notifyInventoryMutation({
+        source: 'supplier-return',
+        productId: updatedReturn?.productId,
+        productType: updatedReturn?.productType as 'regular' | 'non' | undefined,
+      });
       queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
         if (!old) return [updatedReturn];
         return old.map((item: any) => item.id === updatedReturn.id ? updatedReturn : item);
@@ -313,6 +325,7 @@ export default function ReturnToSupplier() {
   const deleteMutation = useMutation({
     mutationFn: deleteSupplierReturn,
     onSuccess: () => {
+      notifyInventoryMutation({ source: 'supplier-return' });
       queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
       toast({ title: "Success", description: "Supplier return deleted successfully" });
     },

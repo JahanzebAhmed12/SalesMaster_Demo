@@ -1,33 +1,50 @@
-import { useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect } from 'react';
 import { useSalesInvalidation } from './useSalesInvalidation';
 
-export const useCrossTabSync = () => {
-  const queryClient = useQueryClient();
-  const { invalidateAllSalesQueries, invalidateCustomerQueries } = useSalesInvalidation();
+type InventoryMutationData = {
+  productId?: number;
+  productType?: 'regular' | 'non';
+  source?: 'customer-return' | 'dump' | 'supplier-return' | 'sale' | 'purchase' | 'closing-stock';
+};
+
+type CrossTabSyncOptions = {
+  enabled?: boolean;
+  enablePolling?: boolean;
+  pollingIntervalMs?: number;
+};
+
+const CHANNEL_NAME = 'sales-updates';
+
+export const useCrossTabSync = ({
+  enabled = true,
+  enablePolling = false,
+  pollingIntervalMs = 30000,
+}: CrossTabSyncOptions = {}) => {
+  const {
+    invalidateInventoryQueries,
+    refetchInventoryQueries,
+    invalidateAllSalesQueries,
+    invalidateCustomerQueries,
+  } = useSalesInvalidation();
 
   useEffect(() => {
-    // Create a broadcast channel for cross-tab communication
-    const channel = new BroadcastChannel('sales-updates');
+    if (!enabled || typeof BroadcastChannel === 'undefined') return;
 
+    const channel = new BroadcastChannel(CHANNEL_NAME);
     const handleMessage = (event: MessageEvent) => {
-      const { type, data } = event.data;
+      const { type, data } = event.data ?? {};
 
       switch (type) {
         case 'INVOICE_CREATED':
         case 'INVOICE_UPDATED':
-          console.log('Cross-tab sync: Invoice operation detected, invalidating queries');
           invalidateAllSalesQueries();
-          if (data?.customerId) {
-            invalidateCustomerQueries(data.customerId);
-          }
+          if (data?.customerId) invalidateCustomerQueries(data.customerId);
           break;
         case 'STOCK_UPDATED':
-          console.log('Cross-tab sync: Stock update detected, invalidating queries');
-          invalidateAllSalesQueries();
+        case 'INVENTORY_MUTATED':
+          invalidateInventoryQueries();
           break;
         case 'PAYMENT_UPDATED':
-          console.log('Cross-tab sync: Payment update detected, invalidating queries');
           invalidateAllSalesQueries();
           break;
         default:
@@ -36,46 +53,62 @@ export const useCrossTabSync = () => {
     };
 
     channel.addEventListener('message', handleMessage);
-
     return () => {
       channel.removeEventListener('message', handleMessage);
       channel.close();
     };
-  }, [invalidateAllSalesQueries, invalidateCustomerQueries]);
+  }, [enabled, invalidateAllSalesQueries, invalidateCustomerQueries, invalidateInventoryQueries]);
 
-  const broadcastInvoiceCreated = (invoiceData: { invoiceNumber: string; customerId?: number }) => {
-    const channel = new BroadcastChannel('sales-updates');
-    channel.postMessage({
-      type: 'INVOICE_CREATED',
-      data: invoiceData,
-      timestamp: Date.now()
-    });
-    channel.close();
-  };
+  useEffect(() => {
+    if (!enabled || !enablePolling || pollingIntervalMs <= 0) return;
 
-  const broadcastInvoiceUpdated = (invoiceData: { invoiceNumber: string; customerId?: number }) => {
-    const channel = new BroadcastChannel('sales-updates');
-    channel.postMessage({
-      type: 'INVOICE_UPDATED',
-      data: invoiceData,
-      timestamp: Date.now()
-    });
-    channel.close();
-  };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refetchInventoryQueries();
+      }
+    };
 
-  const broadcastPaymentUpdated = (paymentData: { invoiceNumbers?: string[]; customerId?: number }) => {
-    const channel = new BroadcastChannel('sales-updates');
-    channel.postMessage({
-      type: 'PAYMENT_UPDATED',
-      data: paymentData,
-      timestamp: Date.now()
-    });
+    const intervalId = window.setInterval(refreshWhenVisible, pollingIntervalMs);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [enabled, enablePolling, pollingIntervalMs, refetchInventoryQueries]);
+
+  const broadcast = useCallback((type: string, data?: unknown) => {
+    if (!enabled || typeof BroadcastChannel === 'undefined') return;
+    const channel = new BroadcastChannel(CHANNEL_NAME);
+    channel.postMessage({ type, data, timestamp: Date.now() });
     channel.close();
-  };
+  }, [enabled]);
+
+  const broadcastInventoryMutation = useCallback((data: InventoryMutationData = {}) => {
+    broadcast('INVENTORY_MUTATED', data);
+  }, [broadcast]);
+
+  const notifyInventoryMutation = useCallback((data: InventoryMutationData = {}) => {
+    invalidateInventoryQueries();
+    broadcastInventoryMutation(data);
+  }, [broadcastInventoryMutation, invalidateInventoryQueries]);
+
+  const broadcastInvoiceCreated = useCallback((invoiceData: { invoiceNumber: string; customerId?: number }) => {
+    broadcast('INVOICE_CREATED', invoiceData);
+  }, [broadcast]);
+
+  const broadcastInvoiceUpdated = useCallback((invoiceData: { invoiceNumber: string; customerId?: number }) => {
+    broadcast('INVOICE_UPDATED', invoiceData);
+  }, [broadcast]);
+
+  const broadcastPaymentUpdated = useCallback((paymentData: { invoiceNumbers?: string[]; customerId?: number }) => {
+    broadcast('PAYMENT_UPDATED', paymentData);
+  }, [broadcast]);
 
   return {
     broadcastInvoiceCreated,
     broadcastInvoiceUpdated,
-    broadcastPaymentUpdated
+    broadcastPaymentUpdated,
+    broadcastInventoryMutation,
+    notifyInventoryMutation,
   };
 };

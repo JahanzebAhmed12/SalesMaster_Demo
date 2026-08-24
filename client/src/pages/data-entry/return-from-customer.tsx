@@ -21,6 +21,7 @@ import { formatQuantity } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
+import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 
 // Simplified schema for return form
 const returnSchema = z.object({
@@ -71,6 +72,7 @@ export default function ReturnFromCustomer() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { notifyInventoryMutation } = useCrossTabSync({ enablePolling: false });
   
   // Get business date
   const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
@@ -199,7 +201,12 @@ export default function ReturnFromCustomer() {
   // Create return mutation
   const createReturnMutation = useMutation({
     mutationFn: (data: any) => apiRequest('POST', '/api/customer-returns', data),
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
+      notifyInventoryMutation({
+        source: 'customer-return',
+        productId: variables?.productId,
+        productType: variables?.productType,
+      });
       refetchReturns();
       form.reset({
         date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
@@ -225,6 +232,7 @@ export default function ReturnFromCustomer() {
   const deleteReturnMutation = useMutation({
     mutationFn: (id: number) => apiRequest('DELETE', `/api/customer-returns/${id}`),
     onSuccess: () => {
+      notifyInventoryMutation({ source: 'customer-return' });
       refetchReturns();
       toast({
         title: "Success",
