@@ -65,6 +65,7 @@ interface Item {
   quantity?: number;
   unitPrice?: number;
   totalPrice?: number;
+  highlighted?: boolean;
 }
 interface InvoiceData {
   company: Company;
@@ -182,7 +183,7 @@ export default function InvoicePrintPage() {
         </thead>
         <tbody>
           {data.items.map((item, idx) => (
-            <tr key={item.id || idx}>
+            <tr key={item.id || idx} style={{ background: item.highlighted ? '#fff3a3' : undefined }}>
               <td style={{ border: "1px solid #ccc", padding: "1px 4px", wordWrap: "break-word", wordBreak: "break-word" }}>
                 {item.productName || item.description || "-"}
                 {item.notes && (

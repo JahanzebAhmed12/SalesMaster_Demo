@@ -881,11 +881,26 @@ export default function DailyBookSales() {
     });
   };
 
+  const getSelectedInvoiceNumbers = () => salesData
+    .filter(sale => selectedSales.has(sale.id))
+    .map(sale => sale.invoiceNo);
+
   const handleBulkPrint = async () => {
-    if (selectedSales.size === 0) return;
-    const selected = salesData.filter(s => selectedSales.has(s.id));
-    const invoiceNumbers = selected.map(s => s.invoiceNo);
-    window.open(`/print/bulk-dot-matrix?invs=${invoiceNumbers.join(',')}`, '_blank');
+    const invoiceNumbers = getSelectedInvoiceNumbers();
+    if (invoiceNumbers.length === 0) return;
+    window.open(`/print/bulk-dot-matrix?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+  };
+
+  const handleBulkA4Print = () => {
+    const invoiceNumbers = getSelectedInvoiceNumbers();
+    if (invoiceNumbers.length === 0) return;
+    window.open(`/print/bulk-a4-invoice?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+  };
+
+  const handleBulkPickingPrint = () => {
+    const invoiceNumbers = getSelectedInvoiceNumbers();
+    if (invoiceNumbers.length === 0) return;
+    window.open(`/print/bulk-packing-list?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
   };
 
   const sendWhatsApp = async (sale: SalesEntry) => {
@@ -1160,6 +1175,26 @@ export default function DailyBookSales() {
                         <Printer size={14} />
                         <span className="hidden sm:inline">Print Selected</span>
                         <span className="sm:hidden">Print</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex items-center gap-1 border-indigo-500 text-indigo-700 hover:bg-indigo-50"
+                        onClick={handleBulkA4Print}
+                      >
+                        <FileText size={14} />
+                        <span className="hidden sm:inline">A4 Invoices</span>
+                        <span className="sm:hidden">A4</span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex items-center gap-1 border-orange-500 text-orange-700 hover:bg-orange-50"
+                        onClick={handleBulkPickingPrint}
+                      >
+                        <Package size={14} />
+                        <span className="hidden sm:inline">Picking Notes</span>
+                        <span className="sm:hidden">Picking</span>
                       </Button>
                     </>
                   )}

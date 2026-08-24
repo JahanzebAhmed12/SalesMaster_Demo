@@ -111,6 +111,8 @@ import DeliveryNotePrintPage from "./pages/print/delivery-note";
 import PackingListPrintPage from "./pages/print/packing-list";
 import DailySummaryPrintPage from "@/pages/print/daily-summary-print";
 import BulkDotMatrixPrintPage from "@/pages/print/bulk-dot-matrix";
+import BulkA4InvoicePrintPage from "@/pages/print/bulk-a4-invoice";
+import BulkPackingListPrintPage from "@/pages/print/bulk-packing-list";
 
 // User Profile
 import UserProfile from "./pages/profile/user-profile";
@@ -593,6 +595,12 @@ function Router() {
       </Route>
       <Route path="/print/bulk-dot-matrix">
         <BulkDotMatrixPrintPage />
+      </Route>
+      <Route path="/print/bulk-a4-invoice">
+        <BulkA4InvoicePrintPage />
+      </Route>
+      <Route path="/print/bulk-packing-list">
+        <BulkPackingListPrintPage />
       </Route>
       <Route path="/print/dot-matrix-payment/:batchId">
         <DotMatrixPaymentPrintPage />
