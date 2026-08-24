@@ -136,6 +136,49 @@ class SaleItem(db.Model):
             'addedBy': self.added_by
         }
 
+class SaleHold(db.Model):
+    """Server-side held invoice and its stock reservation payload.
+
+    Holds are deliberately separate from Sale rows: they reserve stock while an
+    invoice is being prepared without changing current_stock or the stock
+    movement ledger. The JSON payload preserves the existing resume experience,
+    while the server calculates reservation totals from its canonical copy.
+    """
+    __tablename__ = 'sale_holds'
+    __table_args__ = (
+        db.Index('ix_sale_hold_status_expires_at', 'status', 'expires_at'),
+        db.Index('ix_sale_hold_created_by', 'created_by'),
+        db.Index('ix_sale_hold_sale_id', 'sale_id'),
+    )
+
+    hold_id = db.Column(db.String(64), primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'), nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    payload = db.Column(db.JSON, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='active')
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+
+    creator = db.relationship('User', foreign_keys=[created_by])
+    updater = db.relationship('User', foreign_keys=[updated_by])
+    sale = db.relationship('Sale', foreign_keys=[sale_id])
+
+    def to_dict(self):
+        data = dict(self.payload or {})
+        data.update({
+            'holdId': self.hold_id,
+            'holdTime': self.updated_at.isoformat() if self.updated_at else None,
+            'expiresAt': self.expires_at.isoformat() if self.expires_at else None,
+            'createdBy': self.created_by,
+            'updatedBy': self.updated_by,
+            'status': self.status,
+        })
+        return data
+
+
 class Purchase(db.Model):
     __table_args__ = (
         db.Index('ix_purchase_supplier_id', 'supplier_id'),

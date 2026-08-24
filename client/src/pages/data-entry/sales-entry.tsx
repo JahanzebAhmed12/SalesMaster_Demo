@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -17,6 +17,9 @@ import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { Plus, Clock, Trash2 } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Customer } from "@shared/schema";
+import { migrateLegacyHeldInvoices, releaseHeldInvoice } from "@/lib/held-invoices";
+import type { HeldInvoice } from "@/lib/held-invoices";
+import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import React from "react";
 
 const salesSchema = z.object({
@@ -25,19 +28,12 @@ const salesSchema = z.object({
 
 type SalesFormData = z.infer<typeof salesSchema>;
 
-interface HeldInvoice {
-  holdId: string;
-  customerId: string;
-  notes: string;
-  saleItems: any[];
-  holdTime: string;
-}
-
 export default function SalesEntry() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const { notifyInventoryMutation } = useCrossTabSync();
   const { selectedCustomer, handleCustomerSelect, customerId, customerOthers } = useCustomerSearch();
-  const [heldInvoices, setHeldInvoices] = useState<HeldInvoice[]>([]);
   const [showHeldInvoices, setShowHeldInvoices] = useState(false);
   const [gateNumber, setGateNumber] = useState("");
   const [isGateNumberFromCustomer, setIsGateNumberFromCustomer] = useState(false);
@@ -69,13 +65,23 @@ export default function SalesEntry() {
     }
   }, [selectedCustomer, customerId, customerOthers, form]);
 
-  // Load held invoices from localStorage on mount
-  useEffect(() => {
-    const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
-    setHeldInvoices(held);
-  }, []);
+  const { data: heldInvoices = [] } = useQuery<HeldInvoice[]>({
+    queryKey: ["heldInvoices"],
+    queryFn: () => apiRequest("GET", "/api/held-invoices"),
+  });
 
-console.log(heldInvoices, "see held invoices")
+  // Migrate old browser-local holds once. The server keeps the legacy hold ID,
+  // making retries idempotent and preventing double reservation.
+  useEffect(() => {
+    migrateLegacyHeldInvoices()
+      .then((migrated) => {
+        if (migrated) {
+          queryClient.invalidateQueries({ queryKey: ["heldInvoices"] });
+          notifyInventoryMutation({ source: 'sale' });
+        }
+      })
+      .catch(() => undefined);
+  }, [notifyInventoryMutation, queryClient]);
 
   const handleGoToInvoice = (customerId: string, saleItems: any[]) => {
     // Save draft to localStorage
@@ -106,10 +112,18 @@ console.log(heldInvoices, "see held invoices")
     setLocation(`/data-entry/sales-invoice?heldInvoiceId=${holdId}`);
   };
 
-  const handleDeleteHeldInvoice = (holdId: string) => {
-    const updated = heldInvoices.filter(inv => inv.holdId !== holdId);
-    setHeldInvoices(updated);
-    localStorage.setItem('heldInvoices', JSON.stringify(updated));
+  const handleDeleteHeldInvoice = async (holdId: string) => {
+    try {
+      await releaseHeldInvoice(holdId);
+      await queryClient.invalidateQueries({ queryKey: ["heldInvoices"] });
+      notifyInventoryMutation({ source: 'sale' });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to release held invoice.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Fetch customers (needed for customer name display in held invoices)
@@ -168,7 +182,7 @@ console.log(heldInvoices, "see held invoices")
                 <TableBody>
                   {heldInvoices.map((invoice) => (
                     <TableRow key={invoice.holdId}>
-                      <TableCell>{getCustomerName(invoice.customerId)}</TableCell>
+                      <TableCell>{getCustomerName(String(invoice.customerId || ''))}</TableCell>
                       <TableCell>{invoice.saleItems.length} items</TableCell>
                       <TableCell>{new Date(invoice.holdTime).toLocaleString()}</TableCell>
                       <TableCell>

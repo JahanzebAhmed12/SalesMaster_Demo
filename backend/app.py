@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from flask import make_response
 import re
 import html
-from models import db, User, Sale, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave
+from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave
 
 
 from schemas import (
@@ -930,6 +930,217 @@ def refresh_token():
     return jsonify({'token': new_token}), 200
 
 # Sales routes
+SALE_HOLD_TTL = timedelta(hours=24)
+
+
+def _expire_sale_holds(commit=False):
+    """Mark expired holds released so they no longer reserve inventory."""
+    now = datetime.utcnow()
+    expired = SaleHold.query.filter(
+        SaleHold.status == 'active',
+        SaleHold.expires_at <= now,
+    ).all()
+    for hold in expired:
+        hold.status = 'expired'
+        hold.updated_at = now
+    if expired:
+        db.session.flush()
+        if commit:
+            db.session.commit()
+    return len(expired)
+
+
+def _hold_item_values(item):
+    """Read both the frontend camelCase and backend snake_case item shapes."""
+    product_id = item.get('productId', item.get('product_id'))
+    non_product_id = item.get('nonProductId', item.get('non_product_id'))
+    quantity = item.get('quantity', 0)
+    try:
+        quantity = float(quantity or 0)
+    except (TypeError, ValueError):
+        quantity = 0.0
+    return product_id, non_product_id, quantity
+
+
+def _reservation_totals(exclude_hold_id=None):
+    """Aggregate positive sale quantities from active server-side holds."""
+    _expire_sale_holds()
+    totals = {}
+    holds = SaleHold.query.filter_by(status='active').all()
+    for hold in holds:
+        if exclude_hold_id and hold.hold_id == exclude_hold_id:
+            continue
+        payload = hold.payload or {}
+        for item in payload.get('saleItems', payload.get('items', [])) or []:
+            product_id, non_product_id, quantity = _hold_item_values(item)
+            if quantity <= 0:
+                continue
+            if product_id is not None:
+                key = ('regular', int(product_id))
+            elif non_product_id is not None:
+                key = ('non', int(non_product_id))
+            else:
+                continue
+            totals[key] = totals.get(key, 0.0) + quantity
+    return [
+        {'productId': product_id, 'productType': product_type, 'quantity': quantity}
+        for (product_type, product_id), quantity in sorted(totals.items())
+    ]
+
+
+def _release_sale_hold(hold_id, sale_id=None):
+    """Release a hold inside the caller's transaction after sale validation."""
+    if not hold_id:
+        return
+    hold = SaleHold.query.filter_by(hold_id=str(hold_id), status='active').first()
+    if hold:
+        hold.status = 'released'
+        hold.updated_at = datetime.utcnow()
+        if sale_id is not None:
+            hold.sale_id = sale_id
+        db.session.flush()
+
+
+@app.route('/api/held-invoices', methods=['GET'])
+@jwt_required()
+def get_held_invoices():
+    try:
+        _expire_sale_holds(commit=True)
+        holds = SaleHold.query.filter_by(status='active').order_by(SaleHold.updated_at.desc()).all()
+        return jsonify([hold.to_dict() for hold in holds]), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to load held invoices: {str(e)}'}), 500
+
+
+@app.route('/api/held-invoices', methods=['POST'])
+@jwt_required()
+def upsert_held_invoice():
+    """Create or renew one shared hold idempotently.
+
+    A hold changes neither current_stock nor StockMovement. It is only a
+    durable reservation used by the availability query until released, saved
+    as a finalized sale, or expired.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        user_id = int(get_jwt_identity())
+        hold_id = str(data.get('holdId') or data.get('hold_id') or uuid.uuid4().hex)
+        if len(hold_id) > 64:
+            return jsonify({'error': 'Hold ID is too long'}), 400
+
+        sale_items = data.get('saleItems', data.get('items', []))
+        if not isinstance(sale_items, list) or not sale_items:
+            return jsonify({'error': 'At least one invoice item is required'}), 400
+
+        sanitized_items = []
+        for item in sale_items:
+            if not isinstance(item, dict):
+                return jsonify({'error': 'Invalid invoice item'}), 400
+            product_id, non_product_id, quantity = _hold_item_values(item)
+            try:
+                if product_id is not None:
+                    int(product_id)
+                if non_product_id is not None:
+                    int(non_product_id)
+            except (TypeError, ValueError):
+                return jsonify({'error': 'Invalid product identifier'}), 400
+            if product_id is None and non_product_id is None:
+                return jsonify({'error': 'Each held item must reference a product'}), 400
+            if product_id is not None and non_product_id is not None:
+                return jsonify({'error': 'An item cannot reference both product types'}), 400
+            if not isinstance(quantity, (int, float)) or quantity != quantity:
+                return jsonify({'error': 'Invalid item quantity'}), 400
+            sanitized_items.append(dict(item))
+
+        current_sale = data.get('currentSale')
+        sale_id = None
+        if isinstance(current_sale, dict):
+            sale_id = current_sale.get('id')
+            invoice_number = current_sale.get('invoiceNumber')
+            existing_sale = None
+            if sale_id:
+                existing_sale = Sale.query.get(sale_id)
+            elif invoice_number:
+                existing_sale = Sale.query.filter_by(invoice_number=invoice_number).first()
+            # Include the canonical saved items in an edit hold. This allows
+            # E26 to re-add the original deducted quantity consistently.
+            if existing_sale:
+                sale_id = existing_sale.id
+                current_sale = existing_sale.to_dict()
+
+        payload = {
+            'customerId': data.get('customerId'),
+            'vehicleDetails': data.get('vehicleDetails') or '',
+            'gateNumber': data.get('gateNumber') or '',
+            'notes': data.get('notes') or '',
+            'saleItems': sanitized_items,
+            'currentSale': current_sale if isinstance(current_sale, dict) else None,
+        }
+        now = datetime.utcnow()
+        hold = SaleHold.query.get(hold_id)
+        if hold:
+            hold.customer_id = int(data['customerId']) if data.get('customerId') else None
+            hold.sale_id = sale_id
+            hold.updated_by = user_id
+            hold.payload = payload
+            hold.status = 'active'
+            hold.updated_at = now
+            hold.expires_at = now + SALE_HOLD_TTL
+        else:
+            hold = SaleHold(
+                hold_id=hold_id,
+                customer_id=int(data['customerId']) if data.get('customerId') else None,
+                sale_id=sale_id,
+                created_by=user_id,
+                updated_by=user_id,
+                payload=payload,
+                status='active',
+                created_at=now,
+                updated_at=now,
+                expires_at=now + SALE_HOLD_TTL,
+            )
+            db.session.add(hold)
+        db.session.commit()
+        return jsonify(hold.to_dict()), 201
+    except (TypeError, ValueError) as e:
+        db.session.rollback()
+        return jsonify({'error': f'Invalid hold payload: {str(e)}'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to save held invoice: {str(e)}'}), 500
+
+
+@app.route('/api/held-invoices/<string:hold_id>', methods=['DELETE'])
+@jwt_required()
+def release_held_invoice(hold_id):
+    try:
+        hold = SaleHold.query.filter_by(hold_id=hold_id, status='active').first()
+        if not hold:
+            return jsonify({'message': 'Held invoice already released or not found'}), 200
+        hold.status = 'released'
+        hold.updated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'success': True, 'holdId': hold_id}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to release held invoice: {str(e)}'}), 500
+
+
+@app.route('/api/stock/reservations', methods=['GET'])
+@jwt_required()
+def get_stock_reservations():
+    try:
+        exclude_hold_id = request.args.get('excludeHoldId')
+        return jsonify({
+            'reservations': _reservation_totals(exclude_hold_id),
+            'asOf': datetime.utcnow().isoformat(),
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to load stock reservations: {str(e)}'}), 500
+
+
 @app.route('/api/sales', methods=['GET'])
 @jwt_required()
 def get_sales():
@@ -956,8 +1167,11 @@ def create_sale():
             db.session.begin()
             
             data = request.get_json()
-            # Remove invoice_number from data before schema validation
+            hold_id = data.get('hold_id') or data.get('holdId')
+            # Remove non-sale fields from data before schema validation
             data.pop('invoice_number', None)
+            data.pop('hold_id', None)
+            data.pop('holdId', None)
             sale_data = SaleSchema(**data)
             
             # Validate customer exists
@@ -1195,6 +1409,12 @@ def create_sale():
                         db.session.rollback()
                         return jsonify({"error": f"Failed to create customer return for negative sale: {str(e)}"}), 400
             
+            # A finalized sale consumes its own reservation. This occurs in
+            # the same transaction as sale and stock writes, so a failed sale
+            # leaves the hold active and available to resume.
+            if sale_data.status == 'finalized':
+                _release_sale_hold(hold_id, new_sale.id)
+
             # Commit everything at once
             db.session.commit()
             
@@ -1300,9 +1520,13 @@ def get_sale_by_invoice(invoice_number):
 @jwt_required()
 def update_sale(id):
     data = request.get_json()
+    hold_id = data.get('hold_id') or data.get('holdId') if isinstance(data, dict) else None
     print(f"[DEBUG] Received sale update request for ID {id}")
     print(f"[DEBUG] Request data: {data}")
     try:
+        if isinstance(data, dict):
+            data.pop('hold_id', None)
+            data.pop('holdId', None)
         sale_data = SaleSchema(**data)
         sale = Sale.query.options(db.joinedload(Sale.user)).get_or_404(id)
         user_id = get_jwt_identity()
@@ -1679,6 +1903,11 @@ def update_sale(id):
                     # be represented by a completed CustomerReturn entity.
                     db.session.rollback()
                     return jsonify({"error": f"Failed to create customer return for negative sale: {str(e)}"}), 400
+
+        # A finalized sale consumes its own reservation in the same
+        # transaction as the sale update and stock reconciliation.
+        if new_status == 'finalized':
+            _release_sale_hold(hold_id, sale.id)
 
         db.session.commit()
         # Mail invoice if requested

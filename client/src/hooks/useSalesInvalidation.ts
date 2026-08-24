@@ -3,6 +3,8 @@ import { useQueryClient, type Query } from '@tanstack/react-query';
 
 const INVENTORY_QUERY_ROOTS = new Set([
   'currentStock',
+  'heldInvoices',
+  'stockReservations',
   'products',
   '/api/products',
   '/api/regular_products',

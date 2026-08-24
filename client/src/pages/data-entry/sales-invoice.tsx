@@ -35,6 +35,14 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import jsPDF from "jspdf";
 import logo from "@/public/printlogo.png";
 import { generateInvoicePdfBlob, sendInvoicePdfEmail } from "@/lib/invoice-pdf";
+import {
+  clearLegacyInvoiceDraft,
+  migrateLegacyHeldInvoices,
+  releaseHeldInvoice,
+  saveHeldInvoice,
+} from "@/lib/held-invoices";
+import type { HeldInvoice } from "@/lib/held-invoices";
+import { calculateAvailableStock } from "@/lib/stock-availability";
 
 interface BackendSalePayload {
   invoice_number: string;
@@ -52,6 +60,7 @@ interface BackendSalePayload {
   gate_number: string | null;
   notes: string | null;
   status: string;
+  hold_id?: string | null;
   date?: string | null; // Business date
   items: Array<{
     product_id: number | null;
@@ -77,17 +86,6 @@ interface StockItem {
   location: string | null;
 }
 
-interface HeldInvoice {
-  holdId: string;
-  customerId: string;
-  vehicleDetails?: string;
-  gateNumber?: string;
-  notes: string;
-  saleItems: any[];
-  holdTime: string;
-  currentSale?: SaleWithUser | null; // Add currentSale to preserve existing invoice context
-}
-
 // Extend the Sale type to include createdBy and createdByUsername
 interface SaleWithUser extends Sale {
   createdBy?: number;
@@ -96,6 +94,12 @@ interface SaleWithUser extends Sale {
 
 const SalesInvoice = () => {
   const skipAutoHoldRef = useRef(false);
+  const initialHoldId = new URLSearchParams(window.location.search).get('heldInvoiceId');
+  const activeHoldIdRef = useRef<string | null>(initialHoldId);
+  const restoredHoldIdRef = useRef<string | null>(null);
+  const generatedHoldIdRef = useRef<string>(
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+  );
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
   const [locationStr, setLocation] = useLocation();
   const [isReadOnly, setIsReadOnly] = useState(false);
@@ -107,7 +111,7 @@ const SalesInvoice = () => {
   const businessDateForApi = businessDate ? businessDate.split('T')[0] : null;
   const { canEditInvoice, isInvoiceLocked, canEditPaymentMode } = useInvoicePermissions();
   const { invalidateAllSalesQueries, invalidateCustomerQueries } = useSalesInvalidation();
-  const { broadcastInvoiceCreated, broadcastInvoiceUpdated } = useCrossTabSync();
+  const { broadcastInvoiceCreated, broadcastInvoiceUpdated, notifyInventoryMutation } = useCrossTabSync();
   // const navigate = useNavigate(); // Removed useNavigate
 
   // Use the latest location from useLocation
@@ -121,6 +125,7 @@ const SalesInvoice = () => {
 
   // State for current sale and items
   const [currentSale, setCurrentSale] = useState<SaleWithUser | null>(null);
+  const [activeHoldId, setActiveHoldId] = useState<string | null>(initialHoldId);
   const [saleItems, setSaleItems] = useState<SaleItem[]>([]);
   const [selectedProductType, setSelectedProductType] = useState<"regular" | "non_product">("regular");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
@@ -272,6 +277,8 @@ const SalesInvoice = () => {
         payment_status: currentSale.paymentStatus,
         subtotal: currentSale.subtotal,
         porterage: currentSale.porterage,
+        porterage_type: 'per_unit',
+        porterage_rate: Number((currentSale as any).porterageRate || 0),
         vat_rate: currentSale.vatRate,
         vat_amount: currentSale.vatAmount,
         total_amount: currentSale.totalAmount,
@@ -434,10 +441,40 @@ const SalesInvoice = () => {
       .catch(() => setServerTime(new Date().toISOString()));
   }, []);
 
+  useEffect(() => {
+    activeHoldIdRef.current = activeHoldId;
+  }, [activeHoldId]);
+
+  // Migrate old browser-local holds once, preserving their IDs so the server
+  // upsert cannot create duplicate reservations if the request is retried.
+  useEffect(() => {
+    migrateLegacyHeldInvoices()
+      .then((migrated) => {
+        if (migrated) {
+          queryClient.invalidateQueries({ queryKey: ["heldInvoices"] });
+          queryClient.invalidateQueries({ queryKey: ["stockReservations"] });
+          notifyInventoryMutation({ source: 'sale' });
+        }
+      })
+      .catch(() => undefined);
+  }, [notifyInventoryMutation, queryClient]);
+
   // Fetch current stock
   const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
     queryKey: ["currentStock"],
     queryFn: async () => await apiRequest("GET", "/api/stock/current"),
+  });
+
+  const { data: heldInvoices = [] } = useQuery<HeldInvoice[]>({
+    queryKey: ["heldInvoices"],
+    queryFn: () => apiRequest("GET", "/api/held-invoices"),
+  });
+
+  const { data: stockReservationData = { reservations: [] } } = useQuery<{
+    reservations: Array<{ productId: number; productType: 'regular' | 'non'; quantity: number }>;
+  }>({
+    queryKey: ["stockReservations", activeHoldId || null],
+    queryFn: () => apiRequest("GET", `/api/stock/reservations${activeHoldId ? `?excludeHoldId=${encodeURIComponent(activeHoldId)}` : ""}`),
   });
 
   // Fetch customers (needed for customer name display if not directly in sale)
@@ -521,42 +558,28 @@ const SalesInvoice = () => {
       })
       .reduce((sum, saleItem) => sum + (Number(saleItem.quantity) || 0), 0);
 
-    if (!currentSale) {
-      // New invoice: DB stock is correct (nothing deducted yet).
-      // Subtract what's in the current unsaved invoice + held invoices.
-      const heldInvoicesReservedQuantity = (heldInvoices as HeldInvoice[])
-        .flatMap(heldInvoice => heldInvoice.saleItems || [])
-        .filter(saleItem => {
-          if (type === 'regular') {
-            return saleItem.productId === productId;
-          } else {
-            return saleItem.nonProductId === productId;
-          }
-        })
-        .reduce((sum, saleItem) => sum + (Number(saleItem.quantity) || 0), 0);
+    const reservationType = stockType === 'regular' ? 'regular' : 'non';
+    const sharedReservedQuantity = (stockReservationData.reservations || [])
+      .filter(reservation => reservation.productId === productId && reservation.productType === reservationType)
+      .reduce((sum, reservation) => sum + (Number(reservation.quantity) || 0), 0);
 
-      return Number(item.currentStock) - currentInvoiceReservedQuantity - heldInvoicesReservedQuantity;
-    } else {
-      // Edit mode: DB stock already has the ORIGINAL invoice quantities deducted.
-      // To show the correct available stock we need to:
-      //   available = DB stock + original_saved_qty - current_saleItems_qty
-      // currentSale.items holds the items as they were saved (the quantities the
-      // DB stock already accounts for), while saleItems is the editable state.
-      // Re-adding the original qty removes the double-deduction, then subtracting
-      // the current qty reflects any additions/removals made during this edit.
-      // Note: Number() on currentStock is required because the API may return
-      // it as a string (Decimal serialization); string + number concatenates.
-      const originalSavedQuantity = (currentSale?.items || [])
-        .filter(item => {
-          if (type === 'regular') {
-            return item.productId === productId;
-          } else {
-            return item.nonProductId === productId;
-          }
-        })
-        .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-      return Number(item.currentStock) + originalSavedQuantity - currentInvoiceReservedQuantity;
-    }
+    const originalSavedQuantity = (currentSale?.items || [])
+      .filter(item => {
+        if (type === 'regular') {
+          return item.productId === productId;
+        } else {
+          return item.nonProductId === productId;
+        }
+      })
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+
+    return calculateAvailableStock({
+      rawStock: Number(item.currentStock),
+      currentInvoiceQuantity: currentInvoiceReservedQuantity,
+      sharedReservedQuantity,
+      originalSavedQuantity,
+      isEditing: Boolean(currentSale),
+    });
   };
 
   // Keyboard navigation for product dropdown with auto-focus to quantity
@@ -741,14 +764,10 @@ const SalesInvoice = () => {
         .finally(() => clearTimeout(timeoutId));
     },
     onSuccess: (response) => {
-      // Clear held invoice draft after successful save
-      localStorage.removeItem('currentInvoiceDraft');
-      // Optionally, also remove from heldInvoices if present
-      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-      if (held.length > 0 && response?.invoiceNumber) {
-        const updated = held.filter((inv: any) => inv.invoiceNumber !== response.invoiceNumber);
-        localStorage.setItem('heldInvoices', JSON.stringify(updated));
-      }
+      // The backend releases the matching hold in the same finalized-sale
+      // transaction. Keep draft cleanup for the separate unsaved draft flow.
+      clearLegacyInvoiceDraft();
+      notifyInventoryMutation({ source: 'sale' });
       console.log("=== CREATE SALE SUCCESS ===");
       console.log("Response:", response);
       console.log("createdBy:", response.createdBy);
@@ -809,14 +828,10 @@ const SalesInvoice = () => {
   const updateSaleMutation = useMutation<SaleWithUser, Error, BackendSalePayload>({
     mutationFn: (payload) => apiRequest("PUT", `/api/sales/${currentSale?.id}`, payload),
     onSuccess: (data) => {
-      // Clear held invoice draft after successful update
-      localStorage.removeItem('currentInvoiceDraft');
-      // Optionally, also remove from heldInvoices if present
-      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-      if (held.length > 0 && data?.invoiceNumber) {
-        const updated = held.filter((inv: any) => inv.invoiceNumber !== data.invoiceNumber);
-        localStorage.setItem('heldInvoices', JSON.stringify(updated));
-      }
+      // The backend releases the matching hold in the same finalized-sale
+      // transaction. Keep draft cleanup for the separate unsaved draft flow.
+      clearLegacyInvoiceDraft();
+      notifyInventoryMutation({ source: 'sale' });
 
       // Comprehensive query invalidation for updates
       queryClient.invalidateQueries({ queryKey: ["/api/sales", data.invoiceNumber] });
@@ -1109,6 +1124,7 @@ const SalesInvoice = () => {
         gate_number: gateNumber || null,
         notes: notes || null,
         status: "finalized",
+        hold_id: activeHoldIdRef.current,
         date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
         items: saleItems.map(item => ({
           product_id: item.productId,
@@ -1218,6 +1234,7 @@ const SalesInvoice = () => {
         gate_number: gateNumber || null,
         notes: notes || null,
         status: "finalized",
+        hold_id: activeHoldIdRef.current,
         date: businessDateForApi, // Add business date to payload (yyyy-MM-dd)
         items: saleItems.map(item => ({
           product_id: item.productId,
@@ -1350,9 +1367,25 @@ const SalesInvoice = () => {
   const { subtotal, vatAmount, porterage, totalAmount } = calculateTotalSummary();
 
   // Add this handler for closing/clearing unsaved invoice
-  const handleCloseInvoice = () => {
+  const handleCloseInvoice = async () => {
     if (window.confirm("Are you sure you want to discard this unsaved invoice?")) {
       skipAutoHoldRef.current = true; // Prevent auto-hold on close
+      if (activeHoldIdRef.current) {
+        try {
+          await releaseHeldInvoice(activeHoldIdRef.current);
+          notifyInventoryMutation({ source: 'sale' });
+          setActiveHoldId(null);
+          activeHoldIdRef.current = null;
+        } catch (error: any) {
+          toast({
+            title: "Error",
+            description: error?.message || "Failed to release held invoice.",
+            variant: "destructive",
+          });
+          skipAutoHoldRef.current = false;
+          return;
+        }
+      }
       setCurrentSale(null);
       setSaleItems([]);
       setCustomerId("");
@@ -1373,38 +1406,28 @@ const SalesInvoice = () => {
   const [editItem, setEditItem] = useState<any>(null);
   const [itemToRemoveIndex, setItemToRemoveIndex] = useState<number | null>(null);
 
-  const [heldInvoices, setHeldInvoices] = useState<HeldInvoice[]>([]);
-
-  // Load held invoices from localStorage on mount.
   // Only redirect to sales-entry if the page was loaded with NO URL params
   // (bare refresh of /data-entry/sales-invoice). Navigation from sales-entry
-  // always includes ?customerId= so it won't trigger this.
+  // always includes ?customerId= or ?heldInvoiceId=.
   useEffect(() => {
-    const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
-    setHeldInvoices(held);
-
-    if (held.length > 0 && window.location.search === '') {
+    if (heldInvoices.length > 0 && window.location.search === '') {
       setLocation('/data-entry/sales-entry');
     }
-  }, []);
+  }, [heldInvoices.length, setLocation]);
 
   // Handle held invoice resumption from URL parameter
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const heldInvoiceIdFromUrl = params.get('heldInvoiceId');
     console.log('Restore effect running, heldInvoiceIdFromUrl:', heldInvoiceIdFromUrl);
-    if (heldInvoiceIdFromUrl) {
-      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
-      
-      // Debug: Log what's in localStorage
-      console.log('🔍 Raw localStorage data:', {
-        heldInvoicesRaw: localStorage.getItem('heldInvoices'),
-        parsedHeld: held,
-        lookingForId: heldInvoiceIdFromUrl
-      });
-      
-      const invoice = held.find(inv => inv.holdId === heldInvoiceIdFromUrl);
+    if (
+      heldInvoiceIdFromUrl &&
+      heldInvoices.length > 0 &&
+      restoredHoldIdRef.current !== heldInvoiceIdFromUrl
+    ) {
+      const invoice = heldInvoices.find(inv => inv.holdId === heldInvoiceIdFromUrl);
       if (invoice) {
+        restoredHoldIdRef.current = heldInvoiceIdFromUrl;
         console.log('🔄 Restoring held invoice:', {
           holdId: invoice.holdId,
           hasCurrentSale: !!(invoice as any).currentSale,
@@ -1414,11 +1437,15 @@ const SalesInvoice = () => {
           invoiceKeys: Object.keys(invoice) // Show all keys in the invoice object
         });
         
+        // Keep this hold excluded from its own availability calculation while
+        // it is being edited, but continue reserving it for every other client.
+        setActiveHoldId(invoice.holdId);
+
         // Restore basic invoice data
-        setCustomerId(invoice.customerId);
+        setCustomerId(String(invoice.customerId || ''));
         setVehicleDetails(invoice.vehicleDetails || "");
         setGateNumber(invoice.gateNumber || "");
-        setNotes(invoice.notes);
+        setNotes(invoice.notes || "");
         
         // IMPORTANT: Restore currentSale if it exists (for edited existing invoices)
         if ((invoice as any).currentSale) {
@@ -1467,11 +1494,6 @@ const SalesInvoice = () => {
         } else {
           setSaleItems(invoice.saleItems);
         }
-        // Remove from held list after successful restoration
-        const updated = held.filter(inv => inv.holdId !== heldInvoiceIdFromUrl);
-        setHeldInvoices(updated);
-        localStorage.setItem('heldInvoices', JSON.stringify(updated));
-        
         const isExistingInvoice = !!(invoice as any).currentSale;
         toast({ 
           title: "Invoice Resumed", 
@@ -1479,12 +1501,11 @@ const SalesInvoice = () => {
             ? `Resumed editing invoice ${(invoice as any).currentSale.invoiceNumber}` 
             : "Held invoice has been loaded successfully." 
         });
-      } else {
+      } else if (heldInvoices.length > 0) {
         console.log('❌ Held invoice not found with ID:', heldInvoiceIdFromUrl);
-        console.log('🔍 Available held invoices:', held.map(h => ({ holdId: h.holdId, hasCurrentSale: !!(h as any).currentSale })));
       }
     }
-  }, [toast, regularProducts, nonProducts]);
+  }, [toast, regularProducts, nonProducts, heldInvoices]);
 
   // Format sale items once products are loaded (for held invoices that were resumed before products loaded)
   useEffect(() => {
@@ -1525,11 +1546,11 @@ const SalesInvoice = () => {
     });
   }
 
-  const handleHoldInvoice = () => {
+  const handleHoldInvoice = async () => {
     // Set skipAutoHoldRef first to prevent auto-hold on navigation
     skipAutoHoldRef.current = true;
 
-    const holdId = Date.now().toString();
+    const holdId = activeHoldIdRef.current || generatedHoldIdRef.current;
     console.log('🔄 Manual hold - Saving saleItems to held invoice:', saleItems);
     if (saleItems.length > 0) {
       saleItems.forEach((item, idx) => {
@@ -1569,15 +1590,22 @@ const SalesInvoice = () => {
       invoiceDataCurrentSale: invoiceData.currentSale
     });
 
-    // Save to localStorage
-    const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]') as HeldInvoice[];
-    held.push(invoiceData);
-    localStorage.setItem('heldInvoices', JSON.stringify(held));
-    setHeldInvoices(held);
+    try {
+      await saveHeldInvoice(invoiceData);
+      setActiveHoldId(holdId);
+      activeHoldIdRef.current = holdId;
+      notifyInventoryMutation({ source: 'sale' });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to hold invoice. Please try again.",
+        variant: "destructive",
+      });
+      skipAutoHoldRef.current = false;
+      return;
+    }
 
-
-    // Clear draft from localStorage to prevent stale restore
-    localStorage.removeItem('currentInvoiceDraft');
+    clearLegacyInvoiceDraft();
 
     // Clear current form immediately after saving
     setSaleItems([]);
@@ -1707,8 +1735,7 @@ const SalesInvoice = () => {
       };
 
       // Send to backend to generate preview PDF using correct backend URL
-      const backendUrl = window.location.origin.replace(':5173', ':5000');
-      const response = await fetch(`${backendUrl}/api/generate-preview-pdf`, {
+      const response = await fetch(getApiUrl('/api/generate-preview-pdf'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1750,8 +1777,7 @@ const SalesInvoice = () => {
   // Create empty PDF template
   const handleCreateEmptyPdf = async () => {
     try {
-      const backendUrl = window.location.origin.replace(':5173', ':5000');
-      const response = await fetch(`${backendUrl}/api/generate-empty-invoice-pdf`, {
+      const response = await fetch(getApiUrl('/api/generate-empty-invoice-pdf'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1792,8 +1818,7 @@ const SalesInvoice = () => {
   const handleDownloadInvoiceExcel = async () => {
     skipAutoHoldRef.current = true;
     try {
-      const backendUrl = window.location.origin.replace(':5173', ':5000');
-      const response = await fetch(`${backendUrl}/api/sales/${currentSale?.invoiceNumber}/excel`, {
+      const response = await fetch(getApiUrl(`/api/sales/${currentSale?.invoiceNumber}/excel`), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
@@ -1863,8 +1888,7 @@ const SalesInvoice = () => {
       };
 
       // Send to backend to generate preview Excel using correct backend URL
-      const backendUrl = window.location.origin.replace(':5173', ':5000');
-      const response = await fetch(`${backendUrl}/api/generate-preview-excel`, {
+      const response = await fetch(getApiUrl('/api/generate-preview-excel'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1988,7 +2012,7 @@ const SalesInvoice = () => {
         gateNumber: state.gateNumber,
         notes: state.notes,
         saleItems: state.saleItems,
-        holdId: Date.now().toString(),
+        holdId: activeHoldIdRef.current || generatedHoldIdRef.current,
         holdTime: new Date().toISOString(),
         // IMPORTANT: Save currentSale info to preserve existing invoice context
         currentSale: state.currentSale ? {
@@ -2017,85 +2041,33 @@ const SalesInvoice = () => {
       return invoiceData;
     };
 
-    // Function to check for duplicate invoices
-    const isDuplicateInvoice = (newInvoice: any, existingInvoices: any[]) => {
-      return existingInvoices.some((existingInvoice: any) =>
-        existingInvoice.customerId === newInvoice.customerId &&
-        existingInvoice.vehicleDetails === newInvoice.vehicleDetails &&
-        existingInvoice.gateNumber === newInvoice.gateNumber &&
-        existingInvoice.saleItems.length === newInvoice.saleItems.length &&
-        existingInvoice.saleItems.every((existingItem: any, index: number) => {
-          const newItem = newInvoice.saleItems[index];
-          return existingItem.productId === newItem.productId &&
-            existingItem.nonProductId === newItem.nonProductId &&
-            existingItem.quantity === newItem.quantity &&
-            existingItem.unitPrice === newItem.unitPrice;
-        })
-      );
-    };
-
-    // Function to save invoice to held list
-    const saveToHeldInvoices = (invoiceData: any) => {
-      const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-
-      console.log('💾 Attempting to save to held invoices:', {
-        invoiceData,
-        existingHeldCount: held.length,
-        currentSaleInData: invoiceData.currentSale,
-        hasCurrentSale: !!invoiceData.currentSale
-      });
-
-      if (!isDuplicateInvoice(invoiceData, held)) {
-        held.push(invoiceData);
-        
-        // Debug: Log what we're about to save to localStorage
-        console.log('💾 About to save to localStorage:', {
-          invoiceDataBeforeSave: invoiceData,
-          heldArrayBeforeSave: held,
-          lastItemInArray: held[held.length - 1],
-          lastItemCurrentSale: held[held.length - 1]?.currentSale
-        });
-        
-        localStorage.setItem('heldInvoices', JSON.stringify(held));
-        
-        // Debug: Verify what was actually saved
-        const savedData = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-        const savedInvoice = savedData[savedData.length - 1];
-        console.log('💾 Verification - what was actually saved:', {
-          savedInvoice,
-          savedCurrentSale: savedInvoice?.currentSale,
-          hasSavedCurrentSale: !!savedInvoice?.currentSale
-        });
-
-        // Update the state as well
-        setHeldInvoices(held);
-
-        console.log('✅ Auto-held invoice with', invoiceData.saleItems.length, 'items');
-        console.log('📊 Total held invoices now:', held.length);
-        console.log('💾 Saved invoice data:', invoiceData);
-
-        // Clear current draft after successful hold
-        localStorage.removeItem('currentInvoiceDraft');
-
-        // Show a toast notification
+    // Function to create or renew the server-side reservation. Reusing the
+    // same hold ID makes repeated visibility/unmount callbacks harmless.
+    const saveToHeldInvoices = async (invoiceData: any, options: { keepalive?: boolean } = {}) => {
+      try {
+        await saveHeldInvoice(invoiceData, options);
+        const holdId = invoiceData.holdId;
+        setActiveHoldId(holdId);
+        activeHoldIdRef.current = holdId;
+        clearLegacyInvoiceDraft();
+        notifyInventoryMutation({ source: 'sale' });
         toast({
           title: "Invoice Auto-Held",
           description: `Invoice with ${invoiceData.saleItems.length} items has been automatically saved.`,
         });
-
         return true;
-      } else {
-        console.log('⚠️ Duplicate invoice detected, not auto-holding');
+      } catch (error) {
+        console.error('Failed to auto-hold invoice on the server:', error);
         return false;
       }
     };
 
     // Main auto-hold function
-    const autoHoldInvoice = () => {
+    const autoHoldInvoice = async (options: { keepalive?: boolean } = {}) => {
       if (!shouldAutoHold()) return false;
 
       const invoiceData = createInvoiceData();
-      return saveToHeldInvoices(invoiceData);
+      return saveToHeldInvoices(invoiceData, options);
     };
 
     // Handle browser/tab close — silently hold, no confirmation popup
@@ -2103,7 +2075,7 @@ const SalesInvoice = () => {
       console.log('🚪 beforeunload event triggered');
       if (shouldAutoHold()) {
         console.log('🚪 Auto-holding invoice before unload');
-        autoHoldInvoice();
+        void autoHoldInvoice({ keepalive: true });
       } else {
         console.log('🚪 No auto-hold needed on beforeunload');
       }
@@ -2113,9 +2085,9 @@ const SalesInvoice = () => {
     const handleVisibilityChange = () => {
       if (document.hidden && shouldAutoHold()) {
         console.log('👁️ Tab hidden - auto-holding invoice');
-        if (autoHoldInvoice()) {
-          window.location.href = '/data-entry/sales-entry';
-        }
+        void autoHoldInvoice().then((saved) => {
+          if (saved) window.location.href = '/data-entry/sales-entry';
+        });
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -2139,55 +2111,16 @@ const SalesInvoice = () => {
         skipAutoHold: skipAutoHoldRef.current
       });
 
-      // Auto-hold if there are items and not explicitly skipped
-      // This covers both new invoices and edited existing invoices
+      // Auto-hold if there are items and not explicitly skipped. The helper
+      // reads the latest state through stateRef and uses the stable hold ID.
       if (state.saleItems.length > 0 && !skipAutoHoldRef.current) {
-        // Create invoice data using current state from refs
-        const invoiceData = {
-          customerId: state.customerId,
-          vehicleDetails: state.vehicleDetails,
-          gateNumber: state.gateNumber,
-          notes: state.notes,
-          saleItems: state.saleItems,
-          holdId: Date.now().toString(),
-          holdTime: new Date().toISOString(),
-          // IMPORTANT: Save currentSale info to preserve existing invoice context
-          currentSale: state.currentSale ? {
-            id: state.currentSale.id,
-            invoiceNumber: state.currentSale.invoiceNumber,
-            customerId: state.currentSale.customerId,
-            customerType: state.currentSale.customerType,
-            paymentStatus: state.currentSale.paymentStatus,
-            date: state.currentSale.date,
-            status: state.currentSale.status,
-            subtotal: state.currentSale.subtotal,
-            porterage: state.currentSale.porterage,
-            vatRate: state.currentSale.vatRate,
-            vatAmount: state.currentSale.vatAmount,
-            totalAmount: state.currentSale.totalAmount
-          } : null
-        };
-
-        console.log('🧹 Cleanup - Invoice data being saved:', {
-          hasCurrentSale: !!state.currentSale,
-          currentSale: state.currentSale,
-          invoiceDataCurrentSale: invoiceData.currentSale
+        void saveToHeldInvoices(createInvoiceData()).then((saved) => {
+          if (saved) {
+            setTimeout(() => {
+              window.location.href = '/data-entry/sales-entry';
+            }, 50);
+          }
         });
-
-        const held = JSON.parse(localStorage.getItem('heldInvoices') || '[]');
-
-        if (!isDuplicateInvoice(invoiceData, held)) {
-          held.push(invoiceData);
-          localStorage.setItem('heldInvoices', JSON.stringify(held));
-          console.log('🚀 Auto-held invoice on unmount with', state.saleItems.length, 'items');
-          // Redirect to sales entry so user can resume from held invoices
-          // Use a small timeout to let the current navigation complete first
-          setTimeout(() => {
-            window.location.href = '/data-entry/sales-entry';
-          }, 50);
-        } else {
-          console.log('🚀 Duplicate detected during unmount, not auto-holding');
-        }
       } else {
         console.log('🚀 No auto-hold needed during unmount');
       }
