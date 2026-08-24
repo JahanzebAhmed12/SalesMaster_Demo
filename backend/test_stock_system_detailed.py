@@ -79,6 +79,7 @@ EPS = 0.001
 
 PASS = 0
 FAIL = 0
+DEFAULT_TOKEN: str | None = None
 
 
 def report_pass(label: str, detail: str = "") -> None:
@@ -119,7 +120,8 @@ def token_for(user: User) -> str:
 
 def api_call(client, method: str, path: str, payload: dict | None = None,
              token: str | None = None, expected_status: int | tuple[int, ...] = 200):
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    effective_token = token if token is not None else DEFAULT_TOKEN
+    headers = {"Authorization": f"Bearer {effective_token}"} if effective_token else {}
     # Assertions and fixture lookups may have opened a read transaction on the
     # scoped session. The sale route explicitly begins its own transaction, so
     # close any prior read transaction before every test-client request.
@@ -394,7 +396,7 @@ def assert_movement_ledger(products: dict[str, RegularProduct], label: str) -> N
 
 
 def main() -> int:
-    global PASS, FAIL
+    global PASS, FAIL, DEFAULT_TOKEN
     app.config["TESTING"] = True
     with app.app_context():
         db.drop_all()
@@ -458,6 +460,7 @@ def main() -> int:
 
         token1 = create_access_token(identity=str(user1_id))
         token2 = create_access_token(identity=str(user2_id))
+        DEFAULT_TOKEN = token1
         products = {name: RegularProduct.query.get(product_id) for name, product_id in product_ids.items()}
         customers = {name: Customer.query.get(customer_id) for name, customer_id in customer_ids.items()}
         suppliers = {name: Supplier.query.get(supplier_id) for name, supplier_id in supplier_ids.items()}

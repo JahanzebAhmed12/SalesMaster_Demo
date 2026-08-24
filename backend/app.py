@@ -249,6 +249,57 @@ app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY', 'salesmaster-jwt-secr
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 jwt = JWTManager(app)
 
+# A-02: require authentication for backend API requests by default.
+# Deliberately public operational endpoints and the currently deferred
+# email/print/PDF compatibility routes are listed explicitly below. All other
+# /api/* routes must present a valid JWT before their handlers execute.
+_PUBLIC_API_EXACT = {
+    ("/api/health", "GET"),
+    ("/api/server-time", "GET"),
+    ("/api/auth/login", "POST"),
+    ("/api/auth/logout", "POST"),
+    # Email configuration protection is tracked separately (A-04) and is
+    # intentionally left unchanged in this scoped A-02 implementation.
+    ("/api/email-config", "GET"),
+    ("/api/email-config", "PUT"),
+}
+
+_PUBLIC_API_PATTERNS = (
+    # Print queue/PDF protection is tracked separately (A-06) and remains
+    # compatible with the existing unauthenticated print-service contract.
+    re.compile(r"^/api/print-queue/pending$"),
+    re.compile(r"^/api/print-queue/[^/]+/status$"),
+    re.compile(r"^/api/generate-invoice-pdf$"),
+    re.compile(r"^/api/generate-preview-pdf$"),
+    re.compile(r"^/api/generate-empty-invoice-pdf$"),
+    re.compile(r"^/api/generate-preview-excel$"),
+    re.compile(r"^/api/generate-empty-invoice-excel$"),
+    re.compile(r"^/api/sales/[^/]+/invoice$"),
+    re.compile(r"^/api/sales/[^/]+/excel$"),
+    re.compile(r"^/api/purchase-invoices/[^/]+/print$"),
+    re.compile(r"^/api/reports/daily-summary/pdf$"),
+)
+
+
+def _is_public_api_request():
+    if request.method == "OPTIONS":
+        return True
+    if (request.path, request.method) in _PUBLIC_API_EXACT:
+        return True
+    return any(pattern.fullmatch(request.path) for pattern in _PUBLIC_API_PATTERNS)
+
+
+@app.before_request
+def enforce_api_authentication():
+    """Protect API routes by default while preserving explicit public contracts."""
+    if not request.path.startswith("/api/") or _is_public_api_request():
+        return None
+    # verify_jwt_in_request() uses Flask-JWT-Extended's standard JSON 401/422
+    # responses, keeping behavior consistent with existing @jwt_required routes.
+    from flask_jwt_extended import verify_jwt_in_request
+    verify_jwt_in_request()
+    return None
+
 # Security Headers Middleware
 @app.after_request
 def add_security_headers(response):
