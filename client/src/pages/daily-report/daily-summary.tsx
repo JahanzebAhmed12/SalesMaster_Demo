@@ -304,6 +304,23 @@ export default function DailySummary() {
   // Fetch company details for PDF header
   const { companyDetails } = useCompanyDetails();
 
+  // Fetch the configured invoice print format for invoice-level actions.
+  const { data: settings } = useQuery<{ invoicePrintFormat?: string }>({
+    queryKey: ["settings"],
+    queryFn: () => apiRequest("GET", "/api/settings"),
+    staleTime: 1000 * 60 * 5,
+  });
+  const invoicePrintFormat = settings?.invoicePrintFormat || "A4";
+
+  const handlePrintInvoice = (invoiceNumber: string) => {
+    const printUrl = invoicePrintFormat === 'DOTMATRIX'
+      ? `/print/dot-matrix-invoice/${invoiceNumber}`
+      : invoicePrintFormat === 'A5'
+        ? `/print/a5-invoice/${invoiceNumber}`
+        : `/print/invoice/${invoiceNumber}`;
+    window.open(printUrl, '_blank');
+  };
+
   // Fetch stock check data
   const { data: stockData = [] } = useQuery<StockItem[]>({
     queryKey: ["stock-check", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
@@ -822,6 +839,51 @@ export default function DailySummary() {
     return doc;
   };
 
+  const handleDownloadInvoicePdf = async (invoiceNumber: string) => {
+    try {
+      const token = localStorage.getItem('jwt_token');
+      const response = await fetch(getApiUrl('/api/generate-invoice-pdf'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/pdf',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        credentials: 'include',
+        body: JSON.stringify({ invoiceNumber }),
+      });
+
+      if (!response.ok) {
+        let message = `Failed to download invoice ${invoiceNumber}`;
+        try {
+          const errorData = await response.json();
+          message = errorData.error || errorData.message || message;
+        } catch {
+          // Keep the user-friendly fallback when the server response is not JSON.
+        }
+        throw new Error(message);
+      }
+
+      const pdfBlob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `invoice-${invoiceNumber}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      toast({ title: 'Success', description: 'Invoice PDF downloaded successfully' });
+    } catch (error) {
+      console.error('Error downloading invoice PDF:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to download invoice PDF',
+        variant: 'destructive',
+      });
+    }
+  };
+
   const handleGenerateCleanPDF = async () => {
     if (!selectedDate || !summaryData) {
       toast({ title: "Error", description: "Please select a valid date and ensure data is loaded", variant: "destructive" });
@@ -1120,16 +1182,41 @@ export default function DailySummary() {
                             </TableCell>
                             <TableCell className="border">
                               {sale.invoice_no ? (
-                                canEditForSelectedDate ? (
-                                  <button
-                                    className="text-blue-600 underline hover:text-blue-800 cursor-pointer"
-                                    onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}&readonly=true`, '_self')}
-                                  >
-                                    {sale.invoice_no}
-                                  </button>
-                                ) : (
-                                  <span className="text-gray-600">{sale.invoice_no}</span>
-                                )
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="link"
+                                      className="p-0 text-blue-600 underline hover:text-blue-800 cursor-pointer text-left font-normal h-auto min-h-0"
+                                    >
+                                      {sale.invoice_no}
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start" className="w-48">
+                                    {canEditForSelectedDate && (
+                                      <DropdownMenuItem
+                                        className="text-sm py-2"
+                                        onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}`, '_self')}
+                                      >
+                                        <Pencil className="mr-2 h-4 w-4" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem
+                                      className="text-sm py-2"
+                                      onClick={() => handleDownloadInvoicePdf(sale.invoice_no)}
+                                    >
+                                      <Download className="mr-2 h-4 w-4" />
+                                      PDF Download
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      className="text-sm py-2"
+                                      onClick={() => handlePrintInvoice(sale.invoice_no)}
+                                    >
+                                      <Printer className="mr-2 h-4 w-4" />
+                                      Print
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                               ) : '-'}
                             </TableCell>
                             <TableCell className="border text-right">
