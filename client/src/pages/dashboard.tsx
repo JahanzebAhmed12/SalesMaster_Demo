@@ -146,7 +146,7 @@ export default function Dashboard() {
           priority
         };
       })
-      .sort((a, b) => {
+      .sort((a: { priority: number; daysUntilExpiry: number }, b: { priority: number; daysUntilExpiry: number }) => {
         // Sort by priority first (0 = highest priority), then by days until expiry
         if (a.priority !== b.priority) {
           return a.priority - b.priority;
@@ -192,7 +192,7 @@ export default function Dashboard() {
           priority
         };
       })
-      .sort((a, b) => {
+      .sort((a: { priority: number; daysUntilExpiry: number }, b: { priority: number; daysUntilExpiry: number }) => {
         // Sort by priority first (0 = highest priority), then by days until expiry
         if (a.priority !== b.priority) {
           return a.priority - b.priority;
@@ -277,7 +277,7 @@ export default function Dashboard() {
           daysUntilReturn: Math.max(0, daysUntilReturn)
         };
       })
-      .sort((a, b) => a.daysUntilReturn - b.daysUntilReturn); // Sort by return date (soonest first)
+      .sort((a: { daysUntilReturn: number }, b: { daysUntilReturn: number }) => a.daysUntilReturn - b.daysUntilReturn); // Sort by return date (soonest first)
     
     console.log('Filtered employees on holiday:', currentlyOnHoliday);
     return { 

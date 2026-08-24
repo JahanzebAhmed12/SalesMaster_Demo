@@ -10,7 +10,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { getApiUrl } from "@/lib/config";
-import { insertEmployeeSchema, Employee, InsertEmployee, employeeSchema } from "@shared/schema";
+import { insertEmployeeSchema, Employee, employeeSchema, type EmployeeDocument } from "@shared/schema";
+import { z } from "zod";
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, Upload, Download, Eye, FileText } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -21,6 +22,8 @@ import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { useFormActivityTracker } from "@/hooks/useFormActivityTracker";
 
+type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
+
 const EmployeeDatabaseEdit = () => {
   const { id } = useParams<{ id: string }>();
   const employeeId = id ? parseInt(id) : undefined;
@@ -28,7 +31,7 @@ const EmployeeDatabaseEdit = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [uploadingFiles, setUploadingFiles] = useState<{ [key: number]: boolean }>({});
-  const [employeeDocuments, setEmployeeDocuments] = useState<any[]>([]);
+  const [employeeDocuments, setEmployeeDocuments] = useState<EmployeeDocument[]>([]);
 
   // Track form activity to prevent auto-logout during form filling
   useFormActivityTracker();
@@ -253,7 +256,7 @@ const EmployeeDatabaseEdit = () => {
   useEffect(() => {
     if (employeeId && documents && documents.length > 0) {
       // Clear existing form documents and replace with uploaded documents
-      form.setValue("documents", documents.map(doc => ({
+      form.setValue("documents", documents.map((doc: EmployeeDocument) => ({
         id: doc.id,
         documentName: doc.documentName,
         startDate: doc.startDate,
@@ -810,18 +813,19 @@ const EmployeeDatabaseEdit = () => {
                         size="sm"
                         onClick={async () => {
                           const documentData = form.watch(`documents.${index}`);
+                          const persistedDocumentId = employeeDocuments[index]?.id;
                           
                           // If this document has an ID, it's an uploaded document - delete it from server
-                          if (documentData.id && employeeId) {
+                          if (persistedDocumentId && employeeId) {
                             if (window.confirm('Are you sure you want to delete this document?')) {
                               try {
-                                await apiRequest("DELETE", `/api/employees/documents/${documentData.id}`);
+                                await apiRequest("DELETE", `/api/employees/documents/${persistedDocumentId}`);
                                 
                                 // Refresh documents list
                                 queryClient.invalidateQueries({ queryKey: ["employee-documents", employeeId] });
                                 
                                 // Update local state
-                                setEmployeeDocuments(prev => prev.filter(doc => doc.id !== documentData.id));
+                                setEmployeeDocuments(prev => prev.filter(doc => doc.id !== persistedDocumentId));
                                 
                                 toast({
                                   title: "Success",

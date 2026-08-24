@@ -24,23 +24,10 @@ interface AuthState {
   checkAuth: () => Promise<boolean>;
 }
 
-// Centralized handler for authentication errors (401)
-// This ensures both localStorage token and Zustand store are always in sync.
-// Called by the de-bounced 401 handler in queryClient — not on every single 401.
-export function handleAuthError() {
-  // Don't redirect if we're already on the login page
-  if (window.location.pathname === '/' || window.location.pathname === '/login') return;
-
-  localStorage.removeItem('jwt_token');
-  // Update the Zustand store directly (not calling logout() which makes a network request)
-  useAuth.setState({ user: null, isAuthenticated: false });
-  window.location.href = '/';
-}
-
 export const useAuth = create<AuthState>()(
   persist(
     (set) => ({
-      user: null,
+      user: null as User | null,
       isAuthenticated: false,
       login: async (username: string, password: string) => {
         try {
@@ -118,7 +105,7 @@ export const useAuth = create<AuthState>()(
           return false;
         }
       },
-      checkAuth: async () => {
+      checkAuth: async (): Promise<boolean> => {
         try {
           const token = localStorage.getItem('jwt_token');
 
@@ -168,3 +155,15 @@ export const useAuth = create<AuthState>()(
     }
   )
 );
+
+// Centralized handler for authentication errors (401).
+// This ensures both localStorage token and Zustand store are always in sync.
+// Called by the de-bounced 401 handler in queryClient — not on every single 401.
+export function handleAuthError() {
+  // Don't redirect if we're already on the login page.
+  if (window.location.pathname === '/' || window.location.pathname === '/login') return;
+
+  localStorage.removeItem('jwt_token');
+  useAuth.setState({ user: null, isAuthenticated: false });
+  window.location.href = '/';
+}

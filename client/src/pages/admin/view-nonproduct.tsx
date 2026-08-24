@@ -15,7 +15,7 @@ const ViewNonProducts = () => {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
 
-  const { data: nonProducts, isLoading, isError, error } = useQuery({
+  const { data: nonProducts, isLoading, isError, error } = useQuery<NonProduct[]>({
     queryKey: ["nonProducts"],
     queryFn: () => apiRequest("GET", "/api/non_products"),
   });

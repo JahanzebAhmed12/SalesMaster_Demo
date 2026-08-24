@@ -21,7 +21,7 @@ export default function CashCF() {
   const { businessDate } = useBusinessDate();
   
   // State
-  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
   const [pounds, setPounds] = useState("");
   const [coins, setCoins] = useState("");
   const [justSaved, setJustSaved] = useState(false);

@@ -182,14 +182,14 @@ export const useAdminStateManager = () => {
     return {
       totalQueries: adminQueries.length,
       staleQueries: adminQueries.filter(q => q.isStale()).length,
-      fetchingQueries: adminQueries.filter(q => q.isFetching()).length,
+      fetchingQueries: adminQueries.filter(q => q.state.fetchStatus === 'fetching').length,
       errorQueries: adminQueries.filter(q => q.state.status === 'error').length,
       queries: adminQueries.map(q => ({
         key: q.queryKey,
         status: q.state.status,
         dataUpdatedAt: q.state.dataUpdatedAt,
         isStale: q.isStale(),
-        isFetching: q.isFetching()
+        isFetching: q.state.fetchStatus === 'fetching'
       }))
     };
   };

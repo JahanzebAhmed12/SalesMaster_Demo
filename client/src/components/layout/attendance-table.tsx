@@ -160,7 +160,7 @@ export default function AttendanceTable({
     if (!dateRange?.from || !dateRange?.to) return;
     
     // For each day in the date range, mark all employees as present
-    const days = [];
+    const days: Date[] = [];
     let currentDate = new Date(dateRange.from);
     
     while (currentDate <= dateRange.to) {
@@ -250,7 +250,7 @@ export default function AttendanceTable({
     
     // If it's a range, apply to all days in the range
     if (dateRange.from && dateRange.to) {
-      const days = [];
+      const days: Date[] = [];
       let currentDate = new Date(dateRange.from);
       
       while (currentDate <= dateRange.to) {
@@ -390,7 +390,7 @@ export default function AttendanceTable({
               <TableBody>
                 {activeEmployees.map((employee) => (
                   <TableRow key={employee.id}>
-                    <TableCell className="font-medium">{employee.name || employee.fullName || 'N/A'}</TableCell>
+                    <TableCell className="font-medium">{employee.fullName || 'N/A'}</TableCell>
                     <TableCell>{employee.title || 'N/A'}</TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">

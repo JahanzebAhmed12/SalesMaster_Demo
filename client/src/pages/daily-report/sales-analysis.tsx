@@ -166,7 +166,7 @@ export default function SalesAnalysis() {
     const wb = XLSX.utils.book_new();
     
     // Prepare the data for the main sheet
-    const dataArray = [
+    const dataArray: Array<Array<string | number>> = [
       ['Sales Analysis Report'],
       [''],
       ['Company:', companyDetails?.companyName || 'Company Name'],

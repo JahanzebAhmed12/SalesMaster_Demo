@@ -33,7 +33,7 @@ const PaymentReceiptPrint = () => {
   const paymentType = params?.paymentType;
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>("");
   const [location] = useLocation();
   const [showOutstandingBalance, setShowOutstandingBalance] = useState<boolean>(true);
   const [invoiceFooter, setInvoiceFooter] = useState<string>("");

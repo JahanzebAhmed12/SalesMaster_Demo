@@ -52,6 +52,7 @@ interface CustomerInvoice {
     unitPrice: number;
     price?: number; // Alternative field name
     product_id?: number; // Alternative field name
+    nonProductId?: number; // Non-product identifier returned by some invoice responses
     product_type?: string; // Alternative field name
   }>;
 }
@@ -119,7 +120,7 @@ export default function ReturnFromCustomer() {
   }, [selectedCustomer, form]);
 
   // Fetch products
-  const { data: products = { regularProducts: [], nonProducts: [] } } = useQuery({
+  const { data: products = { regularProducts: [] as RegularProduct[], nonProducts: [] as NonProduct[] } } = useQuery<{ regularProducts: RegularProduct[]; nonProducts: NonProduct[] }>({
     queryKey: ['products'],
     queryFn: () => apiRequest('GET', '/api/products')
   });
@@ -148,7 +149,7 @@ export default function ReturnFromCustomer() {
   };
 
   // Fetch customer returns (only after customer is searched)
-  const { data: returns = [], refetch: refetchReturns } = useQuery({
+  const { data: returns = [], refetch: refetchReturns } = useQuery<CustomerReturn[]>({
     queryKey: ['customer-returns', customerId, searchFromDate],
     queryFn: () => {
       if (!customerId || !customerSearched) return [];
@@ -158,7 +159,7 @@ export default function ReturnFromCustomer() {
   });
 
   // Fetch customer invoices (only when "Get Invoices" is clicked)
-  const { data: customerInvoices = [], refetch: refetchInvoices } = useQuery({
+  const { data: customerInvoices = [], refetch: refetchInvoices } = useQuery<CustomerInvoice[]>({
     queryKey: ['customer-invoices', customerId, searchFromDate],
     queryFn: async () => {
       if (!customerId) return [];

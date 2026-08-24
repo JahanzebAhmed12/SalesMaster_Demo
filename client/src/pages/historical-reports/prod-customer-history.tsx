@@ -81,7 +81,7 @@ export default function ProdCustomerHistory() {
     },
     enabled: !!searchClicked,
     staleTime: 0, // Always consider data stale
-    cacheTime: 0, // Don't cache the data
+    gcTime: 0, // Don't cache the data
   });
 
   // Totals

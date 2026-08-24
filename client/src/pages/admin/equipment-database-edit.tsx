@@ -41,7 +41,7 @@ export default function EquipmentDatabaseEdit() {
   useEffect(() => {
     if (equipment) {
       setDescription(equipment.description);
-      setStartDate(new Date(equipment.startDate));
+      setStartDate(equipment.startDate ? new Date(equipment.startDate) : undefined);
       setEndDate(new Date(equipment.endDate));
     }
   }, [equipment]);

@@ -36,8 +36,8 @@ export default function Dumps() {
   const { businessDate } = useBusinessDate();
   
   // State
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
   const [productFilter, setProductFilter] = useState<string>("all");
 
@@ -75,12 +75,12 @@ export default function Dumps() {
     queryFn: () => apiRequest('GET', `/api/dump-entries?fromDate=${format(fromDate || new Date(), "yyyy-MM-dd")}&toDate=${format(toDate || new Date(), "yyyy-MM-dd")}&supplierId=${selectedSupplier !== "all" ? selectedSupplier : ""}&search=${searchTerm}`)
   });
 
-  const { data: suppliers = [] } = useQuery({
+  const { data: suppliers = [] } = useQuery<Supplier[]>({
     queryKey: ['suppliers'],
     queryFn: () => apiRequest('GET', '/api/suppliers')
   });
 
-  const { data: products = { regularProducts: [], nonProducts: [] } } = useQuery({
+  const { data: products = { regularProducts: [] as Product[], nonProducts: [] as Product[] } } = useQuery<{ regularProducts: Product[]; nonProducts: Product[] }>({
     queryKey: ['products'],
     queryFn: () => apiRequest('GET', '/api/products')
   });

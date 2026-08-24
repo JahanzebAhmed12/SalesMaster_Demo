@@ -136,12 +136,12 @@ export default function DailySalesFullView() {
     // Company details header
     if (companyDetails) {
       html += `<div style="text-align:center;margin-bottom:20px;">`;
-      html += `<div style="font-size:20px;font-weight:bold;margin-bottom:4px;">${companyDetails.name || 'Company Name'}</div>`;
-      if (companyDetails.address) html += `<div style="font-size:12px;">${companyDetails.address}</div>`;
-      if (companyDetails.phone) html += `<div style="font-size:12px;">Phone: ${companyDetails.phone}</div>`;
+      html += `<div style="font-size:20px;font-weight:bold;margin-bottom:4px;">${companyDetails.companyName || 'Company Name'}</div>`;
+      if (companyDetails.address1) html += `<div style="font-size:12px;">${companyDetails.address1}</div>`;
+      if (companyDetails.telephone) html += `<div style="font-size:12px;">Phone: ${companyDetails.telephone}</div>`;
       if (companyDetails.email) html += `<div style="font-size:12px;">Email: ${companyDetails.email}</div>`;
       if (companyDetails.bankDetails) html += `<div style="font-size:12px;">Bank: ${companyDetails.bankDetails}</div>`;
-      if (companyDetails.vatNumber) html += `<div style="font-size:12px;">VAT: ${companyDetails.vatNumber}</div>`;
+      if (companyDetails.vatNo) html += `<div style="font-size:12px;">VAT: ${companyDetails.vatNo}</div>`;
       html += `</div>`;
     }
     
@@ -159,16 +159,16 @@ export default function DailySalesFullView() {
     // Company details header
     if (companyDetails) {
       doc.setFontSize(16);
-      doc.text(companyDetails.name || 'Company Name', 14, yPosition);
+      doc.text(companyDetails.companyName || 'Company Name', 14, yPosition);
       yPosition += 7;
       
       doc.setFontSize(10);
-      if (companyDetails.address) {
-        doc.text(companyDetails.address, 14, yPosition);
+      if (companyDetails.address1) {
+        doc.text(companyDetails.address1, 14, yPosition);
         yPosition += 5;
       }
-      if (companyDetails.phone) {
-        doc.text(`Phone: ${companyDetails.phone}`, 14, yPosition);
+      if (companyDetails.telephone) {
+        doc.text(`Phone: ${companyDetails.telephone}`, 14, yPosition);
         yPosition += 5;
       }
       if (companyDetails.email) {
@@ -179,8 +179,8 @@ export default function DailySalesFullView() {
         doc.text(`Bank: ${companyDetails.bankDetails}`, 14, yPosition);
         yPosition += 5;
       }
-      if (companyDetails.vatNumber) {
-        doc.text(`VAT: ${companyDetails.vatNumber}`, 14, yPosition);
+      if (companyDetails.vatNo) {
+        doc.text(`VAT: ${companyDetails.vatNo}`, 14, yPosition);
         yPosition += 5;
       }
       yPosition += 5;
@@ -253,16 +253,16 @@ export default function DailySalesFullView() {
     // Company details header
     if (companyDetails) {
       doc.setFontSize(16);
-      doc.text(companyDetails.name || 'Company Name', 14, yPosition);
+      doc.text(companyDetails.companyName || 'Company Name', 14, yPosition);
       yPosition += 7;
       
       doc.setFontSize(10);
-      if (companyDetails.address) {
-        doc.text(companyDetails.address, 14, yPosition);
+      if (companyDetails.address1) {
+        doc.text(companyDetails.address1, 14, yPosition);
         yPosition += 5;
       }
-      if (companyDetails.phone) {
-        doc.text(`Phone: ${companyDetails.phone}`, 14, yPosition);
+      if (companyDetails.telephone) {
+        doc.text(`Phone: ${companyDetails.telephone}`, 14, yPosition);
         yPosition += 5;
       }
       if (companyDetails.email) {
@@ -273,8 +273,8 @@ export default function DailySalesFullView() {
         doc.text(`Bank: ${companyDetails.bankDetails}`, 14, yPosition);
         yPosition += 5;
       }
-      if (companyDetails.vatNumber) {
-        doc.text(`VAT: ${companyDetails.vatNumber}`, 14, yPosition);
+      if (companyDetails.vatNo) {
+        doc.text(`VAT: ${companyDetails.vatNo}`, 14, yPosition);
         yPosition += 5;
       }
       yPosition += 5;
@@ -373,7 +373,7 @@ export default function DailySalesFullView() {
           const emailData = {
             to: emailList,
             subject: `Daily Sales Full View Report - ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Daily Sales Full View report for the period from ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}.\n\nThis report contains detailed sales information including:\n- Invoice numbers and dates\n- Customer names\n- Product details\n- Quantities and pricing\n\nBest regards,\n${companyDetails?.name || 'Sales Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Sales Full View report for the period from ${format(fromDate, 'MM/dd/yyyy')} to ${format(toDate, 'MM/dd/yyyy')}.\n\nThis report contains detailed sales information including:\n- Invoice numbers and dates\n- Customer names\n- Product details\n- Quantities and pricing\n\nBest regards,\n${companyDetails?.companyName || 'Sales Team'}`,
             attachment: {
               filename: `daily-sales-full-view-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,

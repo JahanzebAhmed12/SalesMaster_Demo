@@ -19,8 +19,8 @@ import { DateRangeFilter } from "@/components/ui/date-range-filter";
 
 export default function ProductPurchaseHistoryPage() {
   const [productId, setProductId] = useState<string>("");
-  const [fromDate, setFromDate] = useState<Date | undefined>(new Date());
-  const [toDate, setToDate] = useState<Date | undefined>(new Date());
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [productName, setProductName] = useState<string>("");
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);

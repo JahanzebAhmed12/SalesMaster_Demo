@@ -17,6 +17,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
+const toLocalDateString = (date: Date): string => format(date, 'yyyy-MM-dd');
+
 interface AnalysisData {
   month: string;
   year: number;
@@ -32,8 +34,8 @@ interface AnalysisData {
 }
 
 export default function FullAnalysis() {
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [searchClicked, setSearchClicked] = useState(false);
   const { businessDate } = useBusinessDate();

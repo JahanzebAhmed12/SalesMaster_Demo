@@ -19,6 +19,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useQuery } from "@tanstack/react-query";
 import { useCompanyDetails } from "@/hooks/use-company-details";
+import { printHtmlTable } from "@/lib/export-utils";
 
 interface SupplierAgingData {
   id: number;
@@ -226,7 +227,7 @@ export default function SupplierAgingRpt() {
   // Export to Excel handler
   const handleExportExcel = () => {
     // Prepare data for Excel
-    const excelData = agingData.map((item) => ({
+    const excelData: Array<Record<string, string | number>> = agingData.map((item) => ({
       'Sl.No': item.slNo,
       'Supplier Name': item.supplierName,
       'Total Outstanding': item.totalOutstanding,
@@ -272,13 +273,13 @@ export default function SupplierAgingRpt() {
     
     // Add report title
     doc.setFontSize(16);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('SUPPLIER AGING REPORT', 148, yPosition, { align: 'center' }); // Center for landscape (297/2)
     yPosition += 12;
     
     // Add company details
     doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
     const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
     doc.text(companyName + ', ' + address, 148, yPosition, { align: 'center' });

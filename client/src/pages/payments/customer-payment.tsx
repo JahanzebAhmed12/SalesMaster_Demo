@@ -64,7 +64,7 @@ export default function CustomerPayment() {
     // Don't initialize with any date initially, let the useEffect handle it
     return undefined;
   });
-  const [receivedAmount, setReceivedAmount] = useState<number | "">(0);
+  const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [remarks, setRemarks] = useState<string>("");
 
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -80,7 +80,7 @@ export default function CustomerPayment() {
 
   const [paymentDistribution, setPaymentDistribution] = useState<PaymentDistribution[]>([]);
 
-  const [onAccountAmount, setOnAccountAmount] = useState<number | "">(0);
+  const [onAccountAmount, setOnAccountAmount] = useState<number>(0);
   const [emailAddress, setEmailAddress] = useState("");
   const [explicitInvoicePayments, setExplicitInvoicePayments] = useState<Map<number, number>>(new Map()); // Track explicit invoice payment amounts in edit mode
   const [pendingEditBatchId, setPendingEditBatchId] = useState<number | null>(null);
@@ -682,23 +682,35 @@ export default function CustomerPayment() {
         }
         
         // If not found, create a minimal invoice object with the stored payment amount
+        const now = new Date().toISOString();
         return {
           id: invoiceId,
           invoiceNumber: invoiceId.toString(),
-          balance: amount, // Use the explicit payment amount as balance
-          paid: 0,
-          runningBal: 0,
-          totalAmount: amount,
-          date: new Date().toISOString(),
-          customer_id: selectedCustomer?.id || 0,
-          customer_type: 'cash',
-          payment_status: 'unpaid',
+          customerId: selectedCustomer?.id || 0,
+          customerName: selectedCustomer?.customer_name || null,
+          amount,
+          vehicleDetails: null,
+          gateNumber: null,
+          date: now,
+          status: 'finalized',
+          customerType: 'cash',
+          paymentStatus: 'unpaid',
           subtotal: amount,
           porterage: 0,
-          vat_rate: 0,
-          vat_amount: 0,
-          status: 'finalized'
-        } as InvoiceWithBalance;
+          porterageType: 'per_unit',
+          porterageRate: 0,
+          vatRate: 0,
+          vatAmount: 0,
+          totalAmount: amount,
+          paidAmount: 0,
+          notes: null,
+          items: [],
+          createdAt: now,
+          updatedAt: now,
+          balance: amount,
+          paid: 0,
+          runningBal: 0,
+        };
       }).sort((a, b) => new Date(a.date || '').getTime() - new Date(b.date || '').getTime());
       
       console.log('DEBUG - Reconstructed selectedInvoices from explicitInvoicePayments:', selectedInvoices);

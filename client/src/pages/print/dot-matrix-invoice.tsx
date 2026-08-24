@@ -287,7 +287,7 @@ export default function DotMatrixInvoicePrintPage() {
         console.log('Backend health check passed');
       } catch (healthError) {
         console.log('Backend health check failed:', healthError);
-        throw new Error(`Backend not available: ${healthError.message}`);
+        throw new Error(`Backend not available: ${healthError instanceof Error ? healthError.message : String(healthError)}`);
       }
 
       const apiUrl = useRelativeUrls() ? '/api/generate-invoice-pdf' : `${API_BASE_URL}/api/generate-invoice-pdf`;
@@ -301,7 +301,7 @@ export default function DotMatrixInvoicePrintPage() {
         body: JSON.stringify({
           invoiceNumber: invoiceNumber
         }),
-        timeout: 30000 // 30 second timeout
+        signal: AbortSignal.timeout(30000) // 30 second timeout
       });
 
       if (!fetchResponse.ok) {
@@ -386,7 +386,7 @@ export default function DotMatrixInvoicePrintPage() {
       console.log('Falling back to browser print...');
 
       // Show user-friendly error message
-      alert(`Server PDF generation is currently unavailable. Using browser print instead.\n\nError: ${error.message}`);
+      alert(`Server PDF generation is currently unavailable. Using browser print instead.\n\nError: ${error instanceof Error ? error.message : String(error)}`);
 
       // Fallback to browser print
       setIsServerPDF(false);

@@ -60,7 +60,7 @@ export const useAutoLogout = () => {
         });
         logoutRef.current();
       } else {
-        resetTimer.current();
+        resetTimer();
       }
     }, IDLE_TIME);
   }).current;

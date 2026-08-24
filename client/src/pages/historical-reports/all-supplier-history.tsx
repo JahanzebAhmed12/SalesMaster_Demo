@@ -36,8 +36,8 @@ interface SupplierData {
 }
 
 export default function AllSupplierHistory() {
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [supplierFilter, setSupplierFilter] = useState("All Suppliers");
   const [searchTerm, setSearchTerm] = useState("");
   const [supplierData, setSupplierData] = useState<SupplierData[]>([]);
@@ -144,7 +144,7 @@ export default function AllSupplierHistory() {
     ];
 
     // Convert data to array of arrays for better control
-    const dataArray = [
+    const dataArray: Array<Array<string | number>> = [
       ['ALL SUPPLIER HISTORY'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
@@ -172,11 +172,11 @@ export default function AllSupplierHistory() {
       dataArray.push([
         supplier.slNo || '',
         supplier.supplierName || '',
-        parseFloat(supplier.purchaseInvoice || 0).toFixed(2),
-        parseFloat(supplier.amountPaid || 0).toFixed(2),
-        parseFloat(supplier.creditAdj || 0).toFixed(2),
-        parseFloat(supplier.discountAdj || 0).toFixed(2),
-        parseFloat(supplier.balanceOutstanding || 0).toFixed(2),
+        Number(supplier.purchaseInvoice || 0).toFixed(2),
+        Number(supplier.amountPaid || 0).toFixed(2),
+        Number(supplier.creditAdj || 0).toFixed(2),
+        Number(supplier.discountAdj || 0).toFixed(2),
+        Number(supplier.balanceOutstanding || 0).toFixed(2),
         supplier.creditLimit || '',
         supplier.currency || ''
       ]);
@@ -186,11 +186,11 @@ export default function AllSupplierHistory() {
     dataArray.push([
       '',
       'TOTAL',
-      parseFloat(totals.purchaseInvoice.toString()).toFixed(2),
-      parseFloat(totals.amountPaid.toString()).toFixed(2),
-      parseFloat(totals.creditAdj.toString()).toFixed(2),
-      parseFloat(totals.discountAdj.toString()).toFixed(2),
-      parseFloat(totals.balanceOutstanding.toString()).toFixed(2),
+      Number(totals.purchaseInvoice.toString()).toFixed(2),
+      Number(totals.amountPaid.toString()).toFixed(2),
+      Number(totals.creditAdj.toString()).toFixed(2),
+      Number(totals.discountAdj.toString()).toFixed(2),
+      Number(totals.balanceOutstanding.toString()).toFixed(2),
       '',
       ''
     ]);
@@ -214,7 +214,7 @@ export default function AllSupplierHistory() {
     // Apply styles to header row
     const headerRow = dataArray.findIndex(row => row[0] === 'Sl.No');
     if (headerRow !== -1) {
-      const range = XLSX.utils.decode_range(ws['!ref']);
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       for (let C = 0; C <= range.e.c; ++C) {
         const cellAddress = XLSX.utils.encode_cell({r: headerRow, c: C});
         if (!ws[cellAddress]) continue;
@@ -233,7 +233,7 @@ export default function AllSupplierHistory() {
     }
     
     // Right align numeric columns and add borders to all cells
-    const range = XLSX.utils.decode_range(ws['!ref']);
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     for (let R = 0; R <= range.e.r; ++R) {
       for (let C = 0; C <= range.e.c; ++C) {
         const cellAddress = XLSX.utils.encode_cell({r: R, c: C});

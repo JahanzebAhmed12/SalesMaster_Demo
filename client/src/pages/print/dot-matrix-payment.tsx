@@ -10,6 +10,8 @@ interface PaymentData {
     amount: number;
     paymentMode: string;
     paymentDate: string;
+    createdBy?: string;
+    paymentType?: string;
     invoiceNumber: string;
     invoiceAmount: number;
     customerName: string;
@@ -21,6 +23,17 @@ interface PaymentData {
 }
 
 type TextAlign = 'left' | 'right' | 'center' | 'justify';
+
+interface PaymentMethodRow {
+  label: string;
+  amount: number;
+}
+
+interface PaymentPage {
+  pageNumber: number;
+  payments: PaymentMethodRow[];
+  isLastPage: boolean;
+}
 
 interface ColumnConfig {
   left: string;
@@ -237,7 +250,7 @@ export default function DotMatrixPaymentPrintPage() {
     cheque: 'Cheque'
   };
 
-  const methodRows = Object.entries(paymentMethodTotals)
+  const methodRows: PaymentMethodRow[] = Object.entries(paymentMethodTotals)
     .filter(([, amount]) => amount > 0)
     .map(([method, amount]) => ({
       label: methodLabels[method] || method,
@@ -247,12 +260,12 @@ export default function DotMatrixPaymentPrintPage() {
   const { totalAmount, customer } = data;
 
   // Collect unique invoice numbers from non-on-account payments only
-  const paidInvoiceNumbers = [...new Set(
+  const paidInvoiceNumbers = Array.from(new Set(
     (data.payments || [])
       .filter(p => p.paymentType !== 'on-account')
       .map(p => p.invoiceNumber)
-      .filter(Boolean)
-  )];
+      .filter((invoiceNumber): invoiceNumber is string => Boolean(invoiceNumber))
+  ));
   const invoiceNumbersText = paidInvoiceNumbers.length > 0
     ? `Invoice ${paidInvoiceNumbers.join(', ')}`
     : '';
@@ -260,7 +273,7 @@ export default function DotMatrixPaymentPrintPage() {
   // Calculate pagination with method rows
   const itemsPerPage = FIELD_POSITIONS.maxItemsPerPage;
   const totalPages = Math.ceil(methodRows.length / itemsPerPage);
-  const pages = [];
+  const pages: PaymentPage[] = [];
 
   for (let i = 0; i < totalPages; i++) {
     const startIndex = i * itemsPerPage;

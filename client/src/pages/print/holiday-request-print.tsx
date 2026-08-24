@@ -42,7 +42,7 @@ const HolidayRequestPrint = () => {
 
   return (
     <div className="print-container">
-      <style jsx>{`
+      <style>{`
         @media print {
           @page {
             size: A4;

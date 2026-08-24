@@ -370,10 +370,10 @@ export default function ProfitLoss() {
     // Add company header if available
     if (companyDetails) {
       doc.setFontSize(16);
-      doc.text(companyDetails.name || 'Company Name', 14, 15);
+      doc.text(companyDetails.companyName || 'Company Name', 14, 15);
       doc.setFontSize(10);
-      if (companyDetails.address) doc.text(companyDetails.address, 14, 22);
-      if (companyDetails.phone) doc.text(`Phone: ${companyDetails.phone}`, 14, 27);
+      if (companyDetails.address1) doc.text(companyDetails.address1, 14, 22);
+      if (companyDetails.telephone) doc.text(`Phone: ${companyDetails.telephone}`, 14, 27);
       if (companyDetails.email) doc.text(`Email: ${companyDetails.email}`, 14, 32);
     }
 
@@ -490,7 +490,7 @@ export default function ProfitLoss() {
           const emailData = {
             to: emailList,
             subject: `Profit/Loss Report - ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Profit/Loss Report for the period from ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed profit and loss analysis including:\n- Product-wise quantity analysis\n- Average and total purchase costs\n- Average and total sales amounts\n${showProfit ? '- Profit calculations and percentages\n- Loss identification (highlighted items)\n' : ''}- Overall financial performance summary\n\nReport Summary:\n- Total Products: ${profitData.length}\n- Total Quantity: ${formatQuantity(totals.totalQuantity)}\n- Total Purchase: £${Number(totals.totPurchase).toFixed(2)}\n- Total Sales: £${Number(totals.totSales).toFixed(2)}\n${showProfit ? `- Total Profit: £${Number(totals.totProfit).toFixed(2)}\n- Overall Profit Percentage: ${Number(overallProfitPercent).toFixed(2)}%\n` : ''}- Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.name || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Profit/Loss Report for the period from ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}.\n\nThis report contains detailed profit and loss analysis including:\n- Product-wise quantity analysis\n- Average and total purchase costs\n- Average and total sales amounts\n${showProfit ? '- Profit calculations and percentages\n- Loss identification (highlighted items)\n' : ''}- Overall financial performance summary\n\nReport Summary:\n- Total Products: ${profitData.length}\n- Total Quantity: ${formatQuantity(totals.totalQuantity)}\n- Total Purchase: £${Number(totals.totPurchase).toFixed(2)}\n- Total Sales: £${Number(totals.totSales).toFixed(2)}\n${showProfit ? `- Total Profit: £${Number(totals.totProfit).toFixed(2)}\n- Overall Profit Percentage: ${Number(overallProfitPercent).toFixed(2)}%\n` : ''}- Date Range: ${format(fromDate, 'yyyy-MM-dd')} to ${format(toDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
             attachment: {
               filename: `profit-loss-report-${format(fromDate, 'yyyy-MM-dd')}-to-${format(toDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,

@@ -29,8 +29,8 @@ import { DateRangeFilter } from "@/components/ui/date-range-filter";
 export default function Banking() {
   const { currentDate: businessDate } = useBusinessDate();
   const { user } = useAuth();
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
 
   // Initialize dates with business date when available
   React.useEffect(() => {
@@ -510,11 +510,11 @@ export default function Banking() {
                     ...newEntry, 
                     paymentType: value, 
                     payingNumber: "", 
-                    bags: [{ number: "", payingNumber: "", amount: 0 }], // Reset bags when payment type changes
+                    bags: [{ number: "", payingNumber: "", amount: "" }], // Reset bags when payment type changes
                     chequeNumber: "",
                     bagNumber: "", // Reset bag number when payment type changes
                     chequePayingNumber: "", // Reset cheque paying number when payment type changes
-                    amount: 0
+                    amount: ""
                   })}
                 >
                   <SelectTrigger>

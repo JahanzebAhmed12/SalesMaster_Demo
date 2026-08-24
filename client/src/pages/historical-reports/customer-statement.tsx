@@ -323,7 +323,7 @@ export default function CustomerStatement() {
     ];
 
     // Convert data to array of arrays for better control
-    const dataArray = [
+    const dataArray: Array<Array<string | number>> = [
       ['CUSTOMER STATEMENT'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
@@ -358,13 +358,13 @@ export default function CustomerStatement() {
         row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
         row.invoiceNo || '',
         row.description || '',
-        parseFloat(row.accountInv || 0).toFixed(2),
-        parseFloat(row.cashInv || 0).toFixed(2),
-        parseFloat(row.paid || 0).toFixed(2),
-        parseFloat(row.accountAdj || 0).toFixed(2),
-        parseFloat(row.discountAdj || 0).toFixed(2),
-        parseFloat(row.balance || 0).toFixed(2),
-        parseFloat(row.runningBalance || 0).toFixed(2)
+        Number(row.accountInv || 0).toFixed(2),
+        Number(row.cashInv || 0).toFixed(2),
+        Number(row.paid || 0).toFixed(2),
+        Number(row.accountAdj || 0).toFixed(2),
+        Number(row.discountAdj || 0).toFixed(2),
+        Number(row.balance || 0).toFixed(2),
+        Number(row.runningBalance || 0).toFixed(2)
       ]);
     });
 
@@ -374,13 +374,13 @@ export default function CustomerStatement() {
       'TOTAL',
       '',
       '',
-      parseFloat(totals.accountInv.toString()).toFixed(2),
-      parseFloat(totals.cashInv.toString()).toFixed(2),
-      parseFloat(totals.paid.toString()).toFixed(2),
-      parseFloat(totals.accountAdj.toString()).toFixed(2),
-      parseFloat(totals.discountAdj.toString()).toFixed(2),
-      parseFloat(totals.balance.toString()).toFixed(2),
-      processedStatementData.length > 0 ? parseFloat(processedStatementData[processedStatementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
+      Number(totals.accountInv.toString()).toFixed(2),
+      Number(totals.cashInv.toString()).toFixed(2),
+      Number(totals.paid.toString()).toFixed(2),
+      Number(totals.accountAdj.toString()).toFixed(2),
+      Number(totals.discountAdj.toString()).toFixed(2),
+      Number(totals.balance.toString()).toFixed(2),
+      processedStatementData.length > 0 ? Number(processedStatementData[processedStatementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
     ]);
 
     // Create worksheet from array data
@@ -404,7 +404,7 @@ export default function CustomerStatement() {
     // Apply styles to header row
     const headerRow = dataArray.findIndex(row => row[0] === 'Sl.No');
     if (headerRow !== -1) {
-      const range = XLSX.utils.decode_range(ws['!ref']);
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       for (let C = 0; C <= range.e.c; ++C) {
         const cellAddress = XLSX.utils.encode_cell({r: headerRow, c: C});
         if (!ws[cellAddress]) continue;
@@ -423,7 +423,7 @@ export default function CustomerStatement() {
     }
     
     // Right align numeric columns and add borders to all cells
-    const range = XLSX.utils.decode_range(ws['!ref']);
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     for (let R = 0; R <= range.e.r; ++R) {
       for (let C = 0; C <= range.e.c; ++C) {
         const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
@@ -550,13 +550,13 @@ export default function CustomerStatement() {
       row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
       row.invoiceNo || '',
       row.description || '',
-      parseFloat(row.accountInv || 0).toFixed(2),
-      parseFloat(row.cashInv || 0).toFixed(2),
-      parseFloat(row.paid || 0).toFixed(2),
-      parseFloat(row.accountAdj || 0).toFixed(2),
-      parseFloat(row.discountAdj || 0).toFixed(2),
-      parseFloat(row.balance || 0).toFixed(2),
-      parseFloat(row.runningBalance || 0).toFixed(2)
+      Number(row.accountInv || 0).toFixed(2),
+      Number(row.cashInv || 0).toFixed(2),
+      Number(row.paid || 0).toFixed(2),
+      Number(row.accountAdj || 0).toFixed(2),
+      Number(row.discountAdj || 0).toFixed(2),
+      Number(row.balance || 0).toFixed(2),
+      Number(row.runningBalance || 0).toFixed(2)
     ]);
     
     // Add totals row
@@ -565,13 +565,13 @@ export default function CustomerStatement() {
       'TOTAL',
       '',
       '',
-      parseFloat(totals.accountInv.toString()).toFixed(2),
-      parseFloat(totals.cashInv.toString()).toFixed(2),
-      parseFloat(totals.paid.toString()).toFixed(2),
-      parseFloat(totals.accountAdj.toString()).toFixed(2),
-      parseFloat(totals.discountAdj.toString()).toFixed(2),
-      parseFloat(totals.balance.toString()).toFixed(2),
-      processedStatementData.length > 0 ? parseFloat(processedStatementData[processedStatementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
+      Number(totals.accountInv.toString()).toFixed(2),
+      Number(totals.cashInv.toString()).toFixed(2),
+      Number(totals.paid.toString()).toFixed(2),
+      Number(totals.accountAdj.toString()).toFixed(2),
+      Number(totals.discountAdj.toString()).toFixed(2),
+      Number(totals.balance.toString()).toFixed(2),
+      processedStatementData.length > 0 ? Number(processedStatementData[processedStatementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
     ]);
     
     // Add table to PDF with proper margins
@@ -627,7 +627,7 @@ export default function CustomerStatement() {
         
         // Page number
         doc.text(
-          `Page ${data.pageNumber} of ${data.pageCount}`, 
+          `Page ${data.pageNumber} of ${doc.getNumberOfPages()}`,
           pageWidth / 2, 
           pageHeight - margin,
           { align: 'center' }

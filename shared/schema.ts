@@ -820,7 +820,7 @@ export type EmployeeWithAttendance = z.infer<typeof employeeWithAttendanceSchema
 
 // Holiday Request Schema
 export const holidayRequestSchema = z.object({
-  id: z.number().optional(),
+  id: z.number(),
   employeeId: z.number(),
   employeeName: z.string().min(1, "Employee name is required"),
   jobTitle: z.string().optional(),
@@ -838,6 +838,7 @@ export const holidayRequestSchema = z.object({
   managerComments: z.string().optional(),
   createdAt: z.string().optional(),
   updatedAt: z.string().optional(),
+  signedFormPath: z.string().nullable().optional(),
 });
 
 export const insertHolidayRequestSchema = holidayRequestSchema.omit({ id: true, createdAt: true, updatedAt: true });
@@ -849,7 +850,7 @@ export type InsertHolidayRequest = z.infer<typeof insertHolidayRequestSchema>;
 export const equipmentSchema = z.object({
   id: z.number().optional(),
   description: z.string().min(1, "Description is required"),
-  startDate: z.string(),
+  startDate: z.string().nullable(),
   endDate: z.string(),
   isActive: z.string().default("yes"),
   createdAt: z.string().optional(),

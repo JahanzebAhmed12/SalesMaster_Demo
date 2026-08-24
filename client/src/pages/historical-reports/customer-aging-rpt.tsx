@@ -19,6 +19,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useQuery } from "@tanstack/react-query";
 import { useCompanyDetails } from "@/hooks/use-company-details";
+import { printHtmlTable } from "@/lib/export-utils";
 
 interface CustomerAgingData {
   id: number;
@@ -252,13 +253,13 @@ export default function CustomerAgingRpt() {
     
     // Add report title
     doc.setFontSize(18);
-    doc.setFont(undefined, 'bold');
+    doc.setFont('helvetica', 'bold');
     doc.text('CUSTOMER AGING REPORT', 105, yPosition, { align: 'center' });
     yPosition += 15;
     
     // Add company details
     doc.setFontSize(12);
-    doc.setFont(undefined, 'normal');
+    doc.setFont('helvetica', 'normal');
     const companyName = company?.companyName || 'TROPIFRUIT UK LTD';
     const address = company?.address1 || '3 Dolphin Way, Purfleet, RM19 1NZ';
     doc.text(companyName + ', ' + address, 105, yPosition, { align: 'center' });

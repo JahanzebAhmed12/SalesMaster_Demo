@@ -37,8 +37,8 @@ function toLocalDateString(date: Date) {
 
 export default function SupplierReturn() {
   const [selectedSupplier, setSelectedSupplier] = useState<number | null>(null);
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [searchClicked, setSearchClicked] = useState(false);
   const { businessDate } = useBusinessDate();

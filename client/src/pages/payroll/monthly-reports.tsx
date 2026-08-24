@@ -36,6 +36,33 @@ interface EmployeeMonthlyData {
   totalHours: number;
 }
 
+interface AttendanceExportItem {
+  employee: {
+    id: number;
+    name: string;
+    fullName?: string;
+    title?: string | null;
+    salary?: number | string | null;
+    dailyWage?: number | string | null;
+  };
+  presentDays: number;
+  attendance: {
+    presentDays: number;
+    absentDays: number;
+    leaveDays: number;
+    holidayDays: number;
+    attendancePercentage: number;
+    totalHours: number;
+  };
+  dailyAttendance?: Record<string, {
+    status?: string | null;
+    leave_type?: string | null;
+    holiday_name?: string | null;
+  }>;
+}
+
+type ExportCell = string | number;
+
 interface PayrollData {
   employee: {
     id: number;
@@ -70,19 +97,19 @@ export default function MonthlyReports() {
   const { toast } = useToast();
   
   // Date state - default to last 7 days
-  const [fromDate, setFromDate] = useState<Date | undefined>(() => {
+  const [fromDate, setFromDate] = useState<Date>(() => {
     const lastWeek = new Date();
     lastWeek.setDate(lastWeek.getDate() - 7);
     return lastWeek;
   });
   
-  const [toDate, setToDate] = useState<Date | undefined>(() => {
+  const [toDate, setToDate] = useState<Date>(() => {
     return new Date();
   });
 
   // Validation function to ensure toDate is not before fromDate
-  const handleToDateChange = (date: Date | undefined) => {
-    if (date && fromDate && date < fromDate) {
+  const handleToDateChange = (date: Date) => {
+    if (date < fromDate) {
       toast({
         title: "Invalid Date Range",
         description: "To date cannot be before From date",
@@ -93,11 +120,11 @@ export default function MonthlyReports() {
     setToDate(date);
   };
 
-  const handleFromDateChange = (date: Date | undefined) => {
+  const handleFromDateChange = (date: Date) => {
     setFromDate(date);
-    // If toDate is before the new fromDate, clear toDate
-    if (date && toDate && toDate < date) {
-      setToDate(undefined);
+    // If toDate is before the new fromDate, keep both dates valid by aligning it.
+    if (toDate < date) {
+      setToDate(date);
     }
   };
 
@@ -115,7 +142,7 @@ export default function MonthlyReports() {
   });
 
   // Fetch attendance data using new endpoint
-  const { data: attendanceData = [], isLoading: isLoadingAttendance, refetch: refetchAttendance } = useQuery({
+  const { data: attendanceData = [], isLoading: isLoadingAttendance, refetch: refetchAttendance } = useQuery<AttendanceExportItem[]>({
     queryKey: [
       '/api/reports/attendance',
       fromDate ? formatDateForAPI(fromDate) : null,
@@ -202,7 +229,7 @@ export default function MonthlyReports() {
     }
     
     // Add attendance table
-    const tableData = processedAttendanceData.map(item => [
+    const tableData: ExportCell[][] = processedAttendanceData.map((item) => [
       item.employee.name || item.employee.fullName || 'Unknown',
       item.presentDays.toString(),
       item.absentDays.toString(),
@@ -299,7 +326,7 @@ export default function MonthlyReports() {
   
     
     // Generate day headers with day names (Monday, Tuesday, etc.)
-    const days = [];
+    const days: string[] = [];
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const currentDate = new Date(fromDate);
     while (currentDate <= toDate) {
@@ -312,13 +339,13 @@ export default function MonthlyReports() {
     const headers = ['Employee', ...days, 'Weekly Wage', 'Remarks'];
     
     // Create table data
-    const tableData = attendanceData.map((item: any) => {
-      const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+    const tableData: ExportCell[][] = attendanceData.map((item) => {
+      const weeklySalary = parseFloat(String(item.employee.salary ?? item.employee.dailyWage ?? '0'));
       const totalDaysInPeriod = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       const workingDaysInPeriod = Math.min(6, totalDaysInPeriod);
       const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
       
-      const row = [item.employee.name || item.employee.fullName || 'Unknown'];
+      const row: ExportCell[] = [item.employee.name || item.employee.fullName || 'Unknown'];
       
       // Add daily attendance markings using actual daily data
       const currentDate = new Date(fromDate);
@@ -423,7 +450,7 @@ export default function MonthlyReports() {
     }
 
     // Generate day headers with day names (Monday, Tuesday, etc.)
-    const days = [];
+    const days: string[] = [];
     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const currentDate = new Date(fromDate);
     while (currentDate <= toDate) {
@@ -438,13 +465,13 @@ export default function MonthlyReports() {
     // Create data rows
     const worksheetData = [
       headers,
-      ...attendanceData.map((item: any) => {
-        const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+      ...attendanceData.map((item) => {
+        const weeklySalary = parseFloat(String(item.employee.salary ?? item.employee.dailyWage ?? '0'));
         const totalDaysInPeriod = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         const workingDaysInPeriod = Math.min(6, totalDaysInPeriod);
         const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
         
-        const row = [item.employee.name || item.employee.fullName || 'Unknown'];
+        const row: ExportCell[] = [item.employee.name || item.employee.fullName || 'Unknown'];
         
         // Add daily attendance markings using actual daily data
         const currentDate = new Date(fromDate);
@@ -559,7 +586,7 @@ export default function MonthlyReports() {
         doc.text(`${format(fromDate, "LLL dd, y")} - ${format(toDate, "LLL dd, y")}`, 105, 55, { align: 'center' });
         
         // Add summary table
-        const tableData = processedAttendanceData.map(item => [
+        const tableData: ExportCell[][] = processedAttendanceData.map((item) => [
           item.employee.name || item.employee.fullName || 'Unknown',
           item.presentDays.toString(),
           item.absentDays.toString(),
@@ -627,7 +654,7 @@ export default function MonthlyReports() {
         doc.text('Legend: P=Present, A=Absent, L-Sic=Sick Leave, L-Ann=Annual Leave, H-Xmas=Christmas Holiday, -=No Record', 148, 43, { align: 'center' });
         
         // Generate day headers (Day 1, Day 2, etc.)
-        const days = [];
+        const days: string[] = [];
         const currentDate = new Date(fromDate);
         let dayCount = 1;
         while (currentDate <= toDate) {
@@ -638,13 +665,13 @@ export default function MonthlyReports() {
         
         const headers = ['Employee', ...days, 'Weekly Wage', 'Remarks'];
         
-        const tableData = attendanceData.map((item: any) => {
-          const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+        const tableData: ExportCell[][] = attendanceData.map((item) => {
+          const weeklySalary = parseFloat(String(item.employee.salary ?? item.employee.dailyWage ?? '0'));
           const totalDaysInPeriod = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
           const workingDaysInPeriod = Math.min(6, totalDaysInPeriod);
           const weeklyPay = workingDaysInPeriod > 0 ? (weeklySalary * item.presentDays) / workingDaysInPeriod : 0;
           
-          const row = [item.employee.name || item.employee.fullName || 'Unknown'];
+          const row: ExportCell[] = [item.employee.name || item.employee.fullName || 'Unknown'];
           
           // Add daily attendance markings using actual daily data
           const currentDate = new Date(fromDate);
@@ -835,8 +862,7 @@ export default function MonthlyReports() {
                   >
                     {selectedEmployee === "all" 
                       ? "All Employees" 
-                      : employees.find(emp => emp.id.toString() === selectedEmployee)?.name || 
-                        employees.find(emp => emp.id.toString() === selectedEmployee)?.fullName || 
+                      : employees.find(emp => emp.id.toString() === selectedEmployee)?.fullName ||
                         "Select employee..."
                     }
                     <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -878,7 +904,7 @@ export default function MonthlyReports() {
                     </div>
                     {employees
                       .filter(emp => {
-                        const name = emp.name || emp.fullName || `Employee ${emp.id}`;
+                        const name = emp.fullName || `Employee ${emp.id}`;
                         return name.toLowerCase().includes(employeeSearchTerm.toLowerCase());
                       })
                       .map(emp => (
@@ -894,7 +920,7 @@ export default function MonthlyReports() {
                             setEmployeeSearchTerm("");
                           }}
                         >
-                          {emp.name || emp.fullName || `Employee ${emp.id}`}
+                          {emp.fullName || `Employee ${emp.id}`}
                         </div>
                       ))}
                   </div>
@@ -1115,8 +1141,8 @@ export default function MonthlyReports() {
                   <tr><td colSpan={6} className="text-center py-8">Loading...</td></tr>
                 ) : attendanceData.length === 0 ? (
                   <tr><td colSpan={6} className="text-center py-8">No data for selected period</td></tr>
-                ) : attendanceData.map((item: any) => {
-                  const weeklySalary = parseFloat(item.employee.salary || item.employee.dailyWage || '0');
+                ) : attendanceData.map((item) => {
+                  const weeklySalary = parseFloat(String(item.employee.salary ?? item.employee.dailyWage ?? '0'));
                   // Calculate total days in the selected period
                   const totalDaysInPeriod = fromDate && toDate ? Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)) + 1 : 1;
                   const workingDaysInPeriod = Math.min(6, totalDaysInPeriod); // Max 6 working days per week

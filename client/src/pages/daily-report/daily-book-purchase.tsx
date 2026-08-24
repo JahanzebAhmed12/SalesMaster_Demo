@@ -160,8 +160,8 @@ export default function DailyBookPurchase() {
     if (!sortConfig) return data;
     
     return [...data].sort((a, b) => {
-      const aValue = a[sortConfig.key as keyof PurchaseEntry];
-      const bValue = b[sortConfig.key as keyof PurchaseEntry];
+      const aValue = a[sortConfig.key as keyof PurchaseEntry] ?? '';
+      const bValue = b[sortConfig.key as keyof PurchaseEntry] ?? '';
       
       if (aValue < bValue) {
         return sortConfig.direction === 'asc' ? -1 : 1;

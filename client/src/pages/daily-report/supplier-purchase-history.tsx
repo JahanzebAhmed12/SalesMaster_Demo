@@ -19,8 +19,8 @@ export default function SupplierPurchaseHistoryPage() {
   const params = useParams();
   const supplierId = params.supplierId;
   const { currentDate: businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
-  const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
-  const [toDate, setToDate] = useState<Date | undefined>(undefined);
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
 
   // Set dates to business date once it loads
   useEffect(() => {

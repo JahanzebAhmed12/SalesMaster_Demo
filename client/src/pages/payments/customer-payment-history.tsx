@@ -43,10 +43,10 @@ export default function CustomerPaymentHistory() {
   const [, navigate] = useLocation();
   const { currentDate: businessDate } = useBusinessDate();
   const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
-  const [fromDate, setFromDate] = useState<Date | undefined>(() => {
+  const [fromDate, setFromDate] = useState<Date>(() => {
     return businessDate ? new Date(businessDate) : new Date();
   });
-  const [toDate, setToDate] = useState<Date | undefined>(() => {
+  const [toDate, setToDate] = useState<Date>(() => {
     return businessDate ? new Date(businessDate) : new Date();
   });
   const [selectedFilter, setSelectedFilter] = useState<string>("All");

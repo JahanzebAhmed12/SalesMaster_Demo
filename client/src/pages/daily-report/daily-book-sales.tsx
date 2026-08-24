@@ -535,7 +535,7 @@ export default function DailyBookSales() {
       ]],
       body: salesData.map((item: SalesEntry) => {
         // Use the business date from the item if available, otherwise use the current business date
-        const saleDate = item.date ? new Date(item.date) : businessDate;
+        const saleDate = item.date ? new Date(item.date) : (businessDate ?? new Date());
         return [
           format(saleDate, "MM/dd/yy"),
           item.invoiceNo,
@@ -865,12 +865,14 @@ export default function DailyBookSales() {
         failedInvoices.push(invNo);
       }
       progressToast.update({
+        id: progressToast.id,
         title: "Sending emails...",
         description: `${sent + failed} / ${total} processed (${sent} sent, ${failed} failed)`,
       });
     }
 
     progressToast.update({
+      id: progressToast.id,
       title: failed === 0 ? "All emails sent" : "Emails sent with errors",
       description: failed === 0
         ? `${sent} invoice(s) sent successfully.`

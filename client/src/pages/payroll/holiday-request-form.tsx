@@ -72,7 +72,7 @@ const HolidayRequestForm = () => {
     queryFn: () => apiRequest("GET", `/api/employees/${form.watch("employeeId")}/entitlement?t=${Date.now()}`),
     enabled: !!form.watch("employeeId") && form.watch("employeeId") > 0,
     staleTime: 0, // Always refetch to get latest data
-    cacheTime: 0, // Don't cache the result
+    gcTime: 0, // Don't cache the result
   });
 
   // Fetch existing request if editing
@@ -454,7 +454,7 @@ const HolidayRequestForm = () => {
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {form.watch("dateByEmployee") ? (
-                            format(new Date(form.watch("dateByEmployee")), "PPP")
+                            format(new Date(String(form.watch("dateByEmployee"))), "PPP")
                           ) : (
                             <span>Pick a date</span>
                           )}
@@ -463,7 +463,7 @@ const HolidayRequestForm = () => {
                       <PopoverContent className="w-auto p-0">
                         <Calendar
                           mode="single"
-                          selected={form.watch("dateByEmployee") ? new Date(form.watch("dateByEmployee")) : undefined}
+                          selected={form.watch("dateByEmployee") ? new Date(String(form.watch("dateByEmployee"))) : undefined}
                           onSelect={(date) =>
                             form.setValue(
                               "dateByEmployee",
@@ -557,7 +557,7 @@ const HolidayRequestForm = () => {
                         >
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {form.watch("datedByManager") ? (
-                            format(new Date(form.watch("datedByManager")), "PPP")
+                            format(new Date(String(form.watch("datedByManager"))), "PPP")
                           ) : (
                             <span>Pick a date</span>
                           )}
@@ -566,7 +566,7 @@ const HolidayRequestForm = () => {
                       <PopoverContent className="w-auto p-0">
                         <Calendar
                           mode="single"
-                          selected={form.watch("datedByManager") ? new Date(form.watch("datedByManager")) : undefined}
+                          selected={form.watch("datedByManager") ? new Date(String(form.watch("datedByManager"))) : undefined}
                           onSelect={(date) =>
                             form.setValue(
                               "datedByManager",

@@ -15,6 +15,7 @@ interface InvoiceData {
 type TextAlign = 'left' | 'right' | 'center' | 'justify';
 
 interface ColumnConfig {
+  top?: string;
   left: string;
   width: string;
   align?: TextAlign;

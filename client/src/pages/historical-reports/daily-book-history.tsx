@@ -37,8 +37,8 @@ function toLocalDateString(date: Date) {
 }
 
 export default function DailyBookHistory() {
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [user, setUser] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [reportType, setReportType] = useState<string>("All");

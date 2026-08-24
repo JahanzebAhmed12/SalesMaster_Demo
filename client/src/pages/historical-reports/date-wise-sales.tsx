@@ -39,8 +39,8 @@ function toLocalDateString(date: Date) {
 }
 
 export default function DateWiseSales() {
-  const [fromDate, setFromDate] = useState<Date | undefined>();
-  const [toDate, setToDate] = useState<Date | undefined>();
+  const [fromDate, setFromDate] = useState<Date>(new Date());
+  const [toDate, setToDate] = useState<Date>(new Date());
   const [salesType, setSalesType] = useState("All Sales");
   const [groupBy, setGroupBy] = useState("Daily");
   const [searchTerm, setSearchTerm] = useState("");

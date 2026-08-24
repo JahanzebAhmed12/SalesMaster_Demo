@@ -41,7 +41,7 @@ export default function EmployeeJoiningForm() {
     );
   }
 
-  const formatDate = (dateString: string | null) => {
+  const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return "_______________";
     try {
       return format(new Date(dateString), "dd/MM/yyyy");
@@ -59,7 +59,7 @@ export default function EmployeeJoiningForm() {
 
   return (
     <div className="min-h-screen bg-white p-8 print:p-6">
-      <style jsx>{`
+      <style>{`
         @media print {
           body { margin: 0; }
           .no-print { display: none; }

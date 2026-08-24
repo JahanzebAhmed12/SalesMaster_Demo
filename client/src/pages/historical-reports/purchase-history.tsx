@@ -233,7 +233,7 @@ export default function PurchaseHistory() {
     ];
 
     // Convert data to array of arrays for better control
-    const dataArray = [
+    const dataArray: Array<Array<string | number>> = [
       ['PURCHASE HISTORY REPORT'],
       [''],
       ['Company:', companyDetails?.companyName || ''],
@@ -300,7 +300,7 @@ export default function PurchaseHistory() {
     // Apply styles to header row
     const headerRow = dataArray.findIndex(row => row[0] === 'Sl.No');
     if (headerRow !== -1) {
-      const range = XLSX.utils.decode_range(ws['!ref']);
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       for (let C = 0; C <= range.e.c; ++C) {
         const cellAddress = XLSX.utils.encode_cell({r: headerRow, c: C});
         if (!ws[cellAddress]) continue;
@@ -319,7 +319,7 @@ export default function PurchaseHistory() {
     }
     
     // Right align numeric columns and add borders to all cells
-    const range = XLSX.utils.decode_range(ws['!ref']);
+    const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     for (let R = 0; R <= range.e.r; ++R) {
       for (let C = 0; C <= range.e.c; ++C) {
         const cellAddress = XLSX.utils.encode_cell({r: R, c: C});
@@ -449,7 +449,7 @@ export default function PurchaseHistory() {
       margin: { left: 10, right: 10 },
       didDrawPage: function(data) {
         // Footer on each page
-        const pageCount = doc.internal.getNumberOfPages();
+        const pageCount = doc.getNumberOfPages();
         const currentPage = data.pageNumber;
         
         doc.setFontSize(8);
@@ -472,7 +472,7 @@ export default function PurchaseHistory() {
     // Add totals row
     const finalY = (doc as any).lastAutoTable.finalY || 60;
     
-    doc.autoTable({
+    autoTable(doc, {
       head: [['', '', '', '', 'TOTALS', formatQuantity(totals.totalQuantity), '', `£${parseFloat(totals.totalAmount?.toString() || '0').toFixed(2)}`, '']],
       body: [],
       startY: finalY + 5,

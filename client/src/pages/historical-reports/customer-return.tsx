@@ -221,9 +221,9 @@ export default function CustomerReturn() {
         { wch: 30 }, // Customer Name
         { wch: 15 }, // Invoice No
         { wch: 30 }, // Product Name
-        { wch: 10, alignment: { horizontal: 'right' } }, // Quantity
+        { wch: 10 }, // Quantity
         { wch: 40 }, // Return Reason
-        { wch: 15, alignment: { horizontal: 'right' } }, // Return Amount
+        { wch: 15 }, // Return Amount
         { wch: 15 }  // Status
       ];
       
