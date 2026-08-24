@@ -18,7 +18,7 @@ import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useSalesInvalidation } from "@/hooks/useSalesInvalidation";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
-import { Lock, Pencil, ShieldCheck } from "lucide-react";
+import { Highlighter, Lock, Pencil, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -78,6 +78,7 @@ interface BackendSalePayload {
     total_price: number;
     notes: string | null;
     added_by?: string | null;
+    highlighted: boolean;
     created_at: string;
   }>;
 }
@@ -100,6 +101,11 @@ interface SaleWithUser extends Sale {
   createdByUsername?: string;
   editLock?: InvoiceEditLockOwner;
 }
+
+const normalizeSaleItem = (item: SaleItem): SaleItem => ({
+  ...item,
+  highlighted: Boolean(item.highlighted),
+});
 
 const SalesInvoice = () => {
   const skipAutoHoldRef = useRef(false);
@@ -325,6 +331,7 @@ const SalesInvoice = () => {
           total_price: item.totalPrice,
           notes: item.notes,
           added_by: item.addedBy || currentUser?.username || null,
+          highlighted: item.highlighted,
           created_at: item.createdAt,
         })),
       };
@@ -374,7 +381,7 @@ const SalesInvoice = () => {
             // Only restore if we have URL parameters indicating we're continuing work
             // or if the user explicitly wants to continue (we could add a confirmation here)
             if (customerIdFromUrl) {
-              setSaleItems(items);
+              setSaleItems(items.map(normalizeSaleItem));
               console.log('Restored draft saleItems:', items);
             } else {
               // Clear the draft if we're starting completely fresh
@@ -437,7 +444,7 @@ const SalesInvoice = () => {
           if (data.editLock) {
             setEditLockOwner(data.editLock);
           }
-          setSaleItems(data.items || []);
+          setSaleItems((data.items || []).map(normalizeSaleItem));
           setCustomerId(data.customerId?.toString() || "");
 
           // Lock invoice if payment has been made — only admin can edit paid invoices
@@ -1095,6 +1102,7 @@ const SalesInvoice = () => {
       productName: product.description || null,
       notes: itemNotes || null,
       addedBy: currentUser?.username || 'Unknown',
+      highlighted: false,
       id: 0,
       saleId: currentSale?.id || 0,
       createdAt: serverTime || new Date().toISOString(),
@@ -1131,6 +1139,18 @@ const SalesInvoice = () => {
         productInputRef.current.select(); // Select all text for easy replacement
       }
     }, 100);
+  };
+
+  const toggleItemHighlight = (index: number) => {
+    const updatedItems = saleItems.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, highlighted: !item.highlighted } : item
+    ));
+    setSaleItems(updatedItems);
+
+    // Keep unsaved invoices and held drafts in sync with the visible editor.
+    if (!currentSale) {
+      localStorage.setItem('currentInvoiceDraft', JSON.stringify(updatedItems));
+    }
   };
 
   // Save handler: create sale only when Save is clicked
@@ -1205,6 +1225,7 @@ const SalesInvoice = () => {
           total_price: item.totalPrice,
           notes: item.notes,
           added_by: item.addedBy || currentUser?.username || null,
+          highlighted: item.highlighted,
           created_at: item.createdAt,
         })),
       };
@@ -1315,6 +1336,7 @@ const SalesInvoice = () => {
           total_price: item.totalPrice,
           notes: item.notes,
           added_by: item.addedBy || currentUser?.username || null,
+          highlighted: item.highlighted,
           created_at: item.createdAt,
         })),
       };
@@ -1556,7 +1578,8 @@ const SalesInvoice = () => {
             const formatted = {
               ...item,
               productName,
-              totalPrice
+              totalPrice,
+              highlighted: Boolean(item.highlighted),
             };
             console.log(`[format immediate] Item ${idx}:`, formatted, Object.keys(formatted));
             return formatted;
@@ -1564,7 +1587,7 @@ const SalesInvoice = () => {
           console.log('Setting formatted saleItems:', formattedItems);
           setSaleItems(formattedItems);
         } else {
-          setSaleItems(invoice.saleItems);
+          setSaleItems(invoice.saleItems.map(normalizeSaleItem));
         }
         const isExistingInvoice = !!(invoice as any).currentSale;
         toast({ 
@@ -1599,7 +1622,8 @@ const SalesInvoice = () => {
         const formatted = {
           ...item,
           productName,
-          totalPrice
+          totalPrice,
+          highlighted: Boolean(item.highlighted),
         };
         console.log(`[format after products loaded] Item ${idx}:`, formatted, Object.keys(formatted));
         return formatted;
@@ -2674,6 +2698,7 @@ const SalesInvoice = () => {
                     <TableHead className="text-center">Unit price</TableHead>
                     <TableHead className="text-center">Total</TableHead>
                     <TableHead className="text-center">Action</TableHead>
+                    <TableHead className="text-center">Highlight</TableHead>
                     <TableHead className="text-center">Added By</TableHead>
                     <TableHead className="text-center">Time Added</TableHead>
                   </TableRow>
@@ -2682,7 +2707,7 @@ const SalesInvoice = () => {
                   {/* Existing items */}
                   {saleItems.map((item, index) => (
                     editingIndex === index ? (
-                      <TableRow key={index}>
+                      <TableRow key={index} className={item.highlighted ? "bg-yellow-100 hover:bg-yellow-100" : undefined}>
                         <TableCell>{item.productName}</TableCell>
                         {/* Only show Notes cell when editing or when notes exist */}
                         {(editingIndex !== null || saleItems.some(item => item.notes)) && (
@@ -2761,12 +2786,25 @@ const SalesInvoice = () => {
                           }}>Cancel</Button>
                         </TableCell>
                         <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant={item.highlighted ? "default" : "outline"}
+                            className={item.highlighted ? "bg-yellow-400 hover:bg-yellow-500 text-yellow-950" : ""}
+                            disabled={isReadOnly}
+                            onClick={() => toggleItemHighlight(index)}
+                            title={item.highlighted ? "Remove highlight" : "Highlight product row"}
+                          >
+                            <Highlighter className="mr-1 h-4 w-4" />
+                            {item.highlighted ? "Highlighted" : "Highlight"}
+                          </Button>
+                        </TableCell>
+                        <TableCell className="text-center">
                           {item.addedBy || "-"}
                         </TableCell>
                         <TableCell className="text-center">{item.createdAt ? new Date(item.createdAt).toLocaleTimeString() : '-'}</TableCell>
                       </TableRow>
                     ) : (
-                      <TableRow key={index}>
+                      <TableRow key={index} className={item.highlighted ? "bg-yellow-100 hover:bg-yellow-100" : undefined}>
                         <TableCell>{item.productName}</TableCell>
                         {/* Only show Notes cell when editing or when notes exist */}
                         {(editingIndex !== null || saleItems.some(item => item.notes)) && (
@@ -2815,6 +2853,19 @@ const SalesInvoice = () => {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            size="sm"
+                            variant={item.highlighted ? "default" : "outline"}
+                            className={item.highlighted ? "bg-yellow-400 hover:bg-yellow-500 text-yellow-950" : ""}
+                            disabled={isReadOnly}
+                            onClick={() => toggleItemHighlight(index)}
+                            title={item.highlighted ? "Remove highlight" : "Highlight product row"}
+                          >
+                            <Highlighter className="mr-1 h-4 w-4" />
+                            {item.highlighted ? "Highlighted" : "Highlight"}
+                          </Button>
                         </TableCell>
                         <TableCell className="text-center">
                           {item.addedBy || "-"}

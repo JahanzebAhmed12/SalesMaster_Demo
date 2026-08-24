@@ -168,6 +168,11 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     const lineH = 4.5;
     const actualRowHeight = Math.max(rowHeight, wrappedLines.length * lineH + 2);
 
+    if (item.highlighted) {
+      doc.setFillColor(255, 243, 163);
+      doc.rect(tableStartX, yPos, tableWidth, actualRowHeight, 'F');
+      doc.setFillColor(255, 255, 255);
+    }
     doc.rect(tableStartX, yPos, tableWidth, actualRowHeight);
 
     wrappedLines.forEach((line: string, i: number) => {

@@ -10,6 +10,7 @@ class SaleItemSchema(BaseModel):
     total_price: float
     notes: Optional[str] = None
     added_by: Optional[str] = None  # Username of who added this item
+    highlighted: bool = False
 
     class Config:
         from_attributes = True

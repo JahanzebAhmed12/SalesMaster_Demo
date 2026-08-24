@@ -89,6 +89,7 @@ export const saleItemSchema = z.object({
   productName: z.string().nullable(), // For frontend display
   notes: z.string().nullable(), // Notes for the product item
   addedBy: z.string().nullable(), // Track who added this product
+  highlighted: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

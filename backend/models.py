@@ -148,6 +148,7 @@ class SaleItem(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     added_by = db.Column(db.String(255), nullable=True)  # Username of who added this item
+    highlighted = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
 
     # Relationships
     product = db.relationship('RegularProduct', backref='sale_items')
@@ -166,7 +167,8 @@ class SaleItem(db.Model):
             'notes': self.notes,
             'createdAt': self.created_at.isoformat(),
             'updatedAt': self.updated_at.isoformat(),
-            'addedBy': self.added_by
+            'addedBy': self.added_by,
+            'highlighted': bool(self.highlighted)
         }
 
 class SaleHold(db.Model):

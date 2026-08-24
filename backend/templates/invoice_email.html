@@ -112,6 +112,9 @@
       font-weight: bold;
       background: #fafafa;
     }
+    .highlighted-row td {
+      background: #fff3a3 !important;
+    }
     .totals-section {
       display: table;
       width: 100%;
@@ -203,7 +206,7 @@
       </thead>
       <tbody>
         {% for item in sale.items %}
-        <tr>
+        <tr class="{% if item.highlighted %}highlighted-row{% endif %}">
           <td>
             <div>{{ item.productName or item.product_name or item.description or '-' }}</div>
             {% if item.notes %}

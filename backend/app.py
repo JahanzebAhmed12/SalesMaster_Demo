@@ -36,7 +36,7 @@ from mail_utils import init_mail, send_invoice_email, send_customer_statement_em
 from invoice_pdf_routes import add_pdf_routes
 from export_routes import add_export_routes
 from datetime import datetime, timedelta
-from sqlalchemy import func, and_, or_, update
+from sqlalchemy import func, and_, or_, update, inspect
 from flask import make_response
 import json
 # Load environment variables
@@ -126,6 +126,18 @@ def check_database_health():
         db.session.rollback()
         return False
 
+def ensure_sale_item_highlight_column():
+    """Add the row-highlight column to databases created before this feature."""
+    inspector = inspect(db.engine)
+    if 'sale_item' not in inspector.get_table_names():
+        return
+    columns = {column['name'] for column in inspector.get_columns('sale_item')}
+    if 'highlighted' not in columns:
+        db.session.execute(db.text(
+            "ALTER TABLE sale_item ADD COLUMN highlighted BOOLEAN NOT NULL DEFAULT 0"
+        ))
+        db.session.commit()
+
 # Initialize database with health check
 with app.app_context():
     # Check database health before creating tables
@@ -133,6 +145,7 @@ with app.app_context():
         print("Warning: Database connection issues detected")
     
     db.create_all()
+    ensure_sale_item_highlight_column()
     create_admin_user()
 
     # Create print_queue table if it doesn't exist
@@ -1322,7 +1335,8 @@ def create_sale():
                     unit_price=item_data.unit_price,
                     total_price=item_data.total_price,
                     notes=item_data.notes,
-                    added_by=item_data.added_by or item_username
+                    added_by=item_data.added_by or item_username,
+                    highlighted=item_data.highlighted
                 )
                 # Attach productName for template use
                 new_item.productName = product_name
@@ -1823,7 +1837,8 @@ def update_sale(id):
                 unit_price=item_data.unit_price,
                 total_price=item_data.total_price,
                 notes=item_data.notes,
-                added_by=item_data.added_by or item_username
+                added_by=item_data.added_by or item_username,
+                highlighted=item_data.highlighted
             )
             # Attach productName for template use
             sale_item.productName = product_name

@@ -256,6 +256,21 @@ class DotMatrixInvoicePDF:
 
                 y_pos = self.page_height - cumulative_top
 
+                # Match the editor/email highlight with a pale yellow row background.
+                if item.get('highlighted'):
+                    table_left = self.positions['columns']['quantity']['left'] - (2 * mm)
+                    table_right = self.positions['columns']['value']['left'] + self.positions['columns']['value']['width'] + (2 * mm)
+                    p.setFillColorRGB(1.0, 0.95, 0.64)
+                    p.rect(
+                        table_left,
+                        y_pos - (2 * mm),
+                        table_right - table_left,
+                        item_height,
+                        fill=1,
+                        stroke=0,
+                    )
+                    p.setFillColorRGB(0, 0, 0)
+
                 # Quantity - left aligned, 11pt bold
                 qty = item.get('quantity', 0)
                 p.setFont("Courier-Bold", 11)
