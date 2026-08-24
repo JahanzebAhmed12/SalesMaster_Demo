@@ -565,6 +565,10 @@ class SystemSettings(db.Model):
     lock_invoices = db.Column(db.Boolean, nullable=False, default=False)
     # Till float — cash kept in drawer, set once by admin
     till_float = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    # Per-PC Windows print-service package defaults. Each download can override these values.
+    print_service_url = db.Column(db.String(500), nullable=False, default='https://tropifruituk.net')
+    print_service_printer_name = db.Column(db.String(255), nullable=False, default='EPSON LQ-350 ESC/P2')
+    print_service_poll_interval_ms = db.Column(db.Integer, nullable=False, default=10000)
 
     def to_dict(self):
         return {
@@ -585,6 +589,9 @@ class SystemSettings(db.Model):
             'invoicePrintFormat': self.invoice_print_format,
             'lockInvoices': self.lock_invoices,
             'tillFloat': float(self.till_float) if self.till_float else 0,
+            'printServiceUrl': self.print_service_url,
+            'printServicePrinterName': self.print_service_printer_name,
+            'printServicePollingIntervalMs': self.print_service_poll_interval_ms,
         }
 class Attendance(db.Model):
     id = db.Column(db.Integer, primary_key=True)

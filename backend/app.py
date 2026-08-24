@@ -138,6 +138,28 @@ def ensure_sale_item_highlight_column():
         ))
         db.session.commit()
 
+
+def ensure_print_service_settings_columns():
+    """Add print-service settings to databases created before this feature."""
+    inspector = inspect(db.engine)
+    if 'system_settings' not in inspector.get_table_names():
+        return
+    columns = {column['name'] for column in inspector.get_columns('system_settings')}
+    additions = {
+        'print_service_url': "VARCHAR(500) NOT NULL DEFAULT 'https://tropifruituk.net'",
+        'print_service_printer_name': "VARCHAR(255) NOT NULL DEFAULT 'EPSON LQ-350 ESC/P2'",
+        'print_service_poll_interval_ms': "INTEGER NOT NULL DEFAULT 10000",
+    }
+    changed = False
+    for column_name, definition in additions.items():
+        if column_name not in columns:
+            db.session.execute(db.text(
+                f"ALTER TABLE system_settings ADD COLUMN {column_name} {definition}"
+            ))
+            changed = True
+    if changed:
+        db.session.commit()
+
 # Initialize database with health check
 with app.app_context():
     # Check database health before creating tables
@@ -146,6 +168,7 @@ with app.app_context():
     
     db.create_all()
     ensure_sale_item_highlight_column()
+    ensure_print_service_settings_columns()
     create_admin_user()
 
     # Create print_queue table if it doesn't exist
@@ -3040,6 +3063,12 @@ def update_settings():
             data['till_float'] = data.pop('tillFloat')
         if 'invoiceFooter' in data:
             data['invoice_footer'] = data.pop('invoiceFooter')
+        if 'printServiceUrl' in data:
+            data['print_service_url'] = data.pop('printServiceUrl')
+        if 'printServicePrinterName' in data:
+            data['print_service_printer_name'] = data.pop('printServicePrinterName')
+        if 'printServicePollingIntervalMs' in data:
+            data['print_service_poll_interval_ms'] = data.pop('printServicePollingIntervalMs')
         # Print all incoming fields and types
         for k, v in data.items():
             print(f'[DEBUG] Field: {k}, Value: {v}, Type: {type(v)}')
@@ -3076,6 +3105,164 @@ def update_settings():
         print('[ERROR] Exception in update_settings:', str(e))
         print(traceback.format_exc())
         return jsonify({'message': str(e)}), 400
+
+PRINT_SERVICE_DEFAULTS = {
+    'salesMasterUrl': 'https://tropifruituk.net',
+    'printerName': 'EPSON LQ-350 ESC/P2',
+    'pollIntervalMs': 10000,
+}
+
+
+def _require_print_service_admin():
+    user = User.query.get(get_jwt_identity())
+    if not user or (user.user_type or '').lower() != 'admin' or (user.status or '').lower() != 'active':
+        return None, (jsonify({'error': 'Administrator access is required.'}), 403)
+    return user, None
+
+
+def _read_print_service_settings_payload(data):
+    data = data or {}
+    values = {
+        'salesMasterUrl': data.get('salesMasterUrl', data.get('print_service_url', PRINT_SERVICE_DEFAULTS['salesMasterUrl'])),
+        'printerName': data.get('printerName', data.get('print_service_printer_name', PRINT_SERVICE_DEFAULTS['printerName'])),
+        'pollIntervalMs': data.get('pollIntervalMs', data.get('print_service_poll_interval_ms', PRINT_SERVICE_DEFAULTS['pollIntervalMs'])),
+    }
+    url = str(values['salesMasterUrl']).strip().rstrip('/')
+    printer_name = str(values['printerName']).strip()
+    try:
+        poll_interval_ms = int(values['pollIntervalMs'])
+    except (TypeError, ValueError):
+        raise ValueError('Polling interval must be a whole number of milliseconds.')
+
+    from urllib.parse import urlparse
+    parsed_url = urlparse(url)
+    if parsed_url.scheme not in ('http', 'https') or not parsed_url.netloc:
+        raise ValueError('SalesMaster URL must be a valid http:// or https:// URL.')
+    if len(url) > 500:
+        raise ValueError('SalesMaster URL must be 500 characters or fewer.')
+    if not printer_name or len(printer_name) > 255:
+        raise ValueError('Printer name is required and must be 255 characters or fewer.')
+    if poll_interval_ms < 1000 or poll_interval_ms > 3600000:
+        raise ValueError('Polling interval must be between 1,000 and 3,600,000 milliseconds.')
+
+    return {
+        'salesMasterUrl': url,
+        'printerName': printer_name,
+        'pollIntervalMs': poll_interval_ms,
+    }
+
+
+def _get_print_service_settings_record():
+    settings = SystemSettings.query.first()
+    if not settings:
+        settings = SystemSettings()
+        db.session.add(settings)
+        db.session.commit()
+    return settings
+
+
+@app.route('/api/print-service/settings', methods=['GET'])
+@jwt_required()
+def get_print_service_settings():
+    _, error = _require_print_service_admin()
+    if error:
+        return error
+    settings = _get_print_service_settings_record()
+    return jsonify({
+        'salesMasterUrl': settings.print_service_url or PRINT_SERVICE_DEFAULTS['salesMasterUrl'],
+        'printerName': settings.print_service_printer_name or PRINT_SERVICE_DEFAULTS['printerName'],
+        'pollIntervalMs': settings.print_service_poll_interval_ms or PRINT_SERVICE_DEFAULTS['pollIntervalMs'],
+    })
+
+
+@app.route('/api/print-service/settings', methods=['PUT'])
+@jwt_required()
+def update_print_service_settings():
+    _, error = _require_print_service_admin()
+    if error:
+        return error
+    try:
+        values = _read_print_service_settings_payload(request.get_json(silent=True))
+        settings = _get_print_service_settings_record()
+        settings.print_service_url = values['salesMasterUrl']
+        settings.print_service_printer_name = values['printerName']
+        settings.print_service_poll_interval_ms = values['pollIntervalMs']
+        settings.updated_at = datetime.utcnow()
+        db.session.commit()
+        return jsonify(values)
+    except ValueError as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        db.session.rollback()
+        return jsonify({'error': str(exc)}), 500
+
+
+@app.route('/api/print-service/package', methods=['POST'])
+@jwt_required()
+def download_print_service_package():
+    _, error = _require_print_service_admin()
+    if error:
+        return error
+    try:
+        request_data = request.get_json(silent=True) or {}
+        settings = _get_print_service_settings_record()
+        values = _read_print_service_settings_payload({
+            'salesMasterUrl': request_data.get('salesMasterUrl', settings.print_service_url),
+            'printerName': request_data.get('printerName', settings.print_service_printer_name),
+            'pollIntervalMs': request_data.get('pollIntervalMs', settings.print_service_poll_interval_ms),
+        })
+
+        from io import BytesIO
+        from zipfile import ZIP_DEFLATED, ZipFile
+        from datetime import datetime
+
+        service_dir = os.path.join(os.path.dirname(__file__), '..', 'print-service')
+        package_files = [
+            'auto-chrome-service.js',
+            'service-install.js',
+            'service-uninstall.js',
+            'INSTALL-SERVICE.bat',
+            'UNINSTALL-SERVICE.bat',
+            'setup-print-config.bat',
+            'start-auto-chrome.bat',
+            'package.json',
+            'README.md',
+        ]
+        package_buffer = BytesIO()
+        with ZipFile(package_buffer, 'w', ZIP_DEFLATED) as archive:
+            for file_name in package_files:
+                file_path = os.path.join(service_dir, file_name)
+                if not os.path.isfile(file_path):
+                    raise FileNotFoundError(f'Print-service package file is missing: {file_name}')
+                archive.write(file_path, arcname=file_name)
+            archive.writestr('config.json', json.dumps({
+                'salesMasterUrl': values['salesMasterUrl'],
+                'printerName': values['printerName'],
+                'pollIntervalMs': values['pollIntervalMs'],
+            }, indent=2) + '\n')
+            archive.writestr('PACKAGE-CONFIGURATION.txt', (
+                'SalesMaster Print Service — generated per-PC configuration\n'
+                f"SalesMaster URL: {values['salesMasterUrl']}\n"
+                f"Printer name: {values['printerName']}\n"
+                f"Polling interval: {values['pollIntervalMs']} ms\n\n"
+                'Run INSTALL-SERVICE.bat as Administrator on the target Windows PC.\n'
+                'Node.js, Google Chrome, the printer driver, and SumatraPDF are required.\n'
+                'Only one active print-service poller should consume the shared print queue.\n'
+            ))
+        package_buffer.seek(0)
+        date_suffix = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
+        return send_file(
+            package_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=f'salesmaster-print-service-{date_suffix}.zip',
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        return jsonify({'error': f'Failed to create print-service package: {exc}'}), 500
+
 
 # Attendance routes
 @app.route('/api/attendance', methods=['GET'])

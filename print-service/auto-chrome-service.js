@@ -6,11 +6,36 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
+const DEFAULT_CONFIG = {
+  salesMasterUrl: 'https://tropifruituk.net',
+  printerName: 'EPSON LQ-350 ESC/P2',
+  pollIntervalMs: 10000,
+};
+
+function loadServiceConfig() {
+  const configPath = path.join(__dirname, 'config.json');
+  try {
+    if (!fs.existsSync(configPath)) return DEFAULT_CONFIG;
+    const fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    return {
+      ...DEFAULT_CONFIG,
+      ...fileConfig,
+      salesMasterUrl: String(fileConfig.salesMasterUrl || DEFAULT_CONFIG.salesMasterUrl).replace(/\/$/, ''),
+      printerName: String(fileConfig.printerName || DEFAULT_CONFIG.printerName),
+      pollIntervalMs: Number(fileConfig.pollIntervalMs || DEFAULT_CONFIG.pollIntervalMs),
+    };
+  } catch (error) {
+    console.warn('⚠️  Could not read config.json; using defaults:', error.message);
+    return DEFAULT_CONFIG;
+  }
+}
+
 class AutoChromePrintService {
   constructor() {
-    this.vpsUrl = 'https://tropifruituk.net';
-    this.pollInterval = 10000;
-    this.printerName = 'EPSON LQ-350 ESC/P2';
+    this.config = loadServiceConfig();
+    this.vpsUrl = this.config.salesMasterUrl;
+    this.pollInterval = this.config.pollIntervalMs;
+    this.printerName = this.config.printerName;
     this.customPaperSize = 'DOT MATRIX (18.6x20)';
     this.isProcessing = false;
     this.chromeUserDataDir = path.join(__dirname, 'chrome-profile');
@@ -24,6 +49,11 @@ class AutoChromePrintService {
     // manually pick printer + paper size. Chrome saves those choices into
     // chrome-profile automatically. Every normal run reuses those saved settings.
     this.configMode = process.env.CONFIG_MODE === '1';
+
+    if (!Number.isFinite(this.pollInterval) || this.pollInterval < 1000) {
+      console.warn('⚠️  Invalid pollIntervalMs; using 10000 ms.');
+      this.pollInterval = DEFAULT_CONFIG.pollIntervalMs;
+    }
 
     if (!fs.existsSync(this.tempDir)) {
       fs.mkdirSync(this.tempDir, { recursive: true });
@@ -660,7 +690,8 @@ ${pagesHTML}
       currentStatus: status,
       vpsUrl: this.vpsUrl,
       printerName: this.printerName,
-      customPaperSize: this.customPaperSize
+      customPaperSize: this.customPaperSize,
+      pollIntervalMs: this.pollInterval
     };
 
     try {

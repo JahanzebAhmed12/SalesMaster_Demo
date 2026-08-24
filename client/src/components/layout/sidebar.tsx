@@ -124,6 +124,7 @@ const menuSections: MenuSection[] = [
       { title: "Supplier Database", path: "/admin/supplier-database" },
       { title: "Expenses Database", path: "/admin/expenses-database" },
       { title: "Company Details", path: "/admin/company-details" },
+      { title: "Print Service Settings", path: "/admin/print-service-settings" },
       { title: "Admin Functions", path: "/admin/admin-functions" },
     ],
   },

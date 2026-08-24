@@ -92,6 +92,7 @@ import SupplierDatabaseEdit from "@/pages/admin/supplier-database-edit";
 import ExpensesDatabase from "@/pages/admin/expenses-database";
 import ExpensesDatabaseEdit from "@/pages/admin/expenses-database-edit";
 import CompanyDetails from "@/pages/admin/company-details";
+import PrintServiceSettings from "@/pages/admin/print-service-settings";
 import AdminFunctions from "./pages/admin/admin-functions";
 import UserAdd from "./pages/admin/user-database-add";
 import EmployeeDatabase from "@/pages/admin/employee-database";
@@ -557,6 +558,11 @@ function Router() {
       <Route path="/admin/company-details">
         <ProtectedRoute requiredSection="admin_setup" title="Company Details" breadcrumb="Company Details">
           <CompanyDetails />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/print-service-settings">
+        <ProtectedRoute requiredSection="admin_setup" title="Print Service Settings" breadcrumb="Print Service Settings">
+          <PrintServiceSettings />
         </ProtectedRoute>
       </Route>
       <Route path="/admin/admin-functions">

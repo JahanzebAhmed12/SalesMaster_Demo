@@ -247,6 +247,9 @@ class SystemSettingsSchema(BaseModel):
     lock_invoices: bool = Field(default=False)
     till_float: float = Field(default=0)
     invoice_footer: str = Field(default="NO COMPLAINTS OR RETURN")
+    print_service_url: str = Field(default="https://tropifruituk.net", min_length=1, max_length=500)
+    print_service_printer_name: str = Field(default="EPSON LQ-350 ESC/P2", min_length=1, max_length=255)
+    print_service_poll_interval_ms: int = Field(default=10000, ge=1000, le=3600000)
 
 class AttendanceSchema(BaseModel):
     employee_id: int
