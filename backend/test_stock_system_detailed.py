@@ -284,6 +284,8 @@ def update_sale(client, sale: Sale, old_items: list[tuple[RegularProduct, float,
         Customer.query.get(sale.customer_id), new_items, day,
         status=sale.status, hold_id=hold_id, invoice_number=sale.invoice_number,
     )
+    lock = api_call(client, "POST", f"/api/sales/{sale.id}/edit-lock", {}, token, 201)
+    payload["edit_lock_token"] = lock["lockToken"]
     api_call(client, "PUT", f"/api/sales/{sale.id}", payload, token, 200)
     if sale.status == "finalized":
         apply_sale_to_ledger(ledger, old_items, multiplier=-1)

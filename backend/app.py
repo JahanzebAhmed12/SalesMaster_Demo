@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from flask import make_response
 import re
 import html
-from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave
+from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave, SaleEditLock
 
 
 from schemas import (
@@ -1557,6 +1557,98 @@ def create_sale():
             else:
                 return jsonify({"error": f"Failed to create sale: {error_msg}"}), 500
 
+def _edit_lock_payload(lock, include_token=False):
+    payload = lock.to_dict()
+    payload['locked'] = True
+    if include_token:
+        payload['lockToken'] = lock.lock_token
+    return payload
+
+
+def _edit_lock_conflict(lock):
+    payload = _edit_lock_payload(lock)
+    payload.update({
+        'error': 'Invoice is currently being edited by another user.',
+        'code': 'INVOICE_EDIT_LOCKED',
+    })
+    return jsonify(payload), 409
+
+
+@app.route('/api/sales/<int:id>/edit-lock', methods=['POST'])
+@jwt_required()
+def acquire_sale_edit_lock(id):
+    """Acquire or reuse the exclusive edit lock for an existing sale."""
+    user_id = int(get_jwt_identity())
+    sale = Sale.query.get_or_404(id)
+    user = User.query.get(user_id)
+    settings = SystemSettings.query.first()
+    if settings and settings.lock_invoices and (not user or user.user_type != 'admin'):
+        return jsonify({
+            'error': 'Invoice editing is restricted. Open this invoice in read-only mode.',
+            'code': 'INVOICE_EDIT_READ_ONLY',
+        }), 403
+    if sale.payment_status in ('paid', 'overpaid') and (not user or user.user_type != 'admin'):
+        return jsonify({
+            'error': 'This paid invoice can only be edited by an administrator.',
+            'code': 'INVOICE_EDIT_READ_ONLY',
+        }), 403
+
+    existing_lock = SaleEditLock.query.options(
+        db.joinedload(SaleEditLock.user)
+    ).filter_by(sale_id=sale.id).first()
+
+    if existing_lock:
+        if existing_lock.user_id != user_id:
+            return _edit_lock_conflict(existing_lock)
+        return jsonify(_edit_lock_payload(existing_lock, include_token=True)), 200
+
+    lock = SaleEditLock(
+        sale_id=sale.id,
+        user_id=user_id,
+        lock_token=uuid.uuid4().hex,
+    )
+    db.session.add(lock)
+    try:
+        # The unique sale_id constraint makes acquisition safe when two users
+        # click Edit at the same time; one transaction wins the lock.
+        db.session.commit()
+    except Exception as error:
+        db.session.rollback()
+        existing_lock = SaleEditLock.query.options(
+            db.joinedload(SaleEditLock.user)
+        ).filter_by(sale_id=sale.id).first()
+        if existing_lock:
+            if existing_lock.user_id != user_id:
+                return _edit_lock_conflict(existing_lock)
+            return jsonify(_edit_lock_payload(existing_lock, include_token=True)), 200
+        print(f"[ERROR] Failed to acquire invoice edit lock: {error}")
+        return jsonify({'error': 'Unable to acquire invoice edit lock'}), 500
+
+    return jsonify(_edit_lock_payload(lock, include_token=True)), 201
+
+
+@app.route('/api/sales/<int:id>/edit-lock', methods=['DELETE'])
+@jwt_required()
+def release_sale_edit_lock(id):
+    """Release an edit lock only when the requesting user owns its token."""
+    user_id = int(get_jwt_identity())
+    data = request.get_json(silent=True) or {}
+    lock_token = data.get('lockToken') or data.get('editLockToken')
+    lock = SaleEditLock.query.filter_by(sale_id=id).first()
+
+    if not lock:
+        return jsonify({'locked': False}), 200
+    if lock.user_id != user_id or not lock_token or lock.lock_token != lock_token:
+        return jsonify({
+            'error': 'Only the user who owns this invoice lock can release it.',
+            'code': 'INVOICE_EDIT_LOCK_FORBIDDEN',
+        }), 403
+
+    db.session.delete(lock)
+    db.session.commit()
+    return jsonify({'locked': False}), 200
+
+
 @app.route('/api/sales/<string:invoice_number>', methods=['GET'])
 @jwt_required()
 def get_sale_by_invoice(invoice_number):
@@ -1577,15 +1669,31 @@ def get_sale_by_invoice(invoice_number):
 def update_sale(id):
     data = request.get_json()
     hold_id = data.get('hold_id') or data.get('holdId') if isinstance(data, dict) else None
+    edit_lock_token = data.get('edit_lock_token') or data.get('editLockToken') if isinstance(data, dict) else None
     print(f"[DEBUG] Received sale update request for ID {id}")
     print(f"[DEBUG] Request data: {data}")
     try:
         if isinstance(data, dict):
             data.pop('hold_id', None)
             data.pop('holdId', None)
+            data.pop('edit_lock_token', None)
+            data.pop('editLockToken', None)
         sale_data = SaleSchema(**data)
         sale = Sale.query.options(db.joinedload(Sale.user)).get_or_404(id)
-        user_id = get_jwt_identity()
+        user_id = int(get_jwt_identity())
+        edit_lock = SaleEditLock.query.options(db.joinedload(SaleEditLock.user)).filter_by(sale_id=sale.id).first()
+        if not edit_lock:
+            return jsonify({
+                'error': 'This invoice is not locked for editing. Reopen it in editable mode before saving.',
+                'code': 'INVOICE_EDIT_LOCK_REQUIRED',
+            }), 409
+        if edit_lock.user_id != user_id or not edit_lock_token or edit_lock.lock_token != edit_lock_token:
+            if edit_lock.user_id != user_id:
+                return _edit_lock_conflict(edit_lock)
+            return jsonify({
+                'error': 'The invoice edit lock token is invalid or no longer valid.',
+                'code': 'INVOICE_EDIT_LOCK_INVALID',
+            }), 409
         
         # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
@@ -1965,6 +2073,9 @@ def update_sale(id):
         if new_status == 'finalized':
             _release_sale_hold(hold_id, sale.id)
 
+        # A successful update completes the exclusive edit session. Keeping
+        # deletion in this transaction preserves the lock when an update fails.
+        db.session.delete(edit_lock)
         db.session.commit()
         # Mail invoice if requested
         if request.json.get('mailInvoice'):

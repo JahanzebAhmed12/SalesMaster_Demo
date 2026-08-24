@@ -97,6 +97,39 @@ class Sale(db.Model):
             'createdByUsername': self.user.username if self.user else None
         }
 
+class SaleEditLock(db.Model):
+    """Exclusive server-side lease for editing an existing invoice.
+
+    This is intentionally separate from SaleHold: a stock hold may be resumed,
+    while an edit lock belongs to exactly one user and is released only when
+    that edit is completed or explicitly abandoned.
+    """
+    __tablename__ = 'sale_edit_locks'
+    __table_args__ = (
+        db.UniqueConstraint('sale_id', name='uq_sale_edit_lock_sale_id'),
+        db.Index('ix_sale_edit_lock_user_id', 'user_id'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'), nullable=False, unique=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    lock_token = db.Column(db.String(128), nullable=False, unique=True)
+    acquired_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    sale = db.relationship('Sale', foreign_keys=[sale_id])
+    user = db.relationship('User', foreign_keys=[user_id])
+
+    def to_dict(self):
+        return {
+            'saleId': self.sale_id,
+            'userId': self.user_id,
+            'username': self.user.username if self.user else None,
+            'acquiredAt': self.acquired_at.isoformat() if self.acquired_at else None,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class SaleItem(db.Model):
     __table_args__ = (
         db.Index('ix_sale_item_sale_id', 'sale_id'),

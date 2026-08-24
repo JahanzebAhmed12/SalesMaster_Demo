@@ -87,6 +87,18 @@ export function useInvalidateMutation<TData, TVariables = void, TError = unknown
   });
 }
 
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
 export const apiRequest = async <T = any>(method: string, endpoint: string, data?: any, options?: { signal?: AbortSignal }): Promise<T> => {
   // For production with Nginx reverse proxy, use relative URLs
   // For development, use full URL to backend server
@@ -128,7 +140,11 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
   const responseData = await response.json();
 
   if (!response.ok) {
-    throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
+    throw new ApiRequestError(
+      responseData.message || responseData.error || `HTTP error! status: ${response.status}`,
+      response.status,
+      responseData,
+    );
   }
 
   return responseData;

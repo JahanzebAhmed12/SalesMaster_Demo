@@ -140,6 +140,12 @@ edited_sale_payload.update({
     "subtotal": 10,
     "total_amount": 10,
 })
+edit_lock_response = client.post(
+    f"/api/sales/{sale['id']}/edit-lock",
+    headers=auth_headers(user1_id),
+)
+assert edit_lock_response.status_code == 201, edit_lock_response.get_json()
+edited_sale_payload["edit_lock_token"] = edit_lock_response.get_json()["lockToken"]
 response = client.put(f"/api/sales/{sale['id']}", json=edited_sale_payload, headers=auth_headers(user1_id))
 assert response.status_code == 200, response.get_json()
 response = client.get("/api/stock/reservations", headers=auth_headers(user2_id))

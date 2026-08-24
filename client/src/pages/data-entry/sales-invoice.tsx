@@ -44,6 +44,11 @@ import {
 } from "@/lib/held-invoices";
 import type { HeldInvoice } from "@/lib/held-invoices";
 import { calculateAvailableStock } from "@/lib/stock-availability";
+import {
+  acquireInvoiceEditLock,
+  InvoiceEditLockConflictError,
+  releaseInvoiceEditLock,
+} from "@/lib/invoice-edit-lock";
 
 interface BackendSalePayload {
   invoice_number: string;
@@ -62,6 +67,7 @@ interface BackendSalePayload {
   notes: string | null;
   status: string;
   hold_id?: string | null;
+  edit_lock_token?: string | null;
   date?: string | null; // Business date
   items: Array<{
     product_id: number | null;
@@ -103,14 +109,30 @@ const SalesInvoice = () => {
   );
   const [isPaymentDrawerOpen, setIsPaymentDrawerOpen] = useState(false);
   const [locationStr, setLocation] = useLocation();
+  const editLockTokenRef = useRef<string | null>(null);
+  const editLockSaleIdRef = useRef<number | null>(null);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const { toast } = useToast();
+  const releaseActiveEditLock = async () => {
+    const saleId = editLockSaleIdRef.current;
+    const lockToken = editLockTokenRef.current;
+    if (saleId === null || !lockToken) return;
+
+    try {
+      await releaseInvoiceEditLock(saleId, lockToken);
+    } catch (error) {
+      console.warn('[InvoiceLock] Failed to release edit lock:', error);
+    } finally {
+      editLockSaleIdRef.current = null;
+      editLockTokenRef.current = null;
+    }
+  };
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const { currentDate: businessDate } = useBusinessDate();
   // Format business date as yyyy-MM-dd for the API — currentDate is a raw ISO string
   const businessDateForApi = businessDate ? businessDate.split('T')[0] : null;
-  const { canEditInvoice, isInvoiceLocked, canEditPaymentMode } = useInvoicePermissions();
+  const { canEditInvoice, isInvoiceLocked, canEditPaymentMode, lockInvoicesEnabled } = useInvoicePermissions();
   const { invalidateAllSalesQueries, invalidateCustomerQueries } = useSalesInvalidation();
   const { broadcastInvoiceCreated, broadcastInvoiceUpdated, notifyInventoryMutation } = useCrossTabSync();
   // const navigate = useNavigate(); // Removed useNavigate
@@ -288,6 +310,7 @@ const SalesInvoice = () => {
         notes: currentSale.notes,
         status: currentSale.status,
         date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
+        edit_lock_token: editLockTokenRef.current,
         items: saleItems.map(item => ({
           product_id: item.productId,
           non_product_id: item.nonProductId,
@@ -366,7 +389,29 @@ const SalesInvoice = () => {
     if (invoiceNumber) {
       console.log('🔍 Loading existing invoice:', invoiceNumber);
       apiRequest("GET", `/api/sales/${invoiceNumber}`)
-        .then((data) => {
+        .then(async (data) => {
+          const readonlyParam = params.get('readonly') === 'true';
+          const canRequestEdit = !readonlyParam && !(lockInvoicesEnabled && !canEditInvoice);
+          if (canRequestEdit && data.id && editLockSaleIdRef.current !== data.id) {
+            try {
+              const lock = await acquireInvoiceEditLock(data.id);
+              editLockSaleIdRef.current = data.id;
+              editLockTokenRef.current = lock.lockToken;
+            } catch (error) {
+              setIsReadOnly(true);
+              if (error instanceof InvoiceEditLockConflictError) {
+                const owner = error.conflict.username ? ` Currently being edited by ${error.conflict.username}.` : '';
+                toast({
+                  title: 'Invoice is already being edited',
+                  description: `${error.message}${owner} You can view it in read-only mode.`,
+                  variant: 'destructive',
+                });
+              } else {
+                throw error;
+              }
+            }
+          }
+
           console.log('✅ Invoice loaded successfully:', {
             invoiceNumber: data.invoiceNumber,
             id: data.id,
@@ -432,7 +477,7 @@ const SalesInvoice = () => {
     } else {
       console.log('🆕 Creating new invoice (no invoiceNumber in URL)');
     }
-  }, []);
+  }, [canEditInvoice, lockInvoicesEnabled, toast]);
 
   // Fetch server time for accurate createdAt timestamps
   useEffect(() => {
@@ -860,6 +905,10 @@ const SalesInvoice = () => {
       setSaleItems(data.items || []);
       // Force refresh stock data to show correct levels
       queryClient.refetchQueries({ queryKey: ["currentStock"] });
+      // The backend releases the edit lock in the same successful transaction.
+      editLockSaleIdRef.current = null;
+      editLockTokenRef.current = null;
+
       // Re-check payment lock after update
       const isPaidAfterUpdate = data.paymentStatus === 'paid' || data.paymentStatus === 'overpaid';
       if (isPaidAfterUpdate && currentUser?.userType !== 'admin') {
@@ -1127,6 +1176,7 @@ const SalesInvoice = () => {
         status: "finalized",
         hold_id: activeHoldIdRef.current,
         date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
+        edit_lock_token: editLockTokenRef.current,
         items: saleItems.map(item => ({
           product_id: item.productId,
           non_product_id: item.nonProductId,
@@ -1387,6 +1437,7 @@ const SalesInvoice = () => {
           return;
         }
       }
+      await releaseActiveEditLock();
       setCurrentSale(null);
       setSaleItems([]);
       setCustomerId("");

@@ -447,6 +447,13 @@ def edit_sale(sale, items_data, inv_date, status='finalized'):
         'items': payload_items
     }
     client = app.test_client()
+    lock_resp = client.post(
+        f'/api/sales/{sale.id}/edit-lock',
+        headers={'Authorization': f'Bearer {token}'}
+    )
+    if lock_resp.status_code != 201:
+        raise RuntimeError(f"acquire_sale_edit_lock failed ({lock_resp.status_code}): {lock_resp.get_json()}")
+    payload['edit_lock_token'] = lock_resp.get_json()['lockToken']
     resp = client.put(
         f'/api/sales/{sale.id}',
         json=payload,
