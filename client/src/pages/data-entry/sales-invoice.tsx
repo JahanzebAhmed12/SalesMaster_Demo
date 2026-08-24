@@ -18,7 +18,7 @@ import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { useSalesInvalidation } from "@/hooks/useSalesInvalidation";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import type { Sale, RegularProduct, NonProduct, Customer, SaleItem } from "@shared/schema";
-import { Pencil } from "lucide-react";
+import { Lock, Pencil, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -49,6 +49,7 @@ import {
   InvoiceEditLockConflictError,
   releaseInvoiceEditLock,
 } from "@/lib/invoice-edit-lock";
+import { getInvoiceEditLockIndicator, type InvoiceEditLockOwner } from "@/lib/invoice-edit-lock-indicator";
 
 interface BackendSalePayload {
   invoice_number: string;
@@ -97,6 +98,7 @@ interface StockItem {
 interface SaleWithUser extends Sale {
   createdBy?: number;
   createdByUsername?: string;
+  editLock?: InvoiceEditLockOwner;
 }
 
 const SalesInvoice = () => {
@@ -111,6 +113,8 @@ const SalesInvoice = () => {
   const [locationStr, setLocation] = useLocation();
   const editLockTokenRef = useRef<string | null>(null);
   const editLockSaleIdRef = useRef<number | null>(null);
+  const [editLockOwner, setEditLockOwner] = useState<SaleWithUser['editLock']>();
+  const [ownsEditLock, setOwnsEditLock] = useState(false);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const { toast } = useToast();
   const releaseActiveEditLock = async () => {
@@ -125,6 +129,8 @@ const SalesInvoice = () => {
     } finally {
       editLockSaleIdRef.current = null;
       editLockTokenRef.current = null;
+      setEditLockOwner(undefined);
+      setOwnsEditLock(false);
     }
   };
   const queryClient = useQueryClient();
@@ -397,9 +403,18 @@ const SalesInvoice = () => {
               const lock = await acquireInvoiceEditLock(data.id);
               editLockSaleIdRef.current = data.id;
               editLockTokenRef.current = lock.lockToken;
+              setEditLockOwner(lock);
+              setOwnsEditLock(true);
             } catch (error) {
               setIsReadOnly(true);
               if (error instanceof InvoiceEditLockConflictError) {
+                setEditLockOwner({
+                  locked: true,
+                  userId: error.conflict.userId,
+                  username: error.conflict.username,
+                  acquiredAt: error.conflict.acquiredAt,
+                  updatedAt: error.conflict.updatedAt,
+                });
                 const owner = error.conflict.username ? ` Currently being edited by ${error.conflict.username}.` : '';
                 toast({
                   title: 'Invoice is already being edited',
@@ -419,6 +434,9 @@ const SalesInvoice = () => {
             status: data.status
           });
           setCurrentSale(data);
+          if (data.editLock) {
+            setEditLockOwner(data.editLock);
+          }
           setSaleItems(data.items || []);
           setCustomerId(data.customerId?.toString() || "");
 
@@ -908,6 +926,8 @@ const SalesInvoice = () => {
       // The backend releases the edit lock in the same successful transaction.
       editLockSaleIdRef.current = null;
       editLockTokenRef.current = null;
+      setEditLockOwner(undefined);
+      setOwnsEditLock(false);
 
       // Re-check payment lock after update
       const isPaidAfterUpdate = data.paymentStatus === 'paid' || data.paymentStatus === 'overpaid';
@@ -2215,6 +2235,13 @@ const SalesInvoice = () => {
   }, [currentSale]);
 
 
+  const lockIndicator = getInvoiceEditLockIndicator({
+    isReadOnly,
+    ownsLock: ownsEditLock,
+    lockOwner: editLockOwner,
+    canEditInvoice,
+  });
+
   if (isCreatingSale) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -2229,7 +2256,17 @@ const SalesInvoice = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {isReadOnly && (
+      {currentSale && lockIndicator?.kind === "active" && (
+        <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+          <div className="flex items-center">
+            <ShieldCheck className="h-5 w-5 text-green-600 flex-shrink-0" aria-hidden="true" />
+            <div className="ml-3 text-sm text-green-800">
+              <strong>{lockIndicator.title}</strong> {lockIndicator.description}
+            </div>
+          </div>
+        </div>
+      )}
+      {lockIndicator?.kind === "readonly" && (
         <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -2239,9 +2276,14 @@ const SalesInvoice = () => {
             </div>
             <div className="ml-3">
               <p className="text-sm text-yellow-700">
-                <strong>Read-Only Mode:</strong> This invoice is locked and cannot be edited.
-                {!canEditInvoice && " Only admin users can edit locked invoices."}
+                <strong>{lockIndicator.title}</strong> {lockIndicator.description}
               </p>
+              {lockIndicator.protectionNote && (
+                <p className="mt-1 flex items-center gap-1 text-xs text-yellow-800">
+                  <Lock className="h-3 w-3" aria-hidden="true" />
+                  {lockIndicator.protectionNote}
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -1657,7 +1657,14 @@ def get_sale_by_invoice(invoice_number):
         if not sale:
             return jsonify({"message": "Sale not found"}), 404
         
-        return jsonify(sale.to_dict()), 200
+        response_data = sale.to_dict()
+        edit_lock = SaleEditLock.query.options(
+            db.joinedload(SaleEditLock.user)
+        ).filter_by(sale_id=sale.id).first()
+        if edit_lock:
+            response_data['editLock'] = _edit_lock_payload(edit_lock)
+
+        return jsonify(response_data), 200
     except Exception as e:
         print(f"[ERROR] Exception in get_sale_by_invoice: {str(e)}")
         import traceback

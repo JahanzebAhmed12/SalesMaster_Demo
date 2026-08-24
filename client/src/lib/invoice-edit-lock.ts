@@ -2,6 +2,7 @@ import { ApiRequestError, apiRequest } from "@/lib/queryClient";
 import { getApiUrl } from "@/lib/config";
 
 export interface InvoiceEditLock {
+  locked: true;
   saleId: number;
   userId: number;
   username: string | null;
@@ -13,10 +14,10 @@ export interface InvoiceEditLock {
 export interface InvoiceEditLockConflict {
   error: string;
   code: "INVOICE_EDIT_LOCKED";
-  userId?: number;
-  username?: string | null;
-  acquiredAt?: string | null;
-  updatedAt?: string | null;
+  userId: number;
+  username: string | null;
+  acquiredAt: string | null;
+  updatedAt: string | null;
 }
 
 export class InvoiceEditLockConflictError extends Error {
