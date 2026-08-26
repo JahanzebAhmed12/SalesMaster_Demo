@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { formatQuantity } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 interface InvoiceData {
   company: any;
@@ -572,12 +573,14 @@ export default function BulkDotMatrixPrintPage() {
         <p className="text-sm text-gray-600 mb-4">
           {invoices.length} invoice(s) loaded. Auto-printing...
         </p>
-        <button
+        <Button
+          size="sm"
+          variant="outline"
           onClick={() => window.print()}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          className="flex items-center gap-1"
         >
           Print Now
-        </button>
+        </Button>
       </div>
 
       {invoices.map((data, idx) => (

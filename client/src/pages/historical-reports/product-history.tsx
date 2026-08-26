@@ -599,18 +599,20 @@ export default function ProductHistory() {
                       size="sm"
                       onClick={handlePDF}
                       disabled={isExporting}
-                      className="bg-red-600 hover:bg-red-700 h-8 px-3"
+                      variant="outline"
+                      className="flex items-center gap-1"
                     >
-                      <FileText className="mr-1 h-3 w-3" />
+                      <FileText className="h-3 w-3" />
                       PDF
                     </Button>
                     <Button
                       size="sm"
                       onClick={handleExcel}
                       disabled={isExporting}
-                      className="bg-green-600 hover:bg-green-700 h-8 px-3"
+                      variant="outline"
+                      className="flex items-center gap-1"
                     >
-                      <Download className="mr-1 h-3 w-3" />
+                      <Download className="h-3 w-3" />
                       Excel
                     </Button>
                     <Button

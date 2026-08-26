@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Employee } from "@shared/schema";
 import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
 
 export default function EmployeeJoiningForm() {
@@ -321,12 +322,14 @@ export default function EmployeeJoiningForm() {
 
       {/* Print Button - Hidden when printing */}
       <div className="no-print fixed bottom-4 right-4">
-        <button
+        <Button
+          size="sm"
+          variant="outline"
           onClick={() => window.print()}
-          className="bg-blue-600 text-white px-4 py-2 rounded shadow-lg hover:bg-blue-700"
+          className="flex items-center gap-1"
         >
           Print Form
-        </button>
+        </Button>
       </div>
     </div>
   );

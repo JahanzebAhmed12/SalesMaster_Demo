@@ -314,10 +314,10 @@ export default function ClosingStock() {
             <div className="flex flex-col md:flex-row md:items-center gap-4">
               {/* Action Buttons */}
               <div className="flex gap-2">
-                <Button onClick={handlePDF} className="bg-blue-600 text-white flex items-center gap-2"><i className="fa fa-file-pdf-o" /> PDF</Button>
-                <Button onClick={handleExcel} className="bg-gray-200 text-black flex items-center gap-2"><i className="fa fa-download" /> Excel</Button>
-                <Button onClick={handleCopy} className="bg-gray-200 text-black flex items-center gap-2"><i className="fa fa-copy" /> Copy</Button>
-                <Button onClick={handlePrint} className="bg-gray-200 text-black flex items-center gap-2"><i className="fa fa-print" /> Print</Button>
+                <Button size="sm" variant="outline" onClick={handlePDF} className="flex items-center gap-1"><i className="fa fa-file-pdf-o" /> PDF</Button>
+                <Button size="sm" variant="outline" onClick={handleExcel} className="flex items-center gap-1"><i className="fa fa-download" /> Excel</Button>
+                <Button size="sm" variant="outline" onClick={handleCopy} className="flex items-center gap-1"><i className="fa fa-copy" /> Copy</Button>
+                <Button size="sm" variant="outline" onClick={handlePrint} className="flex items-center gap-1"><i className="fa fa-print" /> Print</Button>
               </div>
               {/* Email Field and Button */}
               <div className="flex gap-2 items-center">

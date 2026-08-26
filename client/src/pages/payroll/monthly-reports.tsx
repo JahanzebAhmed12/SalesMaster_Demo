@@ -927,20 +927,20 @@ export default function MonthlyReports() {
                 </PopoverContent>
               </Popover>
 
-              <Button onClick={handleFetchData} className="bg-blue-600 hover:bg-blue-700" disabled={isLoadingAttendance}>
-                <RefreshCw className="w-4 h-4 mr-2" />
+              <Button size="sm" variant="outline" onClick={handleFetchData} className="flex items-center gap-1" disabled={isLoadingAttendance}>
+                <RefreshCw className="w-4 h-4" />
                 {isLoadingAttendance ? "Loading..." : "Refresh"}
               </Button>
-              <Button onClick={handlePrint} className="no-print">
-                <Printer className="w-4 h-4 mr-2" />
+              <Button size="sm" variant="outline" onClick={handlePrint} className="no-print flex items-center gap-1">
+                <Printer className="w-4 h-4" />
                 Print
               </Button>
-              <Button onClick={handlePDFExport} variant="outline" className="no-print bg-red-600 text-white hover:bg-red-700">
-                <FileText className="w-4 h-4 mr-2" />
+              <Button size="sm" onClick={handlePDFExport} variant="outline" className="no-print flex items-center gap-1">
+                <FileText className="w-4 h-4" />
                 PDF
               </Button>
-              <Button onClick={handleExcelExport} variant="outline" className="no-print bg-green-600 text-white hover:bg-green-700">
-                <Download className="w-4 h-4 mr-2" />
+              <Button size="sm" onClick={handleExcelExport} variant="outline" className="no-print flex items-center gap-1">
+                <Download className="w-4 h-4" />
                 Excel
               </Button>
             </div>
@@ -1100,12 +1100,12 @@ export default function MonthlyReports() {
             <Button variant="outline" size="icon" onClick={handlePrint} title="Print"><Printer className="w-4 h-4" /></Button>
             <Button variant="outline" size="icon" onClick={handlePDFExport} title="Export PDF"><FileText className="w-4 h-4" /></Button>
             <Button variant="outline" size="icon" onClick={handleExcelExport} title="Export Excel"><Download className="w-4 h-4" /></Button>
-            <Button variant="outline" size="sm" onClick={handleDetailedPDFExport} className="bg-purple-600 text-white hover:bg-purple-700">
-              <FileText className="w-4 h-4 mr-1" />
+            <Button variant="outline" size="sm" onClick={handleDetailedPDFExport} className="flex items-center gap-1">
+              <FileText className="w-4 h-4" />
               PDF
             </Button>
-            <Button variant="outline" size="sm" onClick={handleDetailedExcelExport} className="bg-orange-600 text-white hover:bg-orange-700">
-              <Download className="w-4 h-4 mr-1" />
+            <Button variant="outline" size="sm" onClick={handleDetailedExcelExport} className="flex items-center gap-1">
+              <Download className="w-4 h-4" />
               Excel
             </Button>
           </div>

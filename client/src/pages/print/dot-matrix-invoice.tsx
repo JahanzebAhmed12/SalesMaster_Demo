@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { formatQuantity } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 interface InvoiceData {
   company: any;
@@ -767,24 +768,30 @@ export default function DotMatrixInvoicePrintPage() {
         <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
         <p className="text-sm text-gray-600 mb-4">Invoice: {sale?.invoice_number}</p>
         <div className="flex gap-2 flex-wrap">
-          <button
+          <Button
+            size="sm"
+            variant="outline"
             onClick={handlePrint}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex items-center gap-1"
           >
             🖥️ Direct Print
-          </button>
-          <button
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={handleMobilePrint}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500"
+            className="flex items-center gap-1"
           >
             📱 Send to Office Printer
-          </button>
-          <button
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={handleServerPDF}
-            className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="flex items-center gap-1"
           >
             ⬇️ Download PDF
-          </button>
+            </Button>
         </div>
       </div>
 

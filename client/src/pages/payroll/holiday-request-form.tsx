@@ -201,11 +201,12 @@ const HolidayRequestForm = () => {
             </Link>
             {requestId && (
               <Button
+                size="sm"
                 variant="outline"
                 onClick={() => window.open(`/print/holiday-request/${requestId}`, '_blank')}
-                className="bg-green-600 text-white hover:bg-green-700"
+                className="flex items-center gap-1"
               >
-                <Printer className="h-4 w-4 mr-2" />
+                <Printer className="h-4 w-4" />
                 Print Form
               </Button>
             )}

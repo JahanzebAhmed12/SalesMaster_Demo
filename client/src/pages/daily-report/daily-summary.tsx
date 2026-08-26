@@ -1098,8 +1098,8 @@ export default function DailySummary() {
                     Print PDF
                   </Button> */}
                     <PrintButton />
-                    <Button onClick={handleGenerateCleanPDF} className="bg-blue-600 hover:bg-blue-700">
-                      <Download className="w-4 h-4 mr-2" />
+                    <Button size="sm" variant="outline" onClick={handleGenerateCleanPDF} className="flex items-center gap-1">
+                      <Download className="w-4 h-4" />
                       Download PDF
                     </Button>
                     {/* <PrintButton /> */}

@@ -353,40 +353,40 @@ export default function CompanyDetails() {
               variant="outline"
               size="sm"
               onClick={() => handleExport('excel')}
-              className="text-green-600 hover:text-green-700"
+              className="flex items-center gap-1"
               disabled={isExporting}
             >
-              <Download className="h-4 w-4 mr-1" />
+              <Download className="h-4 w-4" />
               {isExporting ? 'Exporting...' : 'Excel'}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => handleExport('pdf')}
-              className="text-red-600 hover:text-red-700"
+              className="flex items-center gap-1"
               disabled={isExporting}
             >
-              <FileText className="h-4 w-4 mr-1" />
+              <FileText className="h-4 w-4" />
               {isExporting ? 'Generating...' : 'PDF'}
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => handleExport('copy')}
-              className="text-blue-600 hover:text-blue-700"
+              className="flex items-center gap-1"
               disabled={isExporting}
             >
-              <Copy className="h-4 w-4 mr-1" />
+              <Copy className="h-4 w-4" />
               Copy
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => handleExport('print')}
-              className="text-purple-600 hover:text-purple-700"
+              className="flex items-center gap-1"
               disabled={isExporting}
             >
-              <Printer className="h-4 w-4 mr-1" />
+              <Printer className="h-4 w-4" />
               Print
             </Button>
           </div>

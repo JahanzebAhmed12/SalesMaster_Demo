@@ -847,9 +847,9 @@ export default function CustomerHistory() {
                     <TableCell></TableCell>
                     <TableCell className="flex justify-center gap-1">
                       <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        className="h-6 w-6 p-0 bg-cyan-500 text-white"
+                        size="icon"
+                        variant="outline"
+                        className="h-6 w-6 p-0"
                         onClick={handlePrintSelected}
                         title="Print Selected Invoices"
                       >

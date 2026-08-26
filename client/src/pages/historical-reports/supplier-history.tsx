@@ -867,7 +867,7 @@ export default function SupplierHistory() {
                           <TableCell className="text-center">£ {row.runningBalance.toFixed(2)}</TableCell>
                           <TableCell className="text-center">
                             <div className="flex items-center gap-2">
-                              <Button size="sm" variant="outline" className="h-6 w-6 p-0 bg-cyan-500 text-white" onClick={() => handlePrintInvoice(row.invoiceNo)} title="Print Invoice">
+                              <Button size="icon" variant="outline" className="h-6 w-6 p-0" onClick={() => handlePrintInvoice(row.invoiceNo)} title="Print Invoice">
                                 <Printer size={14} />
                               </Button>
                               <Button size="sm" variant="outline" className="h-6 w-6 p-0 bg-cyan-500 text-white" onClick={() => handleSendInvoice(row.invoiceNo)} title="Send Invoice">

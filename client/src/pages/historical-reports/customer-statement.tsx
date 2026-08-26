@@ -756,7 +756,9 @@ export default function CustomerStatement() {
                     <span className="hidden sm:inline">Email</span>
                   </Button>
                   <Button 
-                    className="bg-red-600 hover:bg-red-700 flex items-center gap-2 flex-1 sm:flex-none"
+                    size="sm"
+                    variant="outline"
+                    className="flex items-center gap-1 flex-1 sm:flex-none"
                     disabled={!selectedCustomer || processedStatementData.length === 0}
                     onClick={handlePDF}
                   >
@@ -764,7 +766,9 @@ export default function CustomerStatement() {
                     <span className="hidden sm:inline">PDF</span>
                   </Button>
                   <Button 
-                    className="bg-gray-600 hover:bg-gray-700 flex items-center gap-2 flex-1 sm:flex-none"
+                    size="sm"
+                    variant="outline"
+                    className="flex items-center gap-1 flex-1 sm:flex-none"
                     disabled={!selectedCustomer || processedStatementData.length === 0}
                     onClick={handlePrint}
                   >

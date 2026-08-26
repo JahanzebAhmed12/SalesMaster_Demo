@@ -608,7 +608,9 @@ export default function AllCustomerHistory() {
                     Search
                   </Button>
                   <Button 
-                    className="bg-gray-500 hover:bg-gray-600 flex items-center gap-2 flex-1 sm:flex-none" 
+                    size="sm"
+                    variant="outline"
+                    className="flex items-center gap-1 flex-1 sm:flex-none"
                     onClick={handlePrint}
                     disabled={loading || customerData.length === 0}
                   >
