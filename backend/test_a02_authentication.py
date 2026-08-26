@@ -97,6 +97,7 @@ for method, path in [
     ("get", "/api/health"),
     ("get", "/api/server-time"),
     ("get", "/api/email-config"),
+    ("get", "/api/company-details"),
     ("get", "/api/print-queue/pending"),
     ("get", "/api/sales/does-not-exist/invoice"),
 ]:

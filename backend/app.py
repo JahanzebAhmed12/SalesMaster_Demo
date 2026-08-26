@@ -298,6 +298,9 @@ _PUBLIC_API_EXACT = {
     # intentionally left unchanged in this scoped A-02 implementation.
     ("/api/email-config", "GET"),
     ("/api/email-config", "PUT"),
+    # Print receipt pages use company branding without requiring a second
+    # authenticated API call for public company details.
+    ("/api/company-details", "GET"),
 }
 
 _PUBLIC_API_PATTERNS = (
