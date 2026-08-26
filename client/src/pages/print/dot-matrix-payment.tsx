@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
+import { getNonAccountInvoiceNumbers } from '@/lib/payment-receipt';
 
 interface PaymentData {
   batchId: number;
@@ -260,12 +261,7 @@ export default function DotMatrixPaymentPrintPage() {
   const { totalAmount, customer } = data;
 
   // Collect unique invoice numbers from non-on-account payments only
-  const paidInvoiceNumbers = Array.from(new Set(
-    (data.payments || [])
-      .filter(p => p.paymentType !== 'on-account')
-      .map(p => p.invoiceNumber)
-      .filter((invoiceNumber): invoiceNumber is string => Boolean(invoiceNumber))
-  ));
+  const paidInvoiceNumbers = getNonAccountInvoiceNumbers(data.payments || []);
   const invoiceNumbersText = paidInvoiceNumbers.length > 0
     ? `Invoice ${paidInvoiceNumbers.join(', ')}`
     : '';

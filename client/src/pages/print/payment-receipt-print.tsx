@@ -3,6 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import logo from "@/public/printlogo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { getApiUrl } from "@/lib/config";
+import { getInvoiceNumbersByPaymentMethod, formatPaymentMethodLabel } from "@/lib/payment-receipt";
 
 // Public API request function (no authentication required)
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
@@ -96,17 +97,11 @@ const PaymentReceiptPrint = () => {
     return acc;
   }, {} as Record<string, number>);
 
-  const methodLabels: Record<string, string> = {
-    cash: 'Cash',
-    card: 'Card',
-    bank_transfer: 'Bank Transfer',
-    cheque: 'Cheque'
-  };
-
+  const invoiceNumbersByMethod = getInvoiceNumbersByPaymentMethod(payments || []);
   const methodRows = (Object.entries(paymentMethodTotals) as [string, number][])
     .filter(([, amount]) => amount > 0)
     .map(([method, amount]) => ({
-      label: methodLabels[method] || method,
+      label: formatPaymentMethodLabel(method, invoiceNumbersByMethod[method] || []),
       amount
     }));
 
