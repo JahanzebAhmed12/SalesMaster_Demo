@@ -1,6 +1,10 @@
 from flask_cors import CORS
 from datetime import datetime, timedelta, time
+import json
+import logging
 import os
+import traceback
+from logging.handlers import TimedRotatingFileHandler
 from dotenv import load_dotenv
 from flask import make_response
 import re
@@ -13,7 +17,7 @@ from schemas import (
     SystemSettingsSchema, AttendanceSchema, CompanySchema, ExpenseSchema, PaymentSchema, SupplierPaymentSchema, StockMovementSchema, StockAdjustmentSchema, ExpenseEntrySchema, DumpEntrySchema, CustomerReturnSchema, SupplierReturnSchema, UserRestrictionSchema, EmployeeSchema, HolidayRequestSchema, EquipmentSchema
 )
 from models import Company, Supplier, PurchaseInvoice, PurchaseInvoiceItem, Purchase
-from flask import Flask, request, jsonify, session, current_app, send_file
+from flask import Flask, request, jsonify, session, current_app, send_file, has_request_context
 import os
 import uuid
 from werkzeug.utils import secure_filename
@@ -38,11 +42,67 @@ from export_routes import add_export_routes
 from datetime import datetime, timedelta
 from sqlalchemy import func, and_, or_, update, inspect
 from flask import make_response
-import json
 # Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
+
+# Stock-audit logs are deliberately separate from Flask's console logger so the
+# server can retain a searchable history of stock mutations and reconciliation
+# calculations without mixing it with request noise.
+STOCK_AUDIT_LOG_DIR = os.getenv(
+    "STOCK_AUDIT_LOG_DIR",
+    os.path.join(os.path.dirname(__file__), "logs"),
+)
+STOCK_AUDIT_LOG_PATH = os.path.join(STOCK_AUDIT_LOG_DIR, "stock-audit.log")
+try:
+    STOCK_AUDIT_LOG_RETENTION_DAYS = max(1, int(os.getenv("STOCK_AUDIT_LOG_RETENTION_DAYS", "30")))
+except ValueError:
+    STOCK_AUDIT_LOG_RETENTION_DAYS = 30
+
+STOCK_AUDIT_LOG_LEVEL_NAME = os.getenv("STOCK_AUDIT_LOG_LEVEL", "INFO").upper()
+STOCK_AUDIT_LOG_LEVEL = getattr(logging, STOCK_AUDIT_LOG_LEVEL_NAME, logging.INFO)
+
+os.makedirs(STOCK_AUDIT_LOG_DIR, exist_ok=True)
+stock_audit_logger = logging.getLogger("salesmaster.stock_audit")
+stock_audit_logger.setLevel(STOCK_AUDIT_LOG_LEVEL)
+stock_audit_logger.propagate = False
+stock_audit_handler = next(
+    (
+        handler for handler in stock_audit_logger.handlers
+        if isinstance(handler, TimedRotatingFileHandler)
+        and getattr(handler, "baseFilename", None) == os.path.abspath(STOCK_AUDIT_LOG_PATH)
+    ),
+    None,
+)
+if stock_audit_handler is None:
+    stock_audit_handler = TimedRotatingFileHandler(
+        STOCK_AUDIT_LOG_PATH,
+        when="midnight",
+        interval=1,
+        backupCount=STOCK_AUDIT_LOG_RETENTION_DAYS,
+        encoding="utf-8",
+        utc=True,
+    )
+    stock_audit_handler.setFormatter(logging.Formatter("%(message)s"))
+    stock_audit_logger.addHandler(stock_audit_handler)
+
+
+def stock_audit_log(event, level=logging.INFO, **fields):
+    """Write one structured stock-observability event without secrets."""
+    payload = {
+        "timestamp": datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
+        "event": event,
+        **fields,
+    }
+    if has_request_context():
+        payload.update({
+            "request_method": request.method,
+            "request_path": request.path,
+            "request_id": request.headers.get("X-Request-ID"),
+        })
+    stock_audit_logger.log(level, json.dumps(payload, sort_keys=True, default=str))
+
 
 # Configure session
 app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-here')  # Change this in production
@@ -701,7 +761,31 @@ def cleanup_sale_stock_movements(sale_id):
                 if product:
                     # Reverse the effect of duplicate movements
                     current_stock = safe_float(product.current_stock)
-                    product.current_stock = current_stock - duplicate_quantity
+                    new_stock = current_stock - duplicate_quantity
+                    operation_id = uuid.uuid4().hex
+                    stock_audit_log(
+                        "current_stock_cleanup_adjustment_started",
+                        operation_id=operation_id,
+                        product_id=product_id,
+                        product_type=product_type,
+                        movement_type=movement_type,
+                        previous_stock=current_stock,
+                        quantity_change=-duplicate_quantity,
+                        reason="remove_duplicate_stock_movements",
+                    )
+                    product.current_stock = new_stock
+                    stock_audit_log(
+                        "current_stock_cleanup_adjustment_applied",
+                        operation_id=operation_id,
+                        product_id=product_id,
+                        product_type=product_type,
+                        movement_type=movement_type,
+                        previous_stock=current_stock,
+                        new_stock=new_stock,
+                        quantity_change=-duplicate_quantity,
+                        reason="remove_duplicate_stock_movements",
+                        transaction_state="pending_commit",
+                    )
                     print(f"[DEBUG] Adjusted stock for product {product_id} by {-duplicate_quantity} (removing duplicate {movement_type} movements)")
                 
                 # Delete duplicate movements
@@ -715,6 +799,19 @@ def cleanup_sale_stock_movements(sale_id):
 
 def update_product_stock(product_id, product_type, quantity_change, movement_type, reference_id=None, reference_type=None, remarks=None, user_id=None, movement_date=None):
     """Update product stock and create movement record within existing transaction"""
+    operation_id = uuid.uuid4().hex
+    stock_audit_log(
+        "stock_mutation_started",
+        operation_id=operation_id,
+        product_id=product_id,
+        product_type=product_type,
+        quantity_change=safe_float(quantity_change),
+        movement_type=movement_type,
+        reference_id=reference_id,
+        reference_type=reference_type,
+        user_id=user_id,
+        movement_date=str(movement_date) if movement_date else None,
+    )
     print(f"[DEBUG] update_product_stock called: product_id={product_id}, product_type={product_type}, quantity_change={quantity_change}, movement_type={movement_type}")
     max_retries = 3
     retry_delay = 0.05  # 50ms
@@ -767,6 +864,22 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             # increment. Derive the matching pre-update snapshot for the movement.
             new_stock = safe_float(updated_row[0])
             previous_stock = new_stock - quantity_change_float
+            stock_audit_log(
+                "stock_mutation_applied",
+                operation_id=operation_id,
+                attempt=attempt + 1,
+                transaction_state="pending_commit",
+                product_id=product_id,
+                product_type=product_type,
+                movement_type=movement_type,
+                quantity_change=quantity_change_float,
+                previous_stock=previous_stock,
+                new_stock=new_stock,
+                reference_id=reference_id,
+                reference_type=reference_type,
+                user_id=user_id,
+                movement_date=str(movement_date) if movement_date else None,
+            )
             print(f"[DEBUG] Stock validation PASSED for movement_type={movement_type}")
             print(f"[DEBUG] Updated product stock: {previous_stock} -> {new_stock}")
 
@@ -788,6 +901,19 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
                 created_at=datetime.now()
             )
             db.session.add(movement)
+            stock_audit_log(
+                "stock_movement_queued",
+                operation_id=operation_id,
+                product_id=product_id,
+                product_type=product_type,
+                movement_type=movement_type,
+                quantity=quantity_change_float,
+                previous_stock=previous_stock,
+                new_stock=new_stock,
+                reference_id=reference_id,
+                reference_type=reference_type,
+                transaction_state="pending_commit",
+            )
             print(f"[DEBUG] Created stock movement: {movement_type}, quantity={quantity_change_float}, reference_id={reference_id}")
 
             # Don't commit here - let the calling function handle the transaction.
@@ -797,9 +923,33 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
             # Retry if SQLite is temporarily locked. Roll back the failed statement
             # before retrying so the session can issue a new transaction.
             if 'database is locked' in str(e).lower() and attempt < max_retries - 1:
+                stock_audit_log(
+                    "stock_mutation_retry",
+                    level=logging.WARNING,
+                    operation_id=operation_id,
+                    attempt=attempt + 1,
+                    error=str(e),
+                    product_id=product_id,
+                    product_type=product_type,
+                    movement_type=movement_type,
+                )
                 db.session.rollback()
                 time.sleep(retry_delay * (attempt + 1))
                 continue
+            stock_audit_log(
+                "stock_mutation_rejected",
+                level=logging.ERROR,
+                operation_id=operation_id,
+                attempt=attempt + 1,
+                error=str(e),
+                product_id=product_id,
+                product_type=product_type,
+                quantity_change=safe_float(quantity_change),
+                movement_type=movement_type,
+                reference_id=reference_id,
+                reference_type=reference_type,
+                user_id=user_id,
+            )
             return False, str(e)
 
 def _return_stock_effect(return_kind, status, quantity):
@@ -2427,7 +2577,18 @@ def create_regular_product():
             )
             db.session.add(movement)
             db.session.commit()
-        
+
+        stock_audit_log(
+            "current_stock_initialized",
+            product_id=product.id,
+            product_type="regular",
+            current_stock=safe_float(product.current_stock),
+            initial_stock=safe_float(validated_data.initial_stock),
+            movement_type="adjustment",
+            reference_type="initial_stock",
+            user_id=get_jwt_identity(),
+            transaction_state="committed",
+        )
         print("Product created successfully:", product.to_dict())  # Debug log
         return jsonify(product.to_dict())
     except Exception as e:
@@ -2576,7 +2737,18 @@ def create_non_product():
             )
             db.session.add(movement)
             db.session.commit()
-        
+
+        stock_audit_log(
+            "current_stock_initialized",
+            product_id=non_product.id,
+            product_type="non",
+            current_stock=safe_float(non_product.current_stock),
+            initial_stock=safe_float(validated_data.initial_stock),
+            movement_type="adjustment",
+            reference_type="initial_stock",
+            user_id=get_jwt_identity(),
+            transaction_state="committed",
+        )
         print("Non-product created successfully:", non_product.to_dict())  # Debug log
         return jsonify(non_product.to_dict())
     except Exception as e:
@@ -7996,40 +8168,67 @@ def sales_analysis_report():
 @jwt_required()
 def get_current_stock():
     """Get current stock for all products"""
+    started_at = time.monotonic()
+    stock_audit_log(
+        "current_stock_snapshot_started",
+        user_id=get_jwt_identity(),
+    )
     try:
         regular_products = RegularProduct.query.all()
         non_products = NonProduct.query.all()
-        
         stock_data = []
         
         # Add regular products
         for product in regular_products:
+            current_stock = float(product.current_stock) if product.current_stock is not None else 0
             stock_data.append({
                 'id': product.id,
                 'productCode': product.product_code,
                 'description': product.description,
                 'productType': 'regular',
-                'currentStock': float(product.current_stock) if product.current_stock is not None else 0,
+                'currentStock': current_stock,
                 'reorderLevel': product.reorder_level,
                 'unitOfSale': product.unit_of_sale,
                 'location': product.location
             })
-        
+            stock_audit_log(
+                "current_stock_snapshot_row",
+                product_id=product.id,
+                product_type="regular",
+                current_stock=current_stock,
+            )
         # Add non-products
         for product in non_products:
+            current_stock = float(product.current_stock) if product.current_stock is not None else 0
             stock_data.append({
                 'id': product.id,
                 'productCode': product.product_code,
                 'description': product.description,
                 'productType': 'non',
-                'currentStock': float(product.current_stock) if product.current_stock is not None else 0,
+                'currentStock': current_stock,
                 'reorderLevel': product.reorder_level,
                 'unitOfSale': product.unit_of_sale,
                 'location': product.location
             })
-        
+            stock_audit_log(
+                "current_stock_snapshot_row",
+                product_id=product.id,
+                product_type="non",
+                current_stock=current_stock,
+            )
+        stock_audit_log(
+            "current_stock_snapshot_completed",
+            product_count=len(stock_data),
+            elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
+        )
         return jsonify(stock_data), 200
     except Exception as e:
+        stock_audit_log(
+            "current_stock_snapshot_failed",
+            level=logging.ERROR,
+            error=str(e),
+            elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
+        )
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/stock/product/<int:product_id>', methods=['GET'])
@@ -8300,7 +8499,35 @@ def save_closing_stock_entries():
                     product = NonProduct.query.get(item['productId'])
                 if product:
                     old_stock = float(product.current_stock or 0)
+                    operation_id = uuid.uuid4().hex
+                    stock_audit_log(
+                        "current_stock_override_started",
+                        operation_id=operation_id,
+                        product_id=item['productId'],
+                        product_type=item['productType'],
+                        previous_stock=old_stock,
+                        requested_stock=qty,
+                        movement_type="closing_stock_adjustment",
+                        reference_type="closing_stock",
+                        reference_id=entry.id,
+                        business_date=str(date),
+                        user_id=get_jwt_identity(),
+                    )
                     product.current_stock = qty
+                    stock_audit_log(
+                        "current_stock_override_applied",
+                        operation_id=operation_id,
+                        product_id=item['productId'],
+                        product_type=item['productType'],
+                        previous_stock=old_stock,
+                        new_stock=qty,
+                        quantity_change=qty - old_stock,
+                        movement_type="closing_stock_adjustment",
+                        reference_type="closing_stock",
+                        reference_id=entry.id,
+                        business_date=str(date),
+                        transaction_state="pending_commit",
+                    )
 
                     movement = StockMovement(
                         product_id=item['productId'],
@@ -8346,7 +8573,35 @@ def save_closing_stock_entries():
                     product = NonProduct.query.get(item['productId'])
                 if product:
                     old_stock = float(product.current_stock or 0)
+                    operation_id = uuid.uuid4().hex
+                    stock_audit_log(
+                        "current_stock_override_started",
+                        operation_id=operation_id,
+                        product_id=item['productId'],
+                        product_type=item['productType'],
+                        previous_stock=old_stock,
+                        requested_stock=qty,
+                        movement_type="closing_stock_adjustment",
+                        reference_type="closing_stock",
+                        reference_id=entry.id,
+                        business_date=str(date),
+                        user_id=get_jwt_identity(),
+                    )
                     product.current_stock = qty
+                    stock_audit_log(
+                        "current_stock_override_applied",
+                        operation_id=operation_id,
+                        product_id=item['productId'],
+                        product_type=item['productType'],
+                        previous_stock=old_stock,
+                        new_stock=qty,
+                        quantity_change=qty - old_stock,
+                        movement_type="closing_stock_adjustment",
+                        reference_type="closing_stock",
+                        reference_id=entry.id,
+                        business_date=str(date),
+                        transaction_state="pending_commit",
+                    )
 
                     movement = StockMovement(
                         product_id=item['productId'],
@@ -8681,12 +8936,22 @@ def debug_sale_update(sale_id):
 @jwt_required()
 def stock_check_report():
     """Generate stock check report between two dates"""
+    report_id = uuid.uuid4().hex
+    started_at = time.monotonic()
     try:
         from_date = request.args.get('fromDate')
         to_date = request.args.get('toDate')
         search = request.args.get('search', '')
         
         if not from_date or not to_date:
+            stock_audit_log(
+                "stock_check_rejected",
+                level=logging.WARNING,
+                report_id=report_id,
+                reason="missing_date_range",
+                from_date=from_date,
+                to_date=to_date,
+            )
             return jsonify({'error': 'fromDate and toDate are required'}), 400
         
         # Parse dates and make them inclusive for the full day
@@ -8694,11 +8959,24 @@ def stock_check_report():
         # Set to_dt to end of day (23:59:59) to include the entire day
         to_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
         
+        stock_audit_log(
+            "stock_check_started",
+            report_id=report_id,
+            from_date=from_date,
+            to_date=to_date,
+            search=search or None,
+        )
         print(f"[DEBUG] Stock check report: from_dt={from_dt}, to_dt={to_dt}")
         
         # Get all products (regular and non)
         regular_products = RegularProduct.query.filter(RegularProduct.status == 'active').all()
         non_products = NonProduct.query.filter(NonProduct.status == 'active').all()
+        stock_audit_log(
+            "stock_check_products_loaded",
+            report_id=report_id,
+            regular_product_count=len(regular_products),
+            non_product_count=len(non_products),
+        )
         
         stock_check_data = []
 
@@ -8741,6 +9019,53 @@ def stock_check_report():
                 
                 difference = actual_closing_stock - expected_stock
                 difference = round(difference, 2)
+                current_stock = safe_float(product.current_stock)
+                current_stock_difference = round(current_stock - expected_stock, 2)
+
+                stock_audit_log(
+                    "stock_check_row",
+                    report_id=report_id,
+                    product_id=product.id,
+                    product_type="regular",
+                    product_description=product.description,
+                    opening_stock=round(opening_stock, 2),
+                    new_stock=round(new_stock, 2),
+                    sales=round(sales, 2),
+                    customer_returns=round(customer_returns, 2),
+                    dumps=round(dumps, 2),
+                    supplier_returns=round(supplier_returns, 2),
+                    expected_stock=round(expected_stock, 2),
+                    closing_stock=round(actual_closing_stock, 2),
+                    difference=difference,
+                    current_stock=current_stock,
+                    current_stock_difference=current_stock_difference,
+                )
+                if difference != 0:
+                    stock_audit_log(
+                        "stock_check_discrepancy",
+                        level=logging.WARNING,
+                        report_id=report_id,
+                        product_id=product.id,
+                        product_type="regular",
+                        product_description=product.description,
+                        expected_stock=round(expected_stock, 2),
+                        closing_stock=round(actual_closing_stock, 2),
+                        difference=difference,
+                        current_stock=current_stock,
+                        current_stock_difference=current_stock_difference,
+                    )
+                if current_stock_difference != 0:
+                    stock_audit_log(
+                        "current_stock_stock_check_discrepancy",
+                        level=logging.WARNING,
+                        report_id=report_id,
+                        product_id=product.id,
+                        product_type="regular",
+                        product_description=product.description,
+                        expected_stock=round(expected_stock, 2),
+                        current_stock=current_stock,
+                        current_stock_difference=current_stock_difference,
+                    )
 
                 if difference == 0:
                     result = "✓"
@@ -8768,8 +9093,15 @@ def stock_check_report():
                     'productType': 'regular'
                 })
             except Exception as e:
+                stock_audit_log(
+                    "stock_check_row_failed",
+                    level=logging.ERROR,
+                    report_id=report_id,
+                    product_id=product.id,
+                    product_type="regular",
+                    error=str(e),
+                )
                 print(f"[ERROR] Error processing regular product {product.id}: {str(e)}")
-                import traceback
                 print(f"[ERROR] Traceback: {traceback.format_exc()}")
                 continue
         
@@ -8815,6 +9147,53 @@ def stock_check_report():
                 
                 difference = actual_closing_stock - expected_stock
                 difference = round(difference, 2)
+                current_stock = safe_float(product.current_stock)
+                current_stock_difference = round(current_stock - expected_stock, 2)
+
+                stock_audit_log(
+                    "stock_check_row",
+                    report_id=report_id,
+                    product_id=product.id,
+                    product_type="non",
+                    product_description=product.description,
+                    opening_stock=round(opening_stock, 2),
+                    new_stock=round(new_stock, 2),
+                    sales=round(sales, 2),
+                    customer_returns=round(customer_returns, 2),
+                    dumps=round(dumps, 2),
+                    supplier_returns=round(supplier_returns, 2),
+                    expected_stock=round(expected_stock, 2),
+                    closing_stock=round(actual_closing_stock, 2),
+                    difference=difference,
+                    current_stock=current_stock,
+                    current_stock_difference=current_stock_difference,
+                )
+                if difference != 0:
+                    stock_audit_log(
+                        "stock_check_discrepancy",
+                        level=logging.WARNING,
+                        report_id=report_id,
+                        product_id=product.id,
+                        product_type="non",
+                        product_description=product.description,
+                        expected_stock=round(expected_stock, 2),
+                        closing_stock=round(actual_closing_stock, 2),
+                        difference=difference,
+                        current_stock=current_stock,
+                        current_stock_difference=current_stock_difference,
+                    )
+                if current_stock_difference != 0:
+                    stock_audit_log(
+                        "current_stock_stock_check_discrepancy",
+                        level=logging.WARNING,
+                        report_id=report_id,
+                        product_id=product.id,
+                        product_type="non",
+                        product_description=product.description,
+                        expected_stock=round(expected_stock, 2),
+                        current_stock=current_stock,
+                        current_stock_difference=current_stock_difference,
+                    )
 
                 if difference == 0:
                     result = "✓"
@@ -8842,8 +9221,15 @@ def stock_check_report():
                     'productType': 'non'
                 })
             except Exception as e:
+                stock_audit_log(
+                    "stock_check_row_failed",
+                    level=logging.ERROR,
+                    report_id=report_id,
+                    product_id=product.id,
+                    product_type="non",
+                    error=str(e),
+                )
                 print(f"[ERROR] Error processing non-product {product.id}: {str(e)}")
-                import traceback
                 print(f"[ERROR] Traceback: {traceback.format_exc()}")
                 continue
         
@@ -8853,13 +9239,26 @@ def stock_check_report():
         # Add serial numbers
         for i, item in enumerate(stock_check_data, 1):
             item['slNo'] = i
-        
 
+        discrepancy_count = sum(item['status'] != 'correct' for item in stock_check_data)
+        stock_audit_log(
+            "stock_check_completed",
+            report_id=report_id,
+            product_count=len(stock_check_data),
+            discrepancy_count=discrepancy_count,
+            elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
+        )
         return jsonify(stock_check_data), 200
         
     except Exception as e:
+        stock_audit_log(
+            "stock_check_failed",
+            level=logging.ERROR,
+            report_id=report_id,
+            error=str(e),
+            elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
+        )
         print(f"[ERROR] Exception in stock_check_report: {str(e)}")
-        import traceback
         print(f"[ERROR] Full traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
