@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
+import { useSearch } from "wouter";
 import logo from "@/public/printlogo.png";
 import { getApiUrl } from "@/lib/config";
 import { formatQuantity } from "@/lib/utils";
+import { getBulkPrintInvoiceNumbers } from "@/lib/bulk-print";
 
 interface InvoiceItem {
   id?: number;
@@ -164,11 +165,8 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
 }
 
 export default function BulkA4InvoicePrintPage() {
-  const [location] = useLocation();
-  const invoiceNumbers = useMemo(() => {
-    const params = new URLSearchParams(location.split("?")[1] || "");
-    return (params.get("invs") || "").split(",").map(value => value.trim()).filter(Boolean);
-  }, [location]);
+  const search = useSearch();
+  const invoiceNumbers = useMemo(() => getBulkPrintInvoiceNumbers(search), [search]);
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

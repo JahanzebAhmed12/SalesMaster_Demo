@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "wouter";
+import { useSearch } from "wouter";
 import { getApiUrl } from "@/lib/config";
+import { getBulkPrintInvoiceNumbers } from "@/lib/bulk-print";
 
 interface PackingItem {
   qty: number;
@@ -93,11 +94,8 @@ function PackingDocument({ data }: { data: PackingData }) {
 }
 
 export default function BulkPackingListPrintPage() {
-  const [location] = useLocation();
-  const invoiceNumbers = useMemo(() => {
-    const params = new URLSearchParams(location.split("?")[1] || "");
-    return (params.get("invs") || "").split(",").map(value => value.trim()).filter(Boolean);
-  }, [location]);
+  const search = useSearch();
+  const invoiceNumbers = useMemo(() => getBulkPrintInvoiceNumbers(search), [search]);
   const [documents, setDocuments] = useState<PackingData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
