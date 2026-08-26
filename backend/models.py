@@ -208,7 +208,9 @@ class SaleHold(db.Model):
             'holdTime': self.updated_at.isoformat() if self.updated_at else None,
             'expiresAt': self.expires_at.isoformat() if self.expires_at else None,
             'createdBy': self.created_by,
+            'createdByName': self.creator.username if self.creator else None,
             'updatedBy': self.updated_by,
+            'updatedByName': self.updater.username if self.updater else None,
             'status': self.status,
         })
         return data

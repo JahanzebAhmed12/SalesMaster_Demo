@@ -16,6 +16,7 @@ import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { Plus, Clock, Trash2 } from "lucide-react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/lib/auth";
 import type { Customer } from "@shared/schema";
 import { migrateLegacyHeldInvoices, releaseHeldInvoice } from "@/lib/held-invoices";
 import type { HeldInvoice } from "@/lib/held-invoices";
@@ -33,6 +34,7 @@ export default function SalesEntry() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { notifyInventoryMutation } = useCrossTabSync();
+  const { user: currentUser } = useAuth();
   const { selectedCustomer, handleCustomerSelect, customerId, customerOthers } = useCustomerSearch();
   const [showHeldInvoices, setShowHeldInvoices] = useState(false);
   const [gateNumber, setGateNumber] = useState("");
@@ -66,13 +68,19 @@ export default function SalesEntry() {
   }, [selectedCustomer, customerId, customerOthers, form]);
 
   const { data: heldInvoices = [] } = useQuery<HeldInvoice[]>({
-    queryKey: ["heldInvoices"],
+    queryKey: ["heldInvoices", currentUser?.id ?? "anonymous"],
     queryFn: () => apiRequest("GET", "/api/held-invoices"),
+    enabled: Boolean(currentUser?.id),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: currentUser?.id ? 10000 : false,
   });
 
   // Migrate old browser-local holds once. The server keeps the legacy hold ID,
   // making retries idempotent and preventing double reservation.
   useEffect(() => {
+    if (!currentUser?.id) return;
     migrateLegacyHeldInvoices()
       .then((migrated) => {
         if (migrated) {
@@ -81,7 +89,7 @@ export default function SalesEntry() {
         }
       })
       .catch(() => undefined);
-  }, [notifyInventoryMutation, queryClient]);
+  }, [currentUser?.id, notifyInventoryMutation, queryClient]);
 
   const handleGoToInvoice = (customerId: string, saleItems: any[]) => {
     // Save draft to localStorage
@@ -173,8 +181,10 @@ export default function SalesEntry() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Customer</TableHead>
+                    <TableHead>Invoice</TableHead>
                     <TableHead>Items</TableHead>
                     <TableHead>Held Time</TableHead>
+                    <TableHead>Held By</TableHead>
                     <TableHead>Action</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -183,8 +193,10 @@ export default function SalesEntry() {
                   {heldInvoices.map((invoice) => (
                     <TableRow key={invoice.holdId}>
                       <TableCell>{getCustomerName(String(invoice.customerId || ''))}</TableCell>
+                      <TableCell>{invoice.currentSale?.invoiceNumber || "New invoice"}</TableCell>
                       <TableCell>{invoice.saleItems.length} items</TableCell>
                       <TableCell>{new Date(invoice.holdTime).toLocaleString()}</TableCell>
+                      <TableCell>{invoice.updatedByName || invoice.createdByName || invoice.updatedBy || invoice.createdBy || "-"}</TableCell>
                       <TableCell>
                         <Button
                           size="sm"

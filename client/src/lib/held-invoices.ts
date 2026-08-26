@@ -12,7 +12,9 @@ export interface HeldInvoice {
   expiresAt?: string;
   currentSale?: any | null;
   createdBy?: number;
+  createdByName?: string;
   updatedBy?: number;
+  updatedByName?: string;
   status?: string;
 }
 

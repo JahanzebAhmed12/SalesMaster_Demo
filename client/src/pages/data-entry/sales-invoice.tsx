@@ -519,6 +519,7 @@ const SalesInvoice = () => {
   // Migrate old browser-local holds once, preserving their IDs so the server
   // upsert cannot create duplicate reservations if the request is retried.
   useEffect(() => {
+    if (!currentUser?.id) return;
     migrateLegacyHeldInvoices()
       .then((migrated) => {
         if (migrated) {
@@ -528,7 +529,7 @@ const SalesInvoice = () => {
         }
       })
       .catch(() => undefined);
-  }, [notifyInventoryMutation, queryClient]);
+  }, [currentUser?.id, notifyInventoryMutation, queryClient]);
 
   // Fetch current stock
   const { data: currentStock = [], isLoading: isLoadingStock } = useQuery<StockItem[]>({
@@ -537,8 +538,13 @@ const SalesInvoice = () => {
   });
 
   const { data: heldInvoices = [] } = useQuery<HeldInvoice[]>({
-    queryKey: ["heldInvoices"],
+    queryKey: ["heldInvoices", currentUser?.id ?? "anonymous"],
     queryFn: () => apiRequest("GET", "/api/held-invoices"),
+    enabled: Boolean(currentUser?.id),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: currentUser?.id ? 10000 : false,
   });
 
   const { data: stockReservationData = { reservations: [] } } = useQuery<{
@@ -2146,6 +2152,7 @@ const SalesInvoice = () => {
         setActiveHoldId(holdId);
         activeHoldIdRef.current = holdId;
         clearLegacyInvoiceDraft();
+        await queryClient.invalidateQueries({ queryKey: ["heldInvoices"] });
         notifyInventoryMutation({ source: 'sale' });
         toast({
           title: "Invoice Auto-Held",
@@ -2787,15 +2794,16 @@ const SalesInvoice = () => {
                         </TableCell>
                         <TableCell className="text-center">
                           <Button
-                            size="sm"
+                            size="icon"
                             variant={item.highlighted ? "default" : "outline"}
-                            className={item.highlighted ? "bg-yellow-400 hover:bg-yellow-500 text-yellow-950" : ""}
+                            className={item.highlighted ? "h-8 w-8 bg-yellow-400 text-yellow-950 hover:bg-yellow-500" : "h-8 w-8"}
                             disabled={isReadOnly}
                             onClick={() => toggleItemHighlight(index)}
                             title={item.highlighted ? "Remove highlight" : "Highlight product row"}
+                            aria-label={item.highlighted ? "Remove highlight from product row" : "Highlight product row"}
+                            aria-pressed={item.highlighted}
                           >
-                            <Highlighter className="mr-1 h-4 w-4" />
-                            {item.highlighted ? "Highlighted" : "Highlight"}
+                            <Highlighter className="h-4 w-4" />
                           </Button>
                         </TableCell>
                         <TableCell className="text-center">
@@ -2856,15 +2864,16 @@ const SalesInvoice = () => {
                         </TableCell>
                         <TableCell className="text-center">
                           <Button
-                            size="sm"
+                            size="icon"
                             variant={item.highlighted ? "default" : "outline"}
-                            className={item.highlighted ? "bg-yellow-400 hover:bg-yellow-500 text-yellow-950" : ""}
+                            className={item.highlighted ? "h-8 w-8 bg-yellow-400 text-yellow-950 hover:bg-yellow-500" : "h-8 w-8"}
                             disabled={isReadOnly}
                             onClick={() => toggleItemHighlight(index)}
                             title={item.highlighted ? "Remove highlight" : "Highlight product row"}
+                            aria-label={item.highlighted ? "Remove highlight from product row" : "Highlight product row"}
+                            aria-pressed={item.highlighted}
                           >
-                            <Highlighter className="mr-1 h-4 w-4" />
-                            {item.highlighted ? "Highlighted" : "Highlight"}
+                            <Highlighter className="h-4 w-4" />
                           </Button>
                         </TableCell>
                         <TableCell className="text-center">
