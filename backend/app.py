@@ -832,7 +832,7 @@ def update_product_stock(product_id, product_type, quantity_change, movement_typ
                 'dump', 'dump_cancellation',
                 'dump_adjustment', 'purchase', 'purchase_reversal',
                 'sale_adjustment', 'sale_cancellation',
-                'supplier_return_adjustment', 'supplier_return_cancellation'
+                'supplier_return', 'supplier_return_adjustment', 'supplier_return_cancellation'
             ]
 
             # Perform the increment inside SQL. The database evaluates the current
