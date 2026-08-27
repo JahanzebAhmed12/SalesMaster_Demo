@@ -7488,16 +7488,24 @@ def get_supplier_payment_history():
             for sid, group in groupby(supplier_dates, key=lambda x: x[0]):
                 dates = sorted(set(g[1] for g in group))
                 # Get the most recent invoice for each date in one query per supplier
+                invoice_cutoff = datetime.combine(max(dates), datetime.max.time())
                 all_invoices = PurchaseInvoice.query.options(
                     db.joinedload(PurchaseInvoice.items)
                 ).join(Purchase).filter(
                     Purchase.supplier_id == sid,
-                    PurchaseInvoice.date <= max(dates)
+                    PurchaseInvoice.date <= invoice_cutoff
                 ).order_by(PurchaseInvoice.date.desc()).all()
                 if all_invoices:
                     for pd in dates:
                         for inv in all_invoices:
-                            if inv.date <= pd:
+                            # Supplier payments store a calendar date, while
+                            # purchase invoices store a datetime. Compare like
+                            # types so same-day payments can resolve nearby
+                            # invoices without raising TypeError.
+                            invoice_calendar_date = (
+                                inv.date.date() if isinstance(inv.date, datetime) else inv.date
+                            )
+                            if invoice_calendar_date and invoice_calendar_date <= pd:
                                 nearby_map[(sid, pd)] = inv
                                 break
         

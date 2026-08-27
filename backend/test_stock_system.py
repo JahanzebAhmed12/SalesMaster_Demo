@@ -1094,14 +1094,53 @@ def run_tests(cleanup=False):
         # ── CLEANUP ──────────────────────────────────────────────────────────
         if cleanup:
             heading(8, "CLEANUP - Removing Test Data")
-            for s in Supplier.query.filter(Supplier.supplier_code.like('SUPP-%')).all():
-                db.session.delete(s)
-            for c in Customer.query.filter(Customer.customer_code.like('CUST-%')).all():
-                db.session.delete(c)
-            for p in RegularProduct.query.filter(RegularProduct.product_code.like('PROD-%')).all():
-                StockMovement.query.filter_by(product_id=p.id, product_type='regular').delete()
-                ClosingStock.query.filter_by(product_id=p.id, product_type='regular').delete()
-                db.session.delete(p)
+            supplier_ids = [s.id for s in Supplier.query.filter(Supplier.supplier_code.like('SUPP-%')).all()]
+            customer_ids = [c.id for c in Customer.query.filter(Customer.customer_code.like('CUST-%')).all()]
+            product_ids = [p.id for p in RegularProduct.query.filter(RegularProduct.product_code.like('PROD-%')).all()]
+
+            # Remove records with non-null foreign keys before their suppliers,
+            # customers, and products. Bulk deletes avoid SQLAlchemy trying to
+            # null a required foreign key during parent deletion.
+            supplier_return_query = SupplierReturn.query.filter(SupplierReturn.supplier_id.in_(supplier_ids))
+            supplier_return_query.delete(synchronize_session=False)
+            DumpEntry.query.filter(DumpEntry.supplier_id.in_(supplier_ids)).delete(synchronize_session=False)
+
+            purchase_ids = [p.id for p in Purchase.query.filter(Purchase.supplier_id.in_(supplier_ids)).all()]
+            invoice_ids = [invoice.id for invoice in PurchaseInvoice.query.filter(
+                PurchaseInvoice.purchase_id.in_(purchase_ids)
+            ).all()]
+            if invoice_ids:
+                PurchaseInvoiceItem.query.filter(
+                    PurchaseInvoiceItem.invoice_id.in_(invoice_ids)
+                ).delete(synchronize_session=False)
+                PurchaseInvoice.query.filter(
+                    PurchaseInvoice.id.in_(invoice_ids)
+                ).delete(synchronize_session=False)
+            if purchase_ids:
+                Purchase.query.filter(Purchase.id.in_(purchase_ids)).delete(synchronize_session=False)
+
+            CustomerReturn.query.filter(CustomerReturn.customer_id.in_(customer_ids)).delete(synchronize_session=False)
+            sale_ids = [sale.id for sale in Sale.query.filter(Sale.customer_id.in_(customer_ids)).all()]
+            if sale_ids:
+                SaleItem.query.filter(SaleItem.sale_id.in_(sale_ids)).delete(synchronize_session=False)
+                Sale.query.filter(Sale.id.in_(sale_ids)).delete(synchronize_session=False)
+
+            if product_ids:
+                StockMovement.query.filter(
+                    StockMovement.product_id.in_(product_ids),
+                    StockMovement.product_type == 'regular',
+                ).delete(synchronize_session=False)
+                ClosingStock.query.filter(
+                    ClosingStock.product_id.in_(product_ids),
+                    ClosingStock.product_type == 'regular',
+                ).delete(synchronize_session=False)
+
+            if supplier_ids:
+                Supplier.query.filter(Supplier.id.in_(supplier_ids)).delete(synchronize_session=False)
+            if customer_ids:
+                Customer.query.filter(Customer.id.in_(customer_ids)).delete(synchronize_session=False)
+            if product_ids:
+                RegularProduct.query.filter(RegularProduct.id.in_(product_ids)).delete(synchronize_session=False)
             db.session.commit()
             msg("Test data cleaned up.")
 
