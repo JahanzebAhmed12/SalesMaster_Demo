@@ -376,6 +376,7 @@ _PUBLIC_API_PATTERNS = (
     re.compile(r"^/api/sales/[^/]+/invoice$"),
     re.compile(r"^/api/sales/[^/]+/excel$"),
     re.compile(r"^/api/purchase-invoices/[^/]+/print$"),
+    re.compile(r"^/api/supplier-returns/[^/]+/print$"),
     re.compile(r"^/api/reports/daily-summary/pdf$"),
 )
 
@@ -10428,6 +10429,27 @@ def get_supplier_returns():
         return jsonify([return_item.to_dict() for return_item in supplier_returns]), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/supplier-returns/<int:return_id>/print', methods=['GET'])
+def print_supplier_return(return_id):
+    """Return a complete supplier return for the public A4 print view."""
+    try:
+        return_item = SupplierReturn.query.get_or_404(return_id)
+        supplier = Supplier.query.get(return_item.supplier_id)
+        product_model = RegularProduct if return_item.product_type == 'regular' else NonProduct
+        product = product_model.query.get(return_item.product_id)
+        company = Company.query.first()
+        return_data = return_item.to_dict()
+        return_data['productName'] = product.description if product else return_item.description
+        return jsonify({
+            'company': company.to_dict() if company else {},
+            'supplier': supplier.to_dict() if supplier else {},
+            'product': product.to_dict() if product else {},
+            'returnItem': return_data,
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/supplier-returns', methods=['POST'])
 @jwt_required()

@@ -10,13 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import SupplierSearch from "@/components/ui/supplier-search";
+import ProductSearch from "@/components/ui/product-search";
 import { useSupplierSearch } from "@/hooks/useSupplierSearch";
 import { 
   RotateCcw, 
@@ -32,7 +32,6 @@ import {
   Edit,
   Trash2,
   Eye,
-  CheckCircle
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -132,6 +131,8 @@ export default function ReturnToSupplier() {
   const [editingReturn, setEditingReturn] = useState<SupplierReturn | null>(null);
   const [invoiceFromDate, setInvoiceFromDate] = useState("");
   const [invoiceToDate, setInvoiceToDate] = useState("");
+  const [productSearchValue, setProductSearchValue] = useState("");
+  const [productSearchKey, setProductSearchKey] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
   
   // Sync supplierId with selectedSupplier
@@ -222,6 +223,17 @@ export default function ReturnToSupplier() {
     };
   }, [productsData]);
 
+  const searchableProducts = form.watch('productType') === 'regular'
+    ? products.regularProducts
+    : products.nonProducts;
+
+  const getProductLabel = (productId: number, productType: 'regular' | 'non') => {
+    const product = (productType === 'regular' ? products.regularProducts : products.nonProducts)
+      .find((item) => item.id === productId);
+    if (!product) return '';
+    return `${product.productCode || ''}${product.productCode ? ' - ' : ''}${product.description}`;
+  };
+
   const { data: purchaseInvoices = [] } = useQuery({
     queryKey: ['purchase-invoices', form.watch('supplierId'), invoiceFromDate, invoiceToDate],
     queryFn: () => {
@@ -291,6 +303,8 @@ export default function ReturnToSupplier() {
       });
       toast({ title: "Success", description: "Supplier return created successfully" });
       setIsDialogOpen(false);
+      setProductSearchValue('');
+      setProductSearchKey((key) => key + 1);
       form.reset();
     },
     onError: (error: any) => {
@@ -314,6 +328,8 @@ export default function ReturnToSupplier() {
       toast({ title: "Success", description: "Supplier return updated successfully" });
       setIsDialogOpen(false);
       setEditingReturn(null);
+      setProductSearchValue('');
+      setProductSearchKey((key) => key + 1);
       form.reset();
     },
     onError: (error: any) => {
@@ -552,6 +568,8 @@ export default function ReturnToSupplier() {
     }
     
     setEditingReturn(returnItem);
+    setProductSearchValue(getProductLabel(returnItem.productId, returnItem.productType as 'regular' | 'non'));
+    setProductSearchKey((key) => key + 1);
     form.reset({
       date: returnItem.date,
       supplierId: returnItem.supplierId,
@@ -571,6 +589,10 @@ export default function ReturnToSupplier() {
     setIsDialogOpen(true);
   };
 
+  const handlePrintReturn = (returnId: number) => {
+    window.open(`/print/supplier-return/${returnId}`, '_blank');
+  };
+
   const handleDelete = (returnItem: SupplierReturn) => {
     if (!canDeleteReturn(returnItem.date)) {
       toast({
@@ -586,16 +608,6 @@ export default function ReturnToSupplier() {
     }
   };
 
-
-
-  const getStatusBadge = (status: string) => {
-    return (
-      <Badge variant="secondary" className="flex items-center gap-1">
-        <CheckCircle className="w-3 h-3" />
-        Completed
-      </Badge>
-    );
-  };
 
 
 
@@ -743,7 +755,13 @@ export default function ReturnToSupplier() {
                           <Label htmlFor="productType">Product Type</Label>
                           <Select
                             value={form.watch('productType')}
-                            onValueChange={(value) => form.setValue('productType', value as 'regular' | 'non')}
+                            onValueChange={(value) => {
+                              const productType = value as 'regular' | 'non';
+                              form.setValue('productType', productType);
+                              form.setValue('productId', 0, { shouldValidate: true });
+                              setProductSearchValue('');
+                              setProductSearchKey((key) => key + 1);
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue />
@@ -755,29 +773,27 @@ export default function ReturnToSupplier() {
                           </Select>
                         </div>
                         <div>
-                          <Label htmlFor="productId">Product</Label>
-                          <Select
-                            value={form.watch('productId')?.toString()}
-                            onValueChange={(value) => form.setValue('productId', parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select product" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {form.watch('productType') === 'regular' 
-                                ? products.regularProducts.map((product) => (
-                                    <SelectItem key={product.id} value={product.id.toString()}>
-                                      {product.description}
-                                    </SelectItem>
-                                  ))
-                                : products.nonProducts.map((product) => (
-                                    <SelectItem key={product.id} value={product.id.toString()}>
-                                      {product.description}
-                                    </SelectItem>
-                                  ))
+                          <ProductSearch
+                            key={productSearchKey}
+                            label="Product"
+                            value={productSearchValue}
+                            products={searchableProducts}
+                            placeholder="Search product by code or name..."
+                            onProductSelect={(product) => {
+                              if (!product) {
+                                form.setValue('productId', 0, { shouldValidate: true });
+                                setProductSearchValue('');
+                                return;
                               }
-                            </SelectContent>
-                          </Select>
+                              form.setValue('productId', product.id, { shouldValidate: true });
+                              setProductSearchValue(
+                                `${product.productCode || ''}${product.productCode ? ' - ' : ''}${product.description || ''}`
+                              );
+                            }}
+                            required
+                            showCode
+                            allowClear
+                          />
                           {form.formState.errors.productId && (
                             <p className="text-red-500 text-sm">{form.formState.errors.productId.message}</p>
                           )}
@@ -933,6 +949,8 @@ export default function ReturnToSupplier() {
                           onClick={() => {
                             setIsDialogOpen(false);
                             setEditingReturn(null);
+                            setProductSearchValue('');
+                            setProductSearchKey((key) => key + 1);
                             form.reset();
                           }}
                         >
@@ -959,11 +977,11 @@ export default function ReturnToSupplier() {
                     <TableHead>Date</TableHead>
                     <TableHead>Reference</TableHead>
                     <TableHead>Supplier</TableHead>
+                    <TableHead>Product</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Unit Price</TableHead>
                     <TableHead>Total Value</TableHead>
-                    <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -986,13 +1004,21 @@ export default function ReturnToSupplier() {
                         <TableCell>{format(new Date(returnItem.date), 'dd/MM/yyyy')}</TableCell>
                         <TableCell className="font-mono">{returnItem.refNumber}</TableCell>
                         <TableCell>{returnItem.supplierName}</TableCell>
+                        <TableCell>{getProductLabel(returnItem.productId, returnItem.productType as 'regular' | 'non') || returnItem.description}</TableCell>
                         <TableCell>{returnItem.description}</TableCell>
                         <TableCell className="text-center">{returnItem.quantity}</TableCell>
                         <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
-                        <TableCell>{getStatusBadge(returnItem.status)}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePrintReturn(returnItem.id)}
+                              title="Print A4 supplier return"
+                            >
+                              <Printer className="w-3 h-3" />
+                            </Button>
                             {canEditReturn(returnItem.date) ? (
                               <Button
                                 size="sm"
