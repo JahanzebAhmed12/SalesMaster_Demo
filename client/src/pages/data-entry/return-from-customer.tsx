@@ -462,7 +462,10 @@ export default function ReturnFromCustomer() {
   };
 
   const onSubmit = (data: ReturnFormData) => {
-    const selectedProduct = filteredProducts.find(p => p.id === data.productId);
+    // The search text contains the selected label after selection, so the
+    // filtered list may be empty. Resolve the product from the full type list
+    // to always persist its description for the existing-returns table.
+    const selectedProduct = allFilteredProducts.find(p => p.id === data.productId);
     
     const returnData = {
       customerId: data.customerId,
