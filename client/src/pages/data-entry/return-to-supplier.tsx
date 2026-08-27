@@ -118,8 +118,9 @@ export default function ReturnToSupplier() {
   const { notifyInventoryMutation } = useCrossTabSync({ enablePolling: false });
   const { selectedSupplier: selectedSupplierObj, handleSupplierSelect: handleSupplierSelectHook, supplierId } = useSupplierSearch();
   
-  // Get business date
-  const { businessDate } = useBusinessDate();
+  // Get business date. Use the raw date string for effect dependencies because
+  // useBusinessDate parses a new Date object on each render.
+  const { businessDate, currentDate: businessDateValue } = useBusinessDate();
   
   // State
   const [selectedSupplier, setSelectedSupplier] = useState<number | undefined>();
@@ -129,8 +130,9 @@ export default function ReturnToSupplier() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingReturn, setEditingReturn] = useState<SupplierReturn | null>(null);
-  const [invoiceFromDate, setInvoiceFromDate] = useState("");
-  const [invoiceToDate, setInvoiceToDate] = useState("");
+  const [invoiceFromDate, setInvoiceFromDate] = useState(() => format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [invoiceToDate, setInvoiceToDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const invoiceDatesInitializedRef = useRef(false);
   const [productSearchValue, setProductSearchValue] = useState("");
   const [productSearchKey, setProductSearchKey] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -148,16 +150,23 @@ export default function ReturnToSupplier() {
       const businessDateObj = new Date(businessDate);
       setFromDate(businessDateObj);
       setToDate(businessDateObj);
-      setInvoiceFromDate(format(subDays(businessDateObj, 30), "yyyy-MM-dd"));
-      setInvoiceToDate(format(businessDateObj, "yyyy-MM-dd"));
     } else {
       const today = new Date();
       setFromDate(today);
       setToDate(today);
-      setInvoiceFromDate(format(subDays(today, 30), "yyyy-MM-dd"));
-      setInvoiceToDate(format(today, "yyyy-MM-dd"));
     }
-  }, [businessDate]);
+  }, [businessDateValue]);
+
+  // Initialize the invoice lookup range once from the business date. Manual
+  // changes remain authoritative, including if the business date loads later.
+  useEffect(() => {
+    if (!businessDateValue || invoiceDatesInitializedRef.current) return;
+
+    const businessDateObj = new Date(businessDateValue);
+    setInvoiceFromDate(format(subDays(businessDateObj, 30), "yyyy-MM-dd"));
+    setInvoiceToDate(format(businessDateObj, "yyyy-MM-dd"));
+    invoiceDatesInitializedRef.current = true;
+  }, [businessDateValue]);
 
   // Form
   const form = useForm<SupplierReturnFormData>({
@@ -175,10 +184,10 @@ export default function ReturnToSupplier() {
 
   // Update form date when business date changes
   useEffect(() => {
-    if (businessDate) {
-      form.setValue('date', format(new Date(businessDate), 'yyyy-MM-dd'));
+    if (businessDateValue) {
+      form.setValue('date', format(new Date(businessDateValue), 'yyyy-MM-dd'));
     }
-  }, [businessDate, form]);
+  }, [businessDateValue, form]);
 
   // Queries
   const { data: supplierReturns = [], isLoading } = useQuery({
@@ -846,7 +855,10 @@ export default function ReturnToSupplier() {
                           <Input
                             type="date"
                             value={invoiceFromDate}
-                            onChange={(e) => setInvoiceFromDate(e.target.value)}
+                            onChange={(e) => {
+                              invoiceDatesInitializedRef.current = true;
+                              setInvoiceFromDate(e.target.value);
+                            }}
                           />
                         </div>
                         <div>
@@ -854,7 +866,10 @@ export default function ReturnToSupplier() {
                           <Input
                             type="date"
                             value={invoiceToDate}
-                            onChange={(e) => setInvoiceToDate(e.target.value)}
+                            onChange={(e) => {
+                              invoiceDatesInitializedRef.current = true;
+                              setInvoiceToDate(e.target.value);
+                            }}
                           />
                         </div>
                       </div>
