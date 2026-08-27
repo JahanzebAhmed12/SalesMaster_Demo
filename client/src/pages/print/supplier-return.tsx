@@ -102,26 +102,20 @@ function SupplierReturnTemplate({ data }: { data: SupplierReturnPrintData }) {
         </tbody>
       </table>
 
-      <div className="details-grid">
-        <div className="details-box">
+      <div className="details-box combined-details-box">
+        <div className="detail-block">
           <div className="section-label">RETURN REASON</div>
           <div>{returnItem.returnReason || "-"}</div>
         </div>
-        <div className="details-box">
+        <div className="detail-block">
           <div className="section-label">CREDIT NOTE</div>
           <div>{returnItem.creditNoteIssued ? "Issued" : "Not issued"}</div>
           {returnItem.creditNoteIssued && <div>Amount: {money(returnItem.creditNoteAmount)}</div>}
         </div>
-      </div>
-
-      <div className="details-box remarks-box">
-        <div className="section-label">REMARKS</div>
-        <div className="multiline-value">{returnItem.remarks || "-"}</div>
-      </div>
-
-      <div className="signature-grid">
-        <div>Prepared by: ______________________________</div>
-        <div>Supplier acknowledgement: ______________________________</div>
+        <div className="detail-block">
+          <div className="section-label">REMARKS</div>
+          <div className="multiline-value">{returnItem.remarks || "-"}</div>
+        </div>
       </div>
 
       <div className="no-print print-controls">
@@ -134,7 +128,7 @@ function SupplierReturnTemplate({ data }: { data: SupplierReturnPrintData }) {
         * { box-sizing: border-box; }
         body { margin: 0; background: #f3f4f6; color: #111827; font-family: Arial, sans-serif; }
         .supplier-return-print { width: 100%; max-width: 794px; min-height: 1123px; margin: 24px auto; padding: 34px 40px; background: #fff; font-size: 12px; line-height: 1.4; }
-        .document-header, .two-column-section, .details-grid, .signature-grid { display: flex; justify-content: space-between; gap: 28px; }
+        .document-header, .two-column-section { display: flex; justify-content: space-between; gap: 28px; }
         .company-block, .document-title-block { flex: 1; }
         .company-block { color: #374151; }
         .company-logo { height: 58px; max-width: 220px; object-fit: contain; object-position: left center; margin-bottom: 8px; }
@@ -153,11 +147,10 @@ function SupplierReturnTemplate({ data }: { data: SupplierReturnPrintData }) {
         .items-table th { background: #e5e7eb; color: #111827; text-align: left; font-size: 10px; }
         .items-table .numeric { text-align: right; white-space: nowrap; }
         .total-row { font-weight: 700; background: #f9fafb; }
-        .details-grid { margin-top: 22px; }
-        .details-box { flex: 1; min-height: 58px; border: 1px solid #9ca3af; padding: 9px 10px; }
-        .remarks-box { margin-top: 14px; min-height: 70px; }
+        .details-box { border: 1px solid #9ca3af; padding: 9px 10px; }
+        .combined-details-box { margin-top: 22px; min-height: 150px; }
+        .detail-block + .detail-block { margin-top: 14px; padding-top: 10px; border-top: 1px solid #d1d5db; }
         .multiline-value { white-space: pre-wrap; }
-        .signature-grid { margin-top: 64px; color: #374151; font-size: 11px; }
         .print-controls { display: flex; gap: 10px; margin-top: 26px; }
         .print-controls button { border: 1px solid #6b7280; border-radius: 4px; background: #fff; padding: 7px 20px; cursor: pointer; font-size: 14px; }
         @media print {

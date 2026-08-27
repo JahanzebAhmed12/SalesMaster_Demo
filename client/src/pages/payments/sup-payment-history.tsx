@@ -13,12 +13,12 @@ import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useBusinessDate } from "@/hooks/use-business-date";
-import type { Supplier } from "@shared/schema";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { copyToClipboard } from "@/lib/export-utils";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import SupplierSearch from "@/components/ui/supplier-search";
 
 interface SupplierPaymentHistoryData {
   slNo: number;
@@ -40,6 +40,7 @@ export default function SupPaymentHistory() {
   const { toast } = useToast();
   const { currentDate: businessDate } = useBusinessDate();
   const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
+  const [supplierSearchValue, setSupplierSearchValue] = useState("");
   const [fromDate, setFromDate] = useState<Date>(() => {
     return businessDate ? new Date(businessDate) : new Date();
   });
@@ -70,12 +71,6 @@ export default function SupPaymentHistory() {
       }));
     }
   }, [businessDate]);
-
-  // Fetch suppliers
-  const { data: suppliers = [], isLoading: suppliersLoading } = useQuery<Supplier[]>({
-    queryKey: ["/api/suppliers"],
-    queryFn: () => apiRequest("GET", "/api/suppliers"),
-  });
 
   // Fetch payment history
   const {
@@ -374,24 +369,25 @@ export default function SupPaymentHistory() {
           <CardContent className="p-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
               <div>
-                <label className="block text-sm font-medium mb-2">All Suppliers</label>
-                <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="All Suppliers" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Suppliers</SelectItem>
-                    {suppliersLoading ? (
-                      <SelectItem value="loading" disabled>Loading...</SelectItem>
-                    ) : (
-                      suppliers.map(supplier => (
-                        <SelectItem key={supplier.id} value={String(supplier.id)}>
-                          {supplier.supplier_name}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <SupplierSearch
+                  label="Supplier"
+                  value={supplierSearchValue}
+                  placeholder="All Suppliers — search by code or name..."
+                  onSupplierSelect={(supplier) => {
+                    if (supplier) {
+                      setSelectedSupplier(String(supplier.id));
+                      setSupplierSearchValue(`${supplier.supplier_code} - ${supplier.supplier_name}`);
+                    } else {
+                      setSelectedSupplier("all");
+                      setSupplierSearchValue("");
+                    }
+                  }}
+                  showCode
+                  allowClear
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  {selectedSupplier === "all" ? "Showing all suppliers" : "Showing the selected supplier"}
+                </p>
               </div>
 
               <DateRangeFilter
