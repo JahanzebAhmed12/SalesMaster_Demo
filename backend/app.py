@@ -11941,9 +11941,6 @@ def product_history_email():
         doc.build(elements)
         buffer.seek(0)
         
-        # Send email with PDF attachment
-        from flask_mail import Message
-        
         date_range = ""
         if from_date and to_date:
             date_range = f" ({from_date} to {to_date})"
@@ -11952,19 +11949,21 @@ def product_history_email():
         elif to_date:
             date_range = f" (to {to_date})"
         
-        msg = Message(
+        from mail_utils import send_via_brevo
+        body = f'Please find attached the Product History Report{date_range}.\n\nBest regards,\nTROPIFRUIT UK LTD'
+        ok = send_via_brevo(
+            to_list=[email],
             subject=f'Product History Report{date_range}',
-            recipients=[email],
-            body=f'Please find attached the Product History Report{date_range}.\n\nBest regards,\nTROPIFRUIT UK LTD'
+            html_content=f'<pre style="font-family:Arial,sans-serif;white-space:pre-wrap;">{body}</pre>',
+            text_content=body,
+            attachments=[{
+                'filename': f'product_history_{from_date or "all"}_{to_date or "all"}.pdf',
+                'content': buffer.getvalue(),
+                'content_type': 'application/pdf',
+            }],
         )
-        
-        msg.attach(
-            f'product_history_{from_date or "all"}_{to_date or "all"}.pdf',
-            'application/pdf',
-            buffer.getvalue()
-        )
-        
-        mail.send(msg)
+        if not ok:
+            return jsonify({'error': 'Failed to send email via Brevo. Check server logs.'}), 500
         
         return jsonify({'message': 'Email sent successfully'}), 200
         
@@ -15647,8 +15646,8 @@ def send_selected_invoices():
         if not pdf_bytes:
             return jsonify({'success': False, 'message': 'Failed to generate PDF'}), 500
         
-        # Send email to all addresses with the combined PDF
-        from flask_mail import Message
+        # Send email to all addresses with the combined PDF via Brevo
+        from mail_utils import send_via_brevo
         
         subject = f'Invoice(s): {", ".join(invoice_numbers)}'
         body = f'''Dear {customer.customer_name},
@@ -15659,29 +15658,31 @@ If you have any questions regarding these invoices, please don't hesitate to con
 
 Best regards,
 {company.companyName if company else 'TROPIFRUIT UK LTD'}'''
+        html_body = f'<pre style="font-family:Arial,sans-serif;white-space:pre-wrap;">{body}</pre>'
+        filename = f'invoices_{"-".join(invoice_numbers)}.pdf'
         
         success_count = 0
         failed_addresses = []
         
         for email_address in email_addresses:
             try:
-                msg = Message(
+                ok = send_via_brevo(
+                    to_list=[email_address],
                     subject=subject,
-                    recipients=[email_address],
-                    body=body
+                    html_content=html_body,
+                    text_content=body,
+                    attachments=[{
+                        'filename': filename,
+                        'content': pdf_bytes,
+                        'content_type': 'application/pdf',
+                    }],
                 )
-                
-                # Attach the combined PDF
-                filename = f'invoices_{"-".join(invoice_numbers)}.pdf'
-                msg.attach(
-                    filename,
-                    'application/pdf',
-                    pdf_bytes
-                )
-                
-                mail.send(msg)
-                print(f"Combined invoices sent successfully to {email_address}")
-                success_count += 1
+                if ok:
+                    print(f"Combined invoices sent successfully to {email_address}")
+                    success_count += 1
+                else:
+                    print(f"Failed to send combined invoices to {email_address}: Brevo returned error")
+                    failed_addresses.append(email_address)
                 
             except Exception as e:
                 print(f"Failed to send combined invoices to {email_address}: {str(e)}")
@@ -16541,8 +16542,6 @@ def test_email_configuration():
         if not test_email:
             return jsonify({"error": "Email address required"}), 400
         
-        # Import required modules
-        from flask_mail import Message
         import re
         
         # Validate email
@@ -16550,19 +16549,17 @@ def test_email_configuration():
         if not re.match(email_regex, test_email):
             return jsonify({"error": "Invalid email address"}), 400
         
-        # Check if mail is initialized
-        if not mail:
-            return jsonify({"error": "Email system not initialized"}), 500
-        
-        # Send test email
-        msg = Message(
+        # Send test email via Brevo
+        from mail_utils import send_via_brevo
+        body = "This is a test email from Sales Master Dashboard. If you receive this, your email configuration is working correctly."
+        ok = send_via_brevo(
+            to_list=[test_email],
             subject="Test Email - Sales Master Dashboard",
-            sender=mail.default_sender,
-            recipients=[test_email]
+            html_content=f'<pre style="font-family:Arial,sans-serif;white-space:pre-wrap;">{body}</pre>',
+            text_content=body,
         )
-        msg.body = "This is a test email from Sales Master Dashboard. If you receive this, your email configuration is working correctly."
-        
-        mail.send(msg)
+        if not ok:
+            return jsonify({"error": "Failed to send test email via Brevo. Check server logs."}), 500
         
         return jsonify({
             "success": True,
@@ -16631,7 +16628,6 @@ def send_email_with_attachment():
         return jsonify({"error": f"Failed to send email: {str(e)}"}), 500
 
 
-from flask_mail import Message
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -16704,14 +16700,23 @@ def send_closing_stock_pdf():
         entries=email_entries
     )
 
-    # Send email with PDF attachment and HTML body
-    msg = Message(
+    # Send via Brevo (replaces Flask-Mail which is not configured)
+    from mail_utils import send_via_brevo
+
+    pdf_bytes = buffer.getvalue()
+    ok = send_via_brevo(
+        to_list=[email],
         subject=f"Closing Stock Report - {date_str}",
-        recipients=[email],
-        html=html_body
+        html_content=html_body,
+        text_content=f"Closing Stock Report for {date_str} — see attached PDF.",
+        attachments=[{
+            'filename': f"closing_stock_{date_str}.pdf",
+            'content': pdf_bytes,
+            'content_type': 'application/pdf',
+        }],
     )
-    msg.attach(f"closing_stock_{date_str}.pdf", "application/pdf", buffer.read())
-    mail.send(msg)
+    if not ok:
+        return jsonify({"error": "Failed to send email via Brevo. Check server logs."}), 500
 
     return jsonify({"success": True}), 200
 

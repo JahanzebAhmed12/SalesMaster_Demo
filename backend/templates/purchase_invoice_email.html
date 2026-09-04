@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Purchase Invoice #{{ invoice.id }}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #fff;
+      margin: 0;
+      padding: 0;
+    }
+    .invoice-container {
+      max-width: 700px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 8px 8px 8px 8px;
+    }
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 8px;
+    }
+    .header-table td {
+      vertical-align: top;
+      padding: 0;
+    }
+    .company-logo {
+      height: 48px;
+      margin-bottom: 2px;
+    }
+    .company-name {
+      font-weight: bold;
+      font-size: 16px;
+      margin-bottom: 1px;
+    }
+    .company-details {
+      font-size: 12px;
+      margin-bottom: 1px;
+    }
+    .invoice-number {
+      font-weight: bold;
+      font-size: 20px;
+      color: #2236b0;
+      margin-bottom: 2px;
+    }
+    .invoice-title {
+      font-weight: bold;
+      font-size: 22px;
+      letter-spacing: 1px;
+      margin-bottom: 2px;
+    }
+    .invoice-date {
+      font-weight: 400;
+      font-size: 13px;
+      margin-top: 2px;
+    }
+    .divider {
+      border-top: 1px solid #ccc;
+      margin: 8px 0 8px 0;
+    }
+    .supplier-section {
+      margin-bottom: 6px;
+    }
+    .bill-to {
+      font-weight: bold;
+      margin-bottom: 2px;
+      font-size: 13px;
+    }
+    .supplier-box {
+      border: 1px solid #888;
+      padding: 4px 8px;
+      min-width: 120px;
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 1px;
+    }
+    .supplier-details {
+      font-size: 12px;
+      margin-top: 1px;
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 13px;
+    }
+    .items-table th, .items-table td {
+      border: 1px solid #ccc;
+      padding: 4px 6px;
+      text-align: left;
+    }
+    .items-table th {
+      background-color: #f0f0f0;
+      font-weight: bold;
+    }
+    .subtotal-row {
+      font-weight: bold;
+      background-color: #f9f9f9;
+    }
+    .totals-section {
+      margin-top: 12px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .totals-box {
+      min-width: 200px;
+      border: 1px solid #888;
+      padding: 8px;
+      background: #f8f8f8;
+    }
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .total-row.bold {
+      font-weight: bold;
+      font-size: 15px;
+    }
+    .footer {
+      margin-top: 16px;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-container">
+    <!-- Header: Logo and Invoice Number -->
+    <table class="header-table">
+      <tr>
+        <td style="width:60%">
+          {% if logo_path %}
+            <img src="{{ logo_path }}" alt="Logo" class="company-logo" />
+          {% endif %}
+          <div class="company-name">{{ company.companyName or "Company Name" }}</div>
+          <div class="company-details">{{ company.address1 }}{% if company.address2 %}, {{ company.address2 }}{% endif %}</div>
+          {% if company.compRegNo %}
+          <div class="company-details">Company Reg No: {{ company.compRegNo }}</div>
+          {% endif %}
+          {% if company.vatNo %}
+          <div class="company-details">VAT No: {{ company.vatNo }}</div>
+          {% endif %}
+        </td>
+        <td style="text-align:right; width:40%">
+          <div class="invoice-number">Purchase Invoice No: {{ invoice.id }}</div>
+          <div class="invoice-title">PURCHASE INVOICE</div>
+          <div class="invoice-date">Date: {{ invoice.date.strftime('%d/%m/%Y') if invoice.date else '-' }}</div>
+        </td>
+      </tr>
+    </table>
+    <div class="divider"></div>
+    <!-- Bill To and Supplier Info -->
+    <div class="supplier-section">
+      <div class="bill-to">Supplier :</div>
+      <div class="supplier-box">{{ supplier.supplier_name or supplier.supplierName or "SUPPLIER" }}</div>
+      {% if supplier.address %}
+      <div class="supplier-details">{{ supplier.address }}</div>
+      {% endif %}
+      {% if supplier.vat_number or supplier.vatNumber %}
+      <div class="supplier-details">VAT No: {{ supplier.vat_number or supplier.vatNumber }}</div>
+      {% endif %}
+    </div>
+    <!-- Items Table -->
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>Qty</th>
+          <th>U.Price</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in invoice.items %}
+        <tr>
+          <td>{{ item.productName or item.product_name or '-' }}</td>
+          <td>{{ item.quantity }}</td>
+          <td>{{ "%.2f"|format(item.unit_price or item.unitPrice) if item.unit_price or item.unitPrice else '-' }}</td>
+          <td>£{{ "%.2f"|format(item.total_price or item.totalPrice) if item.total_price or item.totalPrice else '-' }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="subtotal-row">
+          <td>SUB TOTAL</td>
+          <td>{{ invoice.items|sum(attribute='quantity') }}</td>
+          <td>X</td>
+          <td>£{{ "%.2f"|format(invoice.items|sum(attribute='total_price')) }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <!-- Notes and Totals -->
+    <div class="totals-section">
+      <div class="totals-box">
+        <div class="total-row">
+          <span>Paid</span>
+          <span>£{{ "%.2f"|format(invoice.paid_amount) if invoice.paid_amount else "0.00" }}</span>
+        </div>
+        <div class="total-row bold">
+          <span>TOTAL</span>
+          <span>£{{ "%.2f"|format(invoice.items|sum(attribute='total_price')) }}</span>
+        </div>
+        <div class="total-row">
+          <span>BALANCE</span>
+          <span>£{{ "%.2f"|format((invoice.items|sum(attribute='total_price')) - (invoice.paid_amount or 0)) }}</span>
+        </div>
+      </div>
+    </div>
+    <!-- Footer -->
+    <div class="footer">
+      <div>Invoice Time: {{ invoice.date.strftime('%d/%m/%Y, %H:%M:%S') if invoice.date else '-' }}</div>
+      <div>Current Time: {{ now.strftime('%d/%m/%Y, %H:%M:%S') if now else '-' }}</div>
+    </div>
+  </div>
+</body>
+</html> 
