@@ -304,39 +304,6 @@ const SalesInvoice = () => {
       setIsGateNumberFromCustomer(false);
     }
 
-    if (currentSale) {
-      const updatedSalePayload: BackendSalePayload = {
-        invoice_number: currentSale.invoiceNumber,
-        customer_id: id,
-        customer_type: currentSale.customerType,
-        payment_status: currentSale.paymentStatus,
-        subtotal: currentSale.subtotal,
-        porterage: currentSale.porterage,
-        porterage_type: 'per_unit',
-        porterage_rate: Number((currentSale as any).porterageRate || 0),
-        vat_rate: currentSale.vatRate,
-        vat_amount: currentSale.vatAmount,
-        total_amount: currentSale.totalAmount,
-        vehicle_details: currentSale.vehicleDetails,
-        gate_number: currentSale.gateNumber,
-        notes: currentSale.notes,
-        status: currentSale.status,
-        date: currentSale.date ? format(new Date(currentSale.date), 'yyyy-MM-dd') : undefined, // Preserve original invoice date
-        edit_lock_token: editLockTokenRef.current,
-        items: saleItems.map(item => ({
-          product_id: item.productId,
-          non_product_id: item.nonProductId,
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-          total_price: item.totalPrice,
-          notes: item.notes,
-          added_by: item.addedBy || currentUser?.username || null,
-          highlighted: item.highlighted,
-          created_at: item.createdAt,
-        })),
-      };
-      updateSaleMutation.mutate(updatedSalePayload);
-    }
   }
 
   useEffect(() => {
