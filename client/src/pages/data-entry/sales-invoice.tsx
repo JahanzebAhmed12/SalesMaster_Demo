@@ -753,15 +753,17 @@ const SalesInvoice = () => {
 
   // Get customer details for display
   const selectedCustomer = customers?.find(c => c.id === parseInt(customerId));
-  const customerName = currentSale?.customerId
-    ? customers?.find(c => c.id === currentSale.customerId)?.customer_name || 'N/A'
-    : selectedCustomer?.customer_name || 'N/A';
+  const customerName = customerId
+    ? customers?.find(c => c.id === parseInt(customerId))?.customer_name || 'N/A'
+    : currentSale?.customerId
+      ? customers?.find(c => c.id === currentSale.customerId)?.customer_name || 'N/A'
+      : 'N/A';
   const customerType = currentSale?.customerType || "account";
   const paymentStatus = currentSale?.paymentStatus || "pending";
 
   // Open gate number edit dialog — pre-fill with current value
   const openEditGateNumber = () => {
-    setEditGateNumberValue(currentSale?.gateNumber || gateNumber || "");
+    setEditGateNumberValue(gateNumber || currentSale?.gateNumber || "");
     setIsEditGateNumberOpen(true);
   };
 
@@ -2476,7 +2478,7 @@ const SalesInvoice = () => {
                 )}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <span>Gate Number: </span>
-                  <span className="font-semibold">{currentSale?.gateNumber || gateNumber || <span className="text-gray-400 italic">None</span>}</span>
+                  <span className="font-semibold">{gateNumber || currentSale?.gateNumber || <span className="text-gray-400 italic">None</span>}</span>
                   <button
                     type="button"
                     className={`flex items-center w-fit ${isReadOnly ? 'text-gray-400 cursor-not-allowed' : 'text-blue-600 hover:underline'}`}
