@@ -418,21 +418,22 @@ export default function ReturnToSupplier() {
     // Add table
     html += '<table>';
     html += '<thead><tr>';
-    const headers = ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'];
+    const headers = ['Date', 'Reference', 'Supplier', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total Value'];
     headers.forEach(h => {
       html += `<th>${h}</th>`;
     });
     html += '</tr></thead><tbody>';
     supplierReturns.forEach(item => {
+      const productLabel = getProductLabel((item as any).productId, (item as any).productType as 'regular' | 'non') || '-';
       html += '<tr>';
       html += `<td>${format(new Date(item.date), 'dd/MM/yyyy')}</td>`;
       html += `<td>${item.refNumber}</td>`;
       html += `<td>${item.supplierName}</td>`;
+      html += `<td>${productLabel}</td>`;
       html += `<td>${item.description}</td>`;
       html += `<td>${item.quantity}</td>`;
       html += `<td>£${item.unitPrice.toFixed(2)}</td>`;
       html += `<td>£${item.totalValue.toFixed(2)}</td>`;
-      html += `<td>${item.status}</td>`;
       html += '</tr>';
     });
     html += '</tbody></table>';
@@ -442,17 +443,20 @@ export default function ReturnToSupplier() {
   const handleExcel = () => {
     const wsData = [
       [cardTitle],
-      ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'],
-      ...supplierReturns.map((item: any) => ([
-        format(new Date(item.date), 'dd/MM/yyyy'),
-        item.refNumber,
-        item.supplierName,
-        item.description,
-        item.quantity,
-        item.unitPrice,
-        item.totalValue,
-        item.status,
-      ])),
+      ['Date', 'Reference', 'Supplier', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total Value'],
+      ...supplierReturns.map((item: any) => {
+        const productLabel = getProductLabel(item.productId, item.productType as 'regular' | 'non') || '-';
+        return [
+          format(new Date(item.date), 'dd/MM/yyyy'),
+          item.refNumber,
+          item.supplierName,
+          productLabel,
+          item.description,
+          item.quantity,
+          item.unitPrice,
+          item.totalValue,
+        ];
+      }),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -509,32 +513,35 @@ export default function ReturnToSupplier() {
     // Add table
     autoTable(doc, {
       head: [[
-        'Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'
+        'Date', 'Reference', 'Supplier', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total Value'
       ]],
-      body: supplierReturns.map((item: any) => [
-        format(new Date(item.date), 'dd/MM/yyyy'),
-        item.refNumber,
-        item.supplierName,
-        item.description,
-        item.quantity,
-        `£${item.unitPrice.toFixed(2)}`,
-        `£${item.totalValue.toFixed(2)}`,
-        item.status,
-      ]),
+      body: supplierReturns.map((item: any) => {
+        const productLabel = getProductLabel(item.productId, item.productType as 'regular' | 'non') || '-';
+        return [
+          format(new Date(item.date), 'dd/MM/yyyy'),
+          item.refNumber,
+          item.supplierName,
+          productLabel,
+          item.description,
+          item.quantity,
+          `£${item.unitPrice.toFixed(2)}`,
+          `£${item.totalValue.toFixed(2)}`,
+        ];
+      }),
       startY: yPosition,
       styles: {
-        fontSize: 8,
+        fontSize: 7,
         cellPadding: 2
       },
       columnStyles: {
-        0: { cellWidth: 20 },
-        1: { cellWidth: 25 },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 35 },
-        4: { cellWidth: 15 },
-        5: { cellWidth: 20 },
-        6: { cellWidth: 20 },
-        7: { cellWidth: 15 }
+        0: { cellWidth: 18 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 28 },
+        3: { cellWidth: 32 },
+        4: { cellWidth: 32 },
+        5: { cellWidth: 14 },
+        6: { cellWidth: 18 },
+        7: { cellWidth: 18 }
       }
     });
     
@@ -542,17 +549,20 @@ export default function ReturnToSupplier() {
   };
 
   const handleCopy = () => {
-    const header = ['Date', 'Reference', 'Supplier', 'Description', 'Quantity', 'Unit Price', 'Total Value', 'Status'];
-    const rows = supplierReturns.map((item: any) => [
-      format(new Date(item.date), 'dd/MM/yyyy'),
-      item.refNumber,
-      item.supplierName,
-      item.description,
-      item.quantity,
-      item.unitPrice,
-      item.totalValue,
-      item.status,
-    ]);
+    const header = ['Date', 'Reference', 'Supplier', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total Value'];
+    const rows = supplierReturns.map((item: any) => {
+      const productLabel = getProductLabel(item.productId, item.productType as 'regular' | 'non') || '-';
+      return [
+        format(new Date(item.date), 'dd/MM/yyyy'),
+        item.refNumber,
+        item.supplierName,
+        productLabel,
+        item.description,
+        item.quantity,
+        item.unitPrice,
+        item.totalValue,
+      ];
+    });
     const tsv = [cardTitle, header.join('\t'), ...rows.map(row => row.join('\t'))].join('\n');
     copyToClipboard(tsv, { toast });
   };
