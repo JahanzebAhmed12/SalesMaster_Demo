@@ -114,6 +114,7 @@ import PackingListPrintPage from "./pages/print/packing-list";
 import DailySummaryPrintPage from "@/pages/print/daily-summary-print";
 import BulkDotMatrixPrintPage from "@/pages/print/bulk-dot-matrix";
 import BulkA4InvoicePrintPage from "@/pages/print/bulk-a4-invoice";
+import BulkA5InvoicePrintPage from "@/pages/print/bulk-a5-invoice";
 import BulkPackingListPrintPage from "@/pages/print/bulk-packing-list";
 
 // User Profile
@@ -605,6 +606,9 @@ function Router() {
       </Route>
       <Route path="/print/bulk-a4-invoice">
         <BulkA4InvoicePrintPage />
+      </Route>
+      <Route path="/print/bulk-a5-invoice">
+        <BulkA5InvoicePrintPage />
       </Route>
       <Route path="/print/bulk-packing-list">
         <BulkPackingListPrintPage />

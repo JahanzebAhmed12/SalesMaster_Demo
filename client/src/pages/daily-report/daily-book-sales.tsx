@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
-import { BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt, RefreshCw } from "lucide-react";
+import { BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt, RefreshCw, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import { cn, isPastDate, formatQuantity, formatPrice } from "@/lib/utils";
 import * as XLSX from 'xlsx';
@@ -897,6 +897,12 @@ export default function DailyBookSales() {
     window.open(`/print/bulk-a4-invoice?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
   };
 
+  const handleBulkA5Print = () => {
+    const invoiceNumbers = getSelectedInvoiceNumbers();
+    if (invoiceNumbers.length === 0) return;
+    window.open(`/print/bulk-a5-invoice?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+  };
+
   const handleBulkPickingPrint = () => {
     const invoiceNumbers = getSelectedInvoiceNumbers();
     if (invoiceNumbers.length === 0) return;
@@ -1166,36 +1172,38 @@ export default function DailyBookSales() {
                         <span className="hidden sm:inline">Email Selected</span>
                         <span className="sm:hidden">Email</span>
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex items-center gap-1 border-blue-500 text-blue-700 hover:bg-blue-50"
-                        onClick={handleBulkPrint}
-                      >
-                        <Printer size={14} />
-                        <span className="hidden sm:inline">Print Selected</span>
-                        <span className="sm:hidden">Print</span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex items-center gap-1 border-indigo-500 text-indigo-700 hover:bg-indigo-50"
-                        onClick={handleBulkA4Print}
-                      >
-                        <FileText size={14} />
-                        <span className="hidden sm:inline">A4 Invoices</span>
-                        <span className="sm:hidden">A4</span>
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex items-center gap-1 border-orange-500 text-orange-700 hover:bg-orange-50"
-                        onClick={handleBulkPickingPrint}
-                      >
-                        <Package size={14} />
-                        <span className="hidden sm:inline">Picking Notes</span>
-                        <span className="sm:hidden">Picking</span>
-                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex items-center gap-1"
+                          >
+                            <Printer size={14} />
+                            <span className="hidden sm:inline">Bulk Print</span>
+                            <span className="sm:hidden">Print</span>
+                            <ChevronDown size={12} className="ml-1 opacity-60" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={handleBulkPrint} className="cursor-pointer">
+                            <Printer size={14} className="mr-2" />
+                            Dot Matrix
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={handleBulkA4Print} className="cursor-pointer">
+                            <FileText size={14} className="mr-2" />
+                            A4 Invoices
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={handleBulkA5Print} className="cursor-pointer">
+                            <FileText size={14} className="mr-2" />
+                            A5 Invoices
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={handleBulkPickingPrint} className="cursor-pointer">
+                            <Package size={14} className="mr-2" />
+                            Picking Notes
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </>
                   )}
                 </div>
