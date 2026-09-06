@@ -361,6 +361,10 @@ _PUBLIC_API_EXACT = {
     # Print receipt pages use company branding without requiring a second
     # authenticated API call for public company details.
     ("/api/company-details", "GET"),
+    # Business date is needed on almost every page and is not sensitive;
+    # making it public prevents the 30s poll from triggering 401 storms and
+    # logging out active users when their token briefly expires/is missing.
+    ("/api/business-date", "GET"),
 }
 
 _PUBLIC_API_PATTERNS = (
@@ -1160,15 +1164,52 @@ def logout():
 
 
 @app.route('/api/auth/refresh', methods=['POST'])
-@jwt_required()
 def refresh_token():
     """Issue a fresh token for an authenticated user.
 
-    Called by the frontend before the current token expires so the user
-    is never interrupted mid-session.  The endpoint simply re-creates a
-    token for the same user identity.
+    Called by the frontend before / shortly after the current token expires
+    so the user is never interrupted mid-session while actively working.
+    Accepts already-expired tokens within a grace window (handled via
+    decode_token(allow_expired=True)) so a single 401 on a background
+    poll (e.g. /api/business-date) does not force an immediate logout
+    while the user is typing.
     """
-    user_id = get_jwt_identity()
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return jsonify({'error': 'Missing or invalid Authorization header'}), 401
+    token = auth_header.split(' ', 1)[1].strip()
+    if not token or token == 'null' or token == 'undefined':
+        return jsonify({'error': 'Missing token'}), 401
+
+    # Allow expired tokens for refresh — decode without verifying exp first,
+    # then enforce a grace window manually.
+    try:
+        from flask_jwt_extended import decode_token
+        # decode_token will verify signature but allow expired token
+        decoded = decode_token(token, allow_expired=True)
+        user_id = decoded.get('sub')
+        exp = decoded.get('exp')
+        if not user_id:
+            return jsonify({'error': 'Invalid token'}), 401
+        # Grace window: allow refresh up to 2 hours after expiry.
+        # Prevents indefinite use of very old tokens while still covering
+        # the case where the user was active and the token just expired
+        # between the 30-min refresh interval and the next poll.
+        if exp is not None:
+            import time as _time
+            now_ts = int(_time.time())
+            grace_seconds = 2 * 60 * 60  # 2 hours
+            if now_ts > int(exp) + grace_seconds:
+                return jsonify({'error': 'Token expired — please login again'}), 401
+    except Exception as e:
+        # Fallback: try normal verification for non-expired tokens
+        try:
+            from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
+            verify_jwt_in_request()
+            user_id = get_jwt_identity()
+        except Exception:
+            return jsonify({'error': 'Invalid token'}), 401
+
     user = User.query.get(user_id)
     if not user or user.status != 'Active':
         return jsonify({'error': 'Account inactive'}), 403

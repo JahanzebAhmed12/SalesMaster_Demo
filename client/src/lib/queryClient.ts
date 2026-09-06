@@ -132,9 +132,21 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
   // same moment doesn't fire multiple independent logout flows.
   // 401 = expired/invalid token, 422 = malformed token (Flask-JWT returns this
   // when the Authorization header is present but unparseable, e.g. "Bearer null").
-  if (response.status === 401 || response.status === 422) {
+  // Do NOT treat auth endpoints themselves as session expiry — a failed login
+  // (POST /api/auth/login 401) should not trigger a logout loop.
+  const isAuthEndpoint = endpoint.startsWith("/api/auth/");
+  if ((response.status === 401 || response.status === 422) && !isAuthEndpoint) {
     scheduleAuthError();
     throw new Error('Session expired. Please login again.');
+  }
+  // For auth endpoints, just throw without scheduling a global logout
+  if ((response.status === 401 || response.status === 422) && isAuthEndpoint) {
+    const errBody = await response.json().catch(() => ({} as any));
+    throw new ApiRequestError(
+      (errBody as any).message || (errBody as any).error || `HTTP error! status: ${response.status}`,
+      response.status,
+      errBody,
+    );
   }
 
   const responseData = await response.json();
