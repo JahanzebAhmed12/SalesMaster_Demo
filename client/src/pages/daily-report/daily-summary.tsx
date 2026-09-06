@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, Download, FileText, Printer, Mail, Receipt, FileCheck, Pencil } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { cn, formatQuantity, formatSmartQuantity } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -319,6 +319,15 @@ export default function DailySummary() {
         ? `/print/a5-invoice/${invoiceNumber}`
         : `/print/invoice/${invoiceNumber}`;
     window.open(printUrl, '_blank');
+  };
+
+  const handlePrintInvoiceFormat = (invoiceNumber: string, fmt: 'a4' | 'a5' | 'dotmatrix') => {
+    const url = fmt === 'dotmatrix'
+      ? `/print/dot-matrix-invoice/${invoiceNumber}`
+      : fmt === 'a5'
+        ? `/print/a5-invoice/${invoiceNumber}`
+        : `/print/invoice/${invoiceNumber}`;
+    window.open(url, '_blank');
   };
 
   // Fetch stock check data
@@ -839,41 +848,59 @@ export default function DailySummary() {
     return doc;
   };
 
-  const handleDownloadInvoicePdf = async (invoiceNumber: string) => {
+  const handleDownloadInvoicePdf = async (invoiceNumber: string, fmt: 'a4' | 'a5' | 'dotmatrix' = 'dotmatrix') => {
     try {
-      const token = localStorage.getItem('jwt_token');
-      const response = await fetch(getApiUrl('/api/generate-invoice-pdf'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/pdf',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
-        credentials: 'include',
-        body: JSON.stringify({ invoiceNumber }),
-      });
-
-      if (!response.ok) {
-        let message = `Failed to download invoice ${invoiceNumber}`;
-        try {
-          const errorData = await response.json();
-          message = errorData.error || errorData.message || message;
-        } catch {
-          // Keep the user-friendly fallback when the server response is not JSON.
+      if (fmt === 'dotmatrix') {
+        const token = localStorage.getItem('jwt_token');
+        const response = await fetch(getApiUrl('/api/generate-invoice-pdf'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/pdf',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
+          credentials: 'include',
+          body: JSON.stringify({ invoiceNumber }),
+        });
+        if (!response.ok) {
+          let message = `Failed to download invoice ${invoiceNumber}`;
+          try {
+            const errorData = await response.json();
+            message = errorData.error || errorData.message || message;
+          } catch {}
+          throw new Error(message);
         }
-        throw new Error(message);
+        const pdfBlob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = `invoice-${invoiceNumber}-dotmatrix.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(downloadUrl);
+        toast({ title: 'Success', description: 'Dot Matrix PDF downloaded' });
+        return;
       }
 
-      const pdfBlob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `invoice-${invoiceNumber}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
-      toast({ title: 'Success', description: 'Invoice PDF downloaded successfully' });
+      // A4 / A5 — generate client-side using same data as print pages
+      const [invoiceData, settingsData] = await Promise.all([
+        apiRequest("GET", `/api/sales/${invoiceNumber}/invoice`),
+        apiRequest("GET", "/api/settings").catch(() => ({} as any)),
+      ]);
+      invoiceData.invoiceFooter = settingsData.invoiceFooter || "";
+      const { generateInvoicePdfBlob } = await import("@/lib/invoice-pdf");
+      const pdfBlob: Blob = generateInvoicePdfBlob(invoiceData);
+      // For A5, we reuse A4 content — it's print-scaled to A5 paper; dedicated A5 generator can be added later if needed
+      const url = window.URL.createObjectURL(pdfBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice-${invoiceNumber}-${fmt}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast({ title: 'Success', description: `${fmt.toUpperCase()} PDF downloaded` });
     } catch (error) {
       console.error('Error downloading invoice PDF:', error);
       toast({
@@ -1191,30 +1218,53 @@ export default function DailySummary() {
                                       {sale.invoice_no}
                                     </Button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="start" className="w-48">
+                                  <DropdownMenuContent align="start" className="w-56">
                                     {canEditForSelectedDate && (
-                                      <DropdownMenuItem
-                                        className="text-sm py-2"
-                                        onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}`, '_self')}
-                                      >
-                                        <Pencil className="mr-2 h-4 w-4" />
-                                        Edit
-                                      </DropdownMenuItem>
+                                      <>
+                                        <DropdownMenuItem
+                                          className="text-sm py-2"
+                                          onClick={() => window.open(`/data-entry/sales-invoice?invoiceNumber=${sale.invoice_no}`, '_self')}
+                                        >
+                                          <Pencil className="mr-2 h-4 w-4" />
+                                          Edit
+                                        </DropdownMenuItem>
+                                        <DropdownMenuSeparator />
+                                      </>
                                     )}
-                                    <DropdownMenuItem
-                                      className="text-sm py-2"
-                                      onClick={() => handleDownloadInvoicePdf(sale.invoice_no)}
-                                    >
-                                      <Download className="mr-2 h-4 w-4" />
-                                      PDF Download
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem
-                                      className="text-sm py-2"
-                                      onClick={() => handlePrintInvoice(sale.invoice_no)}
-                                    >
-                                      <Printer className="mr-2 h-4 w-4" />
-                                      Print
-                                    </DropdownMenuItem>
+                                    <DropdownMenuSub>
+                                      <DropdownMenuSubTrigger className="text-sm py-2">
+                                        <Download className="mr-2 h-4 w-4" />
+                                        Download PDF
+                                      </DropdownMenuSubTrigger>
+                                      <DropdownMenuSubContent className="w-44">
+                                        <DropdownMenuItem className="text-sm" onClick={() => handleDownloadInvoicePdf(sale.invoice_no, 'a4')}>
+                                          <FileText className="mr-2 h-4 w-4" /> A4 PDF
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="text-sm" onClick={() => handleDownloadInvoicePdf(sale.invoice_no, 'a5')}>
+                                          <FileText className="mr-2 h-4 w-4" /> A5 PDF
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="text-sm" onClick={() => handleDownloadInvoicePdf(sale.invoice_no, 'dotmatrix')}>
+                                          <FileText className="mr-2 h-4 w-4" /> Dot Matrix PDF
+                                        </DropdownMenuItem>
+                                      </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
+                                    <DropdownMenuSub>
+                                      <DropdownMenuSubTrigger className="text-sm py-2">
+                                        <Printer className="mr-2 h-4 w-4" />
+                                        Print
+                                      </DropdownMenuSubTrigger>
+                                      <DropdownMenuSubContent className="w-40">
+                                        <DropdownMenuItem className="text-sm" onClick={() => handlePrintInvoiceFormat(sale.invoice_no, 'a4')}>
+                                          A4
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="text-sm" onClick={() => handlePrintInvoiceFormat(sale.invoice_no, 'a5')}>
+                                          A5
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="text-sm" onClick={() => handlePrintInvoiceFormat(sale.invoice_no, 'dotmatrix')}>
+                                          Dot Matrix
+                                        </DropdownMenuItem>
+                                      </DropdownMenuSubContent>
+                                    </DropdownMenuSub>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
                               ) : '-'}
