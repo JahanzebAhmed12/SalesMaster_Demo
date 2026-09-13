@@ -107,6 +107,7 @@ import PurchaseInvoice from "./pages/data-entry/purchase-invoice";
 import InvoicePrintPage from "@/pages/print/invoice";
 import A5InvoicePrintPage from "@/pages/print/a5-invoice";
 import DotMatrixInvoicePrintPage from "@/pages/print/dot-matrix-invoice";
+import CustomerLabelPrintPage from "@/pages/print/customer-label";
 import DotMatrixPaymentPrintPage from "@/pages/print/dot-matrix-payment";
 import PurchaseInvoicePrintPage from "@/pages/print/purchase-invoice";
 import DeliveryNotePrintPage from "./pages/print/delivery-note";
@@ -624,6 +625,9 @@ function Router() {
       </Route>
       <Route path="/print/packing-list/:invoiceNumber">
         <PackingListPrintPage />
+      </Route>
+      <Route path="/print/customer-label/:invoiceNumber">
+        <CustomerLabelPrintPage />
       </Route>
       <Route path="/print/holiday-request/:id">
         <HolidayRequestPrint />

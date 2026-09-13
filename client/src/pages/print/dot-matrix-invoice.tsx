@@ -792,6 +792,22 @@ export default function DotMatrixInvoicePrintPage() {
           >
             ⬇️ Download PDF
             </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.open(`/print/packing-list/${invoiceNumber}`, '_blank')}
+            className="flex items-center gap-1"
+          >
+            📋 Print Picking Note
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.open(`/print/customer-label/${invoiceNumber}`, '_blank')}
+            className="flex items-center gap-1"
+          >
+            🏷️ Print Label
+          </Button>
         </div>
       </div>
 
