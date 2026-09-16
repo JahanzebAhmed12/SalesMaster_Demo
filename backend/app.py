@@ -89,7 +89,17 @@ if stock_audit_handler is None:
 
 
 def stock_audit_log(event, level=logging.INFO, **fields):
-    """Write one structured stock-observability event without secrets."""
+    """Write one structured stock-observability event without secrets.
+
+    Discrepancy-only mode: routine per-product / per-request success noise
+    (mutations, snapshots, every stock-check row, started/completed markers)
+    is dropped so the file only shows discrepancies (+ errors). The last
+    operation that may have caused a discrepancy is attached to the
+    discrepancy line itself via ``log_stock_discrepancy_once`` instead of
+    logging every mutation.
+    """
+    if event in STOCK_AUDIT_NOISY_EVENTS and not event.startswith("test_"):
+        return
     payload = {
         "timestamp": datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
         "event": event,
@@ -102,6 +112,152 @@ def stock_audit_log(event, level=logging.INFO, **fields):
             "request_id": request.headers.get("X-Request-ID"),
         })
     stock_audit_logger.log(level, json.dumps(payload, sort_keys=True, default=str))
+
+
+# Routine success events silenced by discrepancy-only mode. Errors /
+# rejections / failures are NOT in this set so they still reach the file.
+STOCK_AUDIT_NOISY_EVENTS = frozenset({
+    "stock_mutation_started",
+    "stock_mutation_applied",
+    "stock_movement_queued",
+    "stock_mutation_retry",
+    "current_stock_cleanup_adjustment_started",
+    "current_stock_cleanup_adjustment_applied",
+    "current_stock_initialized",
+    "current_stock_snapshot_started",
+    "current_stock_snapshot_row",
+    "current_stock_snapshot_completed",
+    "current_stock_override_started",
+    "current_stock_override_applied",
+    "stock_check_started",
+    "stock_check_products_loaded",
+    "stock_check_row",
+    "stock_check_completed",
+    # Superseded by the merged single-line discrepancy event below.
+    "current_stock_stock_check_discrepancy",
+})
+
+# (business_date_str, product_id, product_type) already written to the file
+# and not yet resolved. Prevents repeat lines on every refresh while the
+# discrepancy persists until closing stock is entered.
+_logged_discrepancy_keys = set()
+
+
+def _discrepancy_key(business_date_str, product_id, product_type):
+    return (str(business_date_str), int(product_id), str(product_type))
+
+
+def _hydrate_logged_discrepancy_keys(business_date_str):
+    """Rebuild in-memory dedup state from the log file after restarts."""
+    try:
+        path = STOCK_AUDIT_LOG_PATH
+        if not os.path.exists(path):
+            return
+        wanted = str(business_date_str)
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except Exception:
+                    continue
+                if record.get("business_date") != wanted:
+                    continue
+                key = _discrepancy_key(
+                    wanted, record.get("product_id"), record.get("product_type")
+                )
+                if record.get("event") == "stock_check_discrepancy":
+                    _logged_discrepancy_keys.add(key)
+                elif record.get("event") == "stock_discrepancy_resolved":
+                    _logged_discrepancy_keys.discard(key)
+    except Exception:
+        pass
+
+
+def get_last_stock_operation(product_id, product_type, to_dt=None):
+    """Return the last StockMovement for a product (the likely cause)."""
+    try:
+        query = StockMovement.query.filter_by(
+            product_id=product_id, product_type=product_type
+        )
+        if to_dt is not None:
+            to_date_only = to_dt.date() if isinstance(to_dt, datetime) else to_dt
+            query = query.filter(
+                (StockMovement.movement_date.is_(None))
+                | (StockMovement.movement_date <= to_date_only)
+            )
+        movement = query.order_by(
+            StockMovement.movement_date.desc(),
+            StockMovement.created_at.desc(),
+            StockMovement.id.desc(),
+        ).first()
+        if not movement:
+            return None
+        return {
+            "movement_type": movement.movement_type,
+            "reference_type": movement.reference_type,
+            "reference_id": movement.reference_id,
+            "quantity": safe_float(movement.quantity),
+            "previous_stock": safe_float(movement.previous_stock),
+            "new_stock": safe_float(movement.new_stock),
+            "movement_date": movement.movement_date.isoformat()
+            if movement.movement_date else None,
+            "created_at": movement.created_at.isoformat()
+            if movement.created_at else None,
+            "created_by": movement.created_by,
+            "remarks": movement.remarks,
+        }
+    except Exception:
+        return None
+
+
+def log_stock_discrepancy_once(report_id, product_id, product_type,
+                               product_description, business_date_str,
+                               breakdown, to_dt=None):
+    """Log a discrepancy once per product per business date.
+
+    Returns True when a new line was written, False when it was already
+    logged (still unresolved) and skipped.
+    """
+    key = _discrepancy_key(business_date_str, product_id, product_type)
+    if key in _logged_discrepancy_keys:
+        return False
+    last_operation = get_last_stock_operation(product_id, product_type, to_dt)
+    stock_audit_log(
+        "stock_check_discrepancy",
+        level=logging.WARNING,
+        report_id=report_id,
+        business_date=str(business_date_str),
+        product_id=product_id,
+        product_type=product_type,
+        product_description=product_description,
+        last_operation=last_operation,
+        **breakdown,
+    )
+    _logged_discrepancy_keys.add(key)
+    return True
+
+
+def log_stock_discrepancy_resolved_if_needed(report_id, product_id, product_type,
+                                            business_date_str, closing_stock=None,
+                                            current_stock=None):
+    """Log a resolution line when a previously discrepant product is now clean."""
+    key = _discrepancy_key(business_date_str, product_id, product_type)
+    if key not in _logged_discrepancy_keys:
+        return False
+    stock_audit_log(
+        "stock_discrepancy_resolved",
+        report_id=report_id,
+        business_date=str(business_date_str),
+        product_id=product_id,
+        product_type=product_type,
+        closing_stock=closing_stock,
+        current_stock=current_stock,
+    )
+    _logged_discrepancy_keys.discard(key)
+    return True
 
 
 # Configure session
@@ -9009,25 +9165,16 @@ def stock_check_report():
         # Set to_dt to end of day (23:59:59) to include the entire day
         to_dt = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
         
-        stock_audit_log(
-            "stock_check_started",
-            report_id=report_id,
-            from_date=from_date,
-            to_date=to_date,
-            search=search or None,
-        )
         print(f"[DEBUG] Stock check report: from_dt={from_dt}, to_dt={to_dt}")
-        
+
+        # Rebuild log-once dedup state so a restart doesn't re-log open
+        # discrepancies. One line per product per business date until resolved.
+        _hydrate_logged_discrepancy_keys(to_date)
+
         # Get all products (regular and non)
         regular_products = RegularProduct.query.filter(RegularProduct.status == 'active').all()
         non_products = NonProduct.query.filter(NonProduct.status == 'active').all()
-        stock_audit_log(
-            "stock_check_products_loaded",
-            report_id=report_id,
-            regular_product_count=len(regular_products),
-            non_product_count=len(non_products),
-        )
-        
+
         stock_check_data = []
 
         # Process regular products
@@ -9072,49 +9219,39 @@ def stock_check_report():
                 current_stock = safe_float(product.current_stock)
                 current_stock_difference = round(current_stock - expected_stock, 2)
 
-                stock_audit_log(
-                    "stock_check_row",
-                    report_id=report_id,
-                    product_id=product.id,
-                    product_type="regular",
-                    product_description=product.description,
-                    opening_stock=round(opening_stock, 2),
-                    new_stock=round(new_stock, 2),
-                    sales=round(sales, 2),
-                    customer_returns=round(customer_returns, 2),
-                    dumps=round(dumps, 2),
-                    supplier_returns=round(supplier_returns, 2),
-                    expected_stock=round(expected_stock, 2),
-                    closing_stock=round(actual_closing_stock, 2),
-                    difference=difference,
-                    current_stock=current_stock,
-                    current_stock_difference=current_stock_difference,
-                )
-                if difference != 0:
-                    stock_audit_log(
-                        "stock_check_discrepancy",
-                        level=logging.WARNING,
-                        report_id=report_id,
-                        product_id=product.id,
-                        product_type="regular",
-                        product_description=product.description,
-                        expected_stock=round(expected_stock, 2),
-                        closing_stock=round(actual_closing_stock, 2),
-                        difference=difference,
-                        current_stock=current_stock,
-                        current_stock_difference=current_stock_difference,
+                # Discrepancy-only logging: one line when a discrepancy first
+                # appears (with the last operation that may have caused it),
+                # then silence until closing stock resolves it.
+                if difference != 0 or current_stock_difference != 0:
+                    log_stock_discrepancy_once(
+                        report_id,
+                        product.id,
+                        "regular",
+                        product.description,
+                        to_date,
+                        {
+                            "opening_stock": round(opening_stock, 2),
+                            "new_stock": round(new_stock, 2),
+                            "sales": round(sales, 2),
+                            "customer_returns": round(customer_returns, 2),
+                            "dumps": round(dumps, 2),
+                            "supplier_returns": round(supplier_returns, 2),
+                            "expected_stock": round(expected_stock, 2),
+                            "closing_stock": round(actual_closing_stock, 2),
+                            "difference": difference,
+                            "current_stock": current_stock,
+                            "current_stock_difference": current_stock_difference,
+                        },
+                        to_dt,
                     )
-                if current_stock_difference != 0:
-                    stock_audit_log(
-                        "current_stock_stock_check_discrepancy",
-                        level=logging.WARNING,
-                        report_id=report_id,
-                        product_id=product.id,
-                        product_type="regular",
-                        product_description=product.description,
-                        expected_stock=round(expected_stock, 2),
+                else:
+                    log_stock_discrepancy_resolved_if_needed(
+                        report_id,
+                        product.id,
+                        "regular",
+                        to_date,
+                        closing_stock=round(actual_closing_stock, 2),
                         current_stock=current_stock,
-                        current_stock_difference=current_stock_difference,
                     )
 
                 if difference == 0:
@@ -9200,49 +9337,37 @@ def stock_check_report():
                 current_stock = safe_float(product.current_stock)
                 current_stock_difference = round(current_stock - expected_stock, 2)
 
-                stock_audit_log(
-                    "stock_check_row",
-                    report_id=report_id,
-                    product_id=product.id,
-                    product_type="non",
-                    product_description=product.description,
-                    opening_stock=round(opening_stock, 2),
-                    new_stock=round(new_stock, 2),
-                    sales=round(sales, 2),
-                    customer_returns=round(customer_returns, 2),
-                    dumps=round(dumps, 2),
-                    supplier_returns=round(supplier_returns, 2),
-                    expected_stock=round(expected_stock, 2),
-                    closing_stock=round(actual_closing_stock, 2),
-                    difference=difference,
-                    current_stock=current_stock,
-                    current_stock_difference=current_stock_difference,
-                )
-                if difference != 0:
-                    stock_audit_log(
-                        "stock_check_discrepancy",
-                        level=logging.WARNING,
-                        report_id=report_id,
-                        product_id=product.id,
-                        product_type="non",
-                        product_description=product.description,
-                        expected_stock=round(expected_stock, 2),
-                        closing_stock=round(actual_closing_stock, 2),
-                        difference=difference,
-                        current_stock=current_stock,
-                        current_stock_difference=current_stock_difference,
+                # Discrepancy-only logging (see regular-products loop above).
+                if difference != 0 or current_stock_difference != 0:
+                    log_stock_discrepancy_once(
+                        report_id,
+                        product.id,
+                        "non",
+                        product.description,
+                        to_date,
+                        {
+                            "opening_stock": round(opening_stock, 2),
+                            "new_stock": round(new_stock, 2),
+                            "sales": round(sales, 2),
+                            "customer_returns": round(customer_returns, 2),
+                            "dumps": round(dumps, 2),
+                            "supplier_returns": round(supplier_returns, 2),
+                            "expected_stock": round(expected_stock, 2),
+                            "closing_stock": round(actual_closing_stock, 2),
+                            "difference": difference,
+                            "current_stock": current_stock,
+                            "current_stock_difference": current_stock_difference,
+                        },
+                        to_dt,
                     )
-                if current_stock_difference != 0:
-                    stock_audit_log(
-                        "current_stock_stock_check_discrepancy",
-                        level=logging.WARNING,
-                        report_id=report_id,
-                        product_id=product.id,
-                        product_type="non",
-                        product_description=product.description,
-                        expected_stock=round(expected_stock, 2),
+                else:
+                    log_stock_discrepancy_resolved_if_needed(
+                        report_id,
+                        product.id,
+                        "non",
+                        to_date,
+                        closing_stock=round(actual_closing_stock, 2),
                         current_stock=current_stock,
-                        current_stock_difference=current_stock_difference,
                     )
 
                 if difference == 0:
@@ -9290,14 +9415,6 @@ def stock_check_report():
         for i, item in enumerate(stock_check_data, 1):
             item['slNo'] = i
 
-        discrepancy_count = sum(item['status'] != 'correct' for item in stock_check_data)
-        stock_audit_log(
-            "stock_check_completed",
-            report_id=report_id,
-            product_count=len(stock_check_data),
-            discrepancy_count=discrepancy_count,
-            elapsed_ms=round((time.monotonic() - started_at) * 1000, 2),
-        )
         return jsonify(stock_check_data), 200
         
     except Exception as e:

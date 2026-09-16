@@ -2,17 +2,15 @@
 
 The backend writes structured JSON Lines to `backend/logs/stock-audit.log`. Each line is one event and can be searched with standard server tools such as `grep`, `jq`, or `less`.
 
+## Discrepancy-only mode
+
+The file only records discrepancies and errors — routine per-product / per-request success noise (every mutation, snapshot row, every stock-check row, started/completed markers) is silenced in `stock_audit_log()` via `STOCK_AUDIT_NOISY_EVENTS` in `backend/app.py`.
+
 ## Events
 
-- `stock_mutation_started`: a current-stock mutation began, including product identity, signed quantity, movement type, references, business date, and authenticated user ID when available.
-- `stock_mutation_applied`: the atomic current-stock update succeeded, including previous stock, new stock, and retry attempt.
-- `stock_movement_created`: the matching `StockMovement` row was queued in the transaction.
-- `stock_mutation_rejected`: the mutation failed, including the error and retry attempt.
-- `stock_check_started`: a Stock Check request began, including the requested date range and optional search term.
-- `stock_check_row`: one product’s Stock Check inputs and calculated result were produced, including opening stock, purchases, sales, customer returns, dumps, supplier returns, expected stock, closing stock, and difference.
-- `stock_check_discrepancy`: a Stock Check row has a non-zero difference between calculated expected stock and closing stock.
-- `stock_check_completed`: the request completed, including product counts, discrepancy count, and elapsed milliseconds.
-- `stock_check_failed`: the request failed before completion.
+- `stock_check_discrepancy`: one product's expected stock differs from closing stock and/or live current stock. Logged **once per product per business date** — refreshes while the discrepancy persists write nothing new. Carries the full breakdown (opening, purchases, sales, customer returns, dumps, supplier returns, expected, closing, differences) plus `last_operation` — the latest `StockMovement` for that product (movement type, reference, quantity, previous/new stock, movement/business dates, user, remarks), i.e. the last operation that may have caused the discrepancy.
+- `stock_discrepancy_resolved`: a previously logged discrepancy for that business date is now clean (closing stock entered/fixed). The dedup key is released, so a future discrepancy logs fresh.
+- Error events (kept): `stock_mutation_rejected`, `stock_check_rejected`, `stock_check_row_failed`, `stock_check_failed`, `current_stock_snapshot_failed`.
 
 ## Retention policy
 
