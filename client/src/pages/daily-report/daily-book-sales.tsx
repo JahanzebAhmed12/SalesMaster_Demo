@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
-import { BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt, RefreshCw, ChevronDown } from "lucide-react";
+import { BarChart3, FileText, Download, Copy, Search, Eye, Info, Loader2, Split, Mail, Printer, Package, MessageCircle, CreditCard, Banknote, Pencil, Building2, Receipt, RefreshCw, ChevronDown, Tag } from "lucide-react";
 import { format } from "date-fns";
 import { cn, isPastDate, formatQuantity, formatPrice } from "@/lib/utils";
 import * as XLSX from 'xlsx';
@@ -909,6 +909,12 @@ export default function DailyBookSales() {
     window.open(`/print/bulk-packing-list?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
   };
 
+  const handleBulkLabelPrint = () => {
+    const invoiceNumbers = getSelectedInvoiceNumbers();
+    if (invoiceNumbers.length === 0) return;
+    window.open(`/print/bulk-customer-label?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+  };
+
   const sendWhatsApp = async (sale: SalesEntry) => {
     const phone = prompt('Enter WhatsApp number (E.164 format, e.g. +441234567890):');
     if (!phone) return;
@@ -1201,6 +1207,10 @@ export default function DailyBookSales() {
                           <DropdownMenuItem onClick={handleBulkPickingPrint} className="cursor-pointer">
                             <Package size={14} className="mr-2" />
                             Picking Notes
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={handleBulkLabelPrint} className="cursor-pointer">
+                            <Tag size={14} className="mr-2" />
+                            Labels
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>

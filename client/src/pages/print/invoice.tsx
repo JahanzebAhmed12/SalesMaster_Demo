@@ -243,6 +243,13 @@ export default function InvoicePrintPage() {
         Print
       </button>
       <button
+        onClick={() => window.open(`/print/customer-label/${invoiceNumber}`, '_blank')}
+        style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+        className="no-print"
+      >
+        🏷️ Print Label
+      </button>
+      <button
         onClick={() => window.close()}
         style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer" }}
         className="no-print"

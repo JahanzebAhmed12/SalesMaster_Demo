@@ -185,6 +185,13 @@ export default function A5InvoicePrintPage() {
         Print
       </button>
       <button
+        onClick={() => window.open(`/print/customer-label/${invoiceNumber}`, '_blank')}
+        style={{ marginTop: 16, marginLeft: 12, padding: "6px 18px", fontSize: 14, border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+        className="no-print"
+      >
+        🏷️ Print Label
+      </button>
+      <button
         onClick={() => window.close()}
         style={{ marginTop: 16, marginLeft: 12, padding: "6px 18px", fontSize: 14, border: "1px solid #ccc", borderRadius: 4, background: "#fff", cursor: "pointer" }}
         className="no-print"

@@ -4205,6 +4205,7 @@ def get_employees_attendance():
         result.append({
             'id': employee.id,
             'name': employee.full_name,
+            'fullName': employee.full_name,
             'title': employee.title,
             'status': 'Active',
             'dailyWage': float(employee.salary) if employee.salary else 0,

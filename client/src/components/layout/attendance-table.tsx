@@ -92,9 +92,20 @@ export default function AttendanceTable({
     enabled: !!dateRange?.from && !!dateRange?.to,
   });
 
-  // Merge attendance data with employee data
+  // Merge attendance data with employee data.
+  // NOTE: /api/attendance returns Attendance rows (id = attendance row id,
+  // employee key = userId), while /api/employees/attendance returns employee
+  // objects (id = employee id). Match on userId/employeeId — never on a.id.
   const employees = initialEmployees.map(emp => {
-    const attendance = attendanceData?.find(a => a.id === emp.id)?.attendance || emp.attendance;
+    const match: any = attendanceData?.find(
+      (a: any) => (a.userId ?? a.user_id ?? a.employeeId ?? a.employee_id) === emp.id
+    );
+    let attendance = emp.attendance;
+    if (match?.attendance) {
+      attendance = match.attendance;
+    } else if (match?.status) {
+      attendance = { status: match.status, leaveType: match.leaveType ?? match.leave_type, holidayName: match.holidayName ?? match.holiday_name };
+    }
     return { ...emp, attendance };
   });
 
@@ -390,8 +401,8 @@ export default function AttendanceTable({
               <TableBody>
                 {activeEmployees.map((employee) => (
                   <TableRow key={employee.id}>
-                    <TableCell className="font-medium">{employee.fullName || 'N/A'}</TableCell>
-                    <TableCell>{employee.title || 'N/A'}</TableCell>
+                    <TableCell className="font-medium">{employee.fullName || (employee as any).name || (employee as any).full_name || 'N/A'}</TableCell>
+                    <TableCell>{employee.title || (employee as any).Title || 'N/A'}</TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         <Select
