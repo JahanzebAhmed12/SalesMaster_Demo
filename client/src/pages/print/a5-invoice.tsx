@@ -4,6 +4,7 @@ import logo from "@/public/printlogo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { getApiUrl } from "@/lib/config";
 import { formatQuantity } from "@/lib/utils";
+import { isInvoicePaid } from "@/lib/invoice-paid";
 
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
   const url = getApiUrl(endpoint);
@@ -67,8 +68,11 @@ export default function A5InvoicePrintPage() {
     return <div>No data found</div>;
   }
 
+  const isPaid = isInvoicePaid(data.sale, data.paidAmount, data.balance);
+
   return (
-    <div className="invoice-container" style={{ maxWidth: 460, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 16 }}>
+    <div className="invoice-container" style={{ maxWidth: 460, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 16, position: "relative" }}>
+      {isPaid && <div className="paid-watermark">PAID</div>}
       {/* Header: Company Details and Logo */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
@@ -189,6 +193,16 @@ export default function A5InvoicePrintPage() {
       </button>
 
       <style>{`
+        .paid-watermark {
+          position: absolute; top: 36%; left: 50%;
+          transform: translate(-50%, -50%) rotate(-22deg);
+          border: 2px solid rgba(200, 0, 0, 0.28);
+          color: rgba(200, 0, 0, 0.28);
+          font-size: 40px; font-weight: 800; letter-spacing: 6px;
+          padding: 3px 14px 3px 20px; border-radius: 8px;
+          pointer-events: none; z-index: 10; background: transparent;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
         @media print {
           @page {
             size: A5 portrait;

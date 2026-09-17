@@ -3,6 +3,7 @@ import { useSearch } from "wouter";
 import logo from "@/public/printlogo.png";
 import { getApiUrl } from "@/lib/config";
 import { formatQuantity } from "@/lib/utils";
+import { isInvoicePaid } from "@/lib/invoice-paid";
 import { getBulkPrintInvoiceNumbers } from "@/lib/bulk-print";
 
 interface InvoiceItem {
@@ -80,9 +81,11 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
   const porterage = Number(sale.porterage || 0);
   const totalAmount = Number(sale.total_amount ?? sale.totalAmount ?? 0);
   const paidAmount = Number(sale.paid_amount ?? sale.paidAmount ?? 0);
+  const isPaid = isInvoicePaid(sale, (data as any).paidAmount, (data as any).balance);
 
   return (
     <article className="bulk-a5-invoice">
+      {isPaid && <div className="paid-watermark">PAID</div>}
       <div className="invoice-header">
         <div>
           <div className="company-name">{company.companyName || "Company Name"}</div>
@@ -218,7 +221,8 @@ export default function BulkA5InvoicePrintPage() {
         .bulk-a5-print-page { min-height: 100vh; background: #f3f4f6; }
         .bulk-a5-toolbar { padding: 16px; background: #f3f4f6; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .bulk-a5-toolbar button { padding: 8px 16px; border: 1px solid #9ca3af; border-radius: 4px; background: #fff; cursor: pointer; }
-        .bulk-a5-invoice { box-sizing: border-box; max-width: 480px; margin: 0 auto 20px; padding: 16px; background: #fff; font-family: Arial, sans-serif; color: #111; }
+        .bulk-a5-invoice { box-sizing: border-box; max-width: 480px; margin: 0 auto 20px; padding: 16px; background: #fff; font-family: Arial, sans-serif; color: #111; position: relative; }
+        .bulk-a5-invoice .paid-watermark { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%) rotate(-22deg); border: 2px solid rgba(200,0,0,0.28); color: rgba(200,0,0,0.28); font-size: 40px; font-weight: 800; letter-spacing: 6px; padding: 3px 14px 3px 20px; border-radius: 8px; pointer-events: none; z-index: 10; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .invoice-header, .billing-grid, .totals-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
         .invoice-header { font-size: 11px; line-height: 1.35; }
         .company-name { font-size: 15px; font-weight: 700; margin-bottom: 3px; }

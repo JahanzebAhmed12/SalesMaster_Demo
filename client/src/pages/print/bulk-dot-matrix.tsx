@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { formatQuantity } from '@/lib/utils';
+import { isInvoicePaid } from '@/lib/invoice-paid';
 import { Button } from '@/components/ui/button';
 
 interface InvoiceData {
@@ -66,6 +67,7 @@ const NOTES_EXTRA_GAP_MM = 3.5;
 
 function InvoicePages({ data }: { data: InvoiceData }) {
   const { sale, items, customer } = data;
+  const isPaid = isInvoicePaid(sale, data.paidAmount, data.balance);
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
   const vatAmount = sale?.vat_amount || 0;
   const porterage = sale?.porterage || 0;
@@ -139,6 +141,7 @@ function InvoicePages({ data }: { data: InvoiceData }) {
             display: 'block',
           }}
         >
+          {isPaid && page.isLastPage && <div className="paid-stamp"><span>PAID</span></div>}
           <div className="page-content-wrapper" style={{
             position: 'absolute',
             top: 0,
@@ -306,7 +309,7 @@ function InvoicePages({ data }: { data: InvoiceData }) {
                       fontWeight: 'bold',
                       lineHeight: '1',
                       margin: '0',
-                      padding: '0',
+                      padding: '0 0 0 2mm',
                       wordWrap: 'break-word',
                       whiteSpace: 'normal'
                     }}>
@@ -490,6 +493,29 @@ export default function BulkDotMatrixPrintPage() {
   return (
     <div className="min-h-screen">
       <style>{`
+        .paid-stamp {
+          position: absolute;
+          top: 178mm;
+          left: 28mm;
+          right: auto;
+          width: auto;
+          text-align: left;
+          transform: none;
+          font-family: "Courier New", "Courier", monospace !important;
+          font-size: 13pt;
+          font-weight: 700;
+          letter-spacing: 3px;
+          color: #000 !important;
+          opacity: 0.55;
+          background: transparent !important;
+          pointer-events: none;
+          z-index: 5;
+        }
+        .paid-stamp span {
+          border: 1.5pt solid #000 !important;
+          padding: 1mm 4mm 1mm 6mm;
+          background: transparent !important;
+        }
         @media print {
           @page { 
             size: 189mm 203.2mm;

@@ -16,6 +16,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import PageLayout from "@/components/common/page-layout";
+import { generateInvoicePdfBlob } from "@/lib/invoice-pdf";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import "./styles.css";
@@ -889,7 +890,6 @@ export default function DailySummary() {
         apiRequest("GET", "/api/settings").catch(() => ({} as any)),
       ]);
       invoiceData.invoiceFooter = settingsData.invoiceFooter || "";
-      const { generateInvoicePdfBlob } = await import("@/lib/invoice-pdf");
       const pdfBlob: Blob = generateInvoicePdfBlob(invoiceData);
       // For A5, we reuse A4 content — it's print-scaled to A5 paper; dedicated A5 generator can be added later if needed
       const url = window.URL.createObjectURL(pdfBlob);

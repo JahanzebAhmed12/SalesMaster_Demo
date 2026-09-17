@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
 import { formatQuantity } from '@/lib/utils';
+import { API_BASE_URL, useRelativeUrls } from '@/lib/config';
+import { isInvoicePaid } from '@/lib/invoice-paid';
 import { Button } from '@/components/ui/button';
 
 interface InvoiceData {
@@ -267,7 +269,6 @@ export default function DotMatrixInvoicePrintPage() {
       setIsServerPDF(true);
 
       // Check if backend is available first
-      const { API_BASE_URL, useRelativeUrls } = await import('@/lib/config');
       const token = localStorage.getItem('jwt_token');
 
       // Test backend connectivity first
@@ -407,6 +408,7 @@ export default function DotMatrixInvoicePrintPage() {
   if (!data) return <div className="p-4 print:hidden">No invoice found.</div>;
 
   const { sale, items, customer } = data;
+  const isPaid = isInvoicePaid(sale, data.paidAmount, data.balance);
   console.log('Rendering with sale:', sale);
   console.log('Invoice number for display:', sale?.invoice_number);
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
@@ -489,7 +491,34 @@ export default function DotMatrixInvoicePrintPage() {
         * {
           box-sizing: border-box !important;
         }
-        
+
+        /* PAID stamp — just under the product description column
+           (description at 24mm), just above the totals line so it never
+           overlaps the 95-167mm product area or the form alignment. */
+        .paid-stamp {
+          position: absolute;
+          top: 178mm;
+          left: 28mm;
+          right: auto;
+          width: auto;
+          text-align: left;
+          transform: none;
+          font-family: "Courier New", "Courier", monospace !important;
+          font-size: 13pt;
+          font-weight: 700;
+          letter-spacing: 3px;
+          color: #000 !important;
+          opacity: 0.55;
+          background: transparent !important;
+          pointer-events: none;
+          z-index: 5;
+        }
+        .paid-stamp span {
+          border: 1.5pt solid #000 !important;
+          padding: 1mm 4mm 1mm 6mm;
+          background: transparent !important;
+        }
+
         /* PC Print Styles - Optimized for dot matrix printing */
         @media print and (min-device-width: 769px) {
           @page { 
@@ -841,6 +870,8 @@ export default function DotMatrixInvoicePrintPage() {
                 display: 'block',
               }}
             >
+              {/* PAID stamp on last page only — sits beside the totals */}
+              {isPaid && page.isLastPage && <div className="paid-stamp"><span>PAID</span></div>}
               {/* CRITICAL: Wrapper to reset positioning context for each page */}
               <div className="page-content-wrapper" style={{
                 position: 'absolute',
