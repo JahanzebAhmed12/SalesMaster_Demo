@@ -103,7 +103,12 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
   // For production with Nginx reverse proxy, use relative URLs
   // For development, use full URL to backend server
   const url = getApiUrl(endpoint);
-  const token = localStorage.getItem('jwt_token');
+  // Sanitize: localStorage can hold the literal strings "null"/"undefined"
+  // (e.g. after a bad write or manual tampering). Sending `Bearer null`
+  // makes Flask-JWT return 422, which would wrongly trigger the logout flow.
+  // Treat those exactly like a missing token: omit the header.
+  const rawToken = localStorage.getItem('jwt_token');
+  const token = rawToken && rawToken !== 'null' && rawToken !== 'undefined' && rawToken.trim() !== '' ? rawToken : null;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -132,8 +137,12 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
   // same moment doesn't fire multiple independent logout flows.
   // 401 = expired/invalid token, 422 = malformed token (Flask-JWT returns this
   // when the Authorization header is present but unparseable, e.g. "Bearer null").
+  // NOTE: ONLY 401/422 ever schedule the logout flow. Every other status
+  // (404, 500, network timeouts, etc.) throws a plain ApiRequestError below
+  // and leaves the session untouched — a missing route or a sick endpoint
+  // can never log the user out.
   // Do NOT treat auth endpoints themselves as session expiry — a failed login
-  // (POST /api/auth/login 401) should not trigger a logout loop.
+  // (POST /api/auth/login 401) must not trigger a logout loop.
   const isAuthEndpoint = endpoint.startsWith("/api/auth/");
   if ((response.status === 401 || response.status === 422) && !isAuthEndpoint) {
     scheduleAuthError();

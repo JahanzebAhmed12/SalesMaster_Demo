@@ -155,7 +155,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
       event.preventDefault();
       event.stopPropagation();
     }
-    logout();
+    logout('manual');
   };
 
   // Handle navigation clicks - close mobile menu on navigation

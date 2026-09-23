@@ -16,4 +16,5 @@ _pycache_
 /backend/logs/*.log
 /backend/logs/stock-audit.log*
 /backend/stock-audit.log*
+/backend/auth_events.log*
 .env

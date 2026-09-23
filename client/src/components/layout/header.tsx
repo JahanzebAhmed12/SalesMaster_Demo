@@ -61,7 +61,7 @@ export default function Header({ title, breadcrumb }: HeaderProps) {
               <DropdownMenuItem onClick={() => navigate('/profile/user-profile')}>
                 Edit Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-700">
+              <DropdownMenuItem onClick={() => logout('manual')} className="text-red-600 focus:text-red-700">
                 Logout
               </DropdownMenuItem>
             </DropdownMenuContent>

@@ -58,7 +58,7 @@ export const useAutoLogout = () => {
           variant: 'destructive',
           duration: 5000,
         });
-        logoutRef.current();
+        logoutRef.current('idle-timeout');
       } else {
         resetTimer();
       }

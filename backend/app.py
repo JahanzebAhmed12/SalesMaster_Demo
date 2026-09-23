@@ -501,6 +501,88 @@ app.config["JWT_SECRET_KEY"] = os.getenv('JWT_SECRET_KEY', 'salesmaster-jwt-secr
 app.config["JWT_ACCESS_TOKEN_EXPIRES"] = timedelta(hours=24)
 jwt = JWTManager(app)
 
+# ── Auth-event audit log ──────────────────────────────────────────────
+# Every login / logout / token-refresh / 401-422 is appended to
+# backend/auth_events.log as one grep-friendly line, e.g.:
+#   2026-09-23 14:02:11 | 401 | GET /api/held-invoices | ip=127.0.0.1 | token=user=ali EXPIRED-26.3h-ago
+# Open that file any time to see exactly when a device was logged out and why.
+import logging as _logging
+from logging.handlers import RotatingFileHandler as _RotatingFileHandler
+
+_auth_log = _logging.getLogger("auth_events")
+if not _auth_log.handlers:
+    _auth_log.setLevel(_logging.INFO)
+    _auth_log_handler = _RotatingFileHandler(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "auth_events.log"),
+        maxBytes=2_000_000, backupCount=5, encoding="utf-8",
+    )
+    _auth_log_handler.setFormatter(_logging.Formatter("%(asctime)s | %(message)s", "%Y-%m-%d %H:%M:%S"))
+    _auth_log.addHandler(_auth_log_handler)
+    _auth_log.propagate = False
+
+
+def _describe_request_token():
+    """Classify the request's Bearer token for the audit log. Never raises."""
+    try:
+        h = request.headers.get("Authorization", "")
+        if not h:
+            return "no-auth-header"
+        parts = h.split(None, 1)
+        if len(parts) != 2 or parts[0].lower() != "bearer":
+            return "malformed-auth-header"
+        t = parts[1].strip()
+        if t in ("", "null", "undefined"):
+            return "literal-null-token"
+        from flask_jwt_extended import decode_token
+        import time as _time
+        try:
+            d = decode_token(t, allow_expired=True)
+        except Exception:
+            return "undecodable-token"
+        sub = d.get("sub")
+        username = "?"
+        try:
+            u = User.query.get(int(sub)) if sub is not None else None
+            username = u.username if u else f"unknown-id-{sub}"
+        except Exception:
+            pass
+        exp = d.get("exp")
+        if exp is not None and _time.time() > int(exp):
+            ago_h = (_time.time() - int(exp)) / 3600
+            return f"user={username} EXPIRED-{ago_h:.1f}h-ago"
+        return f"user={username} invalid-signature-or-unknown"
+    except Exception:
+        return "token-describe-error"
+
+
+@app.after_request
+def log_auth_events(response):
+    """Append auth-relevant events to backend/auth_events.log. Read-only:
+    never alters the response, and never breaks a request (all guarded)."""
+    try:
+        p = request.path
+        m = request.method
+        ip = (request.headers.get("X-Forwarded-For", request.remote_addr or "?") or "?").split(",")[0].strip()
+        if p == "/api/auth/login" and m == "POST":
+            uname = ((request.get_json(silent=True) or {}).get("username")) or "?"
+            if response.status_code == 200:
+                _auth_log.info(f"LOGIN-OK | user={uname} | ip={ip}")
+            else:
+                _auth_log.info(f"LOGIN-FAIL | user={uname} | status={response.status_code} | ip={ip}")
+        elif p == "/api/auth/logout" and m == "POST":
+            reason = ((request.get_json(silent=True) or {}).get("reason")) or "unknown"
+            _auth_log.info(f"LOGOUT | reason={reason} | ip={ip} | token={_describe_request_token()}")
+        elif p == "/api/auth/refresh" and m == "POST":
+            if response.status_code == 200:
+                _auth_log.info(f"REFRESH-OK session-rescued | ip={ip} | token={_describe_request_token()}")
+            else:
+                _auth_log.info(f"REFRESH-FAIL session-doomed | status={response.status_code} | ip={ip} | token={_describe_request_token()}")
+        elif p.startswith("/api/") and response.status_code in (401, 422):
+            _auth_log.info(f"{response.status_code} | {m} {p} | ip={ip} | token={_describe_request_token()}")
+    except Exception:
+        pass
+    return response
+
 # A-02: require authentication for backend API requests by default.
 # Deliberately public operational endpoints and the currently deferred
 # email/print/PDF compatibility routes are listed explicitly below. All other
@@ -510,6 +592,14 @@ _PUBLIC_API_EXACT = {
     ("/api/server-time", "GET"),
     ("/api/auth/login", "POST"),
     ("/api/auth/logout", "POST"),
+    # Refresh MUST bypass the JWT gate: the gate's verify_jwt_in_request()
+    # rejects expired tokens before the handler runs, which dead-codes the
+    # 2-hour grace window below. Exempting it lets an expired-but-signed
+    # token be exchanged for a fresh one, so a single 401 on a background
+    # poll (e.g. /api/held-invoices while making an invoice) is survivable
+    # instead of forcing a logout. The handler still validates the signature,
+    # the grace window, and that the account is Active.
+    ("/api/auth/refresh", "POST"),
     # Email configuration protection is tracked separately (A-04) and is
     # intentionally left unchanged in this scoped A-02 implementation.
     ("/api/email-config", "GET"),

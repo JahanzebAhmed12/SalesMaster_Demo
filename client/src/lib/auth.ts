@@ -19,9 +19,19 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
-  logout: () => Promise<void>;
+  logout: (reason?: string) => Promise<void>;
   refreshToken: () => Promise<boolean>;
   checkAuth: () => Promise<boolean>;
+}
+
+// localStorage can hold the literal strings "null"/"undefined" after a bad
+// write or manual tampering. `Bearer null` makes the backend answer 422,
+// which the frontend treats as session expiry — so treat those values as
+// "no token" everywhere instead of sending a malformed header.
+function getStoredToken(): string | null {
+  const raw = localStorage.getItem('jwt_token');
+  if (!raw || raw === 'null' || raw === 'undefined' || raw.trim() === '') return null;
+  return raw;
 }
 
 export const useAuth = create<AuthState>()(
@@ -64,11 +74,15 @@ export const useAuth = create<AuthState>()(
           return { success: false, error: "Network error occurred" };
         }
       },
-      logout: async () => {
+      logout: async (reason?: string) => {
         try {
+          // Report the reason so backend/auth_events.log shows WHY the
+          // session ended ('manual' | 'idle-timeout'). Old backends ignore it.
           await fetch(getApiUrl("/api/auth/logout"), {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
             credentials: "include",
+            body: JSON.stringify({ reason: reason || "manual" }),
           });
         } catch (error) {
           console.error("Logout error:", error);
@@ -84,7 +98,7 @@ export const useAuth = create<AuthState>()(
         // Silently exchange the current token for a fresh one.
         // Called periodically while the user is active so the token
         // never expires during a working session.
-        const token = localStorage.getItem('jwt_token');
+        const token = getStoredToken();
         if (!token) return false;
         try {
           const response = await fetch(getApiUrl("/api/auth/refresh"), {
@@ -107,7 +121,7 @@ export const useAuth = create<AuthState>()(
       },
       checkAuth: async (): Promise<boolean> => {
         try {
-          const token = localStorage.getItem('jwt_token');
+          const token = getStoredToken();
 
           // No token stored — definitely not authenticated, but don't redirect.
           // The user simply hasn't logged in yet (or already logged out cleanly).
