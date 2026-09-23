@@ -506,7 +506,7 @@ export default function BulkDotMatrixPrintPage() {
           font-weight: 700;
           letter-spacing: 3px;
           color: #000 !important;
-          opacity: 0.55;
+          opacity: 1;
           background: transparent !important;
           pointer-events: none;
           z-index: 5;
