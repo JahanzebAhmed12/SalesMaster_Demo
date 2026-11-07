@@ -1,6 +1,6 @@
 import { QueryClient, useMutation, useQueryClient, UseMutationOptions, UseMutationResult } from "@tanstack/react-query";
 import { getApiUrl } from "./config";
-import { handleAuthError, useAuth } from "./auth";
+import { getAuthSessionId, handleAuthError, useAuth } from "./auth";
 
 // ── 401 de-bounce ────────────────────────────────────────────────────────────
 // Prevent multiple simultaneous 401 responses (e.g. from parallel background
@@ -12,15 +12,34 @@ import { handleAuthError, useAuth } from "./auth";
 
 let _authErrorTimer: ReturnType<typeof setTimeout> | null = null;
 let _authErrorCount = 0;
+let _authErrorSessionId: string | null = null;
+let _refreshPromise: Promise<boolean> | null = null;
 const AUTH_ERROR_GRACE_MS = 3000; // wait 3 s before acting on 401s
 
-export function scheduleAuthError() {
+function refreshTokenOnce(): Promise<boolean> {
+  if (!_refreshPromise) {
+    _refreshPromise = useAuth.getState().refreshToken().finally(() => {
+      _refreshPromise = null;
+    });
+  }
+  return _refreshPromise;
+}
+
+export function scheduleAuthError(expectedSessionId = getAuthSessionId()) {
+  if (_authErrorTimer && _authErrorSessionId !== expectedSessionId) {
+    clearTimeout(_authErrorTimer);
+    _authErrorTimer = null;
+    _authErrorCount = 0;
+  }
+  _authErrorSessionId = expectedSessionId;
   _authErrorCount++;
   if (_authErrorTimer) return; // already scheduled — don't stack
   _authErrorTimer = setTimeout(async () => {
     _authErrorTimer = null;
     const count = _authErrorCount;
     _authErrorCount = 0;
+    _authErrorSessionId = null;
+    if (getAuthSessionId() !== expectedSessionId) return;
     console.warn(`[Auth] ${count} 401/422 response(s) received — attempting silent token refresh...`);
 
     // Try to silently refresh the token before giving up and logging out.
@@ -28,7 +47,7 @@ export function scheduleAuthError() {
     try {
       const { refreshToken, isAuthenticated } = useAuth.getState();
       if (isAuthenticated) {
-        const refreshed = await refreshToken();
+        const refreshed = await refreshTokenOnce();
         if (refreshed) {
           console.log('[Auth] Silent refresh succeeded — not logging out');
           return; // Token refreshed — do NOT log out
@@ -39,7 +58,7 @@ export function scheduleAuthError() {
     }
 
     console.warn('[Auth] Silent refresh failed — logging out');
-    handleAuthError();
+    handleAuthError(expectedSessionId);
   }, AUTH_ERROR_GRACE_MS);
 }
 
@@ -131,7 +150,7 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
     fetchOptions.signal = options.signal;
   }
 
-  const response = await fetch(url, fetchOptions);
+  let response = await fetch(url, fetchOptions);
 
   // Handle 401/422 with de-bounce so a burst of background queries expiring at the
   // same moment doesn't fire multiple independent logout flows.
@@ -145,8 +164,29 @@ export const apiRequest = async <T = any>(method: string, endpoint: string, data
   // (POST /api/auth/login 401) must not trigger a logout loop.
   const isAuthEndpoint = endpoint.startsWith("/api/auth/");
   if ((response.status === 401 || response.status === 422) && !isAuthEndpoint) {
-    scheduleAuthError();
-    throw new Error('Session expired. Please login again.');
+    const failedSessionId = getAuthSessionId();
+    const failedToken = token;
+    const { isAuthenticated } = useAuth.getState();
+    if (isAuthenticated) {
+      const refreshed = await refreshTokenOnce();
+      const currentToken = localStorage.getItem('jwt_token');
+      if (
+        failedSessionId === getAuthSessionId() &&
+        currentToken &&
+        currentToken !== 'null' &&
+        currentToken !== 'undefined' &&
+        currentToken.trim() !== '' &&
+        (refreshed || currentToken !== failedToken)
+      ) {
+        headers['Authorization'] = `Bearer ${currentToken}`;
+        response = await fetch(url, fetchOptions);
+      }
+    }
+
+    if (response.status === 401 || response.status === 422) {
+      scheduleAuthError(failedSessionId);
+      throw new Error('Session expired. Please login again.');
+    }
   }
   // For auth endpoints, just throw without scheduling a global logout
   if ((response.status === 401 || response.status === 422) && isAuthEndpoint) {

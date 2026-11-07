@@ -11544,6 +11544,9 @@ def product_history_report():
     to_date = request.args.get('toDate')
     customer_id = request.args.get('customerId', type=int)
     supplier_id = request.args.get('supplierId', type=int)
+    show_supplier_records = bool(product_id or product_like.strip()) and (
+        not customer_id or bool(supplier_id)
+    )
 
     from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
@@ -11574,7 +11577,7 @@ def product_history_report():
         purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_id == product_id)
     if product_like:
         purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_name.ilike(f'%{product_like}%'))
-    purchases = purchases_query.all()
+    purchases = purchases_query.all() if show_supplier_records else []
     purchases_data = [
         {
             'date': row.date.strftime('%Y-%m-%d') if row.date else '',
@@ -11601,7 +11604,7 @@ def product_history_report():
         supplier_returns_query = supplier_returns_query.filter(SupplierReturn.product_id == product_id)
     if product_like:
         supplier_returns_query = supplier_returns_query.filter(SupplierReturn.description.ilike(f'%{product_like}%'))
-    supplier_returns = supplier_returns_query.all()
+    supplier_returns = supplier_returns_query.all() if show_supplier_records else []
     supplier_returns_data = [
         {
             'date': r.date.strftime('%Y-%m-%d') if r.date else '',
@@ -11755,6 +11758,9 @@ def product_history_pdf():
     to_date = request.args.get('toDate')
     customer_id = request.args.get('customerId', type=int)
     supplier_id = request.args.get('supplierId', type=int)
+    show_supplier_records = bool(product_id or product_like.strip()) and (
+        not customer_id or bool(supplier_id)
+    )
 
     from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
     to_dt = datetime.strptime(to_date, "%Y-%m-%d") if to_date else None
@@ -11784,7 +11790,7 @@ def product_history_pdf():
         purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_id == product_id)
     if product_like:
         purchases_query = purchases_query.filter(PurchaseInvoiceItem.product_name.ilike(f'%{product_like}%'))
-    purchases = purchases_query.all()
+    purchases = purchases_query.all() if show_supplier_records else []
 
     # Sales
     sales_query = (
@@ -11951,6 +11957,9 @@ def product_history_email():
         to_date = request.args.get('toDate')
         customer_id = request.args.get('customerId', type=int)
         supplier_id = request.args.get('supplierId', type=int)
+        show_supplier_records = bool(product_id or product_like.strip()) and (
+            not customer_id or bool(supplier_id)
+        )
 
         from_dt = datetime.strptime(from_date, "%Y-%m-%d") if from_date else None
         to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1) if to_date else None
@@ -12093,8 +12102,8 @@ def product_history_email():
             dumps_query = dumps_query.filter(DumpEntry.description.ilike(f'%{product_like}%'))
         
         # Execute queries
-        purchases = purchases_query.all()
-        supplier_returns = supplier_returns_query.all()
+        purchases = purchases_query.all() if show_supplier_records else []
+        supplier_returns = supplier_returns_query.all() if show_supplier_records else []
         sales = sales_query.all()
         customer_returns = customer_returns_query.all()
         dumps = dumps_query.all()

@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import { useAuth } from '@/lib/auth';
+import { getAuthSessionId, useAuth } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
 
 const IDLE_TIME = 5 * 60 * 1000;       // 5 minutes idle → logout
 const WARNING_TIME = 4 * 60 * 1000;    // warn at 4 minutes
 const TOKEN_REFRESH_INTERVAL = 30 * 60 * 1000; // refresh token every 30 minutes
+const SESSION_ACTIVITY_KEY = 'auth_last_activity';
 
 export const useAutoLogout = () => {
   const { logout, user, refreshToken } = useAuth();
@@ -26,18 +27,28 @@ export const useAutoLogout = () => {
   const lastActivityRef = useRef<number>(Date.now());
   const warningShownRef = useRef(false);
 
-  const resetTimer = useRef(() => {
+  const resetTimer = useRef((recordActivity = true, activityTime = Date.now()) => {
     if (!userRef.current) return;
 
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
 
     warningShownRef.current = false;
-    lastActivityRef.current = Date.now();
+    lastActivityRef.current = activityTime;
+    if (recordActivity) {
+      localStorage.setItem(SESSION_ACTIVITY_KEY, String(lastActivityRef.current));
+    }
+    const sessionId = getAuthSessionId();
 
     window.dispatchEvent(new CustomEvent('session-reset'));
 
     warningTimerRef.current = setTimeout(() => {
+      const lastSharedActivity = Number(localStorage.getItem(SESSION_ACTIVITY_KEY)) || 0;
+      const lastActivity = Math.max(lastActivityRef.current, lastSharedActivity);
+      if (lastActivity > lastActivityRef.current) {
+        resetTimer(false, lastActivity);
+        return;
+      }
       if (warningShownRef.current) return;
       warningShownRef.current = true;
       window.dispatchEvent(new CustomEvent('session-warning'));
@@ -50,6 +61,9 @@ export const useAutoLogout = () => {
     }, WARNING_TIME);
 
     idleTimerRef.current = setTimeout(() => {
+      if (getAuthSessionId() !== sessionId) return;
+      const lastSharedActivity = Number(localStorage.getItem(SESSION_ACTIVITY_KEY)) || 0;
+      lastActivityRef.current = Math.max(lastActivityRef.current, lastSharedActivity);
       const idle = Date.now() - lastActivityRef.current;
       if (idle >= IDLE_TIME) {
         toastRef.current({
@@ -58,9 +72,9 @@ export const useAutoLogout = () => {
           variant: 'destructive',
           duration: 5000,
         });
-        logoutRef.current('idle-timeout');
+        logoutRef.current('idle-timeout', sessionId);
       } else {
-        resetTimer();
+        resetTimer(false, lastActivityRef.current);
       }
     }, IDLE_TIME);
   }).current;

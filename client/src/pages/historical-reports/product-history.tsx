@@ -183,6 +183,14 @@ export default function ProductHistory() {
   const sales = historyData.sales;
   const customerReturns = historyData.customerReturns;
   const dumps = historyData.dumps;
+  const hasProductFilter = Boolean(
+    (productId && productId !== "All") || productLike.trim()
+  );
+  const showSupplierRecords = hasProductFilter && (
+    !customerId || customerId === "All" || Boolean(supplierId && supplierId !== "All")
+  );
+  const visiblePurchases = showSupplierRecords ? purchases : [];
+  const visibleSupplierReturns = showSupplierRecords ? supplierReturns : [];
 
   // Per-table sorting — default: date ascending. Persists across searches.
   type SortTableId = "sales" | "customerReturns" | "purchases" | "supplierReturns" | "dumps";
@@ -249,8 +257,8 @@ export default function ProductHistory() {
   // Sorted views — these feed the on-screen tables AND all exports, so Search + sort always agree
   const sortedSales = useMemo(() => sortRows(sales, "sales"), [sales, sortConfig]);
   const sortedCustomerReturns = useMemo(() => sortRows(customerReturns, "customerReturns"), [customerReturns, sortConfig]);
-  const sortedPurchases = useMemo(() => sortRows(purchases, "purchases"), [purchases, sortConfig]);
-  const sortedSupplierReturns = useMemo(() => sortRows(supplierReturns, "supplierReturns"), [supplierReturns, sortConfig]);
+  const sortedPurchases = useMemo(() => sortRows(visiblePurchases, "purchases"), [visiblePurchases, sortConfig]);
+  const sortedSupplierReturns = useMemo(() => sortRows(visibleSupplierReturns, "supplierReturns"), [visibleSupplierReturns, sortConfig]);
   const sortedDumps = useMemo(() => sortRows(dumps, "dumps"), [dumps, sortConfig]);
 
   const renderSortIcon = (table: SortTableId, key: SortKey) => {
@@ -946,14 +954,14 @@ export default function ProductHistory() {
                       </TableCell>
                       <TableCell className="text-center">
                         £{(() => {
-                          const nc = purchases.filter((p: any) => !p.isCompany);
+                          const nc = visiblePurchases.filter((p: any) => !p.isCompany);
                           const totalQty = nc.reduce((sum: number, p: any) => sum + (Number(p.quantity) || 0), 0);
                           const totalVal = nc.reduce((sum: number, p: any) => sum + (Number(p.unitPrice) || 0) * (Number(p.quantity) || 0), 0);
                           return (totalVal / (totalQty || 1)).toFixed(2);
                         })()}
                       </TableCell>
                       <TableCell className="text-center">
-                        £{purchases.filter((p: any) => !p.isCompany).reduce((sum: number, p: any) => sum + (Number(p.total) || 0), 0).toFixed(2)}
+                        £{visiblePurchases.filter((p: any) => !p.isCompany).reduce((sum: number, p: any) => sum + (Number(p.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -1028,14 +1036,14 @@ export default function ProductHistory() {
                       </TableCell>
                       <TableCell className="text-center">
                         £{(() => {
-                          const nc = supplierReturns.filter((r: any) => !r.isCompany);
+                          const nc = visibleSupplierReturns.filter((r: any) => !r.isCompany);
                           const totalQty = nc.reduce((sum: number, r: any) => sum + (Number(r.quantity) || 0), 0);
                           const totalVal = nc.reduce((sum: number, r: any) => sum + (Number(r.unitPrice) || 0) * (Number(r.quantity) || 0), 0);
                           return (totalVal / (totalQty || 1)).toFixed(2);
                         })()}
                       </TableCell>
                       <TableCell className="text-center">
-                        £{supplierReturns.filter((r: any) => !r.isCompany).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0).toFixed(2)}
+                        £{visibleSupplierReturns.filter((r: any) => !r.isCompany).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0).toFixed(2)}
                       </TableCell>
                     </TableRow>
                   )}
@@ -1044,7 +1052,6 @@ export default function ProductHistory() {
             </div>
           </CardContent>
         </Card>
-
         {/* From Dumps Section */}
         <Card>
           <CardContent className="p-6">

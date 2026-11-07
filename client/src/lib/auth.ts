@@ -19,7 +19,7 @@ interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<LoginResult>;
-  logout: (reason?: string) => Promise<void>;
+  logout: (reason?: string, expectedSessionId?: string | null) => Promise<void>;
   refreshToken: () => Promise<boolean>;
   checkAuth: () => Promise<boolean>;
 }
@@ -32,6 +32,21 @@ function getStoredToken(): string | null {
   const raw = localStorage.getItem('jwt_token');
   if (!raw || raw === 'null' || raw === 'undefined' || raw.trim() === '') return null;
   return raw;
+}
+
+const AUTH_SESSION_ID_KEY = "auth_session_id";
+
+export function getAuthSessionId(): string | null {
+  if (!getStoredToken()) return null;
+
+  let sessionId = localStorage.getItem(AUTH_SESSION_ID_KEY);
+  if (!sessionId) {
+    sessionId = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(AUTH_SESSION_ID_KEY, sessionId);
+  }
+  return sessionId;
 }
 
 export const useAuth = create<AuthState>()(
@@ -54,6 +69,10 @@ export const useAuth = create<AuthState>()(
             const data = await response.json();
             // Store JWT token
             if (data.token) {
+              const sessionId = typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+              localStorage.setItem(AUTH_SESSION_ID_KEY, sessionId);
               localStorage.setItem('jwt_token', data.token);
             }
             set({
@@ -74,7 +93,10 @@ export const useAuth = create<AuthState>()(
           return { success: false, error: "Network error occurred" };
         }
       },
-      logout: async (reason?: string) => {
+      logout: async (reason?: string, expectedSessionId?: string | null) => {
+        const sessionId = getAuthSessionId();
+        if (expectedSessionId !== undefined && sessionId !== expectedSessionId) return;
+
         try {
           // Report the reason so backend/auth_events.log shows WHY the
           // session ended ('manual' | 'idle-timeout'). Old backends ignore it.
@@ -87,7 +109,9 @@ export const useAuth = create<AuthState>()(
         } catch (error) {
           console.error("Logout error:", error);
         } finally {
+          if (getAuthSessionId() !== sessionId) return;
           localStorage.removeItem('jwt_token');
+          localStorage.removeItem(AUTH_SESSION_ID_KEY);
           set({
             user: null,
             isAuthenticated: false,
@@ -100,6 +124,7 @@ export const useAuth = create<AuthState>()(
         // never expires during a working session.
         const token = getStoredToken();
         if (!token) return false;
+        const sessionId = getAuthSessionId();
         try {
           const response = await fetch(getApiUrl("/api/auth/refresh"), {
             method: "POST",
@@ -108,7 +133,7 @@ export const useAuth = create<AuthState>()(
           });
           if (response.ok) {
             const data = await response.json();
-            if (data.token) {
+            if (data.token && sessionId === getAuthSessionId() && token === getStoredToken()) {
               localStorage.setItem('jwt_token', data.token);
               console.log('[Auth] Token refreshed silently');
               return true;
@@ -129,6 +154,7 @@ export const useAuth = create<AuthState>()(
             set({ user: null, isAuthenticated: false });
             return false;
           }
+          const sessionId = getAuthSessionId();
 
           const response = await fetch(getApiUrl("/api/auth/me"), {
             headers: {
@@ -139,6 +165,9 @@ export const useAuth = create<AuthState>()(
 
           if (response.ok) {
             const data = await response.json();
+            if (getAuthSessionId() !== sessionId || getStoredToken() !== token) {
+              return useAuth.getState().isAuthenticated;
+            }
             set({ user: data, isAuthenticated: true });
             return true;
           }
@@ -147,8 +176,11 @@ export const useAuth = create<AuthState>()(
           // Both mean the stored token is no good — clear it but only redirect if
           // the user was previously authenticated (preserve current page experience).
           if (response.status === 401 || response.status === 422) {
-            localStorage.removeItem('jwt_token');
-            set({ user: null, isAuthenticated: false });
+            if (getAuthSessionId() === sessionId && getStoredToken() === token) {
+              localStorage.removeItem('jwt_token');
+              localStorage.removeItem(AUTH_SESSION_ID_KEY);
+              set({ user: null, isAuthenticated: false });
+            }
             return false;
           }
 
@@ -173,11 +205,26 @@ export const useAuth = create<AuthState>()(
 // Centralized handler for authentication errors (401).
 // This ensures both localStorage token and Zustand store are always in sync.
 // Called by the de-bounced 401 handler in queryClient — not on every single 401.
-export function handleAuthError() {
+export function handleAuthError(expectedSessionId?: string | null) {
   // Don't redirect if we're already on the login page.
   if (window.location.pathname === '/' || window.location.pathname === '/login') return;
+  if (expectedSessionId !== undefined && getAuthSessionId() !== expectedSessionId) return;
 
   localStorage.removeItem('jwt_token');
+  localStorage.removeItem(AUTH_SESSION_ID_KEY);
   useAuth.setState({ user: null, isAuthenticated: false });
   window.location.href = '/';
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== "jwt_token" && event.key !== AUTH_SESSION_ID_KEY) return;
+
+    if (!getStoredToken()) {
+      useAuth.setState({ user: null, isAuthenticated: false });
+      return;
+    }
+
+    void useAuth.getState().checkAuth();
+  });
 }
