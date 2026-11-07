@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import logo from "@/public/printlogo.png";
 import { formatQuantity } from "./utils";
 import { apiRequest } from "./queryClient";
+import { fetchCustomerReturnInvoices } from "./customer-return-invoice";
 
 interface InvoicePdfData {
   company: any;
@@ -114,12 +115,20 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   const rightX = pageWidth - 50;
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(`Date: ${new Date().toLocaleDateString("en-GB")}`, rightX, yPos + 7);
+  doc.text(`Date: ${invoiceData.sale?.date ? new Date(invoiceData.sale.date).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB")}`, rightX, yPos + 7);
 
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(26, 35, 126);
-  doc.text(`Invoice No: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`, rightX, yPos + 15);
+  doc.text(
+    `${invoiceData.sale?.isCustomerReturn ? "Return No" : "Invoice No"}: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`,
+    rightX,
+    yPos + 15,
+  );
+  if (invoiceData.sale?.isCustomerReturn && invoiceData.sale?.originalInvoiceNumber) {
+    doc.setFontSize(10);
+    doc.text(`Original Invoice: ${invoiceData.sale.originalInvoiceNumber}`, rightX, yPos + 20);
+  }
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
@@ -303,5 +312,37 @@ export async function sendInvoicePdfEmail(
       content: base64PDF,
       contentType: 'application/pdf'
     }
+  });
+}
+
+export async function sendCustomerReturnPdfEmail(returnId: number): Promise<void> {
+  const [returnData] = await fetchCustomerReturnInvoices([String(returnId)]);
+  if (!returnData) {
+    throw new Error("Customer return could not be loaded");
+  }
+
+  const customerEmails: string[] = [];
+  const emailValue = returnData.customer.email;
+  if (typeof emailValue === "string") {
+    emailValue.split(",").forEach(email => {
+      const trimmed = email.trim();
+      if (trimmed) customerEmails.push(trimmed);
+    });
+  }
+  if (customerEmails.length === 0) {
+    throw new Error("No email addresses available");
+  }
+
+  const returnNumber = String(returnData.sale.invoice_number);
+  const base64PDF = await base64FromBlob(generateInvoicePdfBlob(returnData));
+  await apiRequest("POST", "/api/send-email", {
+    to: customerEmails,
+    subject: `Customer Return - ${returnNumber}`,
+    body: `Please find attached customer return ${returnNumber}.`,
+    attachment: {
+      filename: `customer-return-${returnNumber}.pdf`,
+      content: base64PDF,
+      contentType: "application/pdf",
+    },
   });
 }

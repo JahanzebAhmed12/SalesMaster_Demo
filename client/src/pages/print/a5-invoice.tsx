@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { getApiUrl } from "@/lib/config";
 import { formatQuantity } from "@/lib/utils";
 import { isInvoicePaid } from "@/lib/invoice-paid";
+import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
 
 const publicApiRequest = async <T = any>(method: string, endpoint: string): Promise<T> => {
   const url = getApiUrl(endpoint);
@@ -33,12 +34,17 @@ export default function A5InvoicePrintPage() {
   const showCashPaid = query.get('showCashPaid') === '1';
   const showBankPaid = query.get('showBankPaid') === '1';
   const backdate = query.get('backdate');
+  const returnId = query.get('returnId');
   const [showOutstandingBalance, setShowOutstandingBalance] = useState<boolean>(true);
   const [invoiceFooter, setInvoiceFooter] = useState<string>("");
 
   useEffect(() => {
-    if (!invoiceNumber) return;
-    publicApiRequest("GET", `/api/sales/${invoiceNumber}/invoice`)
+    const request = returnId
+      ? fetchCustomerReturnInvoices([returnId]).then(([returnData]) => returnData)
+      : invoiceNumber
+        ? publicApiRequest("GET", `/api/sales/${invoiceNumber}/invoice`)
+        : Promise.reject(new Error("Invoice number is missing"));
+    request
       .then((res) => {
         setData(res);
         setLoading(false);
@@ -47,7 +53,7 @@ export default function A5InvoicePrintPage() {
         setError("Failed to load invoice");
         setLoading(false);
       });
-  }, [invoiceNumber]);
+  }, [invoiceNumber, returnId]);
 
   useEffect(() => {
     apiRequest("GET", "/api/settings").then((settings) => {
@@ -87,7 +93,7 @@ export default function A5InvoicePrintPage() {
         </div>
       </div>
       <hr style={{ margin: "4px 0" }} />
-      <div style={{ fontWeight: 400, fontSize: 12, textAlign: "right", marginBottom: 4 }}>INVOICE</div>
+      <div style={{ fontWeight: 400, fontSize: 12, textAlign: "right", marginBottom: 4 }}>{data.sale?.isCustomerReturn ? "CUSTOMER RETURN" : "INVOICE"}</div>
 
       {/* Bill To and Invoice Details Side by Side */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
@@ -104,8 +110,11 @@ export default function A5InvoicePrintPage() {
         <div style={{ textAlign: "right" }}>
           <div style={{ fontWeight: 400, fontSize: 11 }}>Date: {data.sale?.date ? new Date(data.sale.date).toLocaleDateString() : new Date().toLocaleDateString()}</div>
           <div style={{ fontWeight: "bold", fontSize: 13, color: '#1a237e', marginTop: 2 }}>
-            Invoice No: {data.sale?.invoice_number || data.sale?.invoiceNumber || "-"}
+            {data.sale?.isCustomerReturn ? "Return No" : "Invoice No"}: {data.sale?.invoice_number || data.sale?.invoiceNumber || "-"}
           </div>
+          {data.sale?.isCustomerReturn && data.sale.originalInvoiceNumber && (
+            <div style={{ fontSize: 10, marginTop: 2 }}>Original Invoice: {data.sale.originalInvoiceNumber}</div>
+          )}
           <div style={{ fontSize: 10, marginTop: 2 }}>Cust_type: {data.sale?.paymentMode || data.sale?.payment_mode || data.sale?.customer_type || "account"}</div>
           {backdate && (
             <div style={{ fontSize: 10, color: '#1a237e', fontWeight: 'bold', marginTop: 2 }}>Backdate payment for {backdate}</div>

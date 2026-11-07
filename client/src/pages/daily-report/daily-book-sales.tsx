@@ -28,7 +28,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { useToast } from "@/hooks/use-toast";
-import { sendInvoicePdfEmail } from "@/lib/invoice-pdf";
+import { sendCustomerReturnPdfEmail, sendInvoicePdfEmail } from "@/lib/invoice-pdf";
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface SalesEntry {
@@ -56,6 +56,7 @@ interface SalesEntry {
   totalPaid?: number;
   customerType?: string; // Add this to help identify cash customers
   isCompany?: boolean;
+  isCustomerReturn?: boolean;
 }
 
 // Helper function to determine display name for cash customers
@@ -324,7 +325,7 @@ export default function DailyBookSales() {
     };
   });
 
-  const nonCreditSales = useMemo(() => salesData.filter(i => !i.credit), [salesData]);
+  const nonCreditSales = useMemo(() => salesData.filter(i => !i.credit && !i.isCustomerReturn), [salesData]);
   const totalBoxes = useMemo(() => nonCreditSales.reduce((sum, item) => sum + item.boxes, 0), [nonCreditSales]);
   const totalVAT = useMemo(() => nonCreditSales.reduce((sum, item) => sum + item.vat, 0), [nonCreditSales]);
   const totalAmount = useMemo(() => nonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + item.amount, 0), [nonCreditSales]);
@@ -335,9 +336,14 @@ export default function DailyBookSales() {
   const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const filteredData = useMemo(() => salesData, [salesData]);
+  const selectableData = filteredData;
+  const selectedPaymentSales = useMemo(
+    () => salesData.filter(sale => selectedSales.has(sale.id) && !sale.isCustomerReturn),
+    [salesData, selectedSales]
+  );
 
   // Filtered totals for table footer
-  const filteredNonCreditSales = useMemo(() => filteredData.filter(i => !i.credit), [filteredData]);
+  const filteredNonCreditSales = useMemo(() => filteredData.filter(i => !i.credit && !i.isCustomerReturn), [filteredData]);
   const filteredTotalBoxes = useMemo(() => filteredNonCreditSales.reduce((sum, item) => sum + item.boxes, 0), [filteredNonCreditSales]);
   const filteredTotalAmount = useMemo(() => filteredNonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + item.amount, 0), [filteredNonCreditSales]);
   const filteredTotalCash = useMemo(() => filteredNonCreditSales.filter(i => !i.isCompany).reduce((sum, item) => sum + item.cash, 0), [filteredNonCreditSales]);
@@ -610,7 +616,7 @@ export default function DailyBookSales() {
   // Handle select all checkbox
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedSales(new Set(filteredData.map(sale => sale.id)));
+      setSelectedSales(new Set(selectableData.map(sale => sale.id)));
     } else {
       setSelectedSales(new Set());
     }
@@ -618,13 +624,13 @@ export default function DailyBookSales() {
 
   // Update selected sales to cash payment
   const handleUpdateToCash = async () => {
-    if (selectedSales.size === 0) {
+    if (selectedPaymentSales.length === 0) {
       toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
     // Check if any selected sales were paid via customer payment page
-    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const selectedSalesData = selectedPaymentSales;
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
@@ -632,7 +638,7 @@ export default function DailyBookSales() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to cash payment?`)) {
+    if (!confirm(`Are you sure you want to update ${selectedSalesData.length} selected sales to cash payment?`)) {
       return;
     }
 
@@ -661,13 +667,13 @@ export default function DailyBookSales() {
 
   // Update selected sales to card payment
   const handleUpdateToCard = async () => {
-    if (selectedSales.size === 0) {
+    if (selectedPaymentSales.length === 0) {
       toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
     // Check if any selected sales were paid via customer payment page
-    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const selectedSalesData = selectedPaymentSales;
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
@@ -675,7 +681,7 @@ export default function DailyBookSales() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to card payment?`)) {
+    if (!confirm(`Are you sure you want to update ${selectedSalesData.length} selected sales to card payment?`)) {
       return;
     }
 
@@ -704,13 +710,13 @@ export default function DailyBookSales() {
 
   // Update selected sales to account payment
   const handleUpdateToAccount = async () => {
-    if (selectedSales.size === 0) {
+    if (selectedPaymentSales.length === 0) {
       toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
     // Check if any selected sales were paid via customer payment page
-    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const selectedSalesData = selectedPaymentSales;
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
@@ -718,7 +724,7 @@ export default function DailyBookSales() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to account payment?`)) {
+    if (!confirm(`Are you sure you want to update ${selectedSalesData.length} selected sales to account payment?`)) {
       return;
     }
 
@@ -747,13 +753,13 @@ export default function DailyBookSales() {
 
   // Update selected sales to bank transfer payment
   const handleUpdateToBankTransfer = async () => {
-    if (selectedSales.size === 0) {
+    if (selectedPaymentSales.length === 0) {
       toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
     // Check if any selected sales were paid via customer payment page
-    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const selectedSalesData = selectedPaymentSales;
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
@@ -761,7 +767,7 @@ export default function DailyBookSales() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to bank transfer payment?`)) {
+    if (!confirm(`Are you sure you want to update ${selectedSalesData.length} selected sales to bank transfer payment?`)) {
       return;
     }
 
@@ -790,13 +796,13 @@ export default function DailyBookSales() {
 
   // Update selected sales to cheque payment
   const handleUpdateToCheque = async () => {
-    if (selectedSales.size === 0) {
+    if (selectedPaymentSales.length === 0) {
       toast({ title: "Error", description: "Please select at least one sale to update.", variant: "destructive" });
       return;
     }
 
     // Check if any selected sales were paid via customer payment page
-    const selectedSalesData = salesData.filter(sale => selectedSales.has(sale.id));
+    const selectedSalesData = selectedPaymentSales;
     const customerPaymentSales = selectedSalesData.filter(sale => sale.isPaidViaCustomerPayment);
 
     if (customerPaymentSales.length > 0) {
@@ -804,7 +810,7 @@ export default function DailyBookSales() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to update ${selectedSales.size} selected sales to cheque payment?`)) {
+    if (!confirm(`Are you sure you want to update ${selectedSalesData.length} selected sales to cheque payment?`)) {
       return;
     }
 
@@ -834,17 +840,20 @@ export default function DailyBookSales() {
   // Helper for WhatsApp and Email
   const sendInvoiceEmail = async (sale: SalesEntry) => {
     try {
-      await sendInvoicePdfEmail(sale.invoiceNo);
-      toast({ title: "Success", description: "Invoice email sent!" });
+      if (sale.isCustomerReturn) {
+        await sendCustomerReturnPdfEmail(Math.abs(sale.id));
+      } else {
+        await sendInvoicePdfEmail(sale.invoiceNo);
+      }
+      toast({ title: "Success", description: sale.isCustomerReturn ? "Customer return email sent!" : "Invoice email sent!" });
     } catch (e: any) {
-      toast({ title: "Error", description: e?.error || "Failed to send invoice email.", variant: "destructive" });
+      toast({ title: "Error", description: e?.message || e?.error || "Failed to send invoice email.", variant: "destructive" });
     }
   };
   const handleBulkEmail = async () => {
     if (selectedSales.size === 0) return;
     const selected = salesData.filter(s => selectedSales.has(s.id));
-    const invoiceNumbers = selected.map(s => s.invoiceNo);
-    const total = invoiceNumbers.length;
+    const total = selected.length;
 
     const progressToast = toast({
       title: "Sending emails...",
@@ -854,15 +863,19 @@ export default function DailyBookSales() {
 
     let sent = 0;
     let failed = 0;
-    const failedInvoices: string[] = [];
+    const failedDocuments: string[] = [];
 
-    for (const invNo of invoiceNumbers) {
+    for (const sale of selected) {
       try {
-        await sendInvoicePdfEmail(invNo);
+        if (sale.isCustomerReturn) {
+          await sendCustomerReturnPdfEmail(Math.abs(sale.id));
+        } else {
+          await sendInvoicePdfEmail(sale.invoiceNo);
+        }
         sent++;
       } catch {
         failed++;
-        failedInvoices.push(invNo);
+        failedDocuments.push(sale.isCustomerReturn ? `Return ${sale.invoiceNo}` : sale.invoiceNo);
       }
       progressToast.update({
         id: progressToast.id,
@@ -875,8 +888,8 @@ export default function DailyBookSales() {
       id: progressToast.id,
       title: failed === 0 ? "All emails sent" : "Emails sent with errors",
       description: failed === 0
-        ? `${sent} invoice(s) sent successfully.`
-        : `${sent} sent, ${failed} failed. Failed: ${failedInvoices.join(', ')}`,
+        ? `${sent} document(s) sent successfully.`
+        : `${sent} sent, ${failed} failed. Failed: ${failedDocuments.join(', ')}`,
       variant: failed === 0 ? "default" : "destructive",
     });
   };
@@ -885,28 +898,44 @@ export default function DailyBookSales() {
     .filter(sale => selectedSales.has(sale.id))
     .map(sale => sale.invoiceNo);
 
+  const getSelectedPrintItems = () => {
+    const selected = salesData.filter(sale => selectedSales.has(sale.id));
+    return {
+      invoiceNumbers: selected.filter(sale => !sale.isCustomerReturn).map(sale => sale.invoiceNo),
+      returnIds: selected
+        .filter(sale => sale.isCustomerReturn)
+        .map(sale => Math.abs(sale.id).toString()),
+    };
+  };
+
+  const openSelectedPrintItems = (invoicePrintPath: string) => {
+    const { invoiceNumbers, returnIds } = getSelectedPrintItems();
+    if (returnIds.length === 0 && invoiceNumbers.length === 0) return;
+    const query = new URLSearchParams();
+    if (invoiceNumbers.length > 0) query.set("invs", invoiceNumbers.join(","));
+    if (returnIds.length > 0) query.set("returnIds", returnIds.join(","));
+    window.open(`${invoicePrintPath}?${query.toString()}`, '_blank');
+  };
+
   const handleBulkPrint = async () => {
-    const invoiceNumbers = getSelectedInvoiceNumbers();
-    if (invoiceNumbers.length === 0) return;
-    window.open(`/print/bulk-dot-matrix?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+    openSelectedPrintItems('/print/bulk-dot-matrix');
   };
 
   const handleBulkA4Print = () => {
-    const invoiceNumbers = getSelectedInvoiceNumbers();
-    if (invoiceNumbers.length === 0) return;
-    window.open(`/print/bulk-a4-invoice?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+    openSelectedPrintItems('/print/bulk-a4-invoice');
   };
 
   const handleBulkA5Print = () => {
-    const invoiceNumbers = getSelectedInvoiceNumbers();
-    if (invoiceNumbers.length === 0) return;
-    window.open(`/print/bulk-a5-invoice?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+    openSelectedPrintItems('/print/bulk-a5-invoice');
   };
 
   const handleBulkPickingPrint = () => {
-    const invoiceNumbers = getSelectedInvoiceNumbers();
-    if (invoiceNumbers.length === 0) return;
-    window.open(`/print/bulk-packing-list?invs=${encodeURIComponent(invoiceNumbers.join(','))}`, '_blank');
+    const { invoiceNumbers, returnIds } = getSelectedPrintItems();
+    if (invoiceNumbers.length === 0 && returnIds.length === 0) return;
+    const query = new URLSearchParams();
+    if (invoiceNumbers.length > 0) query.set("invs", invoiceNumbers.join(","));
+    if (returnIds.length > 0) query.set("returnIds", returnIds.join(","));
+    window.open(`/print/bulk-packing-list?${query.toString()}`, '_blank');
   };
 
   const handleBulkLabelPrint = () => {
@@ -1006,12 +1035,15 @@ export default function DailyBookSales() {
     }
   };
 
-  const handlePrintTicket = (invoiceNo: string) => {
-    const printUrl = invoicePrintFormat === 'DOTMATRIX'
-      ? `/print/dot-matrix-invoice/${invoiceNo}`
+  const handlePrintTicket = (sale: SalesEntry) => {
+    const printPath = invoicePrintFormat === 'DOTMATRIX'
+      ? `/print/dot-matrix-invoice/${sale.invoiceNo}`
       : invoicePrintFormat === 'A5'
-        ? `/print/a5-invoice/${invoiceNo}`
-        : `/print/invoice/${invoiceNo}`;
+        ? `/print/a5-invoice/${sale.invoiceNo}`
+        : `/print/invoice/${sale.invoiceNo}`;
+    const printUrl = sale.isCustomerReturn
+      ? `${printPath}?returnId=${Math.abs(sale.id)}`
+      : printPath;
     window.open(printUrl, '_blank');
   };
 
@@ -1226,51 +1258,51 @@ export default function DailyBookSales() {
                         size="sm"
                         className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 h-7"
                         onClick={handleUpdateToCash}
-                        disabled={selectedSales.size === 0}
+                        disabled={selectedPaymentSales.length === 0}
                       >
                         <span className="hidden sm:inline">Paid (Cash) - </span>
                         <span className="sm:hidden">Cash - </span>
-                        {selectedSales.size}
+                        {selectedPaymentSales.length}
                       </Button>
                       <Button
                         size="sm"
                         className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1 h-7"
                         onClick={handleUpdateToCard}
-                        disabled={selectedSales.size === 0}
+                        disabled={selectedPaymentSales.length === 0}
                       >
                         <span className="hidden sm:inline">Pay Card - </span>
                         <span className="sm:hidden">Card - </span>
-                        {selectedSales.size}
+                        {selectedPaymentSales.length}
                       </Button>
                       <Button
                         size="sm"
                         className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-2 py-1 h-7"
                         onClick={handleUpdateToBankTransfer}
-                        disabled={selectedSales.size === 0}
+                        disabled={selectedPaymentSales.length === 0}
                       >
                         <span className="hidden sm:inline">Transfer - </span>
                         <span className="sm:hidden">Trans - </span>
-                        {selectedSales.size}
+                        {selectedPaymentSales.length}
                       </Button>
                       <Button
                         size="sm"
                         className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1 h-7"
                         onClick={handleUpdateToCheque}
-                        disabled={selectedSales.size === 0}
+                        disabled={selectedPaymentSales.length === 0}
                       >
                         <span className="hidden sm:inline">Cheque - </span>
                         <span className="sm:hidden">Chq - </span>
-                        {selectedSales.size}
+                        {selectedPaymentSales.length}
                       </Button>
                       <Button
                         size="sm"
                         className="bg-orange-600 hover:bg-orange-700 text-white text-xs px-2 py-1 h-7"
                         onClick={handleUpdateToAccount}
-                        disabled={selectedSales.size === 0}
+                        disabled={selectedPaymentSales.length === 0}
                       >
                         <span className="hidden sm:inline">Account - </span>
                         <span className="sm:hidden">Acc - </span>
-                        {selectedSales.size}
+                        {selectedPaymentSales.length}
                       </Button>
                     </>
                   )}
@@ -1321,7 +1353,8 @@ export default function DailyBookSales() {
                       <input
                         type="checkbox"
                         className="rounded"
-                        checked={selectedSales.size === filteredData.length && filteredData.length > 0}
+                        checked={selectableData.every(sale => selectedSales.has(sale.id)) && selectableData.length > 0}
+                        disabled={selectableData.length === 0}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                       />
                     </TableHead>
@@ -1361,11 +1394,11 @@ export default function DailyBookSales() {
                       <TableRow
                         key={sale.id}
                         className={cn(
-                          '',
+                          sale.isCustomerReturn && 'bg-red-50 border-red-200',
                           sale.isCompany && 'bg-amber-50 border-amber-200',
-                          !sale.isCompany && !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200',
-                          !sale.isCompany && sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200',
-                          !sale.isCompany && sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200'
+                          !sale.isCustomerReturn && !sale.isCompany && !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200',
+                          !sale.isCustomerReturn && !sale.isCompany && sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200',
+                          !sale.isCustomerReturn && !sale.isCompany && sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200'
                         )}
                       >
                         <TableCell>
@@ -1378,9 +1411,34 @@ export default function DailyBookSales() {
                         </TableCell>
                         <TableCell className="text-center text-xs sm:text-sm text-muted-foreground">{idx + 1}</TableCell>
                         <TableCell className="text-xs sm:text-sm">{formatDateForDisplay(sale.date, 'MM/dd/yy')}</TableCell>
-                        <TableCell className="text-xs sm:text-sm">{sale.invoiceNo}</TableCell>
+                        <TableCell className="text-xs sm:text-sm">
+                          {sale.invoiceNo}
+                          {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
+                        </TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
-
+                          {sale.isCustomerReturn ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
+                                  {getDisplayCustomerName(sale)}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-48">
+                                <DropdownMenuItem className="text-sm py-2" onClick={() => handlePrintTicket(sale)}>
+                                  <Printer className="mr-2 h-4 w-4" /> Print Ticket
+                                </DropdownMenuItem>
+                                <DropdownMenuItem className="text-sm py-2" onClick={() => sendInvoiceEmail(sale)}>
+                                  <Mail className="mr-2 h-4 w-4" /> Email
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-sm py-2"
+                                  onClick={() => window.open(`/print/packing-list/${encodeURIComponent(sale.invoiceNo)}?returnId=${Math.abs(sale.id)}`, '_blank')}
+                                >
+                                  <Package className="mr-2 h-4 w-4" /> Picking List
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
@@ -1411,14 +1469,7 @@ export default function DailyBookSales() {
                               )}
                               <DropdownMenuItem
                                 className="text-sm py-2"
-                                onClick={() => {
-                                  const printUrl = invoicePrintFormat === 'DOTMATRIX'
-                                    ? `/print/dot-matrix-invoice/${sale.invoiceNo}`
-                                    : invoicePrintFormat === 'A5'
-                                      ? `/print/a5-invoice/${sale.invoiceNo}`
-                                      : `/print/invoice/${sale.invoiceNo}`;
-                                  window.open(printUrl, '_blank');
-                                }}
+                                onClick={() => handlePrintTicket(sale)}
                               >
                                 <Printer className="mr-2 h-4 w-4" /> Print Ticket
                               </DropdownMenuItem>
@@ -1449,6 +1500,7 @@ export default function DailyBookSales() {
                               )}
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          )}
                         </TableCell>
                         <TableCell className="text-right text-xs sm:text-sm">
                           {Number(sale.amount ?? 0) === 0 ? "-" : (

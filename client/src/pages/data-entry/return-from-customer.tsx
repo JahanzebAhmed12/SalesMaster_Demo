@@ -30,11 +30,14 @@ const returnSchema = z.object({
   productId: z.number().min(1, "Product is required"),
   productType: z.enum(["regular", "non"]),
   invoiceId: z.number().optional().nullable(),
-  invoiceNumber: z.string().optional().nullable(),
+  invoiceNumber: z.string().trim().max(50, "Invoice number must be 50 characters or fewer").optional().nullable(),
   quantity: z.coerce.number().min(0.001, "Quantity must be greater than 0"),
   unitPrice: z.coerce.number().min(0, "Unit price must be positive"),
   remarks: z.string().optional().nullable(),
-});
+}).refine(
+  data => Boolean(data.invoiceId || data.invoiceNumber?.trim()),
+  { message: "Select an invoice or enter a manual invoice number", path: ["invoiceNumber"] }
+);
 
 type ReturnFormData = z.infer<typeof returnSchema>;
 
@@ -118,6 +121,12 @@ export default function ReturnFromCustomer() {
       form.setValue("customerId", 0);
     }
   }, [selectedCustomer, form]);
+
+  useEffect(() => {
+    setInvoicesFetched(false);
+    form.setValue("invoiceId", null);
+    form.setValue("invoiceNumber", "");
+  }, [customerId, searchFromDate, form]);
 
   // Fetch products
   const { data: products = { regularProducts: [] as RegularProduct[], nonProducts: [] as NonProduct[] } } = useQuery<{ regularProducts: RegularProduct[]; nonProducts: NonProduct[] }>({
@@ -208,6 +217,8 @@ export default function ReturnFromCustomer() {
         productId: variables?.productId,
         productType: variables?.productType,
       });
+      queryClient.invalidateQueries({ queryKey: ["daily-book-sales"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/daily-summary"] });
       refetchReturns();
       form.reset({
         date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
@@ -234,6 +245,8 @@ export default function ReturnFromCustomer() {
     mutationFn: (id: number) => apiRequest('DELETE', `/api/customer-returns/${id}`),
     onSuccess: () => {
       notifyInventoryMutation({ source: 'customer-return' });
+      queryClient.invalidateQueries({ queryKey: ["daily-book-sales"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reports/daily-summary"] });
       refetchReturns();
       toast({
         title: "Success",
@@ -469,11 +482,11 @@ export default function ReturnFromCustomer() {
     
     const returnData = {
       customerId: data.customerId,
-      saleId: data.invoiceId,
+      saleId: data.invoiceId || null,
       productId: data.productId,
       productType: data.productType,
       description: selectedProduct?.description || "",
-      invoiceNumber: data.invoiceNumber,
+      invoiceNumber: data.invoiceNumber?.trim(),
       remarks: data.remarks,
       quantity: data.quantity,
       unitPrice: data.unitPrice,
@@ -625,7 +638,7 @@ export default function ReturnFromCustomer() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <Label>Invoice:</Label>
+                      <Label>Invoice (select an invoice or enter it manually):</Label>
                       <Button
                         type="button"
                         variant="outline"
@@ -642,10 +655,10 @@ export default function ReturnFromCustomer() {
                       disabled={!invoicesFetched}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select invoice (optional)" />
+                        <SelectValue placeholder="Select an invoice or enter it manually" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">No Invoice</SelectItem>
+                        <SelectItem value="none">Enter invoice manually</SelectItem>
                         {customerInvoices.map((invoice: CustomerInvoice) => (
                           <SelectItem key={invoice.id} value={invoice.id.toString()}>
                             {invoice.invoiceNumber} - {format(new Date(invoice.date), "dd/MM/yyyy")} - £{invoice.totalAmount.toFixed(2)}
@@ -656,11 +669,19 @@ export default function ReturnFromCustomer() {
                   </div>
                   
                   <div>
-                    <Label>Manual Invoice Number:</Label>
+                    <Label>
+                      Manual Invoice Number{form.watch("invoiceId") ? " (optional)" : " (required)"}:
+                    </Label>
                     <Input
                       {...form.register("invoiceNumber")}
-                      placeholder="Enter invoice number manually"
+                      disabled={Boolean(form.watch("invoiceId"))}
+                      placeholder={form.watch("invoiceId") ? "Using selected invoice number" : "Enter invoice number manually"}
                     />
+                    {form.formState.errors.invoiceNumber && (
+                      <p className="text-sm text-red-600 mt-1">
+                        {form.formState.errors.invoiceNumber.message}
+                      </p>
+                    )}
                   </div>
                 </div>
 

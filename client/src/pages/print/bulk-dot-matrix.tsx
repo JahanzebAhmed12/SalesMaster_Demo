@@ -3,6 +3,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { formatQuantity } from '@/lib/utils';
 import { isInvoicePaid } from '@/lib/invoice-paid';
 import { Button } from '@/components/ui/button';
+import { fetchCustomerReturnInvoices } from '@/lib/customer-return-invoice';
 
 interface InvoiceData {
   company: any;
@@ -230,7 +231,9 @@ function InvoicePages({ data }: { data: InvoiceData }) {
               margin: '0',
               padding: '0'
             }}>
-              {sale?.invoice_number || sale?.invoiceNumber || ''}
+              {sale?.isCustomerReturn
+                ? sale?.originalInvoiceNumber || sale?.invoice_number || sale?.invoiceNumber || ''
+                : sale?.invoice_number || sale?.invoiceNumber || ''}
             </div>
 
             <div className="field-text" style={{
@@ -444,13 +447,14 @@ export default function BulkDotMatrixPrintPage() {
   const params = new URLSearchParams(window.location.search);
   const invsParam = params.get('invs');
   const invoiceNumbers = invsParam ? invsParam.split(',').filter(Boolean) : [];
+  const returnIds = params.get('returnIds')?.split(',').filter(Boolean) || [];
 
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (invoiceNumbers.length === 0) {
+    if (invoiceNumbers.length === 0 && returnIds.length === 0) {
       setError('No invoice numbers provided');
       setLoading(false);
       return;
@@ -466,9 +470,11 @@ export default function BulkDotMatrixPrintPage() {
           )
         );
         const valid = results.filter((r: any) => !r._error) as InvoiceData[];
-        setInvoices(valid);
-        if (valid.length === 0) {
-          setError('No invoices could be loaded');
+        const returns = await fetchCustomerReturnInvoices(returnIds);
+        const combined = [...valid, ...returns] as InvoiceData[];
+        setInvoices(combined);
+        if (combined.length === 0) {
+          setError('No invoices or returns could be loaded');
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load invoices');
@@ -597,7 +603,7 @@ export default function BulkDotMatrixPrintPage() {
       <div className="p-4 bg-gray-100 print:hidden">
         <h1 className="text-xl font-bold mb-2">Bulk Dot Matrix Print</h1>
         <p className="text-sm text-gray-600 mb-4">
-          {invoices.length} invoice(s) loaded. Auto-printing...
+          {invoices.length} document(s) loaded. Auto-printing...
         </p>
         <Button
           size="sm"

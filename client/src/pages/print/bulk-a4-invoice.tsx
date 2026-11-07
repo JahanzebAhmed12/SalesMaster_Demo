@@ -5,6 +5,7 @@ import { getApiUrl } from "@/lib/config";
 import { formatQuantity } from "@/lib/utils";
 import { isInvoicePaid } from "@/lib/invoice-paid";
 import { getBulkPrintInvoiceNumbers } from "@/lib/bulk-print";
+import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
 
 interface InvoiceItem {
   id?: number;
@@ -51,6 +52,8 @@ interface InvoiceData {
     customerType?: string;
     gate_number?: string;
     gateNumber?: string;
+    isCustomerReturn?: boolean;
+    originalInvoiceNumber?: string;
   };
   items?: InvoiceItem[];
   invoiceFooter?: string;
@@ -81,7 +84,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
   const porterage = Number(sale.porterage || 0);
   const totalAmount = Number(sale.total_amount ?? sale.totalAmount ?? 0);
   const paidAmount = Number(sale.paid_amount ?? sale.paidAmount ?? 0);
-  const isPaid = isInvoicePaid(sale, (data as any).paidAmount, (data as any).balance);
+  const isPaid = !sale.isCustomerReturn && isInvoicePaid(sale, (data as any).paidAmount, (data as any).balance);
 
   return (
     <article className="bulk-a4-invoice">
@@ -98,7 +101,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
       </div>
 
       <hr />
-      <div className="invoice-title">INVOICE</div>
+      <div className="invoice-title">{sale.isCustomerReturn ? "CUSTOMER RETURN" : "INVOICE"}</div>
 
       <div className="billing-grid">
         <div>
@@ -112,7 +115,8 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
         </div>
         <div className="invoice-meta">
           <div>Date: {sale.date ? new Date(sale.date).toLocaleDateString() : new Date().toLocaleDateString()}</div>
-          <div className="invoice-number">Invoice No: {invoiceNumber}</div>
+          <div className="invoice-number">{sale.isCustomerReturn ? "Return No" : "Invoice No"}: {invoiceNumber}</div>
+          {sale.isCustomerReturn && sale.originalInvoiceNumber && <div>Original Invoice: {sale.originalInvoiceNumber}</div>}
           <div>Cust_type: {sale.payment_mode || sale.paymentMode || sale.customer_type || sale.customerType || "account"}</div>
         </div>
       </div>
@@ -170,6 +174,10 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
 export default function BulkA4InvoicePrintPage() {
   const search = useSearch();
   const invoiceNumbers = useMemo(() => getBulkPrintInvoiceNumbers(search), [search]);
+  const returnIds = useMemo(
+    () => new URLSearchParams(search).get("returnIds")?.split(",").filter(Boolean) || [],
+    [search],
+  );
   const [invoices, setInvoices] = useState<InvoiceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -177,7 +185,7 @@ export default function BulkA4InvoicePrintPage() {
 
   useEffect(() => {
     let cancelled = false;
-    if (invoiceNumbers.length === 0) {
+    if (invoiceNumbers.length === 0 && returnIds.length === 0) {
       setError("No invoices selected");
       setLoading(false);
       return;
@@ -193,9 +201,21 @@ export default function BulkA4InvoicePrintPage() {
       }));
       if (cancelled) return;
       const validInvoices = results.filter((invoice): invoice is InvoiceData => invoice !== null);
-      setInvoices(validInvoices);
-      setFailedCount(results.length - validInvoices.length);
-      if (validInvoices.length === 0) setError("No selected invoices could be loaded");
+      try {
+        const returnInvoices = await fetchCustomerReturnInvoices(returnIds);
+        if (cancelled) return;
+        const combined = [...validInvoices, ...returnInvoices] as InvoiceData[];
+        setInvoices(combined);
+        setFailedCount(results.length - validInvoices.length);
+        if (combined.length === 0) setError("No selected invoices or returns could be loaded");
+      } catch (requestError) {
+        if (cancelled) return;
+        setInvoices(validInvoices);
+        setFailedCount(results.length - validInvoices.length + returnIds.length);
+        if (validInvoices.length === 0) {
+          setError(requestError instanceof Error ? requestError.message : "Failed to load selected returns");
+        }
+      }
       setLoading(false);
     };
 
@@ -203,7 +223,7 @@ export default function BulkA4InvoicePrintPage() {
     return () => {
       cancelled = true;
     };
-  }, [invoiceNumbers]);
+  }, [invoiceNumbers, returnIds]);
 
   useEffect(() => {
     if (!loading && invoices.length > 0) {
@@ -257,8 +277,8 @@ export default function BulkA4InvoicePrintPage() {
         }
       `}</style>
       <div className="bulk-a4-toolbar">
-        <strong>{invoices.length} A4 invoice(s) loaded.</strong>
-        {failedCount > 0 && <span> {failedCount} selected invoice(s) could not be loaded.</span>}
+        <strong>{invoices.length} A4 document(s) loaded.</strong>
+        {failedCount > 0 && <span> {failedCount} selected document(s) could not be loaded.</span>}
         <button type="button" onClick={() => window.print()}>Print Now</button>
       </div>
       {invoices.map((invoice, index) => <InvoiceDocument key={`${invoice.sale?.invoiceNumber || invoice.sale?.invoice_number}-${index}`} data={invoice} />)}

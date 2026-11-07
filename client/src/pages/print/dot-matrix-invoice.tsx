@@ -5,6 +5,7 @@ import { formatQuantity } from '@/lib/utils';
 import { API_BASE_URL, useRelativeUrls } from '@/lib/config';
 import { isInvoicePaid } from '@/lib/invoice-paid';
 import { Button } from '@/components/ui/button';
+import { fetchCustomerReturnInvoices } from '@/lib/customer-return-invoice';
 
 interface InvoiceData {
   company: any;
@@ -117,6 +118,7 @@ const MOBILE_PDF_POSITIONS = {
 export default function DotMatrixInvoicePrintPage() {
   const [match, params] = useRoute('/print/dot-matrix-invoice/:invoiceNumber');
   const invoiceNumber = params?.invoiceNumber;
+  const returnId = new URLSearchParams(window.location.search).get('returnId');
   const [data, setData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +133,7 @@ export default function DotMatrixInvoicePrintPage() {
     (typeof window !== 'undefined' && window.screen.width <= 1024 && navigator.maxTouchPoints > 0);
 
   useEffect(() => {
-    if (!invoiceNumber) {
+    if (!returnId && !invoiceNumber) {
       setError('No invoice number provided');
       setLoading(false);
       return;
@@ -141,10 +143,9 @@ export default function DotMatrixInvoicePrintPage() {
       try {
         setLoading(true);
         setError(null);
-        const response = await apiRequest('GET', `/api/sales/${invoiceNumber}/invoice`);
-        console.log('Invoice data:', response);
-        console.log('Sale data:', response.sale);
-        console.log('Invoice number:', response.sale?.invoice_number);
+        const response = returnId
+          ? (await fetchCustomerReturnInvoices([returnId]))[0]
+          : await apiRequest('GET', `/api/sales/${invoiceNumber}/invoice`);
         setData(response);
       } catch (err) {
         console.error('Error fetching invoice:', err);
@@ -155,7 +156,7 @@ export default function DotMatrixInvoicePrintPage() {
     };
 
     fetchInvoice();
-  }, [invoiceNumber]);
+  }, [invoiceNumber, returnId]);
 
   // Mobile print proxy handler
   const handleMobilePrint = async () => {
@@ -795,7 +796,7 @@ export default function DotMatrixInvoicePrintPage() {
       {/* Print Preview Header - hidden during print */}
       <div className="p-4 bg-gray-100 print:hidden">
         <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
-        <p className="text-sm text-gray-600 mb-4">Invoice: {sale?.invoice_number}</p>
+        <p className="text-sm text-gray-600 mb-4">{sale?.isCustomerReturn ? 'Customer Return' : 'Invoice'}: {sale?.invoice_number}</p>
         <div className="flex gap-2 flex-wrap">
           <Button
             size="sm"
@@ -824,7 +825,12 @@ export default function DotMatrixInvoicePrintPage() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => window.open(`/print/packing-list/${invoiceNumber}`, '_blank')}
+            onClick={() => window.open(
+              sale?.isCustomerReturn
+                ? `/print/packing-list/${invoiceNumber}?returnId=${returnId}`
+                : `/print/packing-list/${invoiceNumber}`,
+              '_blank',
+            )}
             className="flex items-center gap-1"
           >
             📋 Print Picking Note
@@ -967,7 +973,9 @@ export default function DotMatrixInvoicePrintPage() {
                 margin: '0',
                 padding: '0'
               }}>
-                {sale?.invoice_number || sale?.invoiceNumber || ''}
+                {sale?.isCustomerReturn
+                  ? sale?.originalInvoiceNumber || sale?.invoice_number || sale?.invoiceNumber || ''
+                  : sale?.invoice_number || sale?.invoiceNumber || ''}
               </div>
 
               {/* Date */}

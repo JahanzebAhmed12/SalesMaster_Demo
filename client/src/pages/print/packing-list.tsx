@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import logo from "@/public/printlogo.png";
 import { getApiUrl } from "@/lib/config";
+import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
 
 interface PackingListItem {
   qty: number;
@@ -53,7 +54,10 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
         <div style={{ textAlign: "right" }}>
           <div style={{ fontWeight: "bold", fontSize: 28, color: '#1a237e', marginBottom: 4 }}>PICKING LIST</div>
           <div style={{ fontWeight: 400, fontSize: 18, marginTop: 8 }}>Date: {sale?.date ? new Date(sale.date).toLocaleDateString() : "-"}</div>
-          <div style={{ fontWeight: 400, fontSize: 18 }}>Invoice No: {sale?.invoice_number || sale?.invoiceNumber || "-"}</div>
+          <div style={{ fontWeight: 400, fontSize: 18 }}>
+            {sale?.isCustomerReturn ? "Original Invoice" : "Invoice No"}: {sale?.isCustomerReturn ? sale?.originalInvoiceNumber || "-" : sale?.invoice_number || sale?.invoiceNumber || "-"}
+          </div>
+          {sale?.isCustomerReturn && <div style={{ fontWeight: 400, fontSize: 18 }}>Return No: {sale?.invoice_number || sale?.invoiceNumber || "-"}</div>}
         </div>
       </div>
       <hr style={{ margin: "16px 0" }} />
@@ -125,13 +129,31 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
 export default function PackingListPrintPage() {
   const [match, params] = useRoute("/print/packing-list/:invoiceNumber");
   const invoiceNumber = params?.invoiceNumber;
+  const returnId = new URLSearchParams(window.location.search).get("returnId");
   const [data, setData] = useState<PackingListData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!invoiceNumber) return;
-    publicApiRequest<PackingListData>('GET', `/api/sales/${invoiceNumber}/invoice`)
+    const request = returnId
+      ? fetchCustomerReturnInvoices([returnId]).then(([returnData]) => {
+        if (!returnData) throw new Error("Customer return not found");
+        return {
+          company: returnData.company,
+          customer: returnData.customer,
+          sale: returnData.sale,
+          packingItems: returnData.items.map(item => ({
+            qty: Math.abs(Number(item.quantity || 0)),
+            weight: 0,
+            product: String(item.productName || item.description || ""),
+            notes: item.notes ? String(item.notes) : undefined,
+          })),
+        } as PackingListData;
+      })
+      : invoiceNumber
+        ? publicApiRequest<PackingListData>('GET', `/api/sales/${invoiceNumber}/invoice`)
+        : Promise.reject(new Error("Invoice number is missing"));
+    request
       .then((res) => {
         setData(res);
         setLoading(false);
@@ -140,7 +162,7 @@ export default function PackingListPrintPage() {
         setError("Failed to load packing list");
         setLoading(false);
       });
-  }, [invoiceNumber]);
+  }, [invoiceNumber, returnId]);
 
   if (loading) {
     return <div>Loading...</div>;

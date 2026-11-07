@@ -627,6 +627,7 @@ _PUBLIC_API_PATTERNS = (
     re.compile(r"^/api/sales/[^/]+/excel$"),
     re.compile(r"^/api/purchase-invoices/[^/]+/print$"),
     re.compile(r"^/api/supplier-returns/[^/]+/print$"),
+    re.compile(r"^/api/customer-returns/print$"),
     re.compile(r"^/api/reports/daily-summary/pdf$"),
 )
 
@@ -6489,6 +6490,7 @@ def daily_book_sales():
     sales = query.order_by(Sale.invoice_number.desc()).all()
     result = []
     slNo = 0
+    negative_sale_ids = set()
     for sale in sales:
         boxes = sum(item.quantity for item in sale.items)
         # Check if invoice was paid via customer payment page (has batch_id payments)
@@ -6534,6 +6536,18 @@ def daily_book_sales():
                 bank_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'bank')
                 bank_transfer_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'bank_transfer')
                 cheque_amount = sum(float(p.amount) for p in daily_book_payments if p.payment_mode == 'cheque')
+
+        is_negative_invoice = total_amount < 0 or any(
+            item.quantity < 0 or item.total_price < 0 for item in sale.items
+        )
+        if is_negative_invoice:
+            negative_sale_ids.add(sale.id)
+            account_amount = 0
+            cash_amount = 0
+            bank_amount = 0
+            bank_transfer_amount = 0
+            cheque_amount = 0
+            credit_amount = abs(total_amount)
         
         # Show all customers - removed gate number restriction
         customer_display_name = ''
@@ -6599,6 +6613,74 @@ def daily_book_sales():
             'isFullyPaid': is_fully_paid,
             'totalPaid': total_paid,
             'isCompany': bool(sale.customer.is_company) if sale.customer else False,
+        })
+
+    returns_query = CustomerReturn.query.join(
+        Customer, CustomerReturn.customer_id == Customer.id
+    ).outerjoin(
+        User, CustomerReturn.created_by == User.id
+    ).filter(
+        CustomerReturn.status == 'completed'
+    )
+    if from_date and to_date:
+        returns_query = returns_query.filter(
+            CustomerReturn.date >= datetime.strptime(from_date, "%Y-%m-%d").date(),
+            CustomerReturn.date <= datetime.strptime(to_date, "%Y-%m-%d").date()
+        )
+    elif from_date:
+        returns_query = returns_query.filter(
+            CustomerReturn.date >= datetime.strptime(from_date, "%Y-%m-%d").date()
+        )
+    elif to_date:
+        returns_query = returns_query.filter(
+            CustomerReturn.date <= datetime.strptime(to_date, "%Y-%m-%d").date()
+        )
+    if salesman and salesman != 'all':
+        returns_query = returns_query.filter(User.username == salesman)
+    if search:
+        returns_query = returns_query.filter(
+            CustomerReturn.invoice_number.ilike(f'%{search}%') |
+            Customer.customer_name.ilike(f'%{search}%')
+        )
+
+    for customer_return in returns_query.order_by(CustomerReturn.id.desc()).all():
+        # Negative-quantity sales already appear above as credit rows. Their
+        # linked return entity records stock movement and must not be duplicated.
+        if customer_return.sale_id in negative_sale_ids:
+            continue
+
+        credit_amount = abs(float(customer_return.total_value or 0))
+        if payment_type == 'Credit' and credit_amount <= 0:
+            continue
+        if payment_type and payment_type not in ('All', 'Credit'):
+            continue
+
+        slNo += 1
+        result.append({
+            'id': -customer_return.id,
+            'slNo': slNo,
+            'date': customer_return.date.isoformat(),
+            'salesman': customer_return.user.username if customer_return.user else '',
+            'boxes': -abs(float(customer_return.quantity or 0)),
+            'invoiceNo': customer_return.invoice_number or f'CR-{customer_return.ref_number}',
+            'customerName': customer_return.customer.customer_name if customer_return.customer else '',
+            'customerOthers': customer_return.customer.others if customer_return.customer else None,
+            'gateNumber': None,
+            'customerId': customer_return.customer_id,
+            'vat': 0,
+            'amount': 0,
+            'cash': 0,
+            'bank': 0,
+            'bankTransfer': 0,
+            'cheque': 0,
+            'credit': credit_amount,
+            'hasPayments': False,
+            'paymentSource': None,
+            'isPaidViaCustomerPayment': False,
+            'isFullyPaid': True,
+            'totalPaid': 0,
+            'isCompany': bool(customer_return.customer.is_company) if customer_return.customer else False,
+            'isCustomerReturn': True,
         })
     return jsonify(result)
 
@@ -10178,11 +10260,49 @@ def get_customer_returns():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/customer-returns/print', methods=['GET'])
+def print_customer_returns():
+    """Return selected customer-return documents for the public print view."""
+    raw_ids = request.args.get('ids', '')
+    try:
+        return_ids = [int(value) for value in raw_ids.split(',') if value]
+        if not return_ids or any(return_id <= 0 for return_id in return_ids):
+            return jsonify({"error": "At least one valid customer return ID is required"}), 400
+
+        return_items = CustomerReturn.query.filter(
+            CustomerReturn.id.in_(set(return_ids))
+        ).order_by(CustomerReturn.id).all()
+        if len(return_items) != len(set(return_ids)):
+            return jsonify({"error": "One or more customer returns were not found"}), 404
+
+        company = Company.query.first()
+        documents = []
+        for return_item in return_items:
+            product_model = RegularProduct if return_item.product_type == 'regular' else NonProduct
+            product = product_model.query.get(return_item.product_id)
+            documents.append({
+                'customer': return_item.customer.to_dict() if return_item.customer else {},
+                'product': product.to_dict() if product else {},
+                'returnItem': return_item.to_dict(),
+            })
+
+        return jsonify({
+            'company': company.to_dict() if company else {},
+            'returns': documents,
+        }), 200
+    except ValueError:
+        return jsonify({"error": "Customer return IDs must be integers"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/customer-returns', methods=['POST'])
 @jwt_required()
 def create_customer_return():
     try:
         data = request.get_json()
+        if not isinstance(data, dict):
+            return jsonify({"error": "A customer return payload is required"}), 400
+
         user_id = get_jwt_identity()
         # Use business date
         business_date = get_business_date()
@@ -10190,9 +10310,20 @@ def create_customer_return():
         last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
         ref_number = f"CR{1 if not last_return else last_return.id + 1:04d}"
         # Calculate total value
-        quantity = float(data.get('quantity', 0))
-        unit_price = float(data.get('unitPrice', 0))
+        from math import isfinite
+        try:
+            quantity = float(data.get('quantity', 0))
+            unit_price = float(data.get('unitPrice', 0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Return quantity and unit price must be valid numbers"}), 400
+        if not isfinite(quantity) or quantity <= 0:
+            return jsonify({"error": "Return quantity must be a finite number greater than zero"}), 400
+        if not isfinite(unit_price) or unit_price < 0:
+            return jsonify({"error": "Unit price must be a finite non-negative number"}), 400
         total_value = quantity * unit_price
+        if not isfinite(total_value):
+            return jsonify({"error": "Return total is outside the supported range"}), 400
+        invoice_number = str(data.get('invoiceNumber') or '').strip()
         # Parse date string to date object
         parsed_date = business_date
         date_str = data.get('date')
@@ -10220,6 +10351,13 @@ def create_customer_return():
             sale = Sale.query.get(data.get('saleId'))
             if not sale:
                 return jsonify({"error": "Sale not found"}), 404
+            if sale.customer_id != customer.id:
+                return jsonify({"error": "Selected invoice does not belong to this customer"}), 400
+            invoice_number = sale.invoice_number
+        elif not invoice_number:
+            return jsonify({"error": "Select an invoice or enter a manual invoice number"}), 400
+        if len(invoice_number) > 50:
+            return jsonify({"error": "Invoice number must be 50 characters or fewer"}), 400
         # Prepare data for schema validation
         schema_data = {
             'refNumber': ref_number,
@@ -10229,7 +10367,7 @@ def create_customer_return():
             'productId': data.get('productId'),
             'productType': data.get('productType'),
             'description': data.get('description'),
-            'invoiceNumber': data.get('invoiceNumber'),
+            'invoiceNumber': invoice_number,
             'remarks': data.get('remarks'),
             'quantity': quantity,
             'unitPrice': unit_price,
@@ -10248,7 +10386,7 @@ def create_customer_return():
             product_id=customer_return_data.productId,
             product_type=customer_return_data.productType,
             description=customer_return_data.description,
-            invoice_number=customer_return_data.invoiceNumber,
+            invoice_number=invoice_number,
             remarks=customer_return_data.remarks,
             quantity=quantity,
             unit_price=unit_price,
@@ -13151,15 +13289,18 @@ def daily_summary_report():
     
     # Get customer returns for the date (to show as negative credits)
     customer_returns = db.session.query(
+        CustomerReturn.id,
         CustomerReturn.customer_id,
-        CustomerReturn.credit_note_amount,
+        CustomerReturn.sale_id,
+        CustomerReturn.total_value,
         Customer.customer_name,
+        Customer.is_company,
         CustomerReturn.invoice_number
     ).join(
         Customer, CustomerReturn.customer_id == Customer.id
     ).filter(
         CustomerReturn.date == report_date,
-        CustomerReturn.credit_note_issued == True
+        CustomerReturn.status == 'completed'
     ).all()
     
     # Get negative payments (payments with negative amounts)
@@ -13174,7 +13315,8 @@ def daily_summary_report():
         Sale, Payment.sale_id == Sale.id
     ).filter(
         Payment.payment_date == report_date,
-        Payment.amount < 0
+        Payment.amount < 0,
+        or_(Payment.payment_mode.is_(None), Payment.payment_mode != 'credit_note')
     ).all()
     
     # Process sales data to match the image format
@@ -13191,8 +13333,9 @@ def daily_summary_report():
     print(f"[DEBUG] Found {len(customer_returns)} customer returns")
     print(f"[DEBUG] Found {len(negative_payments)} negative payments")
     
-    # Track processed returns and negative payments to avoid duplicates
-    processed_returns = set()
+    # Track negative invoices so their linked stock-return records are not
+    # counted a second time as separate customer returns.
+    negative_sale_ids = set()
     processed_neg_payments = set()
     
     for sale in sales_query:
@@ -13244,6 +13387,7 @@ def daily_summary_report():
         if negative_items or float(sale.total_amount) < 0:
             # This is a negative invoice, show in account credits
             account_credits = abs(float(sale.total_amount or 0))
+            negative_sale_ids.add(sale.id)
             account_amount = 0
             cash_amount = 0
             card_amount = 0
@@ -13277,29 +13421,25 @@ def daily_summary_report():
     
     # Add customer returns as separate entries
     for return_item in customer_returns:
-        if return_item.customer_id not in processed_returns:
-            # Group all returns for this customer
-            customer_return_total = sum(
-                float(r.credit_note_amount or 0) 
-                for r in customer_returns 
-                if r.customer_id == return_item.customer_id
-            )
-            
-            sales_summary.append({
-                'customer_name': return_item.customer_name,
-                'invoice_no': f"CR-{return_item.invoice_number or 'RETURN'}",
-                'cash_sales': 0,
-                'card_paid': 0,
-                'bank_transfer': 0,
-                'cheque': 0,
-                'account_sales': 0,
-                'account_paid_cash': 0,
-                'account_paid_cheque': 0,
-                'account_credits': customer_return_total,
-                'customer_type': None,
-                'gate_number': None
-            })
-            processed_returns.add(return_item.customer_id)
+        if return_item.sale_id in negative_sale_ids:
+            continue
+
+        sales_summary.append({
+            'customer_name': return_item.customer_name,
+            'invoice_no': return_item.invoice_number or f"CR-{return_item.id}",
+            'cash_sales': 0,
+            'card_paid': 0,
+            'bank_transfer': 0,
+            'cheque': 0,
+            'account_sales': 0,
+            'account_paid_cash': 0,
+            'account_paid_cheque': 0,
+            'account_credits': abs(float(return_item.total_value or 0)),
+            'customer_type': None,
+            'gate_number': None,
+            'is_company': bool(return_item.is_company) if return_item.is_company is not None else False,
+            'is_customer_return': True,
+        })
     
     # Add negative payments as separate entries (only if they're not for invoices already shown)
     for neg_payment in negative_payments:
@@ -13309,7 +13449,8 @@ def daily_summary_report():
             payment_details = db.session.query(Payment).filter(
                 Payment.customer_id == neg_payment.customer_id,
                 Payment.payment_date == report_date,
-                Payment.amount < 0
+                Payment.amount < 0,
+                or_(Payment.payment_mode.is_(None), Payment.payment_mode != 'credit_note')
             ).all()
             
             # Filter out payments that are for invoices already shown in sales summary
@@ -13391,6 +13532,8 @@ def daily_summary_report():
     
     # Update sales_summary with account payment information
     for sale_entry in sales_summary:
+        if sale_entry.get('is_customer_return'):
+            continue
         # Find the corresponding sale to get the sale_id
         matching_sale = next((s for s in sales_query if s.invoice_number == sale_entry['invoice_no']), None)
         if matching_sale and matching_sale.id in account_payment_totals:
@@ -13610,11 +13753,7 @@ def daily_summary_report():
     
     # Calculate totals
     account_credits_total = sum(
-        float(return_item.credit_note_amount or 0) for return_item in customer_returns
-    ) + sum(
-        abs(float(neg_payment.amount)) for neg_payment in negative_payments
-    ) + sum(
-        sale['account_credits'] for sale in sales_summary if sale['account_credits'] > 0
+        float(sale.get('account_credits') or 0) for sale in sales_summary
     )
     
     # Calculate customer cash payments (backdate)
@@ -13713,6 +13852,7 @@ def daily_summary_pdf():
         return jsonify({'error': 'date is required'}), 400
     
     try:
+        from sqlalchemy import Integer, cast
         report_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         
         # Get the same data as the regular daily summary
@@ -13736,6 +13876,7 @@ def daily_summary_pdf():
         bank_transfer_total = 0
         cheque_total = 0
         account_total = 0
+        negative_sale_ids = set()
         
         for sale in sales_query:
             cash_amount = 0
@@ -13761,6 +13902,19 @@ def daily_summary_pdf():
             
             if sale.customer_type == 'account' and not sale_payments:
                 account_amount = float(sale.total_amount or 0)
+
+            negative_items = db.session.query(SaleItem.id).filter(
+                SaleItem.sale_id == sale.id,
+                or_(SaleItem.quantity < 0, SaleItem.total_price < 0)
+            ).first()
+            if negative_items or float(sale.total_amount or 0) < 0:
+                negative_sale_ids.add(sale.id)
+                account_credits = abs(float(sale.total_amount or 0))
+                cash_amount = 0
+                card_amount = 0
+                bank_transfer_amount = 0
+                cheque_amount = 0
+                account_amount = 0
             
             cash_total += cash_amount
             card_total += card_amount
@@ -13780,6 +13934,34 @@ def daily_summary_pdf():
             'account_paid_cheque': 0,
             'account_credits': account_credits
         })
+
+        customer_returns = db.session.query(
+            CustomerReturn.id,
+            CustomerReturn.sale_id,
+            CustomerReturn.total_value,
+            CustomerReturn.invoice_number,
+            Customer.customer_name
+        ).join(
+            Customer, CustomerReturn.customer_id == Customer.id
+        ).filter(
+            CustomerReturn.date == report_date,
+            CustomerReturn.status == 'completed'
+        ).all()
+        for customer_return in customer_returns:
+            if customer_return.sale_id in negative_sale_ids:
+                continue
+            sales_summary.append({
+                'customer_name': customer_return.customer_name,
+                'ticket_no': customer_return.invoice_number or f"CR-{customer_return.id}",
+                'cash_sales': 0,
+                'card_paid': 0,
+                'bank_transfer': 0,
+                'cheque': 0,
+                'account_sales': 0,
+                'account_paid_cash': 0,
+                'account_paid_cheque': 0,
+                'account_credits': abs(float(customer_return.total_value or 0)),
+            })
         
         # 2. Customer Payments
         customer_payments = db.session.query(

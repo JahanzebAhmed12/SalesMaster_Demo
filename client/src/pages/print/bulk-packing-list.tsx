@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearch } from "wouter";
 import { getApiUrl } from "@/lib/config";
 import { getBulkPrintInvoiceNumbers } from "@/lib/bulk-print";
+import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
 
 interface PackingItem {
   qty: number;
@@ -21,6 +22,8 @@ interface PackingData {
     date?: string;
     gate_number?: string;
     gateNumber?: string;
+    isCustomerReturn?: boolean;
+    originalInvoiceNumber?: string;
   };
   packingItems?: PackingItem[];
 }
@@ -66,7 +69,8 @@ function PackingDocument({ data }: { data: PackingData }) {
         </div>
         <div className="packing-invoice-meta">
           <div>Date: {sale.date ? new Date(sale.date).toLocaleDateString() : "-"}</div>
-          <div>Invoice No: {invoiceNumber}</div>
+          <div>{sale.isCustomerReturn ? "Original Invoice" : "Invoice No"}: {sale.isCustomerReturn ? sale.originalInvoiceNumber || "-" : invoiceNumber}</div>
+          {sale.isCustomerReturn && <div>Return No: {invoiceNumber}</div>}
         </div>
       </div>
       <table className="packing-items">
@@ -96,6 +100,10 @@ function PackingDocument({ data }: { data: PackingData }) {
 export default function BulkPackingListPrintPage() {
   const search = useSearch();
   const invoiceNumbers = useMemo(() => getBulkPrintInvoiceNumbers(search), [search]);
+  const returnIds = useMemo(
+    () => new URLSearchParams(search).get("returnIds")?.split(",").filter(Boolean) || [],
+    [search],
+  );
   const [documents, setDocuments] = useState<PackingData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -103,7 +111,7 @@ export default function BulkPackingListPrintPage() {
 
   useEffect(() => {
     let cancelled = false;
-    if (invoiceNumbers.length === 0) {
+    if (invoiceNumbers.length === 0 && returnIds.length === 0) {
       setError("No invoices selected");
       setLoading(false);
       return;
@@ -119,9 +127,30 @@ export default function BulkPackingListPrintPage() {
       }));
       if (cancelled) return;
       const validDocuments = results.filter((document): document is PackingData => document !== null);
-      setDocuments(validDocuments);
-      setFailedCount(results.length - validDocuments.length);
-      if (validDocuments.length === 0) setError("No selected picking notes could be loaded");
+      try {
+        const returnDocuments = (await fetchCustomerReturnInvoices(returnIds)).map(returnData => ({
+          company: returnData.company,
+          customer: returnData.customer,
+          sale: returnData.sale,
+          packingItems: returnData.items.map(item => ({
+            qty: Math.abs(Number(item.quantity || 0)),
+            product: String(item.productName || item.description || ""),
+            notes: item.notes ? String(item.notes) : undefined,
+          })),
+        })) as PackingData[];
+        if (cancelled) return;
+        const combined = [...validDocuments, ...returnDocuments];
+        setDocuments(combined);
+        setFailedCount(results.length - validDocuments.length);
+        if (combined.length === 0) setError("No selected picking notes could be loaded");
+      } catch (requestError) {
+        if (cancelled) return;
+        setDocuments(validDocuments);
+        setFailedCount(results.length - validDocuments.length + returnIds.length);
+        if (validDocuments.length === 0) {
+          setError(requestError instanceof Error ? requestError.message : "Failed to load return picking notes");
+        }
+      }
       setLoading(false);
     };
 
@@ -129,7 +158,7 @@ export default function BulkPackingListPrintPage() {
     return () => {
       cancelled = true;
     };
-  }, [invoiceNumbers]);
+  }, [invoiceNumbers, returnIds]);
 
   useEffect(() => {
     if (!loading && documents.length > 0) {
