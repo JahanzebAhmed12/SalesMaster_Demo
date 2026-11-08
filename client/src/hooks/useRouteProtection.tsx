@@ -17,6 +17,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   "/data-entry/purchase-invoice": "purchase_entry",
   "/data-entry/closing-stock": "closing_stock",
   "/data-entry/return-from-customer": "return_from_customer",
+  "/data-entry/customer-discount": "customer_discount",
   "/data-entry/return-to-supplier": "return_to_supplier",
   "/data-entry/dumps": "dumps",
   "/data-entry/cash-cf": "till/float(c/f)",

@@ -26,7 +26,7 @@ type ProductsAPI = { regularProducts: RegularProduct[]; nonProducts: NonProduct[
 type ProductHistoryAPI = {
   purchases: any[];
   supplierReturns: any[];
-  sales: any[];
+  sales: Array<any>;
   customerReturns: any[];
   dumps: any[];
 };
@@ -782,7 +782,10 @@ export default function ProductHistory() {
                       <TableRow key={`sale-${idx}`} className={cn(sale.isCompany && "bg-amber-50")}>
                         <TableCell className="text-center">{idx + 1}</TableCell>
                         <TableCell className="text-center whitespace-nowrap">{sale.date}</TableCell>
-                        <TableCell className="text-center">{sale.invoiceNo}</TableCell>
+                        <TableCell className="text-center">
+                          {sale.invoiceNo}
+                          {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Discount)</span>}
+                        </TableCell>
                         <TableCell className="text-center">
                           <span className="flex items-center gap-1 justify-center">
                             {sale.customerName}
@@ -809,7 +812,7 @@ export default function ProductHistory() {
                         £{(() => {
                           const ncSales = sales.filter((s: any) => !s.isCompany);
                           const totalQty = ncSales.reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
-                          const totalVal = ncSales.reduce((sum: number, s: any) => sum + (Number(s.unitPrice) || 0) * (Number(s.quantity) || 0), 0);
+                          const totalVal = ncSales.reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0);
                           return (totalVal / (totalQty || 1)).toFixed(2);
                         })()}
                       </TableCell>

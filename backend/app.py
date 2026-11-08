@@ -1,5 +1,6 @@
 from flask_cors import CORS
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, date
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
 import logging
 import os
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 from flask import make_response
 import re
 import html
-from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave, SaleEditLock
+from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, CustomerDiscount, CustomerDiscountAudit, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave, SaleEditLock
 
 
 from schemas import (
@@ -22,6 +23,7 @@ import os
 import uuid
 from werkzeug.utils import secure_filename
 from users import verify_password, create_admin_user
+from migrations.customer_discount_v1 import upgrade as upgrade_customer_discount_schema
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
@@ -383,6 +385,11 @@ with app.app_context():
         print("Warning: Database connection issues detected")
     
     db.create_all()
+    upgrade_customer_discount_schema(
+        db.engine,
+        CustomerDiscount.__table__,
+        CustomerDiscountAudit.__table__,
+    )
     ensure_sale_item_highlight_column()
     ensure_print_service_settings_columns()
     create_admin_user()
@@ -1290,6 +1297,136 @@ def get_business_date(now=None):
     now = now or datetime.now()
     return now.date()
 
+CENT = Decimal("0.01")
+
+
+def _money_decimal(value):
+    return Decimal(str(value or 0)).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _active_discount_total_for_sale(sale_id, through_date=None, exclude_id=None):
+    query = db.session.query(func.coalesce(func.sum(CustomerDiscount.amount), 0)).filter(
+        CustomerDiscount.sale_id == sale_id,
+        CustomerDiscount.is_deleted.is_(False),
+    )
+    if through_date:
+        query = query.filter(CustomerDiscount.date <= through_date)
+    if exclude_id is not None:
+        query = query.filter(CustomerDiscount.id != exclude_id)
+    return _money_decimal(query.scalar())
+
+
+def _active_discount_total_for_item(sale_item_id, exclude_id=None):
+    query = db.session.query(func.coalesce(func.sum(CustomerDiscount.amount), 0)).filter(
+        CustomerDiscount.sale_item_id == sale_item_id,
+        CustomerDiscount.is_deleted.is_(False),
+    )
+    if exclude_id is not None:
+        query = query.filter(CustomerDiscount.id != exclude_id)
+    return _money_decimal(query.scalar())
+
+
+def _sale_paid_amount(sale, through_date=None):
+    if _money_decimal(sale.total_amount) < 0:
+        return _money_decimal(sale.paid_amount)
+    query = db.session.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+        Payment.sale_id == sale.id,
+        or_(Payment.payment_mode.is_(None), Payment.payment_mode != "credit_note"),
+    )
+    if through_date:
+        query = query.filter(Payment.payment_date <= through_date)
+    payment_total = _money_decimal(query.scalar())
+    recorded_total = _money_decimal(sale.paid_amount)
+    return max(Decimal("0.00"), payment_total, recorded_total)
+
+
+def _sale_return_total(sale_id, through_date=None):
+    query = db.session.query(func.coalesce(func.sum(CustomerReturn.total_value), 0)).filter(
+        CustomerReturn.sale_id == sale_id,
+        CustomerReturn.status == "completed",
+    )
+    if through_date:
+        query = query.filter(CustomerReturn.date <= through_date)
+    return _money_decimal(query.scalar())
+
+
+def _sale_outstanding(sale, through_date=None, exclude_discount_id=None):
+    return (
+        _money_decimal(sale.total_amount)
+        - _sale_paid_amount(sale, through_date)
+        - _sale_return_total(sale.id, through_date)
+        - _active_discount_total_for_sale(sale.id, through_date, exclude_discount_id)
+    ).quantize(CENT)
+
+
+def _check_discount_date_permission(user_id, target_date, operation, existing_date=None):
+    business_date = get_business_date()
+    if target_date > business_date:
+        return "Discount date cannot be after the current business date."
+
+    options = UserBackDateOption.query.filter_by(user_id=int(user_id)).first()
+    dates_to_check = [target_date]
+    if existing_date is not None:
+        dates_to_check.append(existing_date)
+
+    for entry_date in set(dates_to_check):
+        if entry_date < business_date:
+            allowed = bool(options and (options.deleting if operation == "delete" else options.editing))
+            if not allowed:
+                action = "delete" if operation == "delete" else "edit"
+                return f"You do not have permission to {action} backdated discounts."
+        elif operation in ("edit", "delete") and options and not options.current_editing:
+            return "You do not have permission to edit discounts for the current business date."
+    return None
+
+
+def _check_customer_discount_access(user_id):
+    restrictions = UserRestriction.query.filter(
+        UserRestriction.user_id == int(user_id),
+        UserRestriction.section.in_(("data_entry", "customer_discount")),
+        UserRestriction.allowed.is_(False),
+    ).all()
+    if restrictions:
+        return "You do not have permission to access customer discounts."
+    return None
+
+
+def _parse_discount_date(value, default_date):
+    if value in (None, ""):
+        return default_date
+    try:
+        parsed = date.fromisoformat(str(value))
+    except ValueError:
+        raise ValueError("Discount date must use YYYY-MM-DD format.")
+    if parsed.isoformat() != str(value):
+        raise ValueError("Discount date must use YYYY-MM-DD format.")
+    return parsed
+
+
+def _parse_discount_amount(value):
+    try:
+        amount = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError("Discount amount must be a valid positive amount.")
+    if not amount.is_finite() or amount <= 0:
+        raise ValueError("Discount amount must be a finite amount greater than zero.")
+    rounded = amount.quantize(CENT, rounding=ROUND_HALF_UP)
+    if amount != rounded:
+        raise ValueError("Discount amount cannot have more than two decimal places.")
+    return rounded
+
+
+def _refresh_sale_payment_status(sale):
+    outstanding = _sale_outstanding(sale)
+    paid = _sale_paid_amount(sale)
+    if outstanding <= Decimal("0.00"):
+        sale.payment_status = "paid"
+    elif paid > 0:
+        sale.payment_status = "partial"
+    else:
+        sale.payment_status = "unpaid" if sale.payment_status == "unpaid" else "pending"
+
+
 def get_next_business_date(current_date):
     """Calculate next business date (including weekends)"""
     if isinstance(current_date, datetime):
@@ -2137,6 +2274,8 @@ def get_sale_by_invoice(invoice_number):
             return jsonify({"message": "Sale not found"}), 404
         
         response_data = sale.to_dict()
+        response_data['discountTotal'] = float(_active_discount_total_for_sale(sale.id))
+        response_data['outstandingAmount'] = float(_sale_outstanding(sale))
         edit_lock = SaleEditLock.query.options(
             db.joinedload(SaleEditLock.user)
         ).filter_by(sale_id=sale.id).first()
@@ -2166,6 +2305,8 @@ def update_sale(id):
             data.pop('editLockToken', None)
         sale_data = SaleSchema(**data)
         sale = Sale.query.options(db.joinedload(Sale.user)).get_or_404(id)
+        if CustomerDiscount.query.filter_by(sale_id=sale.id).first():
+            return jsonify({"error": "This invoice has customer discount history and cannot be rebuilt."}), 409
         user_id = int(get_jwt_identity())
         edit_lock = SaleEditLock.query.options(db.joinedload(SaleEditLock.user)).filter_by(sale_id=sale.id).first()
         if not edit_lock:
@@ -2625,6 +2766,8 @@ def patch_sale(id):
     try:
         sale = Sale.query.get_or_404(id)
         user_id = get_jwt_identity()
+        if CustomerDiscount.query.filter_by(sale_id=sale.id).first():
+            return jsonify({"error": "This invoice has customer discount history and cannot be edited."}), 409
         
         # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
@@ -2680,6 +2823,8 @@ def delete_sale(id):
     sale = Sale.query.get_or_404(id)
     try:
         user_id = get_jwt_identity()
+        if CustomerDiscount.query.filter_by(sale_id=sale.id).first():
+            return jsonify({"error": "This invoice has customer discount history and cannot be deleted."}), 409
 
         # Restore stock if the sale was finalized
         if sale.status == 'finalized':
@@ -3342,6 +3487,13 @@ def get_dashboard_stats():
         today_sales = db.session.query(func.sum(Sale.total_amount)).filter(
             func.date(Sale.date) == today
         ).scalar() or 0
+        today_discounts = db.session.query(func.sum(CustomerDiscount.amount)).join(
+            Sale, CustomerDiscount.sale_id == Sale.id
+        ).filter(
+            CustomerDiscount.date == today,
+            CustomerDiscount.is_deleted.is_(False),
+            Sale.status == 'finalized',
+        ).scalar() or 0
 
         today_purchases = db.session.query(func.sum(Purchase.amount)).filter(
             func.date(Purchase.date) == today
@@ -3349,6 +3501,14 @@ def get_dashboard_stats():
 
         total_purchases = db.session.query(func.sum(Purchase.amount)).scalar() or 0
         total_sales = db.session.query(func.sum(Sale.total_amount)).scalar() or 0
+        total_discounts = db.session.query(func.sum(CustomerDiscount.amount)).join(
+            Sale, CustomerDiscount.sale_id == Sale.id
+        ).filter(
+            CustomerDiscount.is_deleted.is_(False),
+            Sale.status == 'finalized',
+        ).scalar() or 0
+        today_sales = float(today_sales) - float(today_discounts)
+        total_sales = float(total_sales) - float(total_discounts)
         profit_margin = ((total_sales - total_purchases) / total_sales * 100) if total_sales > 0 else 0
 
         regular_count = db.session.query(func.count(RegularProduct.id)).scalar() or 0
@@ -3363,7 +3523,7 @@ def get_dashboard_stats():
             recent_transactions.append({
                 "id": sale.id,
                 "customerName": customer_name,
-                "amount": float(sale.total_amount),
+                "amount": float(sale.total_amount) - float(_active_discount_total_for_sale(sale.id)),
                 "date": sale.date.isoformat() if sale.date else None,
                 "status": sale.status
             })
@@ -3415,6 +3575,21 @@ def get_chart_data():
             .all()
         )
         sales_map = {period: total for period, total in sales}
+        discounts = (
+            db.session.query(
+                func.strftime('%Y-%W', CustomerDiscount.date).label('period'),
+                func.sum(CustomerDiscount.amount).label('total')
+            )
+            .join(Sale, CustomerDiscount.sale_id == Sale.id)
+            .filter(
+                CustomerDiscount.is_deleted.is_(False),
+                Sale.status == 'finalized',
+            )
+            .group_by('period')
+            .all()
+        )
+        for period, total in discounts:
+            sales_map[period] = float(sales_map.get(period, 0) or 0) - float(total or 0)
         purchases = (
             db.session.query(
                 func.strftime('%Y-%W', PurchaseInvoice.date).label('period'),
@@ -3443,6 +3618,24 @@ def get_chart_data():
             .all()
         )
         sales_map = {str(day): total for day, total in sales}
+        discounts = (
+            db.session.query(
+                func.date(CustomerDiscount.date).label('day'),
+                func.sum(CustomerDiscount.amount).label('total')
+            )
+            .join(Sale, CustomerDiscount.sale_id == Sale.id)
+            .filter(
+                CustomerDiscount.date >= date_list[0],
+                CustomerDiscount.date <= date_list[-1],
+                CustomerDiscount.is_deleted.is_(False),
+                Sale.status == 'finalized',
+            )
+            .group_by('day')
+            .all()
+        )
+        for day, total in discounts:
+            day = str(day)
+            sales_map[day] = float(sales_map.get(day, 0) or 0) - float(total or 0)
         purchases = (
             db.session.query(
                 func.date(PurchaseInvoice.date).label('day'),
@@ -5466,6 +5659,8 @@ def create_payment():
         customer = Customer.query.get(payment_data.customer_id)
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
+        split_payment = data.get('splitPayment', {})
+        total_split = sum(split_payment.values()) if split_payment else 0
 
         # If sale_id is provided, link payment to a specific sale/invoice
         sale = None
@@ -5474,13 +5669,21 @@ def create_payment():
             if not sale:
                 return jsonify({"error": "Sale (invoice) not found"}), 404
 
+            payment_to_apply = total_split if total_split > 0 else payment_data.amount
+            available_balance = _sale_outstanding(sale)
+            if payment_to_apply > 0 and _money_decimal(payment_to_apply) > available_balance:
+                return jsonify({
+                    "error": "Payment exceeds the invoice's outstanding balance after discounts and returns."
+                }), 400
+
             # Update sale's payment status and paid_amount
             current_paid = float(sale.paid_amount or 0)
-            new_paid = current_paid + float(payment_data.amount)
+            new_paid = current_paid + float(payment_to_apply)
+            effective_total = _money_decimal(sale.total_amount) - _active_discount_total_for_sale(sale.id) - _sale_return_total(sale.id)
             
-            if new_paid >= float(sale.total_amount):
+            if new_paid >= float(effective_total):
                 sale.payment_status = "paid"
-                sale.paid_amount = sale.total_amount
+                sale.paid_amount = new_paid
                 sale.status = "finalized"  # Mark as finalized when fully paid
                 # If payment is cash, update customer_type to cash
                 if payment_data.payment_mode.lower() == "cash" and sale.customer_type != "cash":
@@ -5501,9 +5704,6 @@ def create_payment():
             db.session.add(sale)
 
         # Handle split payment if provided
-        split_payment = data.get('splitPayment', {})
-        total_split = sum(split_payment.values()) if split_payment else 0
-        
         if total_split > 0 and split_payment:
             # Create separate payment records for each payment type
             mode_map = {
@@ -5556,7 +5756,7 @@ def create_payment():
             if customer:
                 # Subtract the payment amount from the customer's running balance
                 current_balance = float(customer.running_balance or 0)
-                new_balance = current_balance - float(payment_data.amount)
+                new_balance = current_balance - float(payment_to_apply)
                 customer.running_balance = new_balance
                 db.session.commit()
                 print(f"Updated customer {customer.customer_name} running balance: {current_balance} - {payment_data.amount} = {new_balance}")
@@ -5650,6 +5850,10 @@ def handle_delete_payment_batch(batch_id, user_id):
 
         # Delete all payments in the batch
         Payment.query.filter_by(batch_id=batch_id).delete()
+        for sale_id in batch_payments_by_sale:
+            sale = Sale.query.get(sale_id)
+            if sale:
+                _refresh_sale_payment_status(sale)
         
         db.session.commit()
         
@@ -5808,7 +6012,7 @@ def manage_payment_batch(batch_id):
                                 
                                 if new_paid >= float(sale.total_amount):
                                     sale.payment_status = "paid"
-                                    sale.paid_amount = sale.total_amount
+                                    sale.paid_amount = new_paid
                                     sale.status = "finalized"
                                 else:
                                     sale.payment_status = "partial"
@@ -5843,7 +6047,7 @@ def manage_payment_batch(batch_id):
                             
                             if new_paid >= float(sale.total_amount):
                                 sale.payment_status = "paid"
-                                sale.paid_amount = sale.total_amount
+                                sale.paid_amount = new_paid
                                 sale.status = "finalized"
                                 # Preserve original customer_type for daily book categorization
                                 sale.customer_type = original_sale_types.get(invoice_id, payment_item.get('paymentMode', 'cash'))
@@ -5898,7 +6102,9 @@ def manage_payment_batch(batch_id):
                 
                 for invoice in invoices_to_pay:
                     # Since we reverted all payments for this batch, use the current paid_amount from the sale
-                    invoice_balance = float(invoice.total_amount) - float(invoice.paid_amount or 0)
+                    initial_invoice_balance = float(_sale_outstanding(invoice))
+                    initial_paid = float(_sale_paid_amount(invoice))
+                    invoice_balance = initial_invoice_balance
                     
                     print(f"[EDIT DEBUG] Invoice {invoice.id}: total={invoice.total_amount}, paid_amount={invoice.paid_amount}, balance={invoice_balance}")
                     
@@ -5933,12 +6139,11 @@ def manage_payment_batch(batch_id):
                             invoice_balance -= payment_amount
                     
                     # Update sale payment status for this invoice
-                    total_paid_for_invoice = float(invoice.total_amount) - invoice_balance
-                    new_paid = float(invoice.paid_amount or 0) + total_paid_for_invoice
+                    new_paid = initial_paid + (initial_invoice_balance - invoice_balance)
                     
                     if new_paid >= float(invoice.total_amount):
                         invoice.payment_status = "paid"
-                        invoice.paid_amount = invoice.total_amount
+                        invoice.paid_amount = new_paid
                         invoice.status = "finalized"
                     else:
                         invoice.payment_status = "partial"
@@ -5983,6 +6188,14 @@ def manage_payment_batch(batch_id):
                 )
                 db.session.add(credit_payment)
                 payments_created.append(credit_payment)
+
+            for sale_id in {
+                payment.sale_id for payment in payments_created
+                if payment.sale_id and payment.payment_type != 'credit'
+            }:
+                sale = Sale.query.get(sale_id)
+                if sale:
+                    _refresh_sale_payment_status(sale)
 
             # Commit the transaction
             db.session.commit()
@@ -6086,7 +6299,7 @@ def create_bulk_payment():
                         
                         if new_paid >= float(sale.total_amount):
                             sale.payment_status = "paid"
-                            sale.paid_amount = sale.total_amount
+                            sale.paid_amount = new_paid
                             sale.status = "finalized"
                             sale.customer_type = payment_item.get('paymentMode', 'cash')
                         else:
@@ -6117,7 +6330,7 @@ def create_bulk_payment():
                 for invoice in invoices:
                     # Calculate outstanding balance
                     paid_amount = sum(float(p.amount) for p in invoice.payments)
-                    outstanding = float(invoice.total_amount) - paid_amount
+                    outstanding = float(_sale_outstanding(invoice))
                     total_invoice_amount += max(0, outstanding)  # Only positive outstanding amounts
             
             # Distribute payments proportionally between invoices and on-account
@@ -6150,7 +6363,7 @@ def create_bulk_payment():
                         
                         # Calculate outstanding balance for this invoice
                         paid_amount = sum(float(p.amount) for p in invoice.payments)
-                        outstanding = float(invoice.total_amount) - paid_amount
+                        outstanding = float(_sale_outstanding(invoice))
                         
                         if outstanding <= 0:
                             continue
@@ -6208,6 +6421,14 @@ def create_bulk_payment():
                     db.session.add(payment)
                     payments_created.append(payment)
         
+        for sale_id in {
+            payment.sale_id for payment in payments_created
+            if payment.sale_id and payment.payment_type != 'credit'
+        }:
+            sale = Sale.query.get(sale_id)
+            if sale:
+                _refresh_sale_payment_status(sale)
+
         # Commit all payments
         db.session.commit()
         
@@ -6253,18 +6474,18 @@ def get_customer_outstanding_invoices(customer_id):
             if float(sale.total_amount) < 0:
                 # Credit invoice: the applied amount is tracked on paid_amount because
                 # no Payment rows are created when a credit is applied
-                outstanding_balance = float(sale.total_amount) - float(sale.paid_amount or 0)
+                outstanding_balance = _sale_outstanding(sale)
             else:
-                total_payments = sum(float(p.amount) for p in sale.payments)
-                # Use the greater of payment-row sums and paid_amount so invoices that are
-                # settled partly via applied credits are correctly excluded
-                outstanding_balance = float(sale.total_amount) - max(total_payments, float(sale.paid_amount or 0))
+                outstanding_balance = _sale_outstanding(sale)
             
             # Include sales with outstanding balance (positive or negative for credit invoices)
             if abs(outstanding_balance) > 0.01:  # Allow for small rounding differences
-                outstanding_sales.append(sale)
+                sale_data = sale.to_dict()
+                sale_data['outstandingAmount'] = float(outstanding_balance)
+                sale_data['discountTotal'] = float(_active_discount_total_for_sale(sale.id))
+                outstanding_sales.append(sale_data)
 
-        return jsonify([sale.to_dict() for sale in outstanding_sales]), 200
+        return jsonify(outstanding_sales), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -6682,6 +6903,63 @@ def daily_book_sales():
             'isCompany': bool(customer_return.customer.is_company) if customer_return.customer else False,
             'isCustomerReturn': True,
         })
+
+    discounts_query = CustomerDiscount.query.join(
+        Customer, CustomerDiscount.customer_id == Customer.id
+    ).join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).outerjoin(
+        User, CustomerDiscount.created_by == User.id
+    ).filter(
+        CustomerDiscount.is_deleted.is_(False)
+    )
+    if from_date:
+        discounts_query = discounts_query.filter(
+            CustomerDiscount.date >= datetime.strptime(from_date, "%Y-%m-%d").date()
+        )
+    if to_date:
+        discounts_query = discounts_query.filter(
+            CustomerDiscount.date <= datetime.strptime(to_date, "%Y-%m-%d").date()
+        )
+    if salesman and salesman != 'all':
+        discounts_query = discounts_query.filter(User.username == salesman)
+    if search:
+        discounts_query = discounts_query.filter(
+            Sale.invoice_number.ilike(f'%{search}%') |
+            Customer.customer_name.ilike(f'%{search}%')
+        )
+
+    for discount in discounts_query.order_by(CustomerDiscount.id.desc()).all():
+        if payment_type and payment_type not in ('All', 'Credit'):
+            continue
+        slNo += 1
+        result.append({
+            'id': -1000000000 - discount.id,
+            'slNo': slNo,
+            'date': discount.date.isoformat(),
+            'salesman': discount.creator.username if discount.creator else '',
+            'boxes': 0,
+            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'discountReference': discount.reference,
+            'customerName': discount.customer.customer_name if discount.customer else '',
+            'customerOthers': discount.customer.others if discount.customer else None,
+            'gateNumber': None,
+            'customerId': discount.customer_id,
+            'vat': 0,
+            'amount': 0,
+            'cash': 0,
+            'bank': 0,
+            'bankTransfer': 0,
+            'cheque': 0,
+            'credit': float(discount.amount or 0),
+            'hasPayments': False,
+            'paymentSource': None,
+            'isPaidViaCustomerPayment': False,
+            'isFullyPaid': True,
+            'totalPaid': 0,
+            'isCompany': bool(discount.customer.is_company) if discount.customer else False,
+            'isCustomerDiscount': True,
+        })
     return jsonify(result)
 
 @app.route('/api/reports/daily-sales-full-view', methods=['GET'])
@@ -6812,7 +7090,6 @@ def product_sales_history():
     if customer_id:
         query = query.filter(Sale.customer_id == customer_id)
     items = query.all()
-    
     # Bulk-load product names to avoid N+1
     product_ids = {item.product_id for item in items if item.product_id}
     non_product_ids = {item.non_product_id for item in items if item.non_product_id}
@@ -6841,8 +7118,51 @@ def product_sales_history():
             'productDescription': product_name,
             'quantity': item.quantity,
             'unitPrice': float(item.unit_price),
+            'originalUnitPrice': float(item.unit_price),
             'total': float(item.total_price),
+            'discountTotal': 0,
+            'effectiveTotal': float(item.total_price),
+            'effectiveUnitPrice': float(item.unit_price),
             'isCompany': customer.is_company if customer else False
+        })
+
+    discounts_query = CustomerDiscount.query.join(
+        SaleItem, CustomerDiscount.sale_item_id == SaleItem.id
+    ).join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).filter(
+        CustomerDiscount.is_deleted.is_(False),
+        Sale.status == 'finalized',
+        CustomerDiscount.date >= from_dt.date(),
+        CustomerDiscount.date < to_dt.date(),
+        (SaleItem.product_id == product_id) | (SaleItem.non_product_id == product_id),
+    )
+    if customer_id:
+        discounts_query = discounts_query.filter(Sale.customer_id == customer_id)
+    for discount in discounts_query.order_by(CustomerDiscount.date.asc(), CustomerDiscount.id.asc()).all():
+        line = discount.sale_item
+        product_name = (
+            line.product.description if line and line.product
+            else line.non_product.description if line and line.non_product
+            else ''
+        )
+        result.append({
+            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'date': discount.date.isoformat(),
+            'customerName': discount.customer.customer_name if discount.customer else '',
+            'customerType': discount.sale.customer_type if discount.sale else '',
+            'gateNumber': discount.sale.gate_number if discount.sale else None,
+            'productDescription': product_name,
+            'quantity': 0,
+            'unitPrice': 0,
+            'originalUnitPrice': 0,
+            'total': -float(discount.amount or 0),
+            'discountTotal': float(discount.amount or 0),
+            'effectiveTotal': -float(discount.amount or 0),
+            'effectiveUnitPrice': 0,
+            'discountReference': discount.reference,
+            'isCustomerDiscount': True,
+            'isCompany': bool(discount.customer.is_company) if discount.customer else False,
         })
     return jsonify(result)
 
@@ -7009,6 +7329,30 @@ def customer_statement():
             'sort_priority': 1,  # Sales get priority 1
             'timestamp': sale.date.timestamp() if hasattr(sale.date, 'timestamp') else sale.date.replace(tzinfo=None).timestamp()
         })
+
+    discounts = CustomerDiscount.query.filter(
+        CustomerDiscount.customer_id == customer_id,
+        CustomerDiscount.date >= from_dt.date(),
+        CustomerDiscount.date < to_dt.date(),
+        CustomerDiscount.is_deleted.is_(False),
+    ).order_by(CustomerDiscount.date.asc(), CustomerDiscount.id.asc()).all()
+    for discount in discounts:
+        discount_datetime = datetime.combine(discount.date, datetime.min.time())
+        entries.append({
+            'date': discount_datetime,
+            'type': 'customer_discount',
+            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'description': f'Customer Discount - {discount.reference}',
+            'accountInv': 0,
+            'cashInv': 0,
+            'paid': 0,
+            'accountAdj': 0,
+            'discountAdj': float(discount.amount or 0),
+            'balance': -float(discount.amount or 0),
+            'sale_id': discount.sale_id,
+            'sort_priority': 2,
+            'timestamp': discount_datetime.timestamp(),
+        })
     
     # Add payment entries
     for payment in payments:
@@ -7169,6 +7513,23 @@ def customer_history():
             'paid': float(payment.amount),
             'balance': -float(payment.amount)  # Negative balance for credit
         })
+
+    customer_discounts = CustomerDiscount.query.filter(
+        CustomerDiscount.customer_id == customer_id,
+        CustomerDiscount.date >= from_dt.date(),
+        CustomerDiscount.date < to_dt.date(),
+        CustomerDiscount.is_deleted.is_(False),
+    ).all()
+    for discount in customer_discounts:
+        all_transactions.append({
+            'date': datetime.combine(discount.date, datetime.min.time()),
+            'type': 'customer_discount',
+            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'accountInv': 0,
+            'cashInv': 0,
+            'paid': 0,
+            'balance': -float(discount.amount or 0),
+        })
     
     # Sort all transactions by date
     all_transactions.sort(key=lambda x: x['date'])
@@ -7177,7 +7538,10 @@ def customer_history():
     if filter_type != "All":
         filtered_transactions = []
         for transaction in all_transactions:
-            if filter_type == "Account" and (transaction['accountInv'] > 0 or transaction['type'] == 'on_account_payment'):
+            if filter_type == "Account" and (
+                transaction['accountInv'] > 0
+                or transaction['type'] in ('on_account_payment', 'customer_discount')
+            ):
                 filtered_transactions.append(transaction)
             elif filter_type == "Cash" and transaction['cashInv'] > 0:
                 filtered_transactions.append(transaction)
@@ -7299,12 +7663,52 @@ def product_sales_report():
     query = query.order_by(func.coalesce(amt_sq.c.total_amt, 0).desc())
     results = query.all()
 
+    discount_query = db.session.query(
+        SaleItem.product_id,
+        SaleItem.non_product_id,
+        func.sum(CustomerDiscount.amount),
+    ).join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).join(
+        SaleItem, CustomerDiscount.sale_item_id == SaleItem.id
+    ).join(
+        Customer, Sale.customer_id == Customer.id
+    ).filter(
+        CustomerDiscount.is_deleted.is_(False),
+        Sale.status == 'finalized',
+        Customer.is_company == False,
+    )
+    if from_date:
+        discount_query = discount_query.filter(CustomerDiscount.date >= from_dt.date())
+    if to_date:
+        discount_query = discount_query.filter(CustomerDiscount.date < to_dt.date())
+    if search:
+        discount_query = discount_query.outerjoin(
+            RegularProduct, SaleItem.product_id == RegularProduct.id
+        ).outerjoin(
+            NonProduct, SaleItem.non_product_id == NonProduct.id
+        ).filter(
+            or_(
+                RegularProduct.description.ilike(f'%{search}%'),
+                NonProduct.description.ilike(f'%{search}%'),
+            )
+        )
+    discount_totals = {
+        (product_id, non_product_id): float(amount or 0)
+        for product_id, non_product_id, amount in discount_query.group_by(
+            SaleItem.product_id, SaleItem.non_product_id
+        ).all()
+    }
+
     # Format for frontend
     sales_data = []
     for idx, row in enumerate(results, 1):
         product_id = row.product_id if row.product_id else row.non_product_id
         non_co_qty = float(row.non_co_qty) if row.non_co_qty else 0
-        total_amt = float(row.total) if row.total else 0
+        product_key = (row.product_id, row.non_product_id)
+        discount_total = discount_totals.pop(product_key, 0)
+        gross_total = float(row.total) if row.total else 0
+        total_amt = gross_total - discount_total
         avg_price = (total_amt / non_co_qty) if non_co_qty > 0 else 0
         sales_data.append({
             'id': product_id,
@@ -7313,7 +7717,26 @@ def product_sales_report():
             'productDescription': row.product_description,
             'quantity': float(row.quantity) if row.quantity else 0,
             'avgPrice': avg_price,
-            'total': total_amt
+            'total': total_amt,
+            'grossTotal': gross_total,
+            'discountTotal': discount_total,
+        })
+    for (product_id, non_product_id), discount_total in discount_totals.items():
+        product = (
+            RegularProduct.query.get(product_id) if product_id
+            else NonProduct.query.get(non_product_id) if non_product_id
+            else None
+        )
+        sales_data.append({
+            'id': product_id or non_product_id,
+            'slNo': len(sales_data) + 1,
+            'sageCode': product.sage_code if product else '',
+            'productDescription': product.description if product else '',
+            'quantity': 0,
+            'avgPrice': 0,
+            'total': -discount_total,
+            'grossTotal': 0,
+            'discountTotal': discount_total,
         })
     return jsonify(sales_data)
 
@@ -8481,6 +8904,15 @@ def sales_analysis_report():
         Sale.date < to_dt,
         Sale.status == 'finalized'
     ).all()
+    discounts = CustomerDiscount.query.join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).join(Customer, Sale.customer_id == Customer.id).filter(
+        CustomerDiscount.date >= from_dt.date(),
+        CustomerDiscount.date < to_dt.date(),
+        CustomerDiscount.is_deleted.is_(False),
+        Sale.status == 'finalized',
+        Customer.is_company == False,
+    ).all()
     print(f"[DEBUG] Found {len(sales)} finalized sales between {from_date} and {to_date}")
     for sale in sales:
         print(f"[DEBUG] Sale: id={sale.id}, date={sale.date}, status={sale.status}, customer_type={sale.customer_type}, total_amount={sale.total_amount}, paid_amount={sale.paid_amount}")
@@ -8502,6 +8934,10 @@ def sales_analysis_report():
         d = sale.date.date()
         if d in sales_by_date:
             sales_by_date[d].append(sale)
+    discounts_by_date = {d: [] for d in date_list}
+    for discount in discounts:
+        if discount.date in discounts_by_date:
+            discounts_by_date[discount.date].append(discount)
 
     # Group purchase invoice items by invoice date
     purchases_by_date = {d: [] for d in date_list}
@@ -8518,6 +8954,11 @@ def sales_analysis_report():
         day_purchases = sum(float(item.total_price) for item in purchases_by_date[d])
         day_account_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'account' and not (sale.customer and sale.customer.is_company))
         day_cash_sales = sum(float(sale.total_amount) for sale in sales_by_date[d] if sale.customer_type.lower() == 'cash' and not (sale.customer and sale.customer.is_company))
+        for discount in discounts_by_date[d]:
+            if discount.sale and discount.sale.customer_type.lower() == 'account':
+                day_account_sales -= float(discount.amount or 0)
+            elif discount.sale and discount.sale.customer_type.lower() == 'cash':
+                day_cash_sales -= float(discount.amount or 0)
         day_total_sales = day_account_sales + day_cash_sales
         print(f"[DEBUG] {d}: purchase={day_purchases}, accountSales={day_account_sales}, cashSales={day_cash_sales}, totalSales={day_total_sales}")
         rows.append({
@@ -11353,6 +11794,324 @@ def test_customer_returns():
             "error_type": type(e).__name__
         }), 500
 
+def _discount_audit_values(discount):
+    return {
+        "amount": str(_money_decimal(discount.amount)),
+        "date": discount.date.isoformat(),
+        "reason": discount.reason,
+        "saleId": discount.sale_id,
+        "saleItemId": discount.sale_item_id,
+    }
+
+
+def _validate_discount_target(data, user_id, existing=None):
+    if not isinstance(data, dict):
+        raise ValueError("A customer discount payload is required.")
+
+    customer_id = existing.customer_id if existing else data.get("customerId")
+    sale_id = existing.sale_id if existing else data.get("saleId")
+    sale_item_id = existing.sale_item_id if existing else data.get("saleItemId")
+    try:
+        customer_id = int(customer_id)
+        sale_id = int(sale_id)
+        sale_item_id = int(sale_item_id)
+    except (TypeError, ValueError):
+        raise ValueError("Customer, invoice, and invoice product line are required.")
+
+    sale = Sale.query.filter_by(id=sale_id).with_for_update().first()
+    if not sale:
+        raise ValueError("Invoice not found.")
+    if sale.customer_id != customer_id:
+        raise ValueError("Selected invoice does not belong to this customer.")
+    if sale.status != "finalized":
+        raise ValueError("Discounts can only be applied to finalized invoices.")
+    if _money_decimal(sale.total_amount) <= 0:
+        raise ValueError("Discounts cannot be applied to a credit or zero-value invoice.")
+
+    sale_item = SaleItem.query.filter_by(id=sale_item_id, sale_id=sale.id).with_for_update().first()
+    if not sale_item:
+        raise ValueError("Selected product line does not belong to this invoice.")
+    if Decimal(str(sale_item.quantity or 0)) <= 0 or _money_decimal(sale_item.total_price) <= 0:
+        raise ValueError("Discounts can only be applied to positive-quantity sale lines.")
+
+    amount = _parse_discount_amount(data.get("amount"))
+    reason = str(data.get("reason") or "").strip()
+    if not reason:
+        raise ValueError("A reason is required for every discount.")
+    if len(reason) > 500:
+        raise ValueError("Reason must be 500 characters or fewer.")
+    transaction_date = _parse_discount_date(
+        data.get("date"),
+        existing.date if existing else get_business_date(),
+    )
+    if transaction_date < sale.date.date():
+        raise ValueError("Discount date cannot be before the invoice date.")
+
+    old_amount = _money_decimal(existing.amount) if existing else Decimal("0.00")
+    excluded_id = existing.id if existing else None
+    available_line_value = _money_decimal(sale_item.total_price) - _active_discount_total_for_item(
+        sale_item.id, excluded_id
+    )
+    available_invoice_balance = _sale_outstanding(sale, exclude_discount_id=excluded_id)
+    if existing:
+        available_line_value = max(available_line_value, old_amount)
+        available_invoice_balance = max(available_invoice_balance, old_amount)
+    elif available_invoice_balance <= 0:
+        raise ValueError("This invoice is already paid or has no outstanding balance.")
+
+    if amount > available_line_value:
+        raise ValueError("Discount cannot exceed the remaining value of the selected product line.")
+    if amount > available_invoice_balance:
+        raise ValueError("Discount cannot exceed the invoice's outstanding balance.")
+
+    return customer_id, sale, sale_item, amount, transaction_date, reason
+
+
+@app.route('/api/customer-discounts', methods=['GET'])
+@jwt_required()
+def list_customer_discounts():
+    user_id = get_jwt_identity()
+    access_error = _check_customer_discount_access(user_id)
+    if access_error:
+        return jsonify({"error": access_error}), 403
+
+    query = CustomerDiscount.query.options(
+        db.joinedload(CustomerDiscount.customer),
+        db.joinedload(CustomerDiscount.sale),
+        db.joinedload(CustomerDiscount.sale_item).joinedload(SaleItem.product),
+        db.joinedload(CustomerDiscount.sale_item).joinedload(SaleItem.non_product),
+        db.joinedload(CustomerDiscount.creator),
+    )
+    customer_id = request.args.get("customerId", type=int)
+    sale_id = request.args.get("saleId", type=int)
+    from_date = request.args.get("fromDate")
+    to_date = request.args.get("toDate")
+    if customer_id:
+        query = query.filter(CustomerDiscount.customer_id == customer_id)
+    if sale_id:
+        query = query.filter(CustomerDiscount.sale_id == sale_id)
+    if from_date:
+        try:
+            query = query.filter(CustomerDiscount.date >= date.fromisoformat(from_date))
+        except ValueError:
+            return jsonify({"error": "Invalid fromDate. Use YYYY-MM-DD."}), 400
+    if to_date:
+        try:
+            query = query.filter(CustomerDiscount.date <= date.fromisoformat(to_date))
+        except ValueError:
+            return jsonify({"error": "Invalid toDate. Use YYYY-MM-DD."}), 400
+    return jsonify([
+        discount.to_dict()
+        for discount in query.order_by(CustomerDiscount.date.desc(), CustomerDiscount.id.desc()).all()
+    ])
+
+
+@app.route('/api/customer-discounts/invoices/<int:sale_id>', methods=['GET'])
+@jwt_required()
+def get_customer_discount_invoice_lines(sale_id):
+    user_id = get_jwt_identity()
+    access_error = _check_customer_discount_access(user_id)
+    if access_error:
+        return jsonify({"error": access_error}), 403
+    sale = Sale.query.filter_by(id=sale_id, status="finalized").first()
+    if not sale:
+        return jsonify({"error": "Finalized invoice not found."}), 404
+
+    paid = _sale_paid_amount(sale)
+    discount_total = _active_discount_total_for_sale(sale.id)
+    outstanding = _sale_outstanding(sale)
+    lines = []
+    for item in sale.items:
+        line_total = _money_decimal(item.total_price)
+        line_discount = _active_discount_total_for_item(item.id)
+        remaining = max(Decimal("0.00"), line_total - line_discount)
+        product_name = (
+            item.product.description if item.product
+            else item.non_product.description if item.non_product
+            else ""
+        )
+        lines.append({
+            "id": item.id,
+            "productId": item.product_id or item.non_product_id,
+            "productType": "regular" if item.product_id else "non",
+            "productName": product_name,
+            "description": product_name,
+            "quantity": float(item.quantity or 0),
+            "unitPrice": float(item.unit_price or 0),
+            "originalTotal": float(line_total),
+            "discountTotal": float(line_discount),
+            "remainingValue": float(remaining),
+            "effectiveUnitPrice": float((remaining / Decimal(str(item.quantity))) if item.quantity else 0),
+        })
+
+    return jsonify({
+        "saleId": sale.id,
+        "invoiceNumber": sale.invoice_number,
+        "customerId": sale.customer_id,
+        "date": sale.date.date().isoformat(),
+        "totalAmount": float(sale.total_amount or 0),
+        "paidAmount": float(paid),
+        "discountTotal": float(discount_total),
+        "outstandingAmount": float(outstanding),
+        "discountEligible": outstanding > 0,
+        "items": lines,
+    })
+
+
+@app.route('/api/customer-discounts', methods=['POST'])
+@jwt_required()
+def create_customer_discount():
+    user_id = int(get_jwt_identity())
+    access_error = _check_customer_discount_access(user_id)
+    if access_error:
+        return jsonify({"error": access_error}), 403
+    try:
+        data = request.get_json()
+        customer_id, sale, sale_item, amount, transaction_date, reason = _validate_discount_target(data, user_id)
+        permission_error = _check_discount_date_permission(user_id, transaction_date, "create")
+        if permission_error:
+            return jsonify({"error": permission_error}), 403
+
+        customer = Customer.query.filter_by(id=customer_id).with_for_update().first()
+        if not customer:
+            return jsonify({"error": "Customer not found."}), 404
+        discount = CustomerDiscount(
+            customer_id=customer_id,
+            sale_id=sale.id,
+            sale_item_id=sale_item.id,
+            amount=amount,
+            date=transaction_date,
+            reason=reason,
+            created_by=user_id,
+        )
+        db.session.add(discount)
+        db.session.flush()
+        db.session.add(CustomerDiscountAudit(
+            discount_id=discount.id,
+            action="created",
+            after_values=_discount_audit_values(discount),
+            reason=reason,
+            changed_by=user_id,
+        ))
+        customer.running_balance = _money_decimal(customer.running_balance) - amount
+        _refresh_sale_payment_status(sale)
+        db.session.commit()
+        return jsonify(discount.to_dict()), 201
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify({"error": str(error)}), 400
+    except Exception as error:
+        db.session.rollback()
+        app.logger.exception("Failed to create customer discount")
+        return jsonify({"error": "Failed to create customer discount."}), 500
+
+
+@app.route('/api/customer-discounts/<int:discount_id>', methods=['PUT'])
+@jwt_required()
+def update_customer_discount(discount_id):
+    user_id = int(get_jwt_identity())
+    access_error = _check_customer_discount_access(user_id)
+    if access_error:
+        return jsonify({"error": access_error}), 403
+    try:
+        discount = CustomerDiscount.query.filter_by(id=discount_id, is_deleted=False).with_for_update().first()
+        if not discount:
+            return jsonify({"error": "Active customer discount not found."}), 404
+        data = request.get_json()
+        if not isinstance(data, dict):
+            return jsonify({"error": "A customer discount payload is required."}), 400
+        customer_id, sale, sale_item, amount, transaction_date, reason = _validate_discount_target(
+            {**data, "customerId": discount.customer_id, "saleId": discount.sale_id, "saleItemId": discount.sale_item_id},
+            user_id,
+            existing=discount,
+        )
+        permission_error = _check_discount_date_permission(
+            user_id, transaction_date, "edit", existing_date=discount.date
+        )
+        if permission_error:
+            return jsonify({"error": permission_error}), 403
+
+        before_values = _discount_audit_values(discount)
+        old_amount = _money_decimal(discount.amount)
+        customer = Customer.query.filter_by(id=customer_id).with_for_update().first()
+        discount.amount = amount
+        discount.date = transaction_date
+        discount.reason = reason
+        discount.updated_by = user_id
+        discount.updated_at = datetime.utcnow()
+        customer.running_balance = _money_decimal(customer.running_balance) + old_amount - amount
+        _refresh_sale_payment_status(sale)
+        db.session.add(CustomerDiscountAudit(
+            discount_id=discount.id,
+            action="updated",
+            before_values=before_values,
+            after_values=_discount_audit_values(discount),
+            reason=reason,
+            changed_by=user_id,
+        ))
+        db.session.commit()
+        return jsonify(discount.to_dict())
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify({"error": str(error)}), 400
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to update customer discount %s", discount_id)
+        return jsonify({"error": "Failed to update customer discount."}), 500
+
+
+@app.route('/api/customer-discounts/<int:discount_id>', methods=['DELETE'])
+@jwt_required()
+def delete_customer_discount(discount_id):
+    user_id = int(get_jwt_identity())
+    access_error = _check_customer_discount_access(user_id)
+    if access_error:
+        return jsonify({"error": access_error}), 403
+    try:
+        discount = CustomerDiscount.query.filter_by(id=discount_id, is_deleted=False).with_for_update().first()
+        if not discount:
+            return jsonify({"error": "Active customer discount not found."}), 404
+        data = request.get_json(silent=True) or {}
+        reason = str(data.get("reason") or "").strip()
+        if not reason:
+            return jsonify({"error": "A deletion reason is required."}), 400
+        if len(reason) > 500:
+            return jsonify({"error": "Reason must be 500 characters or fewer."}), 400
+        permission_error = _check_discount_date_permission(
+            user_id, discount.date, "delete", existing_date=discount.date
+        )
+        if permission_error:
+            return jsonify({"error": permission_error}), 403
+
+        before_values = _discount_audit_values(discount)
+        amount = _money_decimal(discount.amount)
+        customer = Customer.query.filter_by(id=discount.customer_id).with_for_update().first()
+        sale = Sale.query.filter_by(id=discount.sale_id).with_for_update().first()
+        if not customer or not sale:
+            return jsonify({"error": "Discount customer or invoice is no longer available."}), 409
+        discount.is_deleted = True
+        discount.deleted_by = user_id
+        discount.deleted_at = datetime.utcnow()
+        discount.deletion_reason = reason
+        discount.updated_by = user_id
+        customer.running_balance = _money_decimal(customer.running_balance) + amount
+        _refresh_sale_payment_status(sale)
+        db.session.add(CustomerDiscountAudit(
+            discount_id=discount.id,
+            action="deleted",
+            before_values=before_values,
+            after_values={"isDeleted": True},
+            reason=reason,
+            changed_by=user_id,
+        ))
+        db.session.commit()
+        return jsonify({"message": "Customer discount deleted successfully."})
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to delete customer discount %s", discount_id)
+        return jsonify({"error": "Failed to delete customer discount."}), 500
+
+
 @app.route('/api/customers/<int:customer_id>/invoices', methods=['GET'])
 @jwt_required()
 def get_customer_invoices(customer_id):
@@ -11377,13 +12136,22 @@ def get_customer_invoices(customer_id):
         
         invoices = []
         for sale in sales:
+            paid_amount = _sale_paid_amount(sale)
+            discount_amount = _active_discount_total_for_sale(sale.id)
+            outstanding_amount = _sale_outstanding(sale)
             invoices.append({
                 'id': sale.id,
                 'invoiceNumber': sale.invoice_number,
                 'date': sale.date.isoformat() if sale.date else None,
                 'totalAmount': float(sale.total_amount) if sale.total_amount else 0,
-                'paidAmount': float(sale.paid_amount) if sale.paid_amount else 0,
-                'outstandingAmount': float(sale.total_amount) - float(sale.paid_amount or 0),
+                'paidAmount': float(paid_amount),
+                'discountAmount': float(discount_amount),
+                'outstandingAmount': float(outstanding_amount),
+                'discountEligible': (
+                    sale.status == 'finalized'
+                    and _money_decimal(sale.total_amount) > 0
+                    and outstanding_amount > 0
+                ),
                 'customerType': sale.customer_type,
                 'status': sale.status
             })
@@ -11810,6 +12578,56 @@ def product_history_report():
         for row in sales
     ]
 
+    discounts_query = CustomerDiscount.query.join(
+        SaleItem, CustomerDiscount.sale_item_id == SaleItem.id
+    ).join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).options(
+        db.joinedload(CustomerDiscount.customer),
+        db.joinedload(CustomerDiscount.sale),
+        db.joinedload(CustomerDiscount.sale_item).joinedload(SaleItem.product),
+        db.joinedload(CustomerDiscount.sale_item).joinedload(SaleItem.non_product),
+    ).filter(
+        CustomerDiscount.is_deleted.is_(False),
+        Sale.status == 'finalized',
+    )
+    if from_dt:
+        discounts_query = discounts_query.filter(CustomerDiscount.date >= from_dt.date())
+    if to_dt:
+        discounts_query = discounts_query.filter(CustomerDiscount.date < to_dt.date())
+    if customer_id:
+        discounts_query = discounts_query.filter(Sale.customer_id == customer_id)
+    if product_id:
+        discounts_query = discounts_query.filter(
+            or_(SaleItem.product_id == product_id, SaleItem.non_product_id == product_id)
+        )
+    if product_like:
+        discounts_query = discounts_query.filter(
+            or_(
+                RegularProduct.description.ilike(f'%{product_like}%'),
+                NonProduct.description.ilike(f'%{product_like}%'),
+            )
+        )
+    for discount in discounts_query.order_by(
+        CustomerDiscount.date.asc(), CustomerDiscount.id.asc()
+    ).all():
+        sale_item = discount.sale_item
+        sales_data.append({
+            'date': discount.date.isoformat(),
+            'invoiceNo': f"{discount.sale.invoice_number} / {discount.reference}" if discount.sale else discount.reference,
+            'customerName': discount.customer.customer_name if discount.customer else '',
+            'product': (
+                sale_item.product.description if sale_item and sale_item.product
+                else sale_item.non_product.description if sale_item and sale_item.non_product
+                else ''
+            ),
+            'quantity': 0,
+            'unitPrice': 0,
+            'total': -float(discount.amount or 0),
+            'isCompany': bool(discount.customer.is_company) if discount.customer else False,
+            'isCustomerDiscount': True,
+        })
+
     # Customer Returns
     customer_returns_query = CustomerReturn.query
     if from_dt:
@@ -11969,6 +12787,56 @@ def product_history_pdf():
     sales_query = sales_query.filter(Sale.status == 'finalized')
     sales = sales_query.all()
 
+    from types import SimpleNamespace
+    discounts_query = CustomerDiscount.query.join(
+        SaleItem, CustomerDiscount.sale_item_id == SaleItem.id
+    ).join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).join(
+        Customer, Sale.customer_id == Customer.id
+    ).filter(
+        CustomerDiscount.is_deleted.is_(False),
+        Sale.status == 'finalized',
+    )
+    if from_dt:
+        discounts_query = discounts_query.filter(CustomerDiscount.date >= from_dt.date())
+    if to_dt:
+        discounts_query = discounts_query.filter(CustomerDiscount.date <= to_dt.date())
+    if customer_id:
+        discounts_query = discounts_query.filter(Sale.customer_id == customer_id)
+    if product_id:
+        discounts_query = discounts_query.filter(
+            or_(SaleItem.product_id == product_id, SaleItem.non_product_id == product_id)
+        )
+    if product_like:
+        discounts_query = discounts_query.outerjoin(
+            RegularProduct, SaleItem.product_id == RegularProduct.id
+        ).outerjoin(
+            NonProduct, SaleItem.non_product_id == NonProduct.id
+        ).filter(
+            or_(
+                RegularProduct.description.ilike(f'%{product_like}%'),
+                NonProduct.description.ilike(f'%{product_like}%'),
+            )
+        )
+    for discount in discounts_query.order_by(
+        CustomerDiscount.date.asc(), CustomerDiscount.id.asc()
+    ).all():
+        line = discount.sale_item
+        sales.append(SimpleNamespace(
+            date=discount.date,
+            invoice_number=f"{discount.sale.invoice_number} / {discount.reference}" if discount.sale else discount.reference,
+            customer_name=discount.customer.customer_name if discount.customer else '',
+            product=(
+                line.product.description if line and line.product
+                else line.non_product.description if line and line.non_product
+                else ''
+            ),
+            quantity=0,
+            unit_price=0,
+            total_price=-float(discount.amount or 0),
+        ))
+
     # Create PDF
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
@@ -12034,7 +12902,12 @@ def product_history_pdf():
         elements.append(Paragraph("Sales", styles['Heading2']))
         sales_data = [['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']]
         for idx, row in enumerate(sales, 1):
-            product_desc = row.regular_product_desc or row.non_product_desc or ''
+            product_desc = (
+                getattr(row, 'product', None)
+                or getattr(row, 'regular_product_desc', None)
+                or getattr(row, 'non_product_desc', None)
+                or ''
+            )
             sales_data.append([
                 str(idx),
                 row.date.strftime('%Y-%m-%d') if row.date else '',
@@ -12243,6 +13116,55 @@ def product_history_email():
         purchases = purchases_query.all() if show_supplier_records else []
         supplier_returns = supplier_returns_query.all() if show_supplier_records else []
         sales = sales_query.all()
+        from types import SimpleNamespace
+        discounts_query = CustomerDiscount.query.join(
+            SaleItem, CustomerDiscount.sale_item_id == SaleItem.id
+        ).join(
+            Sale, CustomerDiscount.sale_id == Sale.id
+        ).join(
+            Customer, Sale.customer_id == Customer.id
+        ).filter(
+            CustomerDiscount.is_deleted.is_(False),
+            Sale.status == 'finalized',
+        )
+        if from_dt:
+            discounts_query = discounts_query.filter(CustomerDiscount.date >= from_dt.date())
+        if to_dt:
+            discounts_query = discounts_query.filter(CustomerDiscount.date < to_dt.date())
+        if customer_id:
+            discounts_query = discounts_query.filter(Sale.customer_id == customer_id)
+        if product_id:
+            discounts_query = discounts_query.filter(
+                or_(SaleItem.product_id == product_id, SaleItem.non_product_id == product_id)
+            )
+        if product_like:
+            discounts_query = discounts_query.outerjoin(
+                RegularProduct, SaleItem.product_id == RegularProduct.id
+            ).outerjoin(
+                NonProduct, SaleItem.non_product_id == NonProduct.id
+            ).filter(
+                or_(
+                    RegularProduct.description.ilike(f'%{product_like}%'),
+                    NonProduct.description.ilike(f'%{product_like}%'),
+                )
+            )
+        for discount in discounts_query.order_by(
+            CustomerDiscount.date.asc(), CustomerDiscount.id.asc()
+        ).all():
+            line = discount.sale_item
+            sales.append(SimpleNamespace(
+                date=discount.date,
+                invoice_number=f"{discount.sale.invoice_number} / {discount.reference}" if discount.sale else discount.reference,
+                customer_name=discount.customer.customer_name if discount.customer else '',
+                product=(
+                    line.product.description if line and line.product
+                    else line.non_product.description if line and line.non_product
+                    else ''
+                ),
+                quantity=0,
+                unit_price=0,
+                total_price=-float(discount.amount or 0),
+            ))
         customer_returns = customer_returns_query.all()
         dumps = dumps_query.all()
 
@@ -12433,14 +13355,76 @@ def prod_customer_history():
     query = query.order_by(func.sum(SaleItem.total_price).desc())
 
     results = query.all()
+    discount_query = db.session.query(
+        func.coalesce(RegularProduct.description, NonProduct.description, 'Unknown').label('product'),
+        func.sum(CustomerDiscount.amount).label('discount_total'),
+    ).join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).join(
+        SaleItem, CustomerDiscount.sale_item_id == SaleItem.id
+    ).outerjoin(
+        RegularProduct, SaleItem.product_id == RegularProduct.id
+    ).outerjoin(
+        NonProduct, SaleItem.non_product_id == NonProduct.id
+    ).filter(
+        CustomerDiscount.is_deleted.is_(False),
+        Sale.status == 'finalized',
+    )
+    if customer_id:
+        discount_query = discount_query.filter(Sale.customer_id == customer_id)
+    else:
+        discount_query = discount_query.join(Customer, Sale.customer_id == Customer.id).filter(
+            Customer.is_company == False
+        )
+    if product_id and product_type == 'regular':
+        discount_query = discount_query.filter(SaleItem.product_id == product_id)
+    elif product_id and product_type == 'non':
+        discount_query = discount_query.filter(SaleItem.non_product_id == product_id)
+    if product_like:
+        discount_query = discount_query.filter(
+            or_(
+                RegularProduct.description.ilike(f'%{product_like}%'),
+                NonProduct.description.ilike(f'%{product_like}%'),
+            )
+        )
+    if from_date:
+        discount_query = discount_query.filter(
+            CustomerDiscount.date >= datetime.strptime(from_date, "%Y-%m-%d").date()
+        )
+    if to_date:
+        discount_query = discount_query.filter(
+            CustomerDiscount.date < (datetime.strptime(to_date, "%Y-%m-%d").date() + timedelta(days=1))
+        )
+    discount_by_product = {
+        row.product: float(row.discount_total or 0)
+        for row in discount_query.group_by(
+            RegularProduct.description, NonProduct.description
+        ).all()
+    }
+
     data = []
     for idx, row in enumerate(results, 1):
+        discount_total = discount_by_product.pop(row.product, 0)
+        net_total = float(row.total or 0) - discount_total
+        quantity = float(row.quantity) if row.quantity else 0
         data.append({
             "slNo": idx,
             "product": row.product,
-            "quantity": float(row.quantity) if row.quantity else 0,
-            "avgPrice": float(row.avg_price) if row.avg_price else 0,
-            "total": float(row.total) if row.total else 0
+            "quantity": quantity,
+            "avgPrice": net_total / quantity if quantity else 0,
+            "total": net_total,
+            "grossTotal": float(row.total or 0),
+            "discountTotal": discount_total,
+        })
+    for product_name, discount_total in discount_by_product.items():
+        data.append({
+            "slNo": len(data) + 1,
+            "product": product_name,
+            "quantity": 0,
+            "avgPrice": 0,
+            "total": -discount_total,
+            "grossTotal": 0,
+            "discountTotal": discount_total,
         })
     return jsonify(data)
 
@@ -12480,6 +13464,25 @@ def date_wise_sales():
         )
 
     sales = query.all()
+    discount_query = CustomerDiscount.query.join(
+        Sale, CustomerDiscount.sale_id == Sale.id
+    ).join(Customer, Sale.customer_id == Customer.id).filter(
+        CustomerDiscount.date >= from_dt.date(),
+        CustomerDiscount.date < to_dt.date(),
+        CustomerDiscount.is_deleted.is_(False),
+        Sale.status == 'finalized',
+        Customer.is_company == False,
+    )
+    if sales_type == 'Account Sales':
+        discount_query = discount_query.filter(Sale.customer_type.ilike('account'))
+    elif sales_type == 'Cash Sales':
+        discount_query = discount_query.filter(Sale.customer_type.ilike('cash'))
+    if search:
+        discount_query = discount_query.filter(
+            Sale.invoice_number.ilike(f'%{search}%') |
+            Customer.customer_name.ilike(f'%{search}%')
+        )
+    discounts = discount_query.all()
 
     # Grouping logic
     def group_key(sale):
@@ -12490,19 +13493,31 @@ def date_wise_sales():
         else:
             return sale.date.strftime('%Y-%m-%d')
 
+    discounts_by_group = {}
+    for discount in discounts:
+        key = group_key(datetime.combine(discount.date, datetime.min.time()))
+        discounts_by_group.setdefault(key, []).append(discount)
+
     grouped = {}
     for sale in sales:
         key = group_key(sale)
         if key not in grouped:
             grouped[key] = []
         grouped[key].append(sale)
+    for discount in discounts:
+        grouped.setdefault(group_key(datetime.combine(discount.date, datetime.min.time())), [])
 
     result = []
     sl_no = 1
     for group, group_sales in sorted(grouped.items()):
-        total_sales = sum(float(s.total_amount) for s in group_sales if not (s.customer and s.customer.is_company))
         account_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'account' and not (s.customer and s.customer.is_company))
         cash_sales = sum(float(s.total_amount) for s in group_sales if s.customer_type.lower() == 'cash' and not (s.customer and s.customer.is_company))
+        for discount in discounts_by_group.get(group, []):
+            if discount.sale and discount.sale.customer_type.lower() == 'account':
+                account_sales -= float(discount.amount or 0)
+            elif discount.sale and discount.sale.customer_type.lower() == 'cash':
+                cash_sales -= float(discount.amount or 0)
+        total_sales = account_sales + cash_sales
         total_invoices = len([s for s in group_sales if not (s.customer and s.customer.is_company)])
         average_sale = total_sales / total_invoices if total_invoices else 0
         # Top product
@@ -12524,6 +13539,9 @@ def date_wise_sales():
         for sale in group_sales:
             cname = sale.customer.customer_name if sale.customer else ''
             customer_counter[cname] = customer_counter.get(cname, 0) + float(sale.total_amount)
+        for discount in discounts_by_group.get(group, []):
+            cname = discount.customer.customer_name if discount.customer else ''
+            customer_counter[cname] = customer_counter.get(cname, 0) - float(discount.amount or 0)
         top_customer = max(customer_counter.items(), key=lambda x: x[1])[0] if customer_counter else ''
         result.append({
             'id': sl_no,
@@ -12781,6 +13799,18 @@ def full_analysis():
         if search:
             sales = sales.filter(Customer.customer_name.ilike(f'%{search}%'))
         sales = sales.scalar() or 0
+        discounts = db.session.query(func.sum(CustomerDiscount.amount)).join(
+            Sale, CustomerDiscount.sale_id == Sale.id
+        ).join(Customer, Sale.customer_id == Customer.id).filter(
+            CustomerDiscount.date >= m_start.date(),
+            CustomerDiscount.date < m_end.date(),
+            CustomerDiscount.is_deleted.is_(False),
+            Sale.status == 'finalized',
+            Customer.is_company == False
+        )
+        if search:
+            discounts = discounts.filter(Customer.customer_name.ilike(f'%{search}%'))
+        discounts = discounts.scalar() or 0
         # Customer Returns — exclude company customers
         returns = db.session.query(func.sum(CustomerReturn.total_value)).join(
             Customer, CustomerReturn.customer_id == Customer.id
@@ -12791,7 +13821,7 @@ def full_analysis():
         if search:
             returns = returns.filter(Customer.customer_name.ilike(f'%{search}%'))
         returns = returns.scalar() or 0
-        net_sales = sales - returns
+        net_sales = sales - returns - discounts
         # Purchases - calculate from PurchaseInvoiceItem total_price joined with PurchaseInvoice
         purchase = db.session.query(func.sum(PurchaseInvoiceItem.total_price)).join(
             PurchaseInvoice, PurchaseInvoiceItem.invoice_id == PurchaseInvoice.id
@@ -12890,7 +13920,7 @@ def get_invoice_data(invoice_number):
             })
         # Payment info (credit, balance, etc.)
         paid_amount = float(sale.paid_amount or 0)
-        balance = float(sale.total_amount) - paid_amount
+        balance = float(_sale_outstanding(sale))
         # Editable notes/payment instructions (placeholder, can be made editable later)
         notes = (
             "NO COMPLAINTS OR RETURNS CONSIDERED AFTER 24 HOURS\n"
@@ -12934,7 +13964,7 @@ def get_invoice_data_for_pdf(invoice_number):
         
         # Payment info
         paid_amount = float(sale.paid_amount or 0)
-        balance = float(sale.total_amount) - paid_amount
+        balance = float(_sale_outstanding(sale))
         
         # Notes
         notes = (
@@ -13052,6 +14082,28 @@ def profit_loss_report():
             sales_amt_query = sales_amt_query.filter(Sale.date < to_dt)
         sales_amt_query = sales_amt_query.filter(Sale.status == 'finalized', Customer.is_company == False)
         sales_total = float(sales_amt_query.scalar() or 0)
+        discount_amt_query = db.session.query(
+            func.sum(CustomerDiscount.amount)
+        ).join(
+            Sale, CustomerDiscount.sale_id == Sale.id
+        ).join(
+            SaleItem, CustomerDiscount.sale_item_id == SaleItem.id
+        ).join(
+            Customer, Sale.customer_id == Customer.id
+        ).filter(
+            CustomerDiscount.is_deleted.is_(False),
+            Sale.status == 'finalized',
+            Customer.is_company == False,
+        )
+        if prod.type == 'regular':
+            discount_amt_query = discount_amt_query.filter(SaleItem.product_id == prod.id)
+        else:
+            discount_amt_query = discount_amt_query.filter(SaleItem.non_product_id == prod.id)
+        if from_dt:
+            discount_amt_query = discount_amt_query.filter(CustomerDiscount.date >= from_dt.date())
+        if to_dt:
+            discount_amt_query = discount_amt_query.filter(CustomerDiscount.date < to_dt.date())
+        sales_total -= float(discount_amt_query.scalar() or 0)
         avg_sales = (sales_total / float(sales_qty)) if sales_qty else 0
 
         # Profit/Loss — use non-company purchase for profit calc
@@ -13439,6 +14491,34 @@ def daily_summary_report():
             'gate_number': None,
             'is_company': bool(return_item.is_company) if return_item.is_company is not None else False,
             'is_customer_return': True,
+        })
+
+    daily_discounts = CustomerDiscount.query.options(
+        db.joinedload(CustomerDiscount.customer),
+        db.joinedload(CustomerDiscount.sale),
+    ).filter(
+        CustomerDiscount.date == report_date,
+        CustomerDiscount.is_deleted.is_(False),
+    ).all()
+    for discount in daily_discounts:
+        sales_summary.append({
+            'customer_name': discount.customer.customer_name if discount.customer else '',
+            'invoice_no': (
+                f"{discount.sale.invoice_number} / {discount.reference}"
+                if discount.sale else discount.reference
+            ),
+            'cash_sales': 0,
+            'card_paid': 0,
+            'bank_transfer': 0,
+            'cheque': 0,
+            'account_sales': 0,
+            'account_paid_cash': 0,
+            'account_paid_cheque': 0,
+            'account_credits': float(discount.amount or 0),
+            'customer_type': None,
+            'gate_number': None,
+            'is_company': bool(discount.customer.is_company) if discount.customer else False,
+            'is_customer_discount': True,
         })
     
     # Add negative payments as separate entries (only if they're not for invoices already shown)
@@ -13961,6 +15041,30 @@ def daily_summary_pdf():
                 'account_paid_cash': 0,
                 'account_paid_cheque': 0,
                 'account_credits': abs(float(customer_return.total_value or 0)),
+            })
+
+        daily_discounts = CustomerDiscount.query.options(
+            db.joinedload(CustomerDiscount.customer),
+            db.joinedload(CustomerDiscount.sale),
+        ).filter(
+            CustomerDiscount.date == report_date,
+            CustomerDiscount.is_deleted.is_(False),
+        ).all()
+        for discount in daily_discounts:
+            sales_summary.append({
+                'customer_name': discount.customer.customer_name if discount.customer else '',
+                'ticket_no': (
+                    f"{discount.sale.invoice_number} / {discount.reference}"
+                    if discount.sale else discount.reference
+                ),
+                'cash_sales': 0,
+                'card_paid': 0,
+                'bank_transfer': 0,
+                'cheque': 0,
+                'account_sales': 0,
+                'account_paid_cash': 0,
+                'account_paid_cheque': 0,
+                'account_credits': float(discount.amount or 0),
             })
         
         # 2. Customer Payments
@@ -15017,6 +16121,20 @@ def all_customer_history():
         if to_dt:
             returns_query = returns_query.filter(CustomerReturn.date <= to_dt.date())
         returns_discount = sum(float(r.total_value) for r in returns_query.all())
+
+        customer_discounts_query = CustomerDiscount.query.filter(
+            CustomerDiscount.customer_id == customer.id,
+            CustomerDiscount.is_deleted.is_(False),
+        )
+        if from_dt:
+            customer_discounts_query = customer_discounts_query.filter(
+                CustomerDiscount.date >= from_dt.date()
+            )
+        if to_dt:
+            customer_discounts_query = customer_discounts_query.filter(
+                CustomerDiscount.date <= to_dt.date()
+            )
+        returns_discount += sum(float(d.amount) for d in customer_discounts_query.all())
         
         # On Account (payments not linked to a specific sale)
         on_account_query = Payment.query.filter(
@@ -15217,7 +16335,8 @@ def customer_aging_report():
                 returned = sum(float(r.total_value) for r in returns)
 
                 # Outstanding for this sale
-                outstanding = float(sale.total_amount) - paid - returned
+                discounts = _active_discount_total_for_sale(sale.id, as_of_dt.date())
+                outstanding = float(sale.total_amount) - paid - returned - float(discounts)
                 if outstanding <= 0:
                     continue
 
@@ -16051,7 +17170,7 @@ def create_customer_bulk_payment():
                         sale = Sale.query.get(invoice_id)
                         if sale:
                             current_paid = float(sale.paid_amount or 0)
-                            outstanding = float(sale.total_amount) - current_paid
+                            outstanding = float(_sale_outstanding(sale))
                             invoice_payment_tracking[invoice_id] = {
                                 'total_amount': float(sale.total_amount),
                                 'outstanding': outstanding,
@@ -16105,7 +17224,7 @@ def create_customer_bulk_payment():
                             
                             if new_paid >= float(sale.total_amount):
                                 sale.payment_status = "paid"
-                                sale.paid_amount = sale.total_amount
+                                sale.paid_amount = new_paid
                                 sale.status = "finalized"
                                 sale.customer_type = payment_item.get('paymentMode', 'cash')
                             else:
@@ -16138,7 +17257,7 @@ def create_customer_bulk_payment():
                     sale = Sale.query.get(invoice_id)
                     if sale:
                         current_paid = float(sale.paid_amount or 0)
-                        outstanding = float(sale.total_amount) - current_paid
+                        outstanding = float(_sale_outstanding(sale))
                         
                         # Apply available customer credit toward this invoice's outstanding balance
                         # (credit invoices are sent as negative amounts in the distribution)
@@ -16169,7 +17288,7 @@ def create_customer_bulk_payment():
                             new_paid = current_paid + payment_amount + credit_applied
                             if new_paid >= float(sale.total_amount):
                                 sale.payment_status = "paid"
-                                sale.paid_amount = sale.total_amount
+                                sale.paid_amount = new_paid
                                 sale.status = "finalized"
                                 sale.customer_type = payment_item.get('paymentMode', 'cash')
                             else:
@@ -16202,7 +17321,7 @@ def create_customer_bulk_payment():
                                 
                                 # Mark invoice as fully paid
                                 sale.payment_status = "paid"
-                                sale.paid_amount = sale.total_amount
+                                sale.paid_amount = current_paid + invoice_payment + credit_applied
                                 sale.status = "finalized"
                                 sale.customer_type = payment_item.get('paymentMode', 'cash')
                                 db.session.add(sale)
@@ -16366,6 +17485,14 @@ def create_customer_bulk_payment():
                     db.session.add(payment)
                     payments_created.append(payment)
         
+        for sale_id in {
+            payment.sale_id for payment in payments_created
+            if payment.sale_id and payment.payment_type != 'credit'
+        }:
+            sale = Sale.query.get(sale_id)
+            if sale:
+                _refresh_sale_payment_status(sale)
+
         # Commit all payments
         db.session.commit()
         

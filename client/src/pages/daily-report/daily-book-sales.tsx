@@ -57,6 +57,8 @@ interface SalesEntry {
   customerType?: string; // Add this to help identify cash customers
   isCompany?: boolean;
   isCustomerReturn?: boolean;
+  isCustomerDiscount?: boolean;
+  discountReference?: string;
 }
 
 // Helper function to determine display name for cash customers
@@ -336,9 +338,9 @@ export default function DailyBookSales() {
   const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const filteredData = useMemo(() => salesData, [salesData]);
-  const selectableData = filteredData;
+  const selectableData = filteredData.filter(sale => !sale.isCustomerDiscount);
   const selectedPaymentSales = useMemo(
-    () => salesData.filter(sale => selectedSales.has(sale.id) && !sale.isCustomerReturn),
+    () => salesData.filter(sale => selectedSales.has(sale.id) && !sale.isCustomerReturn && !sale.isCustomerDiscount),
     [salesData, selectedSales]
   );
 
@@ -1395,10 +1397,11 @@ export default function DailyBookSales() {
                         key={sale.id}
                         className={cn(
                           sale.isCustomerReturn && 'bg-red-50 border-red-200',
+                          sale.isCustomerDiscount && 'bg-orange-50 border-orange-200',
                           sale.isCompany && 'bg-amber-50 border-amber-200',
-                          !sale.isCustomerReturn && !sale.isCompany && !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200',
-                          !sale.isCustomerReturn && !sale.isCompany && sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200',
-                          !sale.isCustomerReturn && !sale.isCompany && sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200'
+                          !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200',
+                          !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200',
+                          !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200'
                         )}
                       >
                         <TableCell>
@@ -1406,6 +1409,7 @@ export default function DailyBookSales() {
                             type="checkbox"
                             className="rounded"
                             checked={selectedSales.has(sale.id)}
+                            disabled={sale.isCustomerDiscount}
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
@@ -1414,9 +1418,12 @@ export default function DailyBookSales() {
                         <TableCell className="text-xs sm:text-sm">
                           {sale.invoiceNo}
                           {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
+                          {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">({sale.discountReference || 'Discount'})</span>}
                         </TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
-                          {sale.isCustomerReturn ? (
+                          {sale.isCustomerDiscount ? (
+                            <span className="text-gray-700">{getDisplayCustomerName(sale)}</span>
+                          ) : sale.isCustomerReturn ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">

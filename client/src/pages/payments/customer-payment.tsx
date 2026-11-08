@@ -34,6 +34,8 @@ type InvoiceWithBalance = Sale & {
   balance: number;
   paid: number;
   runningBal: number;
+  outstandingAmount?: number;
+  discountTotal?: number;
 };
 
 type SplitPayment = {
@@ -158,7 +160,10 @@ export default function CustomerPayment() {
   // Fetch customers - remove this as we're using CustomerSearch now
 
   // Fetch outstanding invoices for the selected customer
-  const { data: outstandingInvoices, isLoading: isLoadingInvoices, refetch: refetchOutstandingInvoices } = useQuery<Sale[]>({
+  const { data: outstandingInvoices, isLoading: isLoadingInvoices, refetch: refetchOutstandingInvoices } = useQuery<Array<Sale & {
+    outstandingAmount?: number;
+    discountTotal?: number;
+  }>>({
     queryKey: ["/api/customers", customerId, "outstanding_invoices"],
     queryFn: () => apiRequest("GET", `/api/customers/${customerId}/outstanding_invoices`),
     enabled: !!customerId,
@@ -249,7 +254,7 @@ export default function CustomerPayment() {
   const invoicesWithBalance = useMemo(() =>
     outstandingInvoices?.map((invoice) => {
       const paid = invoice.paidAmount || 0;
-      const balance = invoice.totalAmount - paid;
+      const balance = invoice.outstandingAmount ?? (invoice.totalAmount - paid);
       return { ...invoice, balance, paid };
     }) || [],
     [outstandingInvoices]

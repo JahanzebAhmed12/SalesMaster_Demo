@@ -115,6 +115,7 @@ interface DailySummaryData {
     gate_number?: string;
     is_company?: boolean;
     is_customer_return?: boolean;
+    is_customer_discount?: boolean;
   }>;
   customer_payments: Array<{
     customer_name: string;
@@ -1210,7 +1211,12 @@ export default function DailySummary() {
                             </TableCell>
                             <TableCell className="border">
                               {sale.invoice_no ? (
-                                sale.is_customer_return ? (
+                                sale.is_customer_discount ? (
+                                  <span>
+                                    {sale.invoice_no}
+                                    <span className="ml-1 text-xs text-orange-700">(Discount)</span>
+                                  </span>
+                                ) : sale.is_customer_return ? (
                                   <span>
                                     {sale.invoice_no}
                                     <span className="ml-1 text-xs text-red-600">(Return)</span>

@@ -50,6 +50,7 @@ const menuSections: MenuSection[] = [
       { title: "Purchase Entry", path: "/data-entry/purchase-entry" },
       { title: "Closing Stock", path: "/data-entry/closing-stock" },
       { title: "Return from Customer", path: "/data-entry/return-from-customer" },
+      { title: "Customer Discount", path: "/data-entry/customer-discount" },
       { title: "Return to Supplier", path: "/data-entry/return-to-supplier" },
       { title: "Dumps", path: "/data-entry/dumps" },
       { title: "Till/Float(C/F)", path: "/data-entry/cash-cf" },

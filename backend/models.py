@@ -1067,6 +1067,88 @@ class CustomerReturn(db.Model):
             'createdBy': self.created_by
         }
 
+class CustomerDiscount(db.Model):
+    __tablename__ = 'customer_discount'
+    __table_args__ = (
+        db.Index('ix_customer_discount_date', 'date'),
+        db.Index('ix_customer_discount_customer_date', 'customer_id', 'date'),
+        db.Index('ix_customer_discount_sale_id', 'sale_id'),
+        db.Index('ix_customer_discount_sale_item_id', 'sale_item_id'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'), nullable=False)
+    sale_item_id = db.Column(db.Integer, db.ForeignKey('sale_item.id'), nullable=False)
+    amount = db.Column(db.Numeric(10, 2), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    reason = db.Column(db.String(500), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    is_deleted = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
+    deleted_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    deleted_at = db.Column(db.DateTime)
+    deletion_reason = db.Column(db.String(500))
+
+    customer = db.relationship('Customer')
+    sale = db.relationship('Sale')
+    sale_item = db.relationship('SaleItem')
+    creator = db.relationship('User', foreign_keys=[created_by])
+    updater = db.relationship('User', foreign_keys=[updated_by])
+    deleter = db.relationship('User', foreign_keys=[deleted_by])
+
+    @property
+    def reference(self):
+        return f"CD-{self.id:06d}"
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'reference': self.reference,
+            'customerId': self.customer_id,
+            'customerName': self.customer.customer_name if self.customer else None,
+            'saleId': self.sale_id,
+            'saleItemId': self.sale_item_id,
+            'invoiceNumber': self.sale.invoice_number if self.sale else None,
+            'productName': (
+                self.sale_item.product.description if self.sale_item and self.sale_item.product
+                else self.sale_item.non_product.description if self.sale_item and self.sale_item.non_product
+                else None
+            ),
+            'amount': float(self.amount or 0),
+            'date': self.date.isoformat() if self.date else None,
+            'reason': self.reason,
+            'createdBy': self.created_by,
+            'createdByUsername': self.creator.username if self.creator else None,
+            'createdAt': self.created_at.isoformat() if self.created_at else None,
+            'updatedBy': self.updated_by,
+            'updatedAt': self.updated_at.isoformat() if self.updated_at else None,
+            'isDeleted': bool(self.is_deleted),
+            'deletedBy': self.deleted_by,
+            'deletedAt': self.deleted_at.isoformat() if self.deleted_at else None,
+            'deletionReason': self.deletion_reason,
+        }
+
+class CustomerDiscountAudit(db.Model):
+    __tablename__ = 'customer_discount_audit'
+    __table_args__ = (
+        db.Index('ix_customer_discount_audit_discount_id', 'discount_id'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    discount_id = db.Column(db.Integer, db.ForeignKey('customer_discount.id'), nullable=False)
+    action = db.Column(db.String(20), nullable=False)
+    before_values = db.Column(db.JSON)
+    after_values = db.Column(db.JSON)
+    reason = db.Column(db.String(500))
+    changed_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    changed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    discount = db.relationship('CustomerDiscount')
+    user = db.relationship('User')
+
 class SupplierReturn(db.Model):
     """Tracks supplier returns"""
     id = db.Column(db.Integer, primary_key=True)

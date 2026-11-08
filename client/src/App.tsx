@@ -31,6 +31,7 @@ import SalesInvoice from "./pages/data-entry/sales-invoice";
 import PurchaseEntry from "@/pages/data-entry/purchase-entry";
 import ClosingStock from "@/pages/data-entry/closing-stock";
 import ReturnFromCustomer from "@/pages/data-entry/return-from-customer";
+import CustomerDiscount from "@/pages/data-entry/customer-discount";
 import ReturnToSupplier from "@/pages/data-entry/return-to-supplier";
 import Dumps from "@/pages/data-entry/dumps";
 import CashCF from "@/pages/data-entry/cash-cf";
@@ -182,6 +183,11 @@ function Router() {
       <Route path="/data-entry/return-from-customer">
         <ProtectedRoute requiredSection="data_entry" title="Return from Customer" breadcrumb="Data Entry > Return from Customer">
           <ReturnFromCustomer />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/data-entry/customer-discount">
+        <ProtectedRoute requiredSection="data_entry" title="Customer Discount" breadcrumb="Data Entry > Customer Discount">
+          <CustomerDiscount />
         </ProtectedRoute>
       </Route>
       <Route path="/data-entry/return-to-supplier">
