@@ -12,7 +12,7 @@ interface PackingListItem {
   notes?: string;
 }
 
-interface PackingListData {
+export interface PackingListData {
   company: any;
   customer: any;
   sale: any;
@@ -37,7 +37,15 @@ const publicApiRequest = async <T = any>(method: string, endpoint: string): Prom
   return responseData;
 };
 
-function PackingListTemplate({ data }: { data: PackingListData }) {
+export function PackingListTemplate({
+  data,
+  showActions = true,
+  bulk = false,
+}: {
+  data: PackingListData;
+  showActions?: boolean;
+  bulk?: boolean;
+}) {
   if (!data) return null;
   const { company, customer, sale, packingItems: items } = data;
   
@@ -47,7 +55,10 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
   // Get gate number from various possible field names
   const gateNumber = sale?.gate_number || sale?.gateNumber || customer?.gate_number || customer?.gateNumber || customer?.others;
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}>
+    <div
+      className={bulk ? "bulk-packing-document" : undefined}
+      style={{ maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24 }}
+    >
       {/* Header: Logo and Company Info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
 
@@ -102,20 +113,24 @@ function PackingListTemplate({ data }: { data: PackingListData }) {
       <div style={{ marginTop: 24 }}>
         {/* Footer content removed as requested */}
       </div>
-      <button
-        onClick={() => window.print()}
-        style={{ marginTop: 24, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
-        className="no-print"
-      >
-        Print
-      </button>
-      <button
-        onClick={() => window.close()}
-        style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
-        className="no-print"
-      >
-        Close
-      </button>
+      {showActions && (
+        <>
+          <button
+            onClick={() => window.print()}
+            style={{ marginTop: 24, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+            className="no-print"
+          >
+            Print
+          </button>
+          <button
+            onClick={() => window.close()}
+            style={{ marginTop: 24, marginLeft: 12, padding: "6px 18px", fontSize: 16, border: "1px solid #888", borderRadius: 4, background: "#fff", cursor: "pointer" }}
+            className="no-print"
+          >
+            Close
+          </button>
+        </>
+      )}
       <style>{`
         @media print {
           .no-print { display: none !important; }
