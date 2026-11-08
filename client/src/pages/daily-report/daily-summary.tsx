@@ -98,6 +98,33 @@ interface PurchaseFullViewRow {
   isCompany?: boolean;
 }
 
+interface CustomerReturnRow {
+  id: number;
+  date: string;
+  customerName: string;
+  productDescription: string;
+  invoiceNumber: string | null;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  remarks: string | null;
+  status: string;
+}
+
+interface SupplierReturnRow {
+  id: number;
+  date: string;
+  refNumber: string;
+  supplierName: string;
+  productName?: string;
+  description: string;
+  invoiceNumber: string | null;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  status: string;
+}
+
 interface DailySummaryData {
   date: string;
   sales_summary: Array<{
@@ -350,6 +377,28 @@ export default function DailySummary() {
     gcTime: 0,
   });
 
+  const { data: customerReturns = [], isError: customerReturnsError } = useQuery<CustomerReturnRow[]>({
+    queryKey: ["daily-summary-customer-returns", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
+    queryFn: () => apiRequest(
+      "GET",
+      `/api/customer-returns?fromDate=${format(selectedDate, "yyyy-MM-dd")}&toDate=${format(selectedDate, "yyyy-MM-dd")}`
+    ),
+    enabled: !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  const { data: supplierReturns = [], isError: supplierReturnsError } = useQuery<SupplierReturnRow[]>({
+    queryKey: ["daily-summary-supplier-returns", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
+    queryFn: () => apiRequest(
+      "GET",
+      `/api/supplier-returns?fromDate=${format(selectedDate, "yyyy-MM-dd")}&toDate=${format(selectedDate, "yyyy-MM-dd")}`
+    ),
+    enabled: !!selectedDate,
+    staleTime: 0,
+    gcTime: 0,
+  });
+
   // Filter stock data to only show entries with non-zero values
   const filteredStockData = stockData.filter((item) =>
     item.os !== 0 ||
@@ -466,7 +515,7 @@ export default function DailySummary() {
 
       toast({
         title: "Success",
-        description: "PDF opened in new window for printing (includes Stock Check and Purchase data)",
+        description: "Report opened for printing with Stock Check, returns, and purchase data",
       });
     } catch (error) {
       toast({
@@ -480,6 +529,7 @@ export default function DailySummary() {
   // ── Single PDF builder — matches the screen layout exactly ──────────────
   const buildPDF = async (): Promise<jsPDF | null> => {
     if (!selectedDate || !summaryData) return null;
+    const dateString = format(selectedDate, "yyyy-MM-dd");
 
     // Always fetch stock data fresh so PDF always includes it
     let pdfStockData: StockItem[] = stockData;
@@ -496,6 +546,16 @@ export default function DailySummary() {
     } catch {
       // fall back to cached stockData
     }
+    const [pdfCustomerReturns, pdfSupplierReturns] = await Promise.all([
+      apiRequest<CustomerReturnRow[]>(
+        "GET",
+        `/api/customer-returns?fromDate=${dateString}&toDate=${dateString}`
+      ),
+      apiRequest<SupplierReturnRow[]>(
+        "GET",
+        `/api/supplier-returns?fromDate=${dateString}&toDate=${dateString}`
+      ),
+    ]);
 
     const doc = new jsPDF();
     let y = 20;
@@ -842,6 +902,81 @@ export default function DailySummary() {
       );
     }
 
+    const formatReportDate = (date: string) => {
+      const [year, month, day] = date.slice(0, 10).split("-");
+      return year && month && day ? `${day}/${month}/${year}` : "-";
+    };
+
+    // Keep each return register on its own page, even when there are no entries.
+    doc.addPage('a4', 'portrait');
+    y = 28;
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Customer Returns', 14, y);
+    doc.setFont('helvetica', 'normal');
+    y += 10;
+    doc.setFontSize(10);
+    doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 14, y);
+    y += 10;
+    tbl(
+      [['Date', 'Customer', 'Product', 'Invoice No', 'Quantity', 'Unit Price', 'Total', 'Remarks']],
+      pdfCustomerReturns.length > 0
+        ? pdfCustomerReturns.map(item => [
+            formatReportDate(item.date),
+            item.customerName || '-',
+            item.productDescription || '-',
+            item.invoiceNumber || '-',
+            formatQuantity(item.quantity),
+            `£${Number(item.unitPrice || 0).toFixed(2)}`,
+            `£${Number(item.totalValue || 0).toFixed(2)}`,
+            item.remarks || '-',
+          ])
+        : [['', 'No customer returns found', '', '', '', '', '', '']],
+      {
+        styles: { fontSize: 8, cellPadding: 1.2, fontStyle: 'bold', overflow: 'linebreak' },
+        columnStyles: {
+          0: { cellWidth: 17 }, 1: { cellWidth: 27 }, 2: { cellWidth: 34 },
+          3: { cellWidth: 20 }, 4: { cellWidth: 16 }, 5: { cellWidth: 20 },
+          6: { cellWidth: 18 }, 7: { cellWidth: 30 },
+        },
+      }
+    );
+
+    doc.addPage('a4', 'portrait');
+    y = 28;
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Supplier Returns', 14, y);
+    doc.setFont('helvetica', 'normal');
+    y += 10;
+    doc.setFontSize(10);
+    doc.text(`Date: ${format(selectedDate, "dd/MM/yyyy")}`, 14, y);
+    y += 10;
+    tbl(
+      [['Date', 'Reference', 'Supplier', 'Product', 'Description', 'Invoice No', 'Quantity', 'Unit Price', 'Total Value']],
+      pdfSupplierReturns.length > 0
+        ? pdfSupplierReturns.map(item => [
+            formatReportDate(item.date),
+            item.refNumber || '-',
+            item.supplierName || '-',
+            item.productName || item.description || '-',
+            item.description || '-',
+            item.invoiceNumber || '-',
+            formatQuantity(item.quantity),
+            `£${Number(item.unitPrice || 0).toFixed(2)}`,
+            `£${Number(item.totalValue || 0).toFixed(2)}`,
+          ])
+        : [['', '', 'No supplier returns found', '', '', '', '', '', '']],
+      {
+        styles: { fontSize: 8, cellPadding: 1, fontStyle: 'bold', overflow: 'linebreak' },
+        columnStyles: {
+          0: { cellWidth: 15 }, 1: { cellWidth: 19 }, 2: { cellWidth: 25 },
+          3: { cellWidth: 26 }, 4: { cellWidth: 23 }, 5: { cellWidth: 20 },
+          6: { cellWidth: 14 }, 7: { cellWidth: 18 }, 8: { cellWidth: 20 },
+        },
+      }
+    );
+
     // Footer on last page
     const ph = doc.internal.pageSize.height;
     const pw = doc.internal.pageSize.width;
@@ -918,10 +1053,18 @@ export default function DailySummary() {
       toast({ title: "Error", description: "Please select a valid date and ensure data is loaded", variant: "destructive" });
       return;
     }
-    const doc = await buildPDF();
-    if (!doc) return;
-    doc.save(`daily-summary-${format(selectedDate, "yyyy-MM-dd")}.pdf`);
-    toast({ title: "Success", description: "PDF downloaded successfully" });
+    try {
+      const doc = await buildPDF();
+      if (!doc) return;
+      doc.save(`daily-summary-${format(selectedDate, "yyyy-MM-dd")}.pdf`);
+      toast({ title: "Success", description: "PDF downloaded successfully" });
+    } catch (error) {
+      toast({
+        title: "Unable to generate PDF",
+        description: error instanceof Error ? error.message : "The return registers could not be loaded.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Generate PDF blob for email
@@ -984,7 +1127,7 @@ export default function DailySummary() {
           const emailData = {
             to: emailList,
             subject: `Daily Summary Report - ${format(selectedDate, 'yyyy-MM-dd')}`,
-            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
+            body: `Dear Recipient,\n\nPlease find attached the Daily Summary Report for ${format(selectedDate, 'yyyy-MM-dd')}.\n\nThis report contains:\n- Daily Sales Summary\n- Customer Payments\n- Supplier Payments\n- Expense Entries\n- Banking Records\n- Financial Totals\n- Stock Check\n- Customer Returns\n- Supplier Returns\n- Product Purchase Full View (detailed purchase information)\n\nReport Summary:\n- Total Cash Sales: £${summaryData.totals.cash_sales.toFixed(2)}\n- Total Card Sales: £${summaryData.totals.card_sales.toFixed(2)}\n- Total Banking: £${summaryData.totals.banking_total.toFixed(2)}\n- Date: ${format(selectedDate, 'yyyy-MM-dd')}\n\nBest regards,\n${companyDetails?.companyName || 'Finance Team'}`,
             attachment: {
               filename: `daily-summary-${format(selectedDate, 'yyyy-MM-dd')}.pdf`,
               content: base64PDF,
@@ -1945,6 +2088,94 @@ export default function DailySummary() {
                         )}
                       </TableBody>
                     </Table>
+                  </div>
+                </div>
+                </div>
+
+                {/* Customer Returns */}
+                <div className="print-page-break daily-summary-return-page">
+                  <div className="print-section-inner">
+                    <h2 className="text-xl font-bold mb-3 print-section-title">Customer Returns - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</h2>
+                    <div className="overflow-x-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead className="font-semibold border">Date</TableHead>
+                            <TableHead className="font-semibold border">Customer</TableHead>
+                            <TableHead className="font-semibold border">Product</TableHead>
+                            <TableHead className="font-semibold border">Invoice No</TableHead>
+                            <TableHead className="font-semibold border text-center">Quantity</TableHead>
+                            <TableHead className="font-semibold border text-center">Unit Price</TableHead>
+                            <TableHead className="font-semibold border text-center">Total</TableHead>
+                            <TableHead className="font-semibold border">Remarks</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {customerReturnsError ? (
+                            <TableRow><TableCell colSpan={8} className="border text-center text-red-600 py-4">Unable to load customer returns</TableCell></TableRow>
+                          ) : customerReturns.length ? customerReturns.map(item => (
+                            <TableRow key={item.id}>
+                              <TableCell className="border">{format(new Date(item.date), "dd/MM/yyyy")}</TableCell>
+                              <TableCell className="border">{item.customerName || "-"}</TableCell>
+                              <TableCell className="border">{item.productDescription || "-"}</TableCell>
+                              <TableCell className="border">{item.invoiceNumber || "-"}</TableCell>
+                              <TableCell className="border text-center">{formatQuantity(item.quantity)}</TableCell>
+                              <TableCell className="border text-center">£{Number(item.unitPrice || 0).toFixed(2)}</TableCell>
+                              <TableCell className="border text-center">£{Number(item.totalValue || 0).toFixed(2)}</TableCell>
+                              <TableCell className="border">{item.remarks || "-"}</TableCell>
+                            </TableRow>
+                          )) : (
+                            <TableRow>
+                              <TableCell colSpan={8} className="border text-center text-gray-500 py-4">No customer returns found</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Supplier Returns */}
+                <div className="print-page-break daily-summary-return-page">
+                  <div className="print-section-inner">
+                    <h2 className="text-xl font-bold mb-3 print-section-title">Supplier Returns - {selectedDate && !isNaN(selectedDate.getTime()) ? format(selectedDate, "dd/MM/yyyy") : "Invalid Date"}</h2>
+                    <div className="overflow-x-auto border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead className="font-semibold border">Date</TableHead>
+                            <TableHead className="font-semibold border">Reference</TableHead>
+                            <TableHead className="font-semibold border">Supplier</TableHead>
+                            <TableHead className="font-semibold border">Product</TableHead>
+                            <TableHead className="font-semibold border">Description</TableHead>
+                            <TableHead className="font-semibold border">Invoice No</TableHead>
+                            <TableHead className="font-semibold border text-center">Quantity</TableHead>
+                            <TableHead className="font-semibold border text-center">Unit Price</TableHead>
+                            <TableHead className="font-semibold border text-center">Total Value</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {supplierReturnsError ? (
+                            <TableRow><TableCell colSpan={9} className="border text-center text-red-600 py-4">Unable to load supplier returns</TableCell></TableRow>
+                          ) : supplierReturns.length ? supplierReturns.map(item => (
+                            <TableRow key={item.id}>
+                              <TableCell className="border">{format(new Date(item.date), "dd/MM/yyyy")}</TableCell>
+                              <TableCell className="border">{item.refNumber || "-"}</TableCell>
+                              <TableCell className="border">{item.supplierName || "-"}</TableCell>
+                              <TableCell className="border">{item.productName || item.description || "-"}</TableCell>
+                              <TableCell className="border">{item.description || "-"}</TableCell>
+                              <TableCell className="border">{item.invoiceNumber || "-"}</TableCell>
+                              <TableCell className="border text-center">{formatQuantity(item.quantity)}</TableCell>
+                              <TableCell className="border text-center">£{Number(item.unitPrice || 0).toFixed(2)}</TableCell>
+                              <TableCell className="border text-center">£{Number(item.totalValue || 0).toFixed(2)}</TableCell>
+                            </TableRow>
+                          )) : (
+                            <TableRow>
+                              <TableCell colSpan={9} className="border text-center text-gray-500 py-4">No supplier returns found</TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
                   </div>
                 </div>
               </div>

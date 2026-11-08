@@ -24,10 +24,16 @@ from models import (  # noqa: E402
     Customer,
     CustomerDiscount,
     CustomerDiscountAudit,
+    CustomerReturn,
+    DumpEntry,
+    ClosingStock,
     Payment,
     RegularProduct,
     Sale,
     SaleItem,
+    StockMovement,
+    Supplier,
+    SupplierReturn,
     User,
     UserBackDateOption,
     UserRestriction,
@@ -78,7 +84,12 @@ def main():
                 description="Discount Test Product",
                 selling_price=Decimal("10.00"),
             )
-            db.session.add_all([user, customer, product])
+            supplier = Supplier(
+                supplier_code="SUP-DISCOUNT-TEST",
+                supplier_name="Discount Test Supplier",
+                supplier_currency="GBP",
+            )
+            db.session.add_all([user, customer, product, supplier])
             db.session.flush()
             sale = Sale(
                 invoice_number="DISC-100",
@@ -188,13 +199,46 @@ def main():
             daily_summary = daily_summary_response.get_json() or {}
             assert daily_summary_response.status_code == 200
             assert any(row.get("is_customer_discount") for row in daily_summary["sales_summary"])
+            db.session.add(SupplierReturn(
+                ref_number="SR-DISCOUNT-TEST",
+                date=date(2026, 6, 15),
+                supplier_id=supplier.id,
+                product_id=product.id,
+                product_type="regular",
+                description="Supplier return note",
+                invoice_number="PUR-100",
+                quantity=Decimal("1.000"),
+                unit_price=Decimal("10.00"),
+                total_value=Decimal("10.00"),
+                status="completed",
+                created_by=user.id,
+            ))
+            db.session.commit()
+            supplier_returns_response = client.get(
+                "/api/supplier-returns?fromDate=2026-06-15&toDate=2026-06-15",
+                headers=headers,
+            )
+            supplier_returns = supplier_returns_response.get_json() or []
+            assert supplier_returns_response.status_code == 200
+            assert supplier_returns[0]["productName"] == "PROD-DISCOUNT-TEST - Discount Test Product"
             daily_summary_pdf_response = client.get(
-                "/api/reports/daily-summary/pdf?date=2026-06-15",
+                "/api/reports/daily-summary/pdf"
+                "?date=2026-06-15&includeStock=true&includePurchase=true",
                 headers=headers,
             )
             assert daily_summary_pdf_response.status_code == 200
             assert daily_summary_pdf_response.mimetype == "text/html"
-            assert created["reference"] in daily_summary_pdf_response.get_data(as_text=True)
+            daily_summary_print = daily_summary_pdf_response.get_data(as_text=True)
+            assert "DISC-100" in daily_summary_print
+            assert created["reference"] not in daily_summary_print
+            assert "PROD-DISCOUNT-TEST - Discount Test Product" in daily_summary_print
+            assert daily_summary_print.index("Stock Check") < daily_summary_print.index("Customer Returns")
+            assert daily_summary_print.index("Customer Returns") < daily_summary_print.index("Supplier Returns")
+            assert "No customer returns found" in daily_summary_print
+            assert "Supplier return note" in daily_summary_print
+            assert "<th>Status</th>" not in daily_summary_print
+            assert "@page return-portrait" in daily_summary_print
+            assert "A4 portrait" in daily_summary_print
 
             statement_response = client.get(
                 "/api/reports/customer-statement"
@@ -429,6 +473,115 @@ def main():
             db.session.commit()
             denied_response = client.get("/api/customer-discounts", headers=headers)
             assert denied_response.status_code == 403
+
+            stock_product = RegularProduct(
+                product_code="PROD-STOCK-CHECK-TEST",
+                description="Stock Check Test Product",
+                selling_price=Decimal("10.00"),
+            )
+            db.session.add(stock_product)
+            db.session.flush()
+            stock_sale = Sale(
+                invoice_number="STOCK-CHECK-100",
+                customer_id=customer.id,
+                customer_type="account",
+                payment_status="pending",
+                subtotal=Decimal("100.00"),
+                total_amount=Decimal("100.00"),
+                paid_amount=Decimal("0.00"),
+                status="finalized",
+                date=datetime(2026, 7, 15, 10, 0),
+                created_by=user.id,
+            )
+            db.session.add(stock_sale)
+            db.session.flush()
+            db.session.add_all([
+                SaleItem(
+                    sale_id=stock_sale.id,
+                    product_id=stock_product.id,
+                    quantity=Decimal("10.000"),
+                    unit_price=Decimal("10.00"),
+                    total_price=Decimal("100.00"),
+                ),
+                ClosingStock(
+                    product_id=stock_product.id,
+                    product_type="regular",
+                    date=date(2026, 6, 30),
+                    quantity=Decimal("20.000"),
+                ),
+                StockMovement(
+                    product_id=stock_product.id,
+                    product_type="regular",
+                    movement_type="purchase",
+                    quantity=Decimal("5.000"),
+                    previous_stock=Decimal("20.000"),
+                    new_stock=Decimal("25.000"),
+                    movement_date=date(2026, 7, 15),
+                ),
+                StockMovement(
+                    product_id=stock_product.id,
+                    product_type="regular",
+                    movement_type="purchase_reversal",
+                    quantity=Decimal("-1.000"),
+                    previous_stock=Decimal("25.000"),
+                    new_stock=Decimal("24.000"),
+                    movement_date=date(2026, 7, 15),
+                ),
+                CustomerReturn(
+                    ref_number="CR-STOCK-CHECK-TEST",
+                    date=date(2026, 7, 15),
+                    customer_id=customer.id,
+                    sale_id=stock_sale.id,
+                    product_id=stock_product.id,
+                    product_type="regular",
+                    description="Stock check customer return",
+                    quantity=Decimal("2.000"),
+                    unit_price=Decimal("10.00"),
+                    total_value=Decimal("20.00"),
+                    status="completed",
+                    created_by=user.id,
+                ),
+                DumpEntry(
+                    ref_number="DM-STOCK-CHECK-TEST",
+                    date=date(2026, 7, 15),
+                    product_id=stock_product.id,
+                    product_type="regular",
+                    description="Stock check wastage",
+                    quantity=Decimal("3.000"),
+                    unit_price=Decimal("10.00"),
+                    total_value=Decimal("30.00"),
+                    created_by=user.id,
+                ),
+                SupplierReturn(
+                    ref_number="SR-STOCK-CHECK-TEST",
+                    date=date(2026, 7, 15),
+                    supplier_id=supplier.id,
+                    product_id=stock_product.id,
+                    product_type="regular",
+                    description="Stock check supplier return",
+                    invoice_number="PUR-STOCK-100",
+                    quantity=Decimal("1.000"),
+                    unit_price=Decimal("10.00"),
+                    total_value=Decimal("10.00"),
+                    status="completed",
+                    created_by=user.id,
+                ),
+            ])
+            db.session.commit()
+            stock_check_response = client.get(
+                "/api/reports/stock-check?fromDate=2026-07-01&toDate=2026-07-15",
+                headers=headers,
+            )
+            stock_check = stock_check_response.get_json() or []
+            assert stock_check_response.status_code == 200
+            stock_row = next(row for row in stock_check if row["id"] == stock_product.id)
+            assert stock_row["os"] == 20
+            assert stock_row["ns"] == 4
+            assert stock_row["sales"] == 10
+            assert stock_row["crtn"] == 2
+            assert stock_row["dmps"] == 3
+            assert stock_row["srtn"] == 1
+            assert stock_row["stock"] == 12
 
             assert customer.customer_name == "Discount Test Customer"
             assert sale.total_amount == Decimal("100.00")

@@ -42,7 +42,7 @@ from mail_utils import init_mail, send_invoice_email, send_customer_statement_em
 from invoice_pdf_routes import add_pdf_routes
 from export_routes import add_export_routes
 from datetime import datetime, timedelta
-from sqlalchemy import func, and_, or_, update, inspect
+from sqlalchemy import func, and_, or_, update, inspect, case
 from flask import make_response
 # Load environment variables
 load_dotenv()
@@ -143,6 +143,7 @@ STOCK_AUDIT_NOISY_EVENTS = frozenset({
 # and not yet resolved. Prevents repeat lines on every refresh while the
 # discrepancy persists until closing stock is entered.
 _logged_discrepancy_keys = set()
+_hydrated_discrepancy_dates = set()
 
 
 def _discrepancy_key(business_date_str, product_id, product_type):
@@ -152,10 +153,12 @@ def _discrepancy_key(business_date_str, product_id, product_type):
 def _hydrate_logged_discrepancy_keys(business_date_str):
     """Rebuild in-memory dedup state from the log file after restarts."""
     try:
+        wanted = str(business_date_str)
+        if wanted in _hydrated_discrepancy_dates:
+            return
         path = STOCK_AUDIT_LOG_PATH
         if not os.path.exists(path):
             return
-        wanted = str(business_date_str)
         with open(path, encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
@@ -174,6 +177,7 @@ def _hydrate_logged_discrepancy_keys(business_date_str):
                     _logged_discrepancy_keys.add(key)
                 elif record.get("event") == "stock_discrepancy_resolved":
                     _logged_discrepancy_keys.discard(key)
+        _hydrated_discrepancy_dates.add(wanted)
     except Exception:
         pass
 
@@ -9752,6 +9756,200 @@ def debug_sale_update(sale_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _get_stock_check_values(regular_ids, non_ids, from_dt, to_dt):
+    """Load stock-check quantities with grouped queries instead of per-product lookups."""
+    values = {
+        'opening': {},
+        'purchases': {},
+        'sales': {},
+        'customer_returns': {},
+        'dumps': {},
+        'supplier_returns': {},
+        'closing': {},
+    }
+
+    def product_scope(product_id_column, product_type_column):
+        conditions = []
+        if regular_ids:
+            conditions.append(and_(
+                product_type_column == 'regular',
+                product_id_column.in_(regular_ids),
+            ))
+        if non_ids:
+            conditions.append(and_(
+                product_type_column == 'non',
+                product_id_column.in_(non_ids),
+            ))
+        return or_(*conditions) if conditions else None
+
+    scope = product_scope(ClosingStock.product_id, ClosingStock.product_type)
+    if scope is None:
+        return values
+
+    from_day = from_dt.date()
+    to_day = to_dt.date()
+
+    # Opening stock uses the latest day with any closing-stock entries in the
+    # previous seven days; products omitted on that active day start at zero.
+    opening_date = db.session.query(func.max(ClosingStock.date)).filter(
+        ClosingStock.date >= from_day - timedelta(days=7),
+        ClosingStock.date < from_day,
+    ).scalar()
+    if opening_date:
+        opening_rows = db.session.query(
+            ClosingStock.product_id,
+            ClosingStock.product_type,
+            ClosingStock.quantity,
+        ).filter(
+            ClosingStock.date == opening_date,
+            scope,
+        ).all()
+        for product_id, product_type, quantity in opening_rows:
+            values['opening'].setdefault(
+                (product_id, product_type), safe_float(quantity)
+            )
+
+    closing_rows = db.session.query(
+        ClosingStock.product_id,
+        ClosingStock.product_type,
+        ClosingStock.quantity,
+    ).filter(
+        ClosingStock.date == to_day,
+        scope,
+    ).all()
+    for product_id, product_type, quantity in closing_rows:
+        values['closing'].setdefault(
+            (product_id, product_type), safe_float(quantity)
+        )
+
+    movement_scope = product_scope(
+        StockMovement.product_id, StockMovement.product_type
+    )
+    movement_date_filter = _movement_business_date_filter(from_dt, to_dt)
+    purchase_rows = db.session.query(
+        StockMovement.product_id,
+        StockMovement.product_type,
+        func.sum(case(
+            (
+                and_(
+                    StockMovement.movement_type == 'purchase',
+                    StockMovement.quantity > 0,
+                ),
+                StockMovement.quantity,
+            ),
+            (
+                and_(
+                    StockMovement.movement_type == 'purchase_reversal',
+                    StockMovement.quantity < 0,
+                ),
+                StockMovement.quantity,
+            ),
+            else_=0,
+        )),
+    ).filter(
+        movement_scope,
+        StockMovement.movement_type.in_(['purchase', 'purchase_reversal']),
+        movement_date_filter,
+    ).group_by(
+        StockMovement.product_id,
+        StockMovement.product_type,
+    ).all()
+    values['purchases'] = {
+        (product_id, product_type): max(0, safe_float(quantity))
+        for product_id, product_type, quantity in purchase_rows
+    }
+
+    sale_conditions = []
+    if regular_ids:
+        sale_conditions.append(SaleItem.product_id.in_(regular_ids))
+    if non_ids:
+        sale_conditions.append(SaleItem.non_product_id.in_(non_ids))
+    if sale_conditions:
+        sale_rows = db.session.query(
+            SaleItem.product_id,
+            SaleItem.non_product_id,
+            func.sum(SaleItem.quantity),
+        ).join(
+            Sale, SaleItem.sale_id == Sale.id
+        ).filter(
+            or_(*sale_conditions),
+            SaleItem.quantity > 0,
+            Sale.date >= from_dt,
+            Sale.date <= to_dt,
+            Sale.status == 'finalized',
+        ).group_by(
+            SaleItem.product_id,
+            SaleItem.non_product_id,
+        ).all()
+        for product_id, non_product_id, quantity in sale_rows:
+            if product_id is not None:
+                values['sales'][(product_id, 'regular')] = safe_float(quantity)
+            if non_product_id is not None:
+                values['sales'][(non_product_id, 'non')] = safe_float(quantity)
+
+    customer_return_scope = product_scope(
+        CustomerReturn.product_id, CustomerReturn.product_type
+    )
+    customer_return_rows = db.session.query(
+        CustomerReturn.product_id,
+        CustomerReturn.product_type,
+        func.sum(CustomerReturn.quantity),
+    ).filter(
+        customer_return_scope,
+        CustomerReturn.date >= from_day,
+        CustomerReturn.date <= to_day,
+        CustomerReturn.status == 'completed',
+        CustomerReturn.quantity > 0,
+    ).group_by(
+        CustomerReturn.product_id,
+        CustomerReturn.product_type,
+    ).all()
+    values['customer_returns'] = {
+        (product_id, product_type): safe_float(quantity)
+        for product_id, product_type, quantity in customer_return_rows
+    }
+
+    dump_scope = product_scope(DumpEntry.product_id, DumpEntry.product_type)
+    dump_rows = db.session.query(
+        DumpEntry.product_id,
+        DumpEntry.product_type,
+        func.sum(func.abs(DumpEntry.quantity)),
+    ).filter(
+        dump_scope,
+        DumpEntry.date >= from_day,
+        DumpEntry.date <= to_day,
+    ).group_by(
+        DumpEntry.product_id,
+        DumpEntry.product_type,
+    ).all()
+    values['dumps'] = {
+        (product_id, product_type): max(0, safe_float(quantity))
+        for product_id, product_type, quantity in dump_rows
+    }
+
+    supplier_return_scope = product_scope(
+        SupplierReturn.product_id, SupplierReturn.product_type
+    )
+    supplier_return_rows = db.session.query(
+        SupplierReturn.product_id,
+        SupplierReturn.product_type,
+        func.sum(SupplierReturn.quantity),
+    ).filter(
+        supplier_return_scope,
+        SupplierReturn.date >= from_day,
+        SupplierReturn.date <= to_day,
+    ).group_by(
+        SupplierReturn.product_id,
+        SupplierReturn.product_type,
+    ).all()
+    values['supplier_returns'] = {
+        (product_id, product_type): safe_float(quantity)
+        for product_id, product_type, quantity in supplier_return_rows
+    }
+
+    return values
+
+
 @app.route('/api/reports/stock-check', methods=['GET'])
 @jwt_required()
 def stock_check_report():
@@ -9785,48 +9983,45 @@ def stock_check_report():
         # discrepancies. One line per product per business date until resolved.
         _hydrate_logged_discrepancy_keys(to_date)
 
-        # Get all products (regular and non)
+        # Get all active products (regular and non)
         regular_products = RegularProduct.query.filter(RegularProduct.status == 'active').all()
         non_products = NonProduct.query.filter(NonProduct.status == 'active').all()
+        if search:
+            search_lower = search.lower()
+            regular_products = [
+                product for product in regular_products
+                if search_lower in (product.description or '').lower()
+            ]
+            non_products = [
+                product for product in non_products
+                if search_lower in (product.description or '').lower()
+            ]
+
+        stock_values = _get_stock_check_values(
+            [product.id for product in regular_products],
+            [product.id for product in non_products],
+            from_dt,
+            to_dt,
+        )
 
         stock_check_data = []
 
         # Process regular products
         for product in regular_products:
             try:
-                if search and search.lower() not in product.description.lower():
-                    continue
-                
-                # Get opening stock (stock at the beginning of from_date)
-                opening_stock = get_opening_stock(product.id, 'regular', from_dt)
-                
-                # Get new stock (purchases) between dates
-                new_stock = get_new_stock(product.id, 'regular', from_dt, to_dt)
-                
-                # Get sales between dates
-                sales = get_sales_quantity(product.id, 'regular', from_dt, to_dt)
-                
-                # Get returns between dates (customer returns)
-                customer_returns = get_customer_returns_quantity(product.id, 'regular', from_dt, to_dt)
-                
-                # Get dumps/wastage between dates
-                dumps = get_dumps_quantity(product.id, 'regular', from_dt, to_dt)
-                
-                # Get supplier returns between dates
-                supplier_returns = get_supplier_returns_quantity(product.id, 'regular', from_dt, to_dt)
+                key = (product.id, 'regular')
+                opening_stock = stock_values['opening'].get(key, 0)
+                new_stock = stock_values['purchases'].get(key, 0)
+                sales = stock_values['sales'].get(key, 0)
+                customer_returns = stock_values['customer_returns'].get(key, 0)
+                dumps = stock_values['dumps'].get(key, 0)
+                supplier_returns = stock_values['supplier_returns'].get(key, 0)
                 
                 # Calculate expected stock
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns
                 
                 # Get actual closing stock
-                closing_stock_entry = ClosingStock.query.filter(
-                    ClosingStock.product_id == product.id,
-                    ClosingStock.product_type == 'regular',
-                    ClosingStock.date == to_dt.date(),
-                ).first()
-                
-                # If manual entry exists, use it; otherwise use 0
-                actual_closing_stock = safe_float(closing_stock_entry.quantity) if closing_stock_entry else 0
+                actual_closing_stock = stock_values['closing'].get(key, 0)
                 
                 difference = actual_closing_stock - expected_stock
                 difference = round(difference, 2)
@@ -9909,42 +10104,19 @@ def stock_check_report():
         # Process non-products
         for product in non_products:
             try:
-                if search and search.lower() not in product.description.lower():
-                    continue
-                    
-                print(f"[DEBUG] Processing non-product: {product.description} (ID: {product.id})")
-                
-                # Get opening stock
-                opening_stock = get_opening_stock(product.id, 'non', from_dt)
-                
-                # Get new stock
-                new_stock = get_new_stock(product.id, 'non', from_dt, to_dt)
-                print(f"[DEBUG] Non-product {product.description} (ID: {product.id}): new_stock={new_stock}")
-                
-                # Get sales
-                sales = get_sales_quantity(product.id, 'non', from_dt, to_dt)
-                
-                # Get returns
-                customer_returns = get_customer_returns_quantity(product.id, 'non', from_dt, to_dt)
-                
-                # Get dumps
-                dumps = get_dumps_quantity(product.id, 'non', from_dt, to_dt)
-                
-                # Get supplier returns
-                supplier_returns = get_supplier_returns_quantity(product.id, 'non', from_dt, to_dt)
+                key = (product.id, 'non')
+                opening_stock = stock_values['opening'].get(key, 0)
+                new_stock = stock_values['purchases'].get(key, 0)
+                sales = stock_values['sales'].get(key, 0)
+                customer_returns = stock_values['customer_returns'].get(key, 0)
+                dumps = stock_values['dumps'].get(key, 0)
+                supplier_returns = stock_values['supplier_returns'].get(key, 0)
                 
                 # Calculate expected stock
                 expected_stock = opening_stock + new_stock - sales + customer_returns - dumps - supplier_returns
                 
                 # Get actual closing stock
-                closing_stock_entry = ClosingStock.query.filter(
-                    ClosingStock.product_id == product.id,
-                    ClosingStock.product_type == 'non',
-                    ClosingStock.date == to_dt.date(),
-                ).first()
-                
-                # If manual entry exists, use it; otherwise use 0
-                actual_closing_stock = safe_float(closing_stock_entry.quantity) if closing_stock_entry else 0
+                actual_closing_stock = stock_values['closing'].get(key, 0)
                 
                 difference = actual_closing_stock - expected_stock
                 difference = round(difference, 2)
@@ -11254,7 +11426,40 @@ def get_supplier_returns():
             )
         
         supplier_returns = query.order_by(SupplierReturn.date.desc()).all()
-        return jsonify([return_item.to_dict() for return_item in supplier_returns]), 200
+        regular_ids = {
+            return_item.product_id for return_item in supplier_returns
+            if return_item.product_type == 'regular'
+        }
+        non_ids = {
+            return_item.product_id for return_item in supplier_returns
+            if return_item.product_type != 'regular'
+        }
+        regular_products = {
+            product.id: product for product in RegularProduct.query.filter(
+                RegularProduct.id.in_(regular_ids)
+            ).all()
+        } if regular_ids else {}
+        non_products = {
+            product.id: product for product in NonProduct.query.filter(
+                NonProduct.id.in_(non_ids)
+            ).all()
+        } if non_ids else {}
+        response = []
+        for return_item in supplier_returns:
+            data = return_item.to_dict()
+            product = (
+                regular_products.get(return_item.product_id)
+                if return_item.product_type == 'regular'
+                else non_products.get(return_item.product_id)
+            )
+            data['productName'] = (
+                f"{product.product_code} - {product.description}"
+                if product and product.product_code
+                else product.description if product
+                else return_item.description
+            )
+            response.append(data)
+        return jsonify(response), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -14503,10 +14708,7 @@ def daily_summary_report():
     for discount in daily_discounts:
         sales_summary.append({
             'customer_name': discount.customer.customer_name if discount.customer else '',
-            'invoice_no': (
-                f"{discount.sale.invoice_number} / {discount.reference}"
-                if discount.sale else discount.reference
-            ),
+            'invoice_no': discount.sale.invoice_number if discount.sale else '',
             'cash_sales': 0,
             'card_paid': 0,
             'bank_transfer': 0,
@@ -15053,10 +15255,7 @@ def daily_summary_pdf():
         for discount in daily_discounts:
             sales_summary.append({
                 'customer_name': discount.customer.customer_name if discount.customer else '',
-                'ticket_no': (
-                    f"{discount.sale.invoice_number} / {discount.reference}"
-                    if discount.sale else discount.reference
-                ),
+                'ticket_no': discount.sale.invoice_number if discount.sale else '',
                 'cash_sales': 0,
                 'card_paid': 0,
                 'bank_transfer': 0,
@@ -15264,6 +15463,59 @@ def daily_summary_pdf():
         # Check if stock and purchase data should be included
         include_stock = request.args.get('includeStock', 'false').lower() == 'true'
         include_purchase = request.args.get('includePurchase', 'false').lower() == 'true'
+        from html import escape as html_escape
+
+        customer_return_records = CustomerReturn.query.filter(
+            CustomerReturn.date == report_date
+        ).order_by(CustomerReturn.date, CustomerReturn.id).all()
+        supplier_return_records = SupplierReturn.query.filter(
+            SupplierReturn.date == report_date
+        ).order_by(SupplierReturn.date, SupplierReturn.id).all()
+
+        customer_return_rows = ""
+        for return_item in customer_return_records:
+            customer_name = return_item.customer.customer_name if return_item.customer else ""
+            customer_return_rows += f"""
+                <tr>
+                    <td>{html_escape(return_item.date.strftime("%d/%m/%Y") if return_item.date else "-")}</td>
+                    <td>{html_escape(customer_name or "-")}</td>
+                    <td>{html_escape(return_item.description or "-")}</td>
+                    <td>{html_escape(return_item.invoice_number or "-")}</td>
+                    <td class="text-center">{float(return_item.quantity or 0):g}</td>
+                    <td class="text-right">£{float(return_item.unit_price or 0):.2f}</td>
+                    <td class="text-right">£{float(return_item.total_value or 0):.2f}</td>
+                    <td>{html_escape(return_item.remarks or "-")}</td>
+                </tr>
+            """
+        if not customer_return_rows:
+            customer_return_rows = '<tr><td colspan="8" class="text-center">No customer returns found</td></tr>'
+
+        supplier_return_rows = ""
+        for return_item in supplier_return_records:
+            supplier_name = return_item.supplier.supplier_name if return_item.supplier else ""
+            product_model = RegularProduct if return_item.product_type == 'regular' else NonProduct
+            product = product_model.query.get(return_item.product_id)
+            product_name = (
+                f"{product.product_code} - {product.description}"
+                if product and product.product_code
+                else product.description if product
+                else return_item.description
+            )
+            supplier_return_rows += f"""
+                <tr>
+                    <td>{html_escape(return_item.date.strftime("%d/%m/%Y") if return_item.date else "-")}</td>
+                    <td>{html_escape(return_item.ref_number or "-")}</td>
+                    <td>{html_escape(supplier_name or "-")}</td>
+                    <td>{html_escape(product_name or "-")}</td>
+                    <td>{html_escape(return_item.description or "-")}</td>
+                    <td>{html_escape(return_item.invoice_number or "-")}</td>
+                    <td class="text-center">{float(return_item.quantity or 0):g}</td>
+                    <td class="text-right">£{float(return_item.unit_price or 0):.2f}</td>
+                    <td class="text-right">£{float(return_item.total_value or 0):.2f}</td>
+                </tr>
+            """
+        if not supplier_return_rows:
+            supplier_return_rows = '<tr><td colspan="9" class="text-center">No supplier returns found</td></tr>'
         
         # 5. Stock Check Data (if requested)
         stock_data = []
@@ -15493,6 +15745,7 @@ def daily_summary_pdf():
         <head>
             <title>Daily Summary - {date_str}</title>
             <style>
+                @page return-portrait {{ size: A4 portrait; margin: 10mm; }}
                 body {{ font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }}
                 table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
                 th, td {{ border: 1px solid #000; padding: 8px; text-align: left; }}
@@ -15506,6 +15759,9 @@ def daily_summary_pdf():
                 @media print {{
                     body {{ margin: 0; }}
                     .no-print {{ display: none; }}
+                    .return-report-page {{ page: return-portrait; padding-top: 8mm; }}
+                    .return-report-page table {{ width: 100%; table-layout: fixed; }}
+                    .return-report-page th, .return-report-page td {{ padding: 3px; font-size: 8px; overflow-wrap: anywhere; word-break: break-word; }}
                 }}
             </style>
         </head>
@@ -15786,6 +16042,35 @@ def daily_summary_pdf():
                             <td></td>
                         </tr>
                     </tbody>
+                </table>
+            </div>"""
+
+        # Return registers follow Stock Check and always start on their own pages.
+        html_content += f"""
+            <div class="return-report-page" style="page-break-before: always; break-before: page;">
+                <h1>Customer Returns</h1>
+                <h2>Date: {datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Customer</th><th>Product</th><th>Invoice No</th>
+                            <th>Quantity</th><th>Unit Price</th><th>Total</th><th>Remarks</th>
+                        </tr>
+                    </thead>
+                    <tbody>{customer_return_rows}</tbody>
+                </table>
+            </div>
+            <div class="return-report-page" style="page-break-before: always; break-before: page;">
+                <h1>Supplier Returns</h1>
+                <h2>Date: {datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Reference</th><th>Supplier</th><th>Product</th><th>Description</th>
+                            <th>Invoice No</th><th>Quantity</th><th>Unit Price</th><th>Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>{supplier_return_rows}</tbody>
                 </table>
             </div>"""
         

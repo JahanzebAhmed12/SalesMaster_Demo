@@ -4,6 +4,10 @@
   position: relative;
 }
 
+#daily-summary-page .daily-summary-return-page {
+  margin-top: 2rem;
+}
+
 /* Print styles */
 @media print {
   /* Only apply these styles when printing from the daily summary page */
@@ -90,6 +94,32 @@
 
 /* Page break sections — heading + table stay together on new page */
 @media print {
+  @page daily-summary-returns {
+    size: A4 portrait;
+    margin: 0.5in;
+  }
+  .daily-summary-return-page {
+    page: daily-summary-returns;
+    padding-top: 8mm !important;
+  }
+  #daily-summary-page .daily-summary-return-page table {
+    width: 100% !important;
+    table-layout: fixed !important;
+  }
+  #daily-summary-page .daily-summary-return-page th,
+  #daily-summary-page .daily-summary-return-page td {
+    font-size: 9px !important;
+    font-weight: bold !important;
+    padding: 2px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+  }
+  #daily-summary-page .daily-summary-return-page .print-section-title {
+    font-size: 18px !important;
+    margin-bottom: 12px !important;
+  }
+
   .print-page-break {
     page-break-before: always !important;
     break-before: page !important;
