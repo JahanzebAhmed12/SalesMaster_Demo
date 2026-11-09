@@ -113,10 +113,25 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     doc.text(`Others/Gate: ${invoiceData.sale.gateNumber}`, 20, yPos + 45);
   }
 
-  const rightX = pageWidth - 50;
+  const metadataRight = pageWidth - 20;
+  const metadataWidth = 80;
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  doc.text(`Date: ${invoiceData.sale?.date ? new Date(invoiceData.sale.date).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB")}`, rightX, yPos + 7);
+  doc.text(
+    `Date: ${invoiceData.sale?.date ? new Date(invoiceData.sale.date).toLocaleDateString("en-GB") : new Date().toLocaleDateString("en-GB")}`,
+    metadataRight,
+    yPos + 7,
+    { align: "right", maxWidth: metadataWidth },
+  );
+  if ((invoiceData.sale?.isCustomerReturn || invoiceData.sale?.isCustomerDiscount) && invoiceData.sale?.originalInvoiceDate) {
+    doc.setFontSize(10);
+    doc.text(
+      `(${new Date(`${invoiceData.sale.originalInvoiceDate}T00:00:00`).toLocaleDateString("en-GB")})`,
+      metadataRight,
+      yPos + 12,
+      { align: "right", maxWidth: metadataWidth },
+    );
+  }
 
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
@@ -126,18 +141,29 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     : invoiceData.sale?.isCustomerDiscount ? "Discount Invoice No" : "Invoice No";
   doc.text(
     `${documentNumberLabel}: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`,
-    rightX,
-    yPos + 15,
+    metadataRight,
+    yPos + 19,
+    { align: "right", maxWidth: metadataWidth },
   );
   if ((invoiceData.sale?.isCustomerReturn || invoiceData.sale?.isCustomerDiscount) && invoiceData.sale?.originalInvoiceNumber) {
     doc.setFontSize(10);
-    doc.text(`Original Invoice: ${invoiceData.sale.originalInvoiceNumber}`, rightX, yPos + 20);
+    doc.text(
+      `(Invoice: ${invoiceData.sale.originalInvoiceNumber})`,
+      metadataRight,
+      yPos + 24,
+      { align: "right", maxWidth: metadataWidth },
+    );
   }
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0, 0, 0);
-  doc.text(`Cust_type: ${invoiceData.sale?.paymentMode || invoiceData.sale?.payment_mode || invoiceData.sale?.customer_type || "account"}`, rightX, yPos + 23);
+  doc.text(
+    `Cust_type: ${invoiceData.sale?.paymentMode || invoiceData.sale?.payment_mode || invoiceData.sale?.customer_type || "account"}`,
+    metadataRight,
+    yPos + 28,
+    { align: "right", maxWidth: metadataWidth },
+  );
 
   yPos = 106;
   const tableStartX = 20;
@@ -174,9 +200,22 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     }
 
     doc.setFontSize(10);
-    const productLabel = item.notes
-      ? `${item.productName || item.description || "-"} - ${item.notes}`
-      : (item.productName || item.description || "-");
+    const productName = item.productName || item.description || "-";
+    const originalInvoiceDetails = (
+      (invoiceData.sale?.isCustomerReturn || invoiceData.sale?.isCustomerDiscount)
+      && invoiceData.sale?.originalInvoiceNumber
+    )
+      ? [
+          invoiceData.sale.originalInvoiceDate
+            ? new Date(`${invoiceData.sale.originalInvoiceDate}T00:00:00`).toLocaleDateString("en-GB")
+            : "",
+          `Invoice: ${invoiceData.sale.originalInvoiceNumber}`,
+          item.notes || "",
+        ].filter(Boolean).join(", ")
+      : "";
+    const productLabel = originalInvoiceDetails
+      ? `${productName} (${originalInvoiceDetails})`
+      : item.notes ? `${productName} - ${item.notes}` : productName;
     const wrappedLines = doc.splitTextToSize(productLabel, colWidths[0] - 4);
     const lineH = 4.5;
     const actualRowHeight = Math.max(rowHeight, wrappedLines.length * lineH + 2);

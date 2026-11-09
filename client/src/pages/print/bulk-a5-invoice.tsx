@@ -56,6 +56,7 @@ interface InvoiceData {
     isCustomerReturn?: boolean;
     isCustomerDiscount?: boolean;
     originalInvoiceNumber?: string;
+    originalInvoiceDate?: string;
   };
   items?: InvoiceItem[];
   invoiceFooter?: string;
@@ -117,8 +118,11 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
         </div>
         <div className="invoice-meta">
           <div>Date: {sale.date ? new Date(sale.date).toLocaleDateString() : new Date().toLocaleDateString()}</div>
-          <div className="invoice-number">{sale.isCustomerReturn ? "Return No" : "Invoice No"}: {invoiceNumber}</div>
-          {(sale.isCustomerReturn || sale.isCustomerDiscount) && sale.originalInvoiceNumber && <div>Original Invoice: {sale.originalInvoiceNumber}</div>}
+          {(sale.isCustomerReturn || sale.isCustomerDiscount) && sale.originalInvoiceDate && (
+            <div>({new Date(`${sale.originalInvoiceDate}T00:00:00`).toLocaleDateString()})</div>
+          )}
+          <div className="invoice-number">{sale.isCustomerReturn ? "Return No" : sale.isCustomerDiscount ? "Discount Invoice No" : "Invoice No"}: {invoiceNumber}</div>
+          {(sale.isCustomerReturn || sale.isCustomerDiscount) && sale.originalInvoiceNumber && <div>(Invoice: {sale.originalInvoiceNumber})</div>}
           <div>Cust_type: {sale.payment_mode || sale.paymentMode || sale.customer_type || sale.customerType || "account"}</div>
         </div>
       </div>
@@ -137,7 +141,16 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
             <tr key={item.id || index} className={item.highlighted ? "highlighted-row" : undefined}>
               <td>
                 {item.productName || item.description || "-"}
-                {item.notes && <span className="item-notes"> - {item.notes}</span>}
+                {(sale.isCustomerReturn || sale.isCustomerDiscount) && sale.originalInvoiceNumber && (
+                  <span className="item-original-invoice">
+                    {" ("}
+                    {sale.originalInvoiceDate && `${new Date(`${sale.originalInvoiceDate}T00:00:00`).toLocaleDateString()}, `}
+                    Invoice: {sale.originalInvoiceNumber}
+                    {item.notes ? `, ${item.notes}` : ""}
+                    {")"}
+                  </span>
+                )}
+                {item.notes && !(sale.isCustomerReturn || sale.isCustomerDiscount) && <span className="item-notes"> - {item.notes}</span>}
               </td>
               <td>{formatQuantity(Number(item.quantity || 0))}</td>
               <td>{Number(item.unitPrice || 0).toFixed(2)}</td>
@@ -260,7 +273,8 @@ export default function BulkA5InvoicePrintPage() {
         .section-label { font-weight: 700; margin-bottom: 3px; }
         .customer-box { min-width: 160px; border: 1px solid #ccc; padding: 6px; line-height: 1.35; }
         .gate-number { margin-top: 3px; font-size: 11px; font-weight: 700; }
-        .invoice-meta { text-align: right; line-height: 1.5; font-size: 11px; }
+        .billing-grid > :first-child { flex: 1; min-width: 0; }
+        .invoice-meta { flex: 0 1 48%; min-width: 0; overflow-wrap: anywhere; text-align: right; line-height: 1.5; font-size: 11px; }
         .invoice-number { color: #1a237e; font-weight: 700; font-size: 12px; }
         .invoice-items { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10px; }
         .invoice-items th, .invoice-items td { border: 1px solid #ccc; padding: 2px 4px; }
@@ -269,6 +283,7 @@ export default function BulkA5InvoicePrintPage() {
         .invoice-items th:not(:first-child), .invoice-items td:not(:first-child) { text-align: center; }
         .highlighted-row td { background: #fff3a3 !important; }
         .item-notes { font-size: 9px; font-style: italic; color: #555; }
+        .item-original-invoice { font-size: 9px; }
         .subtotal-row { font-weight: 700; }
         .totals-grid { margin-top: 0; }
         .invoice-notes { flex: 2; min-height: 50px; border: 1px solid #ccc; border-top: none; padding: 4px; white-space: pre-line; font-size: 9px; color: #666; font-style: italic; }

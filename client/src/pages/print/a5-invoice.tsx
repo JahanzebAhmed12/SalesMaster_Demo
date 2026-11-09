@@ -111,13 +111,16 @@ export default function A5InvoicePrintPage() {
           {data.sale?.gateNumber && <div style={{ fontSize: 12, marginTop: 2, fontWeight: "bold" }}>Others/Gate: {data.sale.gateNumber}</div>}
         </div>
 
-        <div style={{ textAlign: "right" }}>
+        <div style={{ textAlign: "right", flex: "0 1 48%", minWidth: 0, overflowWrap: "anywhere" }}>
           <div style={{ fontWeight: 400, fontSize: 11 }}>Date: {data.sale?.date ? new Date(data.sale.date).toLocaleDateString() : new Date().toLocaleDateString()}</div>
+          {(data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && data.sale.originalInvoiceDate && (
+            <div style={{ fontSize: 10, marginTop: 2 }}>({new Date(`${data.sale.originalInvoiceDate}T00:00:00`).toLocaleDateString()})</div>
+          )}
           <div style={{ fontWeight: "bold", fontSize: 13, color: '#1a237e', marginTop: 2 }}>
-            {data.sale?.isCustomerReturn ? "Return No" : "Invoice No"}: {data.sale?.invoice_number || data.sale?.invoiceNumber || "-"}
+            {data.sale?.isCustomerReturn ? "Return No" : data.sale?.isCustomerDiscount ? "Discount Invoice No" : "Invoice No"}: {data.sale?.invoice_number || data.sale?.invoiceNumber || "-"}
           </div>
           {(data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && data.sale.originalInvoiceNumber && (
-            <div style={{ fontSize: 10, marginTop: 2 }}>Original Invoice: {data.sale.originalInvoiceNumber}</div>
+            <div style={{ fontSize: 10, marginTop: 2 }}>(Invoice: {data.sale.originalInvoiceNumber})</div>
           )}
           <div style={{ fontSize: 10, marginTop: 2 }}>Cust_type: {data.sale?.paymentMode || data.sale?.payment_mode || data.sale?.customer_type || "account"}</div>
           {backdate && (
@@ -141,7 +144,16 @@ export default function A5InvoicePrintPage() {
             <tr key={item.id || idx}>
               <td style={{ border: "1px solid #ccc", padding: "1px 4px", wordWrap: "break-word", wordBreak: "break-word" }}>
                 {item.productName || item.description || "-"}
-                {item.notes && (
+                {(data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && data.sale.originalInvoiceNumber && (
+                  <span style={{ fontSize: "9px", fontStyle: "italic" }}>
+                    {" ("}
+                    {data.sale.originalInvoiceDate && `${new Date(`${data.sale.originalInvoiceDate}T00:00:00`).toLocaleDateString()}, `}
+                    Invoice: {data.sale.originalInvoiceNumber}
+                    {item.notes ? `, ${item.notes}` : ""}
+                    {")"}
+                  </span>
+                )}
+                {item.notes && !(data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && (
                   <span style={{ fontSize: "9px", fontStyle: "italic" }}> - {item.notes}</span>
                 )}
               </td>

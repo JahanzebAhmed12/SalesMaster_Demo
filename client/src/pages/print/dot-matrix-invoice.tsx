@@ -63,7 +63,7 @@ const FIELD_POSITIONS = {
   totals: {
     goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
     vat: { top: '177mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '185mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
+    total: { top: '181mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
@@ -71,10 +71,21 @@ const FIELD_POSITIONS = {
 const CHARS_PER_LINE = 30;
 const ROW_HEIGHT_MM = parseInt(FIELD_POSITIONS.itemsRowHeight); // 4mm
 
-function getItemDisplayText(item: any): string {
+function getItemDisplayText(
+  item: any,
+  originalInvoiceNumber?: string,
+  originalInvoiceDate?: string,
+): string {
   const name = item.product_name || item.productName || item.description || '';
   const note = item.notes || item.remarks;
-  return note ? `${name} (${note})` : name;
+  const details = [
+    originalInvoiceDate
+      ? new Date(`${originalInvoiceDate}T00:00:00`).toLocaleDateString('en-GB')
+      : '',
+    originalInvoiceNumber ? `Invoice: ${originalInvoiceNumber}` : '',
+    note || '',
+  ].filter(Boolean);
+  return `${name}${details.length ? ` (${details.join(', ')})` : ''}`;
 }
 
 function estimateLines(text: string): number {
@@ -120,7 +131,7 @@ const MOBILE_PDF_POSITIONS = {
   totals: {
     goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
     vat: { top: '177mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig,
-    total: { top: '185mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
+    total: { top: '181mm', left: '108mm', width: '25mm', align: 'right' } as TotalConfig
   }
 };
 
@@ -461,7 +472,11 @@ export default function DotMatrixInvoicePrintPage({
   const itemLineEntries: Array<{ item: any; lines: number; height: number }> = [];
   if (items) {
     for (const item of items) {
-      const lines = estimateLines(getItemDisplayText(item));
+      const lines = estimateLines(getItemDisplayText(
+        item,
+        sale?.originalInvoiceNumber,
+        sale?.originalInvoiceDate,
+      ));
       const hasNotes = !!(item.notes || item.remarks);
       const height = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
       itemLineEntries.push({ item, lines, height });
@@ -834,7 +849,7 @@ export default function DotMatrixInvoicePrintPage({
         <p className="text-sm text-gray-600 mb-4">
           {sale?.isCustomerReturn ? 'Customer Return' : sale?.isCustomerDiscount ? 'Customer Discount' : 'Invoice'}: {sale?.invoice_number}
           {(sale?.isCustomerReturn || sale?.isCustomerDiscount) && sale?.originalInvoiceNumber
-            ? ` (Original invoice ${sale.originalInvoiceNumber})`
+            ? ` (${sale.originalInvoiceDate ? `${new Date(`${sale.originalInvoiceDate}T00:00:00`).toLocaleDateString('en-GB')}, ` : ''}Invoice: ${sale.originalInvoiceNumber})`
             : ''}
         </p>
         <div className="flex gap-2 flex-wrap">
@@ -1062,7 +1077,11 @@ export default function DotMatrixInvoicePrintPage({
               {(() => {
                 let cumulativeTop = ITEMS_START_TOP_MM;
                 return page.items.map((item, itemIndex) => {
-                  const lines = estimateLines(getItemDisplayText(item));
+                  const lines = estimateLines(getItemDisplayText(
+                    item,
+                    sale?.originalInvoiceNumber,
+                    sale?.originalInvoiceDate,
+                  ));
                   const hasNotes = !!(item.notes || item.remarks);
                   const itemHeight = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
                   const topPosition = cumulativeTop;
@@ -1103,7 +1122,16 @@ export default function DotMatrixInvoicePrintPage({
                         whiteSpace: 'normal'
                       }}>
                         {item.product_name || item.productName || item.description}
-                        {(item.notes || item.remarks) && (
+                        {(sale?.isCustomerReturn || sale?.isCustomerDiscount) && sale?.originalInvoiceNumber && (
+                          <span style={{ fontStyle: 'normal', fontWeight: 'normal' }}>
+                            {" ("}
+                            {sale.originalInvoiceDate && `${new Date(`${sale.originalInvoiceDate}T00:00:00`).toLocaleDateString('en-GB')}, `}
+                            Invoice: {sale.originalInvoiceNumber}
+                            {(item.notes || item.remarks) ? `, ${item.notes || item.remarks}` : ""}
+                            {")"}
+                          </span>
+                        )}
+                        {(item.notes || item.remarks) && !(sale?.isCustomerReturn || sale?.isCustomerDiscount) && (
                           <span style={{ fontStyle: 'italic', fontWeight: 'normal' }}>
                             {' '}({item.notes || item.remarks})
                           </span>

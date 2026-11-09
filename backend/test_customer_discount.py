@@ -294,6 +294,7 @@ def main():
             assert print_response.status_code == 200, print_data
             assert print_data["discounts"][0]["discount"]["documentInvoiceNumber"] == created["documentInvoiceNumber"]
             assert print_data["discounts"][0]["discount"]["originalInvoiceNumber"] == sale.invoice_number
+            assert print_data["discounts"][0]["discount"]["originalInvoiceDate"] == sale.date.date().isoformat()
 
             daily_summary_response = client.get(
                 "/api/reports/daily-summary?date=2026-06-15", headers=headers
@@ -859,6 +860,12 @@ def main():
             )
             db.session.add(statement_return)
             db.session.flush()
+            return_print_response = client.get(
+                f"/api/customer-returns/print?ids={statement_return.id}"
+            )
+            return_print_data = return_print_response.get_json() or {}
+            assert return_print_response.status_code == 200
+            assert return_print_data["returns"][0]["originalInvoiceDate"] == sale.date.date().isoformat()
             db.session.add(Payment(
                 customer_id=customer.id,
                 sale_id=sale.id,

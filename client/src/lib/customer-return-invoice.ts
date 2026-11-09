@@ -3,6 +3,7 @@ import { getApiUrl } from "@/lib/config";
 interface CustomerReturnPrintRecord {
   customer: Record<string, unknown>;
   product: Record<string, unknown>;
+  originalInvoiceDate?: string;
   returnItem: {
     id: number;
     refNumber: string;
@@ -37,6 +38,7 @@ export interface CustomerReturnInvoiceData {
     customer_type: string;
     isCustomerReturn: true;
     originalInvoiceNumber?: string;
+    originalInvoiceDate?: string;
   };
   items: Array<Record<string, unknown> & {
     id: number;
@@ -66,7 +68,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
     throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
   }
 
-  return responseData.returns.map(({ customer, returnItem }) => {
+  return responseData.returns.map(({ customer, returnItem, originalInvoiceDate }) => {
     const amount = Number(returnItem.totalValue || 0);
     const itemNotes = [returnItem.returnReason, returnItem.remarks].filter(Boolean).join(" - ");
     const item = {
@@ -97,6 +99,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
         customer_type: "account",
         isCustomerReturn: true,
         originalInvoiceNumber: returnItem.invoiceNumber,
+        originalInvoiceDate,
       },
       items: [item],
       paidAmount: 0,

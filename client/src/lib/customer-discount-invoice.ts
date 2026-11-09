@@ -8,6 +8,7 @@ interface CustomerDiscountPrintRecord {
     originalInvoiceNumber?: string;
     date: string;
     productName: string;
+    originalInvoiceDate?: string;
     quantity: number;
     unitPrice: number;
     amount: number;
@@ -34,6 +35,7 @@ export interface CustomerDiscountInvoiceData {
     customer_type: string;
     isCustomerDiscount: true;
     originalInvoiceNumber?: string;
+    originalInvoiceDate?: string;
   };
   items: Array<Record<string, unknown> & {
     id: number;
@@ -91,6 +93,7 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
         customer_type: "account",
         isCustomerDiscount: true,
         originalInvoiceNumber: discount.originalInvoiceNumber,
+        originalInvoiceDate: discount.originalInvoiceDate,
       },
       items: [item],
       paidAmount: 0,

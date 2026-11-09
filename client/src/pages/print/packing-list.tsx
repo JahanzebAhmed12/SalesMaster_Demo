@@ -66,7 +66,7 @@ export function PackingListTemplate({
           <div style={{ fontWeight: "bold", fontSize: 28, color: '#1a237e', marginBottom: 4 }}>PICKING LIST</div>
           <div style={{ fontWeight: 400, fontSize: 18, marginTop: 8 }}>Date: {sale?.date ? new Date(sale.date).toLocaleDateString() : "-"}</div>
           <div style={{ fontWeight: 400, fontSize: 18 }}>
-            {sale?.isCustomerReturn ? "Original Invoice" : "Invoice No"}: {sale?.isCustomerReturn ? sale?.originalInvoiceNumber || "-" : sale?.invoice_number || sale?.invoiceNumber || "-"}
+            {sale?.isCustomerReturn ? "Invoice" : "Invoice No"}: {sale?.isCustomerReturn ? sale?.originalInvoiceNumber || "-" : sale?.invoice_number || sale?.invoiceNumber || "-"}
           </div>
           {sale?.isCustomerReturn && <div style={{ fontWeight: 400, fontSize: 18 }}>Return No: {sale?.invoice_number || sale?.invoiceNumber || "-"}</div>}
         </div>

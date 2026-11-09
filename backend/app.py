@@ -11119,6 +11119,11 @@ def print_customer_returns():
             documents.append({
                 'customer': return_item.customer.to_dict() if return_item.customer else {},
                 'product': product.to_dict() if product else {},
+                'originalInvoiceDate': (
+                    return_item.sale.date.date().isoformat()
+                    if return_item.sale and return_item.sale.date
+                    else None
+                ),
                 'returnItem': return_item.to_dict(),
             })
 
@@ -11161,6 +11166,11 @@ def print_customer_discounts():
                     'id': discount.id,
                     'documentInvoiceNumber': discount.document_invoice_number,
                     'originalInvoiceNumber': discount.sale.invoice_number if discount.sale else None,
+                    'originalInvoiceDate': (
+                        discount.sale.date.date().isoformat()
+                        if discount.sale and discount.sale.date
+                        else None
+                    ),
                     'date': discount.date.isoformat(),
                     'productName': product,
                     'quantity': 1,
