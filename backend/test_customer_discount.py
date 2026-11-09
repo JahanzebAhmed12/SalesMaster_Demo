@@ -17,8 +17,9 @@ os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(run_dir, 'test.db')}"
 os.environ["STOCK_AUDIT_LOG_DIR"] = os.path.join(run_dir, "logs")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app import app, db  # noqa: E402
+from app import app, db, _initialize_invoice_document_numbers  # noqa: E402
 from migrations.customer_discount_v1 import upgrade  # noqa: E402
+from migrations.invoice_document_numbers_v1 import upgrade as upgrade_invoice_document_numbers  # noqa: E402
 from models import (  # noqa: E402
     BusinessDate,
     Customer,
@@ -37,6 +38,7 @@ from models import (  # noqa: E402
     User,
     UserBackDateOption,
     UserRestriction,
+    InvoiceDocumentNumber,
 )
 from flask_jwt_extended import create_access_token  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
@@ -67,6 +69,39 @@ def main():
                     text("SELECT name FROM sqlite_master WHERE type='table' AND name='customer_discount'")
                 ).scalar_one() == "customer_discount"
             legacy_engine.dispose()
+
+            numbering_engine = create_engine(
+                f"sqlite:///{os.path.join(run_dir, 'legacy-numbering.db')}"
+            )
+            with numbering_engine.begin() as connection:
+                connection.execute(text(
+                    "CREATE TABLE customer_return (id INTEGER PRIMARY KEY, invoice_number VARCHAR(50))"
+                ))
+                connection.execute(text(
+                    "INSERT INTO customer_return (id, invoice_number) VALUES (1, 'ORIGINAL-100')"
+                ))
+                connection.execute(text(
+                    "CREATE TABLE customer_discount (id INTEGER PRIMARY KEY)"
+                ))
+            upgrade_invoice_document_numbers(numbering_engine, InvoiceDocumentNumber.__table__)
+            upgrade_invoice_document_numbers(numbering_engine, InvoiceDocumentNumber.__table__)
+            with numbering_engine.connect() as connection:
+                return_columns = {
+                    row[1] for row in connection.execute(text("PRAGMA table_info(customer_return)"))
+                }
+                discount_columns = {
+                    row[1] for row in connection.execute(text("PRAGMA table_info(customer_discount)"))
+                }
+                sequence_columns = {
+                    row[1] for row in connection.execute(text("PRAGMA table_info(invoice_document_number)"))
+                }
+                assert "document_invoice_number" in return_columns
+                assert "document_invoice_number" in discount_columns
+                assert "last_number" in sequence_columns
+                assert connection.execute(
+                    text("SELECT invoice_number FROM customer_return WHERE id = 1")
+                ).scalar_one() == "ORIGINAL-100"
+            numbering_engine.dispose()
 
             user = User(
                 username="discount-test-user",
@@ -114,6 +149,33 @@ def main():
             )
             db.session.add_all([
                 item,
+                Sale(
+                    invoice_number="500",
+                    customer_id=customer.id,
+                    customer_type="account",
+                    payment_status="pending",
+                    subtotal=Decimal("0.00"),
+                    total_amount=Decimal("0.00"),
+                    paid_amount=Decimal("0.00"),
+                    status="finalized",
+                    date=datetime(2026, 1, 1, 10, 0),
+                    created_by=user.id,
+                ),
+                CustomerReturn(
+                    ref_number="CR-LEGACY-SEQUENCE",
+                    date=date(2026, 1, 1),
+                    customer_id=customer.id,
+                    sale_id=None,
+                    product_id=product.id,
+                    product_type="regular",
+                    description=product.description,
+                    invoice_number=sale.invoice_number,
+                    quantity=Decimal("1.000"),
+                    unit_price=Decimal("10.00"),
+                    total_value=Decimal("10.00"),
+                    return_reason="Damaged product",
+                    status="completed",
+                ),
                 BusinessDate(current_date=date(2026, 6, 15)),
                 UserBackDateOption(
                     user_id=user.id,
@@ -123,6 +185,9 @@ def main():
                 ),
             ])
             db.session.commit()
+            _initialize_invoice_document_numbers()
+            legacy_return = CustomerReturn.query.filter_by(ref_number="CR-LEGACY-SEQUENCE").one()
+            assert legacy_return.document_invoice_number == "501"
 
             client = app.test_client()
             headers = {
@@ -154,6 +219,7 @@ def main():
             assert create_response.status_code == 201, create_response.get_json()
             created = create_response.get_json()
             assert created["reference"] == "CD-000001"
+            assert created["documentInvoiceNumber"] == "502"
             assert created["amount"] == 20
             assert sale.total_amount == Decimal("100.00")
             assert item.total_price == Decimal("100.00")
@@ -191,7 +257,17 @@ def main():
             assert daily_book_response.status_code == 200
             assert len(daily_book) == 1
             assert daily_book[0]["isCustomerDiscount"] is True
+            assert daily_book[0]["invoiceNo"] == created["documentInvoiceNumber"]
+            assert daily_book[0]["originalInvoiceNo"] == sale.invoice_number
             assert daily_book[0]["credit"] == 20
+
+            print_response = client.get(
+                f"/api/customer-discounts/print?ids={created['id']}"
+            )
+            print_data = print_response.get_json() or {}
+            assert print_response.status_code == 200, print_data
+            assert print_data["discounts"][0]["discount"]["documentInvoiceNumber"] == created["documentInvoiceNumber"]
+            assert print_data["discounts"][0]["discount"]["originalInvoiceNumber"] == sale.invoice_number
 
             daily_summary_response = client.get(
                 "/api/reports/daily-summary?date=2026-06-15", headers=headers

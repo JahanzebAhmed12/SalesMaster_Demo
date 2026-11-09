@@ -4,8 +4,10 @@ import { apiRequest } from '@/lib/queryClient';
 import { formatQuantity } from '@/lib/utils';
 import { API_BASE_URL, useRelativeUrls } from '@/lib/config';
 import { isInvoicePaid } from '@/lib/invoice-paid';
+import { generateInvoicePdfBlob } from '@/lib/invoice-pdf';
 import { Button } from '@/components/ui/button';
 import { fetchCustomerReturnInvoices } from '@/lib/customer-return-invoice';
+import { fetchCustomerDiscountInvoices } from '@/lib/customer-discount-invoice';
 
 export interface DotMatrixInvoiceData {
   company: any;
@@ -131,6 +133,7 @@ export default function DotMatrixInvoicePrintPage({
   const [match, params] = useRoute('/print/dot-matrix-invoice/:invoiceNumber');
   const invoiceNumber = params?.invoiceNumber;
   const returnId = new URLSearchParams(window.location.search).get('returnId');
+  const discountId = new URLSearchParams(window.location.search).get('discountId');
   const [data, setData] = useState<DotMatrixInvoiceData | null>(invoiceData || null);
   const [loading, setLoading] = useState(!invoiceData);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +155,7 @@ export default function DotMatrixInvoicePrintPage({
       return;
     }
 
-    if (!returnId && !invoiceNumber) {
+    if (!returnId && !discountId && !invoiceNumber) {
       setError('No invoice number provided');
       setLoading(false);
       return;
@@ -162,7 +165,9 @@ export default function DotMatrixInvoicePrintPage({
       try {
         setLoading(true);
         setError(null);
-        const response = returnId
+        const response = discountId
+          ? (await fetchCustomerDiscountInvoices([discountId]))[0]
+          : returnId
           ? (await fetchCustomerReturnInvoices([returnId]))[0]
           : await apiRequest('GET', `/api/sales/${invoiceNumber}/invoice`);
         setData(response);
@@ -175,7 +180,7 @@ export default function DotMatrixInvoicePrintPage({
     };
 
     fetchInvoice();
-  }, [invoiceNumber, returnId, invoiceData]);
+  }, [invoiceNumber, returnId, discountId, invoiceData]);
 
   // Mobile print proxy handler
   const handleMobilePrint = async () => {
@@ -283,6 +288,16 @@ export default function DotMatrixInvoicePrintPage({
 
   const handleServerPDF = async () => {
     try {
+      if (data && (sale?.isCustomerReturn || sale?.isCustomerDiscount)) {
+        const pdfUrl = URL.createObjectURL(generateInvoicePdfBlob(data));
+        const link = document.createElement('a');
+        link.href = pdfUrl;
+        link.download = `${sale.isCustomerReturn ? 'customer-return' : 'customer-discount'}-${sale.invoice_number}.pdf`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+        return;
+      }
+
       console.log('Generating server PDF for invoice:', invoiceNumber);
 
       // Set server PDF mode for styling
@@ -428,7 +443,8 @@ export default function DotMatrixInvoicePrintPage({
   if (!data) return <div className="p-4 print:hidden">No invoice found.</div>;
 
   const { sale, items, customer } = data;
-  const isPaid = isInvoicePaid(sale, data.paidAmount, data.balance);
+  const isPaid = !sale?.isCustomerReturn && !sale?.isCustomerDiscount &&
+    isInvoicePaid(sale, data.paidAmount, data.balance);
   console.log('Rendering with sale:', sale);
   console.log('Invoice number for display:', sale?.invoice_number);
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
@@ -815,7 +831,12 @@ export default function DotMatrixInvoicePrintPage({
       {/* Print Preview Header - hidden during print */}
       {!hidePreviewControls && <div className="p-4 bg-gray-100 print:hidden">
         <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
-        <p className="text-sm text-gray-600 mb-4">{sale?.isCustomerReturn ? 'Customer Return' : 'Invoice'}: {sale?.invoice_number}</p>
+        <p className="text-sm text-gray-600 mb-4">
+          {sale?.isCustomerReturn ? 'Customer Return' : sale?.isCustomerDiscount ? 'Customer Discount' : 'Invoice'}: {sale?.invoice_number}
+          {(sale?.isCustomerReturn || sale?.isCustomerDiscount) && sale?.originalInvoiceNumber
+            ? ` (Original invoice ${sale.originalInvoiceNumber})`
+            : ''}
+        </p>
         <div className="flex gap-2 flex-wrap">
           <Button
             size="sm"
@@ -841,7 +862,7 @@ export default function DotMatrixInvoicePrintPage({
           >
             ⬇️ Download PDF
             </Button>
-          <Button
+          {!sale?.isCustomerDiscount && <Button
             size="sm"
             variant="outline"
             onClick={() => window.open(
@@ -853,15 +874,15 @@ export default function DotMatrixInvoicePrintPage({
             className="flex items-center gap-1"
           >
             📋 Print Picking Note
-          </Button>
-          <Button
+          </Button>}
+          {!sale?.isCustomerDiscount && <Button
             size="sm"
             variant="outline"
             onClick={() => window.open(`/print/customer-label/${invoiceNumber}`, '_blank')}
             className="flex items-center gap-1"
           >
             🏷️ Print Label
-          </Button>
+          </Button>}
         </div>
       </div>}
 
@@ -992,9 +1013,7 @@ export default function DotMatrixInvoicePrintPage({
                 margin: '0',
                 padding: '0'
               }}>
-                {sale?.isCustomerReturn
-                  ? sale?.originalInvoiceNumber || sale?.invoice_number || sale?.invoiceNumber || ''
-                  : sale?.invoice_number || sale?.invoiceNumber || ''}
+                {sale?.invoice_number || sale?.invoiceNumber || ''}
               </div>
 
               {/* Date */}

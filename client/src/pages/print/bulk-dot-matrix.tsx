@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { fetchCustomerReturnInvoices } from '@/lib/customer-return-invoice';
+import { fetchCustomerDiscountInvoices } from '@/lib/customer-discount-invoice';
 import DotMatrixInvoicePrintPage, {
   type DotMatrixInvoiceData,
 } from './dot-matrix-invoice';
@@ -10,13 +11,14 @@ export default function BulkDotMatrixPrintPage() {
   const params = new URLSearchParams(window.location.search);
   const invoiceNumbers = (params.get('invs') || '').split(',').filter(Boolean);
   const returnIds = (params.get('returnIds') || '').split(',').filter(Boolean);
+  const discountIds = (params.get('discountIds') || '').split(',').filter(Boolean);
 
   const [invoices, setInvoices] = useState<DotMatrixInvoiceData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (invoiceNumbers.length === 0 && returnIds.length === 0) {
+    if (invoiceNumbers.length === 0 && returnIds.length === 0 && discountIds.length === 0) {
       setError('No invoice numbers provided');
       setLoading(false);
       return;
@@ -42,7 +44,8 @@ export default function BulkDotMatrixPrintPage() {
           (invoice): invoice is DotMatrixInvoiceData => invoice !== null,
         );
         const returns = await fetchCustomerReturnInvoices(returnIds);
-        const combined = [...validInvoices, ...returns] as DotMatrixInvoiceData[];
+        const discounts = await fetchCustomerDiscountInvoices(discountIds);
+        const combined = [...validInvoices, ...returns, ...discounts] as DotMatrixInvoiceData[];
         setInvoices(combined);
         if (combined.length === 0) {
           setError('No invoices or returns could be loaded');

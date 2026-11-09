@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from flask import make_response
 import re
 import html
-from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, CustomerDiscount, CustomerDiscountAudit, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave, SaleEditLock
+from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, CustomerDiscount, CustomerDiscountAudit, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave, SaleEditLock, InvoiceDocumentNumber
 
 
 from schemas import (
@@ -24,6 +24,7 @@ import uuid
 from werkzeug.utils import secure_filename
 from users import verify_password, create_admin_user
 from migrations.customer_discount_v1 import upgrade as upgrade_customer_discount_schema
+from migrations.invoice_document_numbers_v1 import upgrade as upgrade_invoice_document_numbers_schema
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
@@ -43,6 +44,7 @@ from invoice_pdf_routes import add_pdf_routes
 from export_routes import add_export_routes
 from datetime import datetime, timedelta
 from sqlalchemy import func, and_, or_, update, inspect, case
+from sqlalchemy.exc import IntegrityError
 from flask import make_response
 # Load environment variables
 load_dotenv()
@@ -382,6 +384,83 @@ def ensure_print_service_settings_columns():
     if changed:
         db.session.commit()
 
+
+def _allocate_invoice_document_number():
+    sequence = InvoiceDocumentNumber.query.filter_by(id=1).with_for_update().first()
+    if not sequence:
+        existing_numbers = []
+        for (value,) in db.session.query(Sale.invoice_number).all():
+            if value and str(value).strip().isdigit():
+                existing_numbers.append(int(str(value).strip()))
+        for model in (CustomerReturn, CustomerDiscount):
+            for (value,) in db.session.query(model.document_invoice_number).all():
+                if value and str(value).strip().isdigit():
+                    existing_numbers.append(int(str(value).strip()))
+        largest_allocation = db.session.query(func.max(InvoiceDocumentNumber.id)).scalar() or 0
+        sequence = InvoiceDocumentNumber(
+            id=1,
+            last_number=max(max(existing_numbers, default=0), int(largest_allocation)),
+        )
+        db.session.add(sequence)
+        db.session.flush()
+    sequence.last_number += 1
+    db.session.flush()
+    return str(sequence.last_number)
+
+
+def _initialize_invoice_document_numbers():
+    """Seed the shared auto-increment series and number legacy adjustments."""
+    existing_numbers = []
+    for (value,) in db.session.query(Sale.invoice_number).all():
+        if value and str(value).strip().isdigit():
+            existing_numbers.append(int(str(value).strip()))
+    for model in (CustomerReturn, CustomerDiscount):
+        for (value,) in db.session.query(model.document_invoice_number).all():
+            if value and str(value).strip().isdigit():
+                existing_numbers.append(int(str(value).strip()))
+
+    largest_allocation = db.session.query(func.max(InvoiceDocumentNumber.id)).scalar() or 0
+    largest_number = max(max(existing_numbers, default=0), int(largest_allocation))
+    sequence = InvoiceDocumentNumber.query.filter_by(id=1).first()
+    if not sequence:
+        db.session.add(InvoiceDocumentNumber(id=1, last_number=largest_number))
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            if not InvoiceDocumentNumber.query.filter_by(id=1).first():
+                raise
+    elif sequence.last_number < largest_number:
+        sequence.last_number = largest_number
+        db.session.commit()
+
+    negative_sale_ids = {
+        sale_id for (sale_id,) in db.session.query(SaleItem.sale_id)
+        .filter(SaleItem.quantity < 0)
+        .distinct()
+        .all()
+    }
+    legacy_documents = []
+    for customer_return in CustomerReturn.query.filter(
+        CustomerReturn.document_invoice_number.is_(None)
+    ).all():
+        is_sale_line_return = (
+            customer_return.sale_id in negative_sale_ids
+            and customer_return.return_reason == "Return via negative quantity sale"
+        )
+        if not is_sale_line_return:
+            legacy_documents.append((customer_return.date, 0, customer_return.id, customer_return))
+    for discount in CustomerDiscount.query.filter(
+        CustomerDiscount.document_invoice_number.is_(None)
+    ).all():
+        legacy_documents.append((discount.date, 1, discount.id, discount))
+
+    if legacy_documents:
+        for _, _, _, document in sorted(legacy_documents, key=lambda item: item[:3]):
+            document.document_invoice_number = _allocate_invoice_document_number()
+        db.session.commit()
+
+
 # Initialize database with health check
 with app.app_context():
     # Check database health before creating tables
@@ -394,6 +473,8 @@ with app.app_context():
         CustomerDiscount.__table__,
         CustomerDiscountAudit.__table__,
     )
+    upgrade_invoice_document_numbers_schema(db.engine, InvoiceDocumentNumber.__table__)
+    _initialize_invoice_document_numbers()
     ensure_sale_item_highlight_column()
     ensure_print_service_settings_columns()
     create_admin_user()
@@ -639,6 +720,7 @@ _PUBLIC_API_PATTERNS = (
     re.compile(r"^/api/purchase-invoices/[^/]+/print$"),
     re.compile(r"^/api/supplier-returns/[^/]+/print$"),
     re.compile(r"^/api/customer-returns/print$"),
+    re.compile(r"^/api/customer-discounts/print$"),
     re.compile(r"^/api/reports/daily-summary/pdf$"),
 )
 
@@ -1871,14 +1953,7 @@ def create_sale():
                 db.session.rollback()
                 return jsonify({"error": "You do not have permission to create sales for today."}), 403
             
-            # Generate next invoice number with proper locking using ORM
-            # Use SQLAlchemy func for safer query
-            from sqlalchemy import func, cast, Integer
-            max_invoice_result = db.session.query(
-                func.max(cast(Sale.invoice_number, Integer))
-            ).scalar()
-            max_invoice = max_invoice_result or 0
-            next_invoice = str(int(max_invoice) + 1)
+            next_invoice = _allocate_invoice_document_number()
             
             # Use business date if provided, otherwise use current business date
             sale_date = None
@@ -6865,6 +6940,7 @@ def daily_book_sales():
     if search:
         returns_query = returns_query.filter(
             CustomerReturn.invoice_number.ilike(f'%{search}%') |
+            CustomerReturn.document_invoice_number.ilike(f'%{search}%') |
             Customer.customer_name.ilike(f'%{search}%')
         )
 
@@ -6887,7 +6963,8 @@ def daily_book_sales():
             'date': customer_return.date.isoformat(),
             'salesman': customer_return.user.username if customer_return.user else '',
             'boxes': -abs(float(customer_return.quantity or 0)),
-            'invoiceNo': customer_return.invoice_number or f'CR-{customer_return.ref_number}',
+            'invoiceNo': customer_return.document_invoice_number or customer_return.invoice_number or f'CR-{customer_return.ref_number}',
+            'originalInvoiceNo': customer_return.invoice_number,
             'customerName': customer_return.customer.customer_name if customer_return.customer else '',
             'customerOthers': customer_return.customer.others if customer_return.customer else None,
             'gateNumber': None,
@@ -6930,6 +7007,7 @@ def daily_book_sales():
     if search:
         discounts_query = discounts_query.filter(
             Sale.invoice_number.ilike(f'%{search}%') |
+            CustomerDiscount.document_invoice_number.ilike(f'%{search}%') |
             Customer.customer_name.ilike(f'%{search}%')
         )
 
@@ -6943,7 +7021,8 @@ def daily_book_sales():
             'date': discount.date.isoformat(),
             'salesman': discount.creator.username if discount.creator else '',
             'boxes': 0,
-            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'invoiceNo': discount.document_invoice_number or '',
+            'originalInvoiceNo': discount.sale.invoice_number if discount.sale else '',
             'discountReference': discount.reference,
             'customerName': discount.customer.customer_name if discount.customer else '',
             'customerOthers': discount.customer.others if discount.customer else None,
@@ -10960,6 +11039,55 @@ def print_customer_returns():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/customer-discounts/print', methods=['GET'])
+def print_customer_discounts():
+    """Return selected customer-discount documents for public print views."""
+    raw_ids = request.args.get('ids', '')
+    try:
+        discount_ids = [int(value) for value in raw_ids.split(',') if value]
+        if not discount_ids or any(discount_id <= 0 for discount_id in discount_ids):
+            return jsonify({"error": "At least one valid customer discount ID is required"}), 400
+
+        discounts = CustomerDiscount.query.filter(
+            CustomerDiscount.id.in_(set(discount_ids)),
+            CustomerDiscount.is_deleted.is_(False),
+        ).order_by(CustomerDiscount.id).all()
+        if len(discounts) != len(set(discount_ids)):
+            return jsonify({"error": "One or more customer discounts were not found"}), 404
+
+        documents = []
+        for discount in discounts:
+            sale_item = discount.sale_item
+            product = (
+                sale_item.product.description if sale_item and sale_item.product
+                else sale_item.non_product.description if sale_item and sale_item.non_product
+                else "Customer discount"
+            )
+            documents.append({
+                'customer': discount.customer.to_dict() if discount.customer else {},
+                'discount': {
+                    'id': discount.id,
+                    'documentInvoiceNumber': discount.document_invoice_number,
+                    'originalInvoiceNumber': discount.sale.invoice_number if discount.sale else None,
+                    'date': discount.date.isoformat(),
+                    'productName': product,
+                    'quantity': 1,
+                    'unitPrice': float(discount.amount or 0),
+                    'amount': float(discount.amount or 0),
+                    'reason': discount.reason,
+                },
+            })
+
+        company = Company.query.first()
+        return jsonify({
+            'company': company.to_dict() if company else {},
+            'discounts': documents,
+        }), 200
+    except ValueError:
+        return jsonify({"error": "Customer discount IDs must be integers"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/customer-returns', methods=['POST'])
 @jwt_required()
 def create_customer_return():
@@ -11045,6 +11173,7 @@ def create_customer_return():
         customer_return_data = CustomerReturnSchema(**schema_data)
         customer_return = CustomerReturn(
             ref_number=ref_number,
+            document_invoice_number=_allocate_invoice_document_number(),
             date=parsed_date,
             customer_id=customer_return_data.customerId,
             sale_id=customer_return_data.saleId,
@@ -12236,6 +12365,7 @@ def create_customer_discount():
             customer_id=customer_id,
             sale_id=sale.id,
             sale_item_id=sale_item.id,
+            document_invoice_number=_allocate_invoice_document_number(),
             amount=amount,
             date=transaction_date,
             reason=reason,

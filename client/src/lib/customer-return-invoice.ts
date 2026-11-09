@@ -6,6 +6,7 @@ interface CustomerReturnPrintRecord {
   returnItem: {
     id: number;
     refNumber: string;
+    documentInvoiceNumber?: string;
     date: string;
     invoiceNumber?: string;
     description: string;
@@ -84,8 +85,8 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
       company: responseData.company,
       customer,
       sale: {
-        invoice_number: returnItem.refNumber,
-        invoiceNumber: returnItem.refNumber,
+        invoice_number: returnItem.documentInvoiceNumber || returnItem.refNumber,
+        invoiceNumber: returnItem.documentInvoiceNumber || returnItem.refNumber,
         date: returnItem.date,
         subtotal: amount,
         total_amount: amount,

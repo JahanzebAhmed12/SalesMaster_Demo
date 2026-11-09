@@ -48,6 +48,7 @@ def main():
                     product_type="regular",
                     description=product.description,
                     invoice_number="INV-100",
+                    document_invoice_number=f"RET{index}",
                     quantity=Decimal(index),
                     unit_price=Decimal("12.50"),
                     total_value=Decimal(index) * Decimal("12.50"),
@@ -72,6 +73,7 @@ def main():
             assert documents[0]["customer"]["customer_name"] == customer.customer_name
             assert documents[0]["product"]["description"] == products[0].description
             assert documents[0]["returnItem"]["invoiceNumber"] == "INV-100"
+            assert documents[0]["returnItem"]["documentInvoiceNumber"] == "RET1"
             assert documents[1]["returnItem"]["refNumber"] == "CRPRINT2"
             assert float(documents[1]["returnItem"]["totalValue"]) == 25.0
 

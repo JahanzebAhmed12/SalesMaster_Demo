@@ -97,6 +97,14 @@ class Sale(db.Model):
             'createdByUsername': self.user.username if self.user else None
         }
 
+
+class InvoiceDocumentNumber(db.Model):
+    """Shared number-series counter for invoices, returns, and discounts."""
+    __tablename__ = 'invoice_document_number'
+
+    id = db.Column(db.Integer, primary_key=True)
+    last_number = db.Column(db.Integer, nullable=False, default=0, server_default='0')
+
 class SaleEditLock(db.Model):
     """Exclusive server-side lease for editing an existing invoice.
 
@@ -1024,6 +1032,7 @@ class CustomerReturn(db.Model):
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     description = db.Column(db.String(200), nullable=False)
     invoice_number = db.Column(db.String(50))  # Original invoice number
+    document_invoice_number = db.Column(db.String(50), nullable=True)
     remarks = db.Column(db.Text)
     quantity = db.Column(db.Numeric(10, 3), nullable=False)
     unit_price = db.Column(db.Numeric(10, 2), default=0)
@@ -1054,6 +1063,7 @@ class CustomerReturn(db.Model):
             'description': self.description,
             'productDescription': self.description,  # Add alias for frontend compatibility
             'invoiceNumber': self.invoice_number,
+            'documentInvoiceNumber': self.document_invoice_number,
             'remarks': self.remarks,
             'quantity': float(self.quantity) if self.quantity else 0,
             'unitPrice': float(self.unit_price) if self.unit_price else 0,
@@ -1080,6 +1090,7 @@ class CustomerDiscount(db.Model):
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
     sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'), nullable=False)
     sale_item_id = db.Column(db.Integer, db.ForeignKey('sale_item.id'), nullable=False)
+    document_invoice_number = db.Column(db.String(50), nullable=True)
     amount = db.Column(db.Numeric(10, 2), nullable=False)
     date = db.Column(db.Date, nullable=False)
     reason = db.Column(db.String(500), nullable=False)
@@ -1112,6 +1123,7 @@ class CustomerDiscount(db.Model):
             'saleId': self.sale_id,
             'saleItemId': self.sale_item_id,
             'invoiceNumber': self.sale.invoice_number if self.sale else None,
+            'documentInvoiceNumber': self.document_invoice_number,
             'productName': (
                 self.sale_item.product.description if self.sale_item and self.sale_item.product
                 else self.sale_item.non_product.description if self.sale_item and self.sale_item.non_product

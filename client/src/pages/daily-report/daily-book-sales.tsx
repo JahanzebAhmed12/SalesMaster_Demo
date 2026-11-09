@@ -28,7 +28,13 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { useToast } from "@/hooks/use-toast";
-import { sendCustomerReturnPdfEmail, sendInvoicePdfEmail } from "@/lib/invoice-pdf";
+import {
+  downloadCustomerDiscountPdf,
+  downloadCustomerReturnPdf,
+  sendCustomerDiscountPdfEmail,
+  sendCustomerReturnPdfEmail,
+  sendInvoicePdfEmail,
+} from "@/lib/invoice-pdf";
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface SalesEntry {
@@ -338,7 +344,7 @@ export default function DailyBookSales() {
   const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const filteredData = useMemo(() => salesData, [salesData]);
-  const selectableData = filteredData.filter(sale => !sale.isCustomerDiscount);
+  const selectableData = filteredData;
   const selectedPaymentSales = useMemo(
     () => salesData.filter(sale => selectedSales.has(sale.id) && !sale.isCustomerReturn && !sale.isCustomerDiscount),
     [salesData, selectedSales]
@@ -842,12 +848,19 @@ export default function DailyBookSales() {
   // Helper for WhatsApp and Email
   const sendInvoiceEmail = async (sale: SalesEntry) => {
     try {
-      if (sale.isCustomerReturn) {
+      if (sale.isCustomerDiscount) {
+        await sendCustomerDiscountPdfEmail(-(sale.id + 1_000_000_000));
+      } else if (sale.isCustomerReturn) {
         await sendCustomerReturnPdfEmail(Math.abs(sale.id));
       } else {
         await sendInvoicePdfEmail(sale.invoiceNo);
       }
-      toast({ title: "Success", description: sale.isCustomerReturn ? "Customer return email sent!" : "Invoice email sent!" });
+      toast({
+        title: "Success",
+        description: sale.isCustomerDiscount
+          ? "Customer discount email sent!"
+          : sale.isCustomerReturn ? "Customer return email sent!" : "Invoice email sent!",
+      });
     } catch (e: any) {
       toast({ title: "Error", description: e?.message || e?.error || "Failed to send invoice email.", variant: "destructive" });
     }
@@ -869,7 +882,9 @@ export default function DailyBookSales() {
 
     for (const sale of selected) {
       try {
-        if (sale.isCustomerReturn) {
+        if (sale.isCustomerDiscount) {
+          await sendCustomerDiscountPdfEmail(-(sale.id + 1_000_000_000));
+        } else if (sale.isCustomerReturn) {
           await sendCustomerReturnPdfEmail(Math.abs(sale.id));
         } else {
           await sendInvoicePdfEmail(sale.invoiceNo);
@@ -877,7 +892,10 @@ export default function DailyBookSales() {
         sent++;
       } catch {
         failed++;
-        failedDocuments.push(sale.isCustomerReturn ? `Return ${sale.invoiceNo}` : sale.invoiceNo);
+        failedDocuments.push(
+          sale.isCustomerDiscount ? `Discount ${sale.invoiceNo}` :
+            sale.isCustomerReturn ? `Return ${sale.invoiceNo}` : sale.invoiceNo,
+        );
       }
       progressToast.update({
         id: progressToast.id,
@@ -897,25 +915,29 @@ export default function DailyBookSales() {
   };
 
   const getSelectedInvoiceNumbers = () => salesData
-    .filter(sale => selectedSales.has(sale.id))
+    .filter(sale => selectedSales.has(sale.id) && !sale.isCustomerReturn && !sale.isCustomerDiscount)
     .map(sale => sale.invoiceNo);
 
   const getSelectedPrintItems = () => {
     const selected = salesData.filter(sale => selectedSales.has(sale.id));
     return {
-      invoiceNumbers: selected.filter(sale => !sale.isCustomerReturn).map(sale => sale.invoiceNo),
+      invoiceNumbers: selected.filter(sale => !sale.isCustomerReturn && !sale.isCustomerDiscount).map(sale => sale.invoiceNo),
       returnIds: selected
         .filter(sale => sale.isCustomerReturn)
         .map(sale => Math.abs(sale.id).toString()),
+      discountIds: selected
+        .filter(sale => sale.isCustomerDiscount)
+        .map(sale => (-(sale.id + 1_000_000_000)).toString()),
     };
   };
 
   const openSelectedPrintItems = (invoicePrintPath: string) => {
-    const { invoiceNumbers, returnIds } = getSelectedPrintItems();
-    if (returnIds.length === 0 && invoiceNumbers.length === 0) return;
+    const { invoiceNumbers, returnIds, discountIds } = getSelectedPrintItems();
+    if (returnIds.length === 0 && discountIds.length === 0 && invoiceNumbers.length === 0) return;
     const query = new URLSearchParams();
     if (invoiceNumbers.length > 0) query.set("invs", invoiceNumbers.join(","));
     if (returnIds.length > 0) query.set("returnIds", returnIds.join(","));
+    if (discountIds.length > 0) query.set("discountIds", discountIds.join(","));
     window.open(`${invoicePrintPath}?${query.toString()}`, '_blank');
   };
 
@@ -1043,9 +1065,9 @@ export default function DailyBookSales() {
       : invoicePrintFormat === 'A5'
         ? `/print/a5-invoice/${sale.invoiceNo}`
         : `/print/invoice/${sale.invoiceNo}`;
-    const printUrl = sale.isCustomerReturn
-      ? `${printPath}?returnId=${Math.abs(sale.id)}`
-      : printPath;
+    const printUrl = sale.isCustomerDiscount
+      ? `${printPath}?discountId=${-(sale.id + 1_000_000_000)}`
+      : sale.isCustomerReturn ? `${printPath}?returnId=${Math.abs(sale.id)}` : printPath;
     window.open(printUrl, '_blank');
   };
 
@@ -1409,7 +1431,6 @@ export default function DailyBookSales() {
                             type="checkbox"
                             className="rounded"
                             checked={selectedSales.has(sale.id)}
-                            disabled={sale.isCustomerDiscount}
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
@@ -1418,12 +1439,10 @@ export default function DailyBookSales() {
                         <TableCell className="text-xs sm:text-sm">
                           {sale.invoiceNo}
                           {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
-                          {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">({sale.discountReference || 'Discount'})</span>}
+                          {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Discount)</span>}
                         </TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
-                          {sale.isCustomerDiscount ? (
-                            <span className="text-gray-700">{getDisplayCustomerName(sale)}</span>
-                          ) : sale.isCustomerReturn ? (
+                          {sale.isCustomerReturn || sale.isCustomerDiscount ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
@@ -1432,17 +1451,39 @@ export default function DailyBookSales() {
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="start" className="w-48">
                                 <DropdownMenuItem className="text-sm py-2" onClick={() => handlePrintTicket(sale)}>
-                                  <Printer className="mr-2 h-4 w-4" /> Print Ticket
+                                  <Printer className="mr-2 h-4 w-4" /> Print
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="text-sm py-2"
+                                  onClick={() => {
+                                    const documentId = sale.isCustomerDiscount
+                                      ? -(sale.id + 1_000_000_000)
+                                      : Math.abs(sale.id);
+                                    const download = sale.isCustomerDiscount
+                                      ? downloadCustomerDiscountPdf(documentId)
+                                      : downloadCustomerReturnPdf(documentId);
+                                    void download.catch((error: unknown) => {
+                                      toast({
+                                        title: "Error",
+                                        description: error instanceof Error ? error.message : "Failed to download PDF.",
+                                        variant: "destructive",
+                                      });
+                                    });
+                                  }}
+                                >
+                                  <FileText className="mr-2 h-4 w-4" /> Download PDF
                                 </DropdownMenuItem>
                                 <DropdownMenuItem className="text-sm py-2" onClick={() => sendInvoiceEmail(sale)}>
                                   <Mail className="mr-2 h-4 w-4" /> Email
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-sm py-2"
-                                  onClick={() => window.open(`/print/packing-list/${encodeURIComponent(sale.invoiceNo)}?returnId=${Math.abs(sale.id)}`, '_blank')}
-                                >
-                                  <Package className="mr-2 h-4 w-4" /> Picking List
-                                </DropdownMenuItem>
+                                {sale.isCustomerReturn && (
+                                  <DropdownMenuItem
+                                    className="text-sm py-2"
+                                    onClick={() => window.open(`/print/packing-list/${encodeURIComponent(sale.invoiceNo)}?returnId=${Math.abs(sale.id)}`, '_blank')}
+                                  >
+                                    <Package className="mr-2 h-4 w-4" /> Picking List
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           ) : (

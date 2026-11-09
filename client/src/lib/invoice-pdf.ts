@@ -3,6 +3,7 @@ import logo from "@/public/printlogo.png";
 import { formatQuantity } from "./utils";
 import { apiRequest } from "./queryClient";
 import { fetchCustomerReturnInvoices } from "./customer-return-invoice";
+import { fetchCustomerDiscountInvoices } from "./customer-discount-invoice";
 
 interface InvoicePdfData {
   company: any;
@@ -120,12 +121,15 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(26, 35, 126);
+  const documentNumberLabel = invoiceData.sale?.isCustomerReturn
+    ? "Return No"
+    : invoiceData.sale?.isCustomerDiscount ? "Discount Invoice No" : "Invoice No";
   doc.text(
-    `${invoiceData.sale?.isCustomerReturn ? "Return No" : "Invoice No"}: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`,
+    `${documentNumberLabel}: ${invoiceData.sale?.invoice_number || invoiceData.sale?.invoiceNumber}`,
     rightX,
     yPos + 15,
   );
-  if (invoiceData.sale?.isCustomerReturn && invoiceData.sale?.originalInvoiceNumber) {
+  if ((invoiceData.sale?.isCustomerReturn || invoiceData.sale?.isCustomerDiscount) && invoiceData.sale?.originalInvoiceNumber) {
     doc.setFontSize(10);
     doc.text(`Original Invoice: ${invoiceData.sale.originalInvoiceNumber}`, rightX, yPos + 20);
   }
@@ -341,6 +345,58 @@ export async function sendCustomerReturnPdfEmail(returnId: number): Promise<void
     body: `Please find attached customer return ${returnNumber}.`,
     attachment: {
       filename: `customer-return-${returnNumber}.pdf`,
+      content: base64PDF,
+      contentType: "application/pdf",
+    },
+  });
+}
+
+function downloadInvoicePdf(invoiceData: InvoicePdfData, filename: string): void {
+  const url = URL.createObjectURL(generateInvoicePdfBlob(invoiceData));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function downloadCustomerReturnPdf(returnId: number): Promise<void> {
+  const [returnData] = await fetchCustomerReturnInvoices([String(returnId)]);
+  if (!returnData) throw new Error("Customer return could not be loaded");
+  downloadInvoicePdf(returnData, `customer-return-${returnData.sale.invoice_number}.pdf`);
+}
+
+async function getCustomerDiscountPdfData(discountId: number): Promise<InvoicePdfData> {
+  const [discountData] = await fetchCustomerDiscountInvoices([String(discountId)]);
+  if (!discountData) throw new Error("Customer discount could not be loaded");
+  return discountData;
+}
+
+export async function downloadCustomerDiscountPdf(discountId: number): Promise<void> {
+  const discountData = await getCustomerDiscountPdfData(discountId);
+  downloadInvoicePdf(discountData, `customer-discount-${discountData.sale.invoice_number}.pdf`);
+}
+
+export async function sendCustomerDiscountPdfEmail(discountId: number): Promise<void> {
+  const discountData = await getCustomerDiscountPdfData(discountId);
+  const customerEmails: string[] = [];
+  const emailValue = discountData.customer.email;
+  if (typeof emailValue === "string") {
+    emailValue.split(",").forEach(email => {
+      const trimmed = email.trim();
+      if (trimmed) customerEmails.push(trimmed);
+    });
+  }
+  if (customerEmails.length === 0) throw new Error("No email addresses available");
+
+  const discountNumber = String(discountData.sale.invoice_number);
+  const base64PDF = await base64FromBlob(generateInvoicePdfBlob(discountData));
+  await apiRequest("POST", "/api/send-email", {
+    to: customerEmails,
+    subject: `Customer Discount - ${discountNumber}`,
+    body: `Please find attached customer discount ${discountNumber}.`,
+    attachment: {
+      filename: `customer-discount-${discountNumber}.pdf`,
       content: base64PDF,
       contentType: "application/pdf",
     },
