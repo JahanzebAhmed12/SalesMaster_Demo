@@ -323,8 +323,8 @@ export default function CustomerStatement() {
       'Credit Inv.', 
       'Cash Inv.', 
       'Paid', 
+      'Credit',
       'Credit/Adj', 
-      'Discount/Adj', 
       'Balance', 
       'Running Balance'
     ];
@@ -402,8 +402,8 @@ export default function CustomerStatement() {
       { wch: 12 },  // Credit Inv.
       { wch: 12 },  // Cash Inv.
       { wch: 12 },  // Paid
+      { wch: 12 },  // Credit
       { wch: 12 },  // Credit/Adj
-      { wch: 12 },  // Discount/Adj
       { wch: 12 },  // Balance
       { wch: 15 }   // Running Balance
     ];
@@ -546,8 +546,8 @@ export default function CustomerStatement() {
       'Credit Inv.', 
       'Cash Inv.', 
       'Paid', 
+      'Credit',
       'Credit/Adj', 
-      'Discount/Adj', 
       'Balance', 
       'Running Balance'
     ];
@@ -614,8 +614,8 @@ export default function CustomerStatement() {
         4: { cellWidth: 15, halign: 'right' },  // Credit Inv.
         5: { cellWidth: 15, halign: 'right' },  // Cash Inv.
         6: { cellWidth: 15, halign: 'right' },  // Paid
-        7: { cellWidth: 15, halign: 'right' },  // Credit/Adj
-        8: { cellWidth: 15, halign: 'right' },  // Discount/Adj
+        7: { cellWidth: 15, halign: 'right' },  // Credit
+        8: { cellWidth: 15, halign: 'right' },  // Credit/Adj
         9: { cellWidth: 15, halign: 'right' },  // Balance
         10: { cellWidth: 20, halign: 'right' }  // Running Balance
       },
@@ -648,7 +648,7 @@ export default function CustomerStatement() {
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tDate\tInvoice #\tDescription\tCredit Inv.\tCash Inv.\tPaid\tCredit/Adj\tDiscount/Adj\tBalance\tRunning Balance\n';
+    let text = 'Sl.No\tDate\tInvoice #\tDescription\tCredit Inv.\tCash Inv.\tPaid\tCredit\tCredit/Adj\tBalance\tRunning Balance\n';
     text += processedStatementData.map((row: StatementData) => [
       row.slNo,
       row.date,
@@ -853,8 +853,8 @@ export default function CustomerStatement() {
                     <TableHead className="text-center">Credit Inv.</TableHead>
                     <TableHead className="text-center">Cash Inv.</TableHead>
                     <TableHead className="text-center">Paid</TableHead>
+                    <TableHead className="text-center">Credit</TableHead>
                     <TableHead className="text-center">Credit/Adj</TableHead>
-                    <TableHead className="text-center">Discount/Adj</TableHead>
                     <TableHead className="text-center">Balance</TableHead>
                     <TableHead className="text-center">Running Balance</TableHead>
                   </TableRow>

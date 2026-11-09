@@ -351,6 +351,7 @@ def main():
             assert statement_response.status_code == 200
             assert len(statement) == 1
             discount_row = next(row for row in statement if row["discountAdj"])
+            assert discount_row["description"] == "Customer Discount - Invoice DISC-100"
             assert discount_row["discountAdj"] == 20
             assert discount_row["balance"] == -20
 
@@ -838,6 +839,107 @@ def main():
             assert stock_row["dmps"] == 3
             assert stock_row["srtn"] == 1
             assert stock_row["stock"] == 12
+
+            statement_return = CustomerReturn(
+                ref_number="CR-STATEMENT-RETURN",
+                document_invoice_number="1001",
+                date=date(2026, 6, 15),
+                customer_id=customer.id,
+                sale_id=sale.id,
+                product_id=product.id,
+                product_type="regular",
+                description=product.description,
+                invoice_number=sale.invoice_number,
+                quantity=Decimal("1.000"),
+                unit_price=Decimal("10.00"),
+                total_value=Decimal("10.00"),
+                return_reason="Damaged product",
+                credit_note_issued=True,
+                credit_note_amount=Decimal("10.00"),
+                status="completed",
+            )
+            db.session.add(statement_return)
+            db.session.flush()
+            db.session.add(Payment(
+                customer_id=customer.id,
+                sale_id=sale.id,
+                amount=Decimal("-10.00"),
+                payment_mode="credit_note",
+                payment_date=date(2026, 6, 15),
+                remarks=f"Credit note for return: {statement_return.ref_number}",
+            ))
+            db.session.commit()
+
+            statement_with_return_response = client.get(
+                "/api/reports/customer-statement"
+                f"?customerId={customer.id}&fromDate=2026-06-15&toDate=2026-06-15",
+                headers=headers,
+            )
+            statement_with_return = statement_with_return_response.get_json() or []
+            assert statement_with_return_response.status_code == 200
+            return_row = next(
+                row for row in statement_with_return
+                if row["description"] == "Customer Return - Invoice DISC-100"
+            )
+            assert return_row["invoiceNo"] == "1001"
+            assert return_row["accountAdj"] == 10
+            assert return_row["balance"] == -10
+            assert sum(row["paid"] for row in statement_with_return) == 100
+
+            negative_customer = Customer(
+                customer_code="CUST-NEGATIVE-RETURN",
+                customer_name="Negative Sale Return Customer",
+            )
+            db.session.add(negative_customer)
+            db.session.flush()
+            negative_sale = Sale(
+                invoice_number="NEG-RETURN-100",
+                customer_id=negative_customer.id,
+                customer_type="account",
+                payment_status="pending",
+                subtotal=Decimal("-10.00"),
+                total_amount=Decimal("-10.00"),
+                paid_amount=Decimal("0.00"),
+                status="finalized",
+                date=datetime(2026, 6, 15, 10, 0),
+                created_by=user.id,
+            )
+            db.session.add(negative_sale)
+            db.session.flush()
+            db.session.add_all([
+                SaleItem(
+                    sale_id=negative_sale.id,
+                    product_id=product.id,
+                    quantity=Decimal("-1.000"),
+                    unit_price=Decimal("10.00"),
+                    total_price=Decimal("-10.00"),
+                ),
+                CustomerReturn(
+                    ref_number="CR-NEGATIVE-SALE-RETURN",
+                    date=date(2026, 6, 15),
+                    customer_id=negative_customer.id,
+                    sale_id=negative_sale.id,
+                    product_id=product.id,
+                    product_type="regular",
+                    description=product.description,
+                    invoice_number=negative_sale.invoice_number,
+                    quantity=Decimal("1.000"),
+                    unit_price=Decimal("10.00"),
+                    total_value=Decimal("10.00"),
+                    return_reason="Return via negative quantity sale",
+                    status="completed",
+                ),
+            ])
+            db.session.commit()
+            negative_statement_response = client.get(
+                "/api/reports/customer-statement"
+                f"?customerId={negative_customer.id}&fromDate=2026-06-15&toDate=2026-06-15",
+                headers=headers,
+            )
+            negative_statement = negative_statement_response.get_json() or []
+            assert negative_statement_response.status_code == 200
+            assert len(negative_statement) == 1
+            assert negative_statement[0]["description"] == "Credit Note"
 
             assert customer.customer_name == "Discount Test Customer"
             assert sale.total_amount == Decimal("100.00")

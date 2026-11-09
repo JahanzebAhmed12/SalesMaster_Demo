@@ -7405,6 +7405,23 @@ def customer_statement():
         Sale.date < to_dt,
         Sale.status == 'finalized'
     ).order_by(Sale.date.asc(), Sale.id.asc()).all()
+
+    customer_returns = CustomerReturn.query.filter(
+        CustomerReturn.customer_id == customer_id,
+        CustomerReturn.date >= from_dt.date(),
+        CustomerReturn.date < to_dt.date(),
+        CustomerReturn.status == 'completed',
+    ).order_by(CustomerReturn.date.asc(), CustomerReturn.id.asc()).all()
+    negative_sale_ids = {
+        sale_id for (sale_id,) in db.session.query(SaleItem.sale_id)
+        .join(Sale, SaleItem.sale_id == Sale.id)
+        .filter(
+            Sale.customer_id == customer_id,
+            SaleItem.quantity < 0,
+        )
+        .distinct()
+        .all()
+    }
     
     # Get all payments (both invoice-specific and on-account)
     payments = Payment.query.filter(
@@ -7443,6 +7460,41 @@ def customer_statement():
             'timestamp': sale.date.timestamp() if hasattr(sale.date, 'timestamp') else sale.date.replace(tzinfo=None).timestamp()
         })
 
+    statement_return_refs = set()
+    for customer_return in customer_returns:
+        # Negative-quantity sales already appear as credit rows; their linked
+        # return records are only for inventory tracking.
+        if customer_return.sale_id in negative_sale_ids:
+            continue
+
+        statement_return_refs.add(customer_return.ref_number)
+        return_amount = abs(float(customer_return.total_value or 0))
+        return_datetime = datetime.combine(customer_return.date, datetime.min.time())
+        original_invoice = customer_return.invoice_number
+        entries.append({
+            'date': return_datetime,
+            'type': 'customer_return',
+            'invoiceNo': (
+                customer_return.document_invoice_number
+                or original_invoice
+                or customer_return.ref_number
+            ),
+            'description': (
+                f'Customer Return - Invoice {original_invoice}'
+                if original_invoice
+                else f'Customer Return - {customer_return.ref_number}'
+            ),
+            'accountInv': 0,
+            'cashInv': 0,
+            'paid': 0,
+            'accountAdj': return_amount,
+            'discountAdj': 0,
+            'balance': -return_amount,
+            'sale_id': customer_return.sale_id,
+            'sort_priority': 2,
+            'timestamp': return_datetime.timestamp(),
+        })
+
     discounts = CustomerDiscount.query.filter(
         CustomerDiscount.customer_id == customer_id,
         CustomerDiscount.date >= from_dt.date(),
@@ -7455,7 +7507,10 @@ def customer_statement():
             'date': discount_datetime,
             'type': 'customer_discount',
             'invoiceNo': discount.sale.invoice_number if discount.sale else '',
-            'description': f'Customer Discount - {discount.reference}',
+            'description': (
+                f'Customer Discount - Invoice {discount.sale.invoice_number}'
+                if discount.sale else f'Customer Discount - {discount.reference}'
+            ),
             'accountInv': 0,
             'cashInv': 0,
             'paid': 0,
@@ -7480,6 +7535,13 @@ def customer_statement():
 
     # Add payment entries
     for payment in payments:
+        if payment.payment_mode == 'credit_note' and any(
+            ref_number in (payment.remarks or '')
+            for ref_number in statement_return_refs
+        ):
+            # The associated completed return is represented above as a credit
+            # adjustment, so its bookkeeping payment must not be counted again.
+            continue
         if payment.payment_type == 'credit':
             # 0-amount credit-application row: the credit is already shown above
             # as a Credit Note sale entry, so skip the redundant 0-amount line.
