@@ -34,7 +34,7 @@ const FIELD_POSITIONS = {
   date: { top: '77mm', left: '60mm' },
   time: { top: '77mm', left: '95mm' },
   pageNumber: { top: '77mm', left: '125mm' },
-  itemsStartTop: '95mm',
+  itemsStartTop: '90mm',
   itemsRowHeight: '4mm',
   maxItemsPerPage: 11,
   columns: {
@@ -63,7 +63,7 @@ function estimateLines(text: string): number {
 }
 
 const ITEMS_START_TOP_MM = parseInt(FIELD_POSITIONS.itemsStartTop);
-const ITEMS_AVAILABLE_HEIGHT_MM = 72;
+const ITEMS_AVAILABLE_HEIGHT_MM = 68;
 const NOTES_EXTRA_GAP_MM = 3.5;
 
 function InvoicePages({ data, isLastInvoice }: { data: InvoiceData; isLastInvoice: boolean }) {
