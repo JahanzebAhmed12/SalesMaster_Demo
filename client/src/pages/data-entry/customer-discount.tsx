@@ -24,6 +24,7 @@ interface CustomerInvoice {
   paidAmount: number;
   discountAmount: number;
   outstandingAmount: number;
+  availableDiscountAmount: number;
   discountEligible: boolean;
 }
 
@@ -48,6 +49,7 @@ interface DiscountInvoice {
   paidAmount: number;
   discountTotal: number;
   outstandingAmount: number;
+  availableDiscountAmount: number;
   discountEligible: boolean;
   items: DiscountLine[];
 }
@@ -135,7 +137,7 @@ export default function CustomerDiscountPage() {
     ? selectedLine.remainingValue + editingAmount
     : 0;
   const maxInvoiceDiscount = invoiceQuery.data
-    ? invoiceQuery.data.outstandingAmount + editingAmount
+    ? invoiceQuery.data.availableDiscountAmount + editingAmount
     : 0;
   const parsedAmount = Number(amount);
   const previewLineTotal = selectedLine
@@ -246,7 +248,7 @@ export default function CustomerDiscountPage() {
       return;
     }
     if (parsedAmount > maxLineDiscount || parsedAmount > maxInvoiceDiscount) {
-      toast({ title: "Discount exceeds the limit", description: "The amount cannot exceed the remaining line value or invoice balance.", variant: "destructive" });
+      toast({ title: "Discount exceeds the limit", description: "The amount cannot exceed the remaining line value or undiscounted invoice value.", variant: "destructive" });
       return;
     }
     if (!reason.trim()) {
@@ -355,7 +357,7 @@ export default function CustomerDiscountPage() {
                   )}
                   {(invoicesQuery.data || []).map(invoice => (
                     <option key={invoice.id} value={invoice.id} disabled={!invoice.discountEligible}>
-                      {invoice.invoiceNumber} — {format(new Date(invoice.date), "dd/MM/yyyy")} — outstanding {money(invoice.outstandingAmount)}
+                      {invoice.invoiceNumber} — {format(new Date(invoice.date), "dd/MM/yyyy")} — outstanding {money(invoice.outstandingAmount)} — discountable {money(invoice.availableDiscountAmount)}
                       {!invoice.discountEligible ? " (not eligible)" : ""}
                     </option>
                   ))}
@@ -389,7 +391,9 @@ export default function CustomerDiscountPage() {
                     <span>Paid: <strong>{money(invoiceQuery.data.paidAmount)}</strong></span>
                     <span>Outstanding: <strong>{money(invoiceQuery.data.outstandingAmount)}</strong></span>
                     <span>Discounts already applied: <strong>{money(invoiceQuery.data.discountTotal)}</strong></span>
-                    {!invoiceQuery.data.discountEligible && <span className="text-destructive sm:col-span-3">This invoice is fully settled or otherwise ineligible for a new discount.</span>}
+                    <span>Remaining value available for discounts: <strong>{money(invoiceQuery.data.availableDiscountAmount)}</strong></span>
+                    <span className="text-muted-foreground sm:col-span-3">Payment status does not limit discounts. A discount on a paid invoice may create customer credit.</span>
+                    {!invoiceQuery.data.discountEligible && <span className="text-destructive sm:col-span-3">This invoice has no remaining value eligible for a discount.</span>}
                   </div>
                 ) : null}
               </div>
@@ -453,7 +457,8 @@ export default function CustomerDiscountPage() {
 
             {selectedLine && Number.isFinite(parsedAmount) && parsedAmount > 0 && (
               <div className="rounded-md bg-blue-50 p-3 text-sm">
-                After this discount: line total <strong>{money(previewLineTotal)}</strong> · effective average unit price <strong>{money(previewUnitPrice)}</strong> · invoice balance <strong>{money(Math.max(0, (invoiceQuery.data?.outstandingAmount || 0) - parsedAmount + editingAmount))}</strong>
+                After this discount: line total <strong>{money(previewLineTotal)}</strong> · effective average unit price <strong>{money(previewUnitPrice)}</strong> · invoice balance <strong>{money((invoiceQuery.data?.outstandingAmount || 0) - parsedAmount + editingAmount)}</strong>
+                {(invoiceQuery.data?.outstandingAmount || 0) - parsedAmount + editingAmount < 0 && <> · customer credit <strong>{money(Math.abs((invoiceQuery.data?.outstandingAmount || 0) - parsedAmount + editingAmount))}</strong></>}
               </div>
             )}
 

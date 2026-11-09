@@ -562,9 +562,9 @@ def main():
                     "customerId": partial_customer.id,
                     "saleId": partial_sale.id,
                     "saleItemId": partial_item.id,
-                    "amount": "0.01",
+                    "amount": "40.01",
                     "date": "2026-06-15",
-                    "reason": "Over the remaining balance",
+                    "reason": "Exceeds remaining invoice value",
                 },
                 headers=headers,
             )
@@ -633,6 +633,26 @@ def main():
             ))
             sale.paid_amount = Decimal("100.00")
             db.session.commit()
+            paid_invoice_lines_response = client.get(
+                f"/api/customer-discounts/invoices/{sale.id}",
+                headers=headers,
+            )
+            paid_invoice_lines = paid_invoice_lines_response.get_json() or {}
+            assert paid_invoice_lines_response.status_code == 200
+            assert paid_invoice_lines["discountEligible"] is True
+            assert paid_invoice_lines["availableDiscountAmount"] == 100
+
+            customer_invoices_response = client.get(
+                f"/api/customers/{customer.id}/invoices"
+                "?fromDate=2026-06-01&toDate=2026-06-15",
+                headers=headers,
+            )
+            customer_invoices = customer_invoices_response.get_json() or []
+            paid_invoice = next(invoice for invoice in customer_invoices if invoice["id"] == sale.id)
+            assert customer_invoices_response.status_code == 200
+            assert paid_invoice["discountEligible"] is True
+            assert paid_invoice["availableDiscountAmount"] == 100
+
             paid_invoice_response = client.post(
                 "/api/customer-discounts",
                 json={
@@ -641,11 +661,27 @@ def main():
                     "saleItemId": item.id,
                     "amount": "1.00",
                     "date": "2026-06-15",
-                    "reason": "Should not be accepted",
+                    "reason": "Paid invoice discount",
                 },
                 headers=headers,
             )
-            assert paid_invoice_response.status_code == 400
+            assert paid_invoice_response.status_code == 201, paid_invoice_response.get_json()
+            db.session.refresh(customer)
+            assert customer.running_balance == Decimal("99.00")
+
+            excessive_paid_discount_response = client.post(
+                "/api/customer-discounts",
+                json={
+                    "customerId": customer.id,
+                    "saleId": sale.id,
+                    "saleItemId": item.id,
+                    "amount": "100.00",
+                    "date": "2026-06-15",
+                    "reason": "Exceeds remaining value",
+                },
+                headers=headers,
+            )
+            assert excessive_paid_discount_response.status_code == 400
 
             restriction = UserRestriction(
                 user_id=user.id,
@@ -770,7 +806,7 @@ def main():
             assert sale.total_amount == Decimal("100.00")
             assert db.session.execute(
                 db.text("SELECT COUNT(*) FROM customer_discount")
-            ).scalar_one() == 2
+            ).scalar_one() == 3
         finally:
             db.session.remove()
             db.drop_all()

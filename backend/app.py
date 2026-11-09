@@ -1445,6 +1445,42 @@ def _sale_outstanding(sale, through_date=None, exclude_discount_id=None):
     ).quantize(CENT)
 
 
+def _sale_available_discount_value(sale, exclude_discount_id=None):
+    """Return the unreturned, undiscounted value, independent of payments."""
+    invoice_value = (
+        _money_decimal(sale.total_amount)
+        - _sale_return_total(sale.id)
+        - _active_discount_total_for_sale(sale.id, exclude_id=exclude_discount_id)
+    )
+    sale_items = [
+        item for item in sale.items
+        if _money_decimal(item.total_price) > 0
+    ]
+    line_discounts = {}
+    if sale_items:
+        line_discount_query = db.session.query(
+            CustomerDiscount.sale_item_id,
+            func.coalesce(func.sum(CustomerDiscount.amount), 0),
+        ).filter(
+            CustomerDiscount.sale_item_id.in_([item.id for item in sale_items]),
+            CustomerDiscount.is_deleted.is_(False),
+        )
+        if exclude_discount_id is not None:
+            line_discount_query = line_discount_query.filter(
+                CustomerDiscount.id != exclude_discount_id
+            )
+        line_discounts = dict(line_discount_query.group_by(CustomerDiscount.sale_item_id).all())
+    line_value = sum(
+        max(
+            Decimal("0.00"),
+            _money_decimal(item.total_price)
+            - _money_decimal(line_discounts.get(item.id)),
+        )
+        for item in sale_items
+    )
+    return max(Decimal("0.00"), min(invoice_value, line_value)).quantize(CENT)
+
+
 def _check_discount_date_permission(user_id, target_date, operation, existing_date=None):
     business_date = get_business_date()
     if target_date > business_date:
@@ -12238,17 +12274,17 @@ def _validate_discount_target(data, user_id, existing=None):
     available_line_value = _money_decimal(sale_item.total_price) - _active_discount_total_for_item(
         sale_item.id, excluded_id
     )
-    available_invoice_balance = _sale_outstanding(sale, exclude_discount_id=excluded_id)
+    available_invoice_value = _sale_available_discount_value(sale, exclude_discount_id=excluded_id)
     if existing:
         available_line_value = max(available_line_value, old_amount)
-        available_invoice_balance = max(available_invoice_balance, old_amount)
-    elif available_invoice_balance <= 0:
-        raise ValueError("This invoice is already paid or has no outstanding balance.")
+        available_invoice_value = max(available_invoice_value, old_amount)
+    elif available_invoice_value <= 0:
+        raise ValueError("This invoice has no remaining value eligible for a discount.")
 
     if amount > available_line_value:
         raise ValueError("Discount cannot exceed the remaining value of the selected product line.")
-    if amount > available_invoice_balance:
-        raise ValueError("Discount cannot exceed the invoice's outstanding balance.")
+    if amount > available_invoice_value:
+        raise ValueError("Discount cannot exceed the invoice's remaining undiscounted value.")
 
     return customer_id, sale, sale_item, amount, transaction_date, reason
 
@@ -12306,6 +12342,7 @@ def get_customer_discount_invoice_lines(sale_id):
     paid = _sale_paid_amount(sale)
     discount_total = _active_discount_total_for_sale(sale.id)
     outstanding = _sale_outstanding(sale)
+    available_discount_value = _sale_available_discount_value(sale)
     lines = []
     for item in sale.items:
         line_total = _money_decimal(item.total_price)
@@ -12339,7 +12376,8 @@ def get_customer_discount_invoice_lines(sale_id):
         "paidAmount": float(paid),
         "discountTotal": float(discount_total),
         "outstandingAmount": float(outstanding),
-        "discountEligible": outstanding > 0,
+        "availableDiscountAmount": float(available_discount_value),
+        "discountEligible": available_discount_value > 0,
         "items": lines,
     })
 
@@ -12526,6 +12564,7 @@ def get_customer_invoices(customer_id):
             paid_amount = _sale_paid_amount(sale)
             discount_amount = _active_discount_total_for_sale(sale.id)
             outstanding_amount = _sale_outstanding(sale)
+            available_discount_amount = _sale_available_discount_value(sale)
             invoices.append({
                 'id': sale.id,
                 'invoiceNumber': sale.invoice_number,
@@ -12534,11 +12573,8 @@ def get_customer_invoices(customer_id):
                 'paidAmount': float(paid_amount),
                 'discountAmount': float(discount_amount),
                 'outstandingAmount': float(outstanding_amount),
-                'discountEligible': (
-                    sale.status == 'finalized'
-                    and _money_decimal(sale.total_amount) > 0
-                    and outstanding_amount > 0
-                ),
+                'availableDiscountAmount': float(available_discount_amount),
+                'discountEligible': available_discount_amount > 0,
                 'customerType': sale.customer_type,
                 'status': sale.status
             })
