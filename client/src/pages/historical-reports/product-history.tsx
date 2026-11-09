@@ -288,41 +288,41 @@ export default function ProductHistory() {
       
       // Sales Section
       ['SALES'],
-      ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'],
       ...sortedSales.map((row: any, idx: number) => [
-        idx + 1, row.date, row.invoiceNo, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
+        idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
       // Customer Returns Section
       ['CUSTOMER RETURNS'],
-      ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'],
       ...sortedCustomerReturns.map((row: any, idx: number) => [
-        idx + 1, row.date, row.invoice, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
+        idx + 1, row.date, row.invoice, row.customerName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
       // From Supplier Section
       ['FROM SUPPLIER'],
-      ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'],
       ...sortedPurchases.map((row: any, idx: number) => [
-        idx + 1, row.date, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
+        idx + 1, row.date, row.supplierName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
       // Supplier Returns Section
       ['SUPPLIER RETURNS'],
-      ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'],
+      ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'],
       ...sortedSupplierReturns.map((row: any, idx: number) => [
-        idx + 1, row.date, row.invoice, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total
+        idx + 1, row.date, row.invoice, row.supplierName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total
       ]),
       [''],
       
       // Dumps Section
       ['DUMPS'],
-      ['Sl.No', 'Date', 'Product', 'Total Qty'],
+      ['Sl.No', 'Date', 'Product', 'Notes', 'Total Qty'],
       ...sortedDumps.map((row: any, idx: number) => [
-        idx + 1, row.date, row.product, row.totalQty
+        idx + 1, row.date, row.product, row.notes, row.totalQty
       ])
     ];
 
@@ -354,11 +354,11 @@ export default function ProductHistory() {
     
     // Add all tables
     const tables = [
-      { title: 'SALES', data: sortedSales, headers: ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total'] },
-      { title: 'CUSTOMER RETURNS', data: sortedCustomerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total'] },
-      { title: 'FROM SUPPLIER', data: sortedPurchases, headers: ['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
-      { title: 'SUPPLIER RETURNS', data: sortedSupplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total'] },
-      { title: 'DUMPS', data: sortedDumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
+      { title: 'SALES', data: sortedSales, headers: ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'CUSTOMER RETURNS', data: sortedCustomerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'FROM SUPPLIER', data: sortedPurchases, headers: ['Sl.No', 'Date', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'SUPPLIER RETURNS', data: sortedSupplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'DUMPS', data: sortedDumps, headers: ['Sl.No', 'Date', 'Product', 'Notes', 'Total Qty'] }
     ];
     
     tables.forEach((table, index) => {
@@ -372,15 +372,15 @@ export default function ProductHistory() {
         // Prepare table data
         const tableData = table.data.map((row: any, idx: number) => {
           if (table.title === 'DUMPS') {
-            return [idx + 1, row.date, row.product, row.totalQty];
+            return [idx + 1, row.date, row.product, row.notes, row.totalQty];
           } else if (table.title === 'FROM SUPPLIER') {
-            return [idx + 1, row.date, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
+            return [idx + 1, row.date, row.supplierName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total];
           } else if (table.title === 'SUPPLIER RETURNS') {
-            return [idx + 1, row.date, row.invoice, row.supplierName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
+            return [idx + 1, row.date, row.invoice, row.supplierName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total];
           } else if (table.title === 'SALES') {
-            return [idx + 1, row.date, row.invoiceNo, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
+            return [idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total];
           } else { // Customer Returns
-            return [idx + 1, row.date, row.invoice, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total];
+            return [idx + 1, row.date, row.invoice, row.customerName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total];
           }
         });
         
@@ -398,19 +398,21 @@ export default function ProductHistory() {
             fontStyle: 'bold'
           },
           columnStyles: table.title === 'DUMPS' ? {
-            0: { cellWidth: 20, halign: 'center' },
-            1: { cellWidth: 30, halign: 'center' },
-            2: { cellWidth: 80, halign: 'left' },
-            3: { cellWidth: 25, halign: 'center' }
-          } : {
             0: { cellWidth: 15, halign: 'center' },
             1: { cellWidth: 25, halign: 'center' },
-            2: { cellWidth: 25, halign: 'center' },
-            3: { cellWidth: 60, halign: 'left' },
-            4: { cellWidth: 60, halign: 'left' },
-            5: { cellWidth: 20, halign: 'center' },
-            6: { cellWidth: 25, halign: 'right' },
-            7: { cellWidth: 25, halign: 'right' }
+            2: { cellWidth: 65, halign: 'left' },
+            3: { cellWidth: 90, halign: 'left' },
+            4: { cellWidth: 25, halign: 'center' }
+          } : {
+            0: { cellWidth: 12, halign: 'center' },
+            1: { cellWidth: 22, halign: 'center' },
+            2: { cellWidth: 22, halign: 'center' },
+            3: { cellWidth: 42, halign: 'left' },
+            4: { cellWidth: 42, halign: 'left' },
+            5: { cellWidth: 55, halign: 'left' },
+            6: { cellWidth: 18, halign: 'center' },
+            7: { cellWidth: 20, halign: 'right' },
+            8: { cellWidth: 20, halign: 'right' }
           },
           margin: { left: 20, right: 20 }
         });
@@ -446,45 +448,45 @@ export default function ProductHistory() {
     // Add all sections
     if (sortedSales.length > 0) {
       text += 'SALES\n';
-      text += 'Sl.No\tDate\tInvoice\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
+      text += 'Sl.No\tDate\tInvoice\tCustomer\tProduct\tNotes\tQty\tUnit Price\tTotal\n';
       sortedSales.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.invoiceNo}\t${row.customerName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.invoiceNo}\t${row.customerName}\t${row.product}\t${row.notes || ''}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
     
     if (sortedCustomerReturns.length > 0) {
       text += 'CUSTOMER RETURNS\n';
-      text += 'Sl.No\tDate\tInvoice#\tCustomer\tProduct\tQty\tUnit Price\tTotal\n';
+      text += 'Sl.No\tDate\tInvoice#\tCustomer\tProduct\tNotes\tQty\tUnit Price\tTotal\n';
       sortedCustomerReturns.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.customerName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.customerName}\t${row.product}\t${row.notes || ''}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
     
     if (sortedPurchases.length > 0) {
       text += 'FROM SUPPLIER\n';
-      text += 'Sl.No\tDate\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
+      text += 'Sl.No\tDate\tSupplier\tProduct\tNotes\tQty\tUnit Price\tTotal\n';
       sortedPurchases.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.supplierName}\t${row.product}\t${row.notes || ''}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
     
     if (sortedSupplierReturns.length > 0) {
       text += 'SUPPLIER RETURNS\n';
-      text += 'Sl.No\tDate\tInvoice#\tSupplier\tProduct\tQty\tUnit Price\tTotal\n';
+      text += 'Sl.No\tDate\tInvoice#\tSupplier\tProduct\tNotes\tQty\tUnit Price\tTotal\n';
       sortedSupplierReturns.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.supplierName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.invoice}\t${row.supplierName}\t${row.product}\t${row.notes || ''}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
       });
       text += '\n';
     }
     
     if (sortedDumps.length > 0) {
       text += 'DUMPS\n';
-      text += 'Sl.No\tDate\tProduct\tTotal Qty\n';
+      text += 'Sl.No\tDate\tProduct\tNotes\tTotal Qty\n';
       sortedDumps.forEach((row: any, idx: number) => {
-        text += `${idx + 1}\t${row.date}\t${row.product}\t${row.totalQty}\n`;
+        text += `${idx + 1}\t${row.date}\t${row.product}\t${row.notes || ''}\t${row.totalQty}\n`;
       });
     }
     
@@ -507,11 +509,11 @@ export default function ProductHistory() {
     
     // Add all sections
     const sections = [
-      { title: 'SALES', data: sortedSales, headers: ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-      { title: 'CUSTOMER RETURNS', data: sortedCustomerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-      { title: 'FROM SUPPLIER', data: sortedPurchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-      { title: 'SUPPLIER RETURNS', data: sortedSupplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Quantity', 'Unit Price', 'Total'] },
-      { title: 'DUMPS', data: sortedDumps, headers: ['Sl.No', 'Date', 'Product', 'Total Qty'] }
+      { title: 'SALES', data: sortedSales, headers: ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'CUSTOMER RETURNS', data: sortedCustomerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'FROM SUPPLIER', data: sortedPurchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'SUPPLIER RETURNS', data: sortedSupplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'DUMPS', data: sortedDumps, headers: ['Sl.No', 'Date', 'Product', 'Notes', 'Total Qty'] }
     ];
     
     sections.forEach(section => {
@@ -531,6 +533,7 @@ export default function ProductHistory() {
           
           if (section.title === 'DUMPS') {
             html += `<td>${row.product}</td>`;
+            html += `<td>${row.notes || ''}</td>`;
             html += `<td>${row.totalQty}</td>`;
           } else {
             if (section.title === 'FROM SUPPLIER' || section.title === 'SUPPLIER RETURNS') {
@@ -545,6 +548,7 @@ export default function ProductHistory() {
               html += `<td>${row.customerName || row.invoiceNo}</td>`;
             }
             html += `<td>${row.product}</td>`;
+            html += `<td>${row.notes || ''}</td>`;
             html += `<td>${formatQuantity(row.quantity)}</td>`;
             html += `<td>${row.unitPrice}</td>`;
             html += `<td>${row.total}</td>`;
@@ -763,6 +767,7 @@ export default function ProductHistory() {
                     </TableHead>
                     <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
                     <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[180px]">Notes</TableHead>
                     <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
                     <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
                     <TableHead className="text-center min-w-[100px]">Total</TableHead>
@@ -771,11 +776,11 @@ export default function ProductHistory() {
                 <TableBody>
                   {loadingHistory ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                      <TableCell colSpan={9} className="text-center py-4">Loading...</TableCell>
                     </TableRow>
                   ) : sortedSales.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                      <TableCell colSpan={9} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
                     sortedSales.map((sale, idx) => (
@@ -795,6 +800,7 @@ export default function ProductHistory() {
                           </span>
                         </TableCell>
                         <TableCell className="text-center">{sale.product}</TableCell>
+                        <TableCell className="text-left whitespace-pre-wrap">{sale.notes || ""}</TableCell>
                         <TableCell className="text-center">{formatQuantity(sale.quantity)}</TableCell>
                         <TableCell className="text-center">£{Number(sale.unitPrice).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{Number(sale.total).toFixed(2)}</TableCell>
@@ -804,7 +810,7 @@ export default function ProductHistory() {
                   {sortedSales.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell className="text-left">Total</TableCell>
-                      <TableCell colSpan={4}></TableCell>
+                      <TableCell colSpan={5}></TableCell>
                       <TableCell className="text-center">
                         {formatQuantity(sortedSales.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0))}
                       </TableCell>
@@ -848,6 +854,7 @@ export default function ProductHistory() {
                     </TableHead>
                     <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
                     <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[180px]">Notes</TableHead>
                     <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
                     <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
                     <TableHead className="text-center min-w-[100px]">Total</TableHead>
@@ -856,11 +863,11 @@ export default function ProductHistory() {
                 <TableBody>
                   {loadingHistory ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                      <TableCell colSpan={9} className="text-center py-4">Loading...</TableCell>
                     </TableRow>
                   ) : sortedCustomerReturns.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                      <TableCell colSpan={9} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
                     sortedCustomerReturns.map((returnItem, idx) => (
@@ -870,6 +877,7 @@ export default function ProductHistory() {
                         <TableCell className="text-center">{returnItem.invoice}</TableCell>
                         <TableCell className="text-center">{returnItem.customerName}</TableCell>
                         <TableCell className="text-center">{returnItem.product}</TableCell>
+                        <TableCell className="text-left whitespace-pre-wrap">{returnItem.notes || ""}</TableCell>
                         <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                         <TableCell className="text-center">£{Number(returnItem.unitPrice).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{Number(returnItem.total).toFixed(2)}</TableCell>
@@ -879,7 +887,7 @@ export default function ProductHistory() {
                   {sortedCustomerReturns.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell className="text-left">Total</TableCell>
-                      <TableCell colSpan={4}></TableCell>
+                      <TableCell colSpan={5}></TableCell>
                       <TableCell className="text-center">
                         {formatQuantity(sortedCustomerReturns.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0))}
                       </TableCell>
@@ -914,6 +922,7 @@ export default function ProductHistory() {
                     </TableHead>
                     <TableHead className="text-center min-w-[150px]">Supplier Name</TableHead>
                     <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[180px]">Notes</TableHead>
                     <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
                     <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
                     <TableHead className="text-center min-w-[100px]">Total</TableHead>
@@ -922,11 +931,11 @@ export default function ProductHistory() {
                 <TableBody>
                   {loadingHistory ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-4">Loading...</TableCell>
+                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
                     </TableRow>
                   ) : sortedPurchases.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-4">No Records found</TableCell>
+                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
                     sortedPurchases.map((purchase, idx) => (
@@ -942,6 +951,7 @@ export default function ProductHistory() {
                           </span>
                         </TableCell>
                         <TableCell className="text-center">{purchase.product}</TableCell>
+                        <TableCell className="text-left whitespace-pre-wrap">{purchase.notes || ""}</TableCell>
                         <TableCell className="text-center">{formatQuantity(purchase.quantity)}</TableCell>
                         <TableCell className="text-center">£{Number(purchase.unitPrice).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{Number(purchase.total).toFixed(2)}</TableCell>
@@ -951,7 +961,7 @@ export default function ProductHistory() {
                   {sortedPurchases.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell className="text-left">Total</TableCell>
-                      <TableCell colSpan={3}></TableCell>
+                      <TableCell colSpan={4}></TableCell>
                       <TableCell className="text-center">
                         {formatQuantity(sortedPurchases.reduce((sum: number, p: any) => sum + (Number(p.quantity) || 0), 0))}
                       </TableCell>
@@ -995,6 +1005,7 @@ export default function ProductHistory() {
                     </TableHead>
                     <TableHead className="text-center min-w-[150px]">Supplier Name</TableHead>
                     <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[180px]">Notes</TableHead>
                     <TableHead className="text-center min-w-[100px]">Quantity</TableHead>
                     <TableHead className="text-center min-w-[100px]">Unit Price</TableHead>
                     <TableHead className="text-center min-w-[100px]">Total</TableHead>
@@ -1003,11 +1014,11 @@ export default function ProductHistory() {
                 <TableBody>
                   {loadingHistory ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">Loading...</TableCell>
+                      <TableCell colSpan={9} className="text-center py-4">Loading...</TableCell>
                     </TableRow>
                   ) : sortedSupplierReturns.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">No Records found</TableCell>
+                      <TableCell colSpan={9} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
                     sortedSupplierReturns.map((returnItem, idx) => (
@@ -1024,6 +1035,7 @@ export default function ProductHistory() {
                           </span>
                         </TableCell>
                         <TableCell className="text-center">{returnItem.product}</TableCell>
+                        <TableCell className="text-left whitespace-pre-wrap">{returnItem.notes || ""}</TableCell>
                         <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                         <TableCell className="text-center">£{Number(returnItem.unitPrice).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{Number(returnItem.total).toFixed(2)}</TableCell>
@@ -1033,7 +1045,7 @@ export default function ProductHistory() {
                   {sortedSupplierReturns.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell className="text-left">Total</TableCell>
-                      <TableCell colSpan={4}></TableCell>
+                      <TableCell colSpan={5}></TableCell>
                       <TableCell className="text-center">
                         {formatQuantity(sortedSupplierReturns.reduce((sum: number, r: any) => sum + (Number(r.quantity) || 0), 0))}
                       </TableCell>
@@ -1070,17 +1082,18 @@ export default function ProductHistory() {
                       </button>
                     </TableHead>
                     <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[180px]">Notes</TableHead>
                     <TableHead className="text-center min-w-[100px]">Total Qty</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loadingHistory ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-4">Loading...</TableCell>
+                      <TableCell colSpan={5} className="text-center py-4">Loading...</TableCell>
                     </TableRow>
                   ) : sortedDumps.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-4">No Records found</TableCell>
+                      <TableCell colSpan={5} className="text-center py-4">No Records found</TableCell>
                     </TableRow>
                   ) : (
                     sortedDumps.map((dump, idx) => (
@@ -1088,6 +1101,7 @@ export default function ProductHistory() {
                         <TableCell className="text-center">{idx + 1}</TableCell>
                         <TableCell className="text-center whitespace-nowrap">{dump.date}</TableCell>
                         <TableCell className="text-center">{dump.product}</TableCell>
+                        <TableCell className="text-left whitespace-pre-wrap">{dump.notes || ""}</TableCell>
                         <TableCell className="text-center">{formatQuantity(dump.totalQty)}</TableCell>
                       </TableRow>
                     ))
@@ -1095,7 +1109,7 @@ export default function ProductHistory() {
                   {sortedDumps.length > 0 && (
                     <TableRow className="bg-muted/50 font-bold">
                       <TableCell className="text-left">Total</TableCell>
-                      <TableCell colSpan={2}></TableCell>
+                      <TableCell colSpan={3}></TableCell>
                       <TableCell className="text-center">
                         {formatQuantity(sortedDumps.reduce((sum, d) => sum + (Number(d.totalQty) || 0), 0))}
                       </TableCell>

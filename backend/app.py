@@ -12884,7 +12884,9 @@ def product_history_report():
             PurchaseInvoiceItem.product_name,
             PurchaseInvoiceItem.quantity,
             PurchaseInvoiceItem.unit_price,
-            PurchaseInvoiceItem.total_price
+            PurchaseInvoiceItem.total_price,
+            PurchaseInvoice.remarks.label('invoice_remarks'),
+            PurchaseInvoiceItem.remarks.label('item_remarks')
         )
         .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
         .join(Supplier, Purchase.supplier_id == Supplier.id)
@@ -12909,6 +12911,7 @@ def product_history_report():
             'quantity': float(row.quantity) if row.quantity else 0,
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
             'total': float(row.total_price) if row.total_price else 0,
+            'notes': row.invoice_remarks or row.item_remarks or '',
             'purchaseId': row.purchase_id,
             'isCompany': bool(row.is_company) if row.is_company is not None else False,
         }
@@ -12937,6 +12940,7 @@ def product_history_report():
             'quantity': r.quantity,
             'unitPrice': float(r.unit_price),
             'total': float(r.total_value),
+            'notes': r.remarks or '',
             'isCompany': bool(r.supplier.is_company) if r.supplier and r.supplier.is_company is not None else False,
         }
         for r in supplier_returns
@@ -12955,7 +12959,9 @@ def product_history_report():
             SaleItem.unit_price,
             SaleItem.total_price,
             RegularProduct.description.label('regular_product_desc'),
-            NonProduct.description.label('non_product_desc')
+            NonProduct.description.label('non_product_desc'),
+            SaleItem.notes.label('item_notes'),
+            Sale.notes.label('invoice_notes')
         )
         .join(SaleItem, Sale.id == SaleItem.sale_id)
         .join(Customer, Sale.customer_id == Customer.id)
@@ -12990,6 +12996,7 @@ def product_history_report():
             'quantity': float(row.quantity) if row.quantity else 0,
             'unitPrice': float(row.unit_price) if row.unit_price else 0,
             'total': float(row.total_price) if row.total_price else 0,
+            'notes': row.item_notes or row.invoice_notes or '',
             'isCompany': bool(row.is_company) if row.is_company is not None else False,
         }
         for row in sales
@@ -13041,6 +13048,7 @@ def product_history_report():
             'quantity': 0,
             'unitPrice': 0,
             'total': -float(discount.amount or 0),
+            'notes': discount.reason or '',
             'isCompany': bool(discount.customer.is_company) if discount.customer else False,
             'isCustomerDiscount': True,
         })
@@ -13066,7 +13074,8 @@ def product_history_report():
             'product': r.description,
             'quantity': r.quantity,
             'unitPrice': float(r.unit_price),
-            'total': float(r.total_value)
+            'total': float(r.total_value),
+            'notes': r.remarks or '',
         }
         for r in customer_returns
     ]
@@ -13094,7 +13103,8 @@ def product_history_report():
         dumps_data.append({
             'date': d.date.strftime('%Y-%m-%d') if d.date else '',
             'product': product_name,
-            'totalQty': d.quantity
+            'totalQty': d.quantity,
+            'notes': d.remarks or ''
         })
 
     return jsonify({
@@ -13148,7 +13158,9 @@ def product_history_pdf():
             PurchaseInvoiceItem.product_name,
             PurchaseInvoiceItem.quantity,
             PurchaseInvoiceItem.unit_price,
-            PurchaseInvoiceItem.total_price
+            PurchaseInvoiceItem.total_price,
+            PurchaseInvoice.remarks.label('invoice_notes'),
+            PurchaseInvoiceItem.remarks.label('item_notes')
         )
         .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
         .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
@@ -13177,7 +13189,9 @@ def product_history_pdf():
             SaleItem.unit_price,
             SaleItem.total_price,
             RegularProduct.description.label('regular_product_desc'),
-            NonProduct.description.label('non_product_desc')
+            NonProduct.description.label('non_product_desc'),
+            SaleItem.notes.label('item_notes'),
+            Sale.notes.label('invoice_notes')
         )
         .join(SaleItem, Sale.id == SaleItem.sale_id)
         .join(Customer, Sale.customer_id == Customer.id)
@@ -13287,13 +13301,14 @@ def product_history_pdf():
     # Add purchases table if there's data
     if purchases:
         elements.append(Paragraph("From Supplier", styles['Heading2']))
-        purchase_data = [['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total']]
+        purchase_data = [['Sl.No', 'Date', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']]
         for idx, row in enumerate(purchases, 1):
             purchase_data.append([
                 str(idx),
                 row.date.strftime('%Y-%m-%d') if row.date else '',
                 row.supplier_name or '',
                 row.product_name or '',
+                row.invoice_remarks or row.item_remarks or '',
                 str(int(row.quantity)) if row.quantity else '0',
                 f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
                 f"{float(row.total_price):.2f}" if row.total_price else '0.00'
@@ -13317,7 +13332,7 @@ def product_history_pdf():
     # Add sales table if there's data
     if sales:
         elements.append(Paragraph("Sales", styles['Heading2']))
-        sales_data = [['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']]
+        sales_data = [['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']]
         for idx, row in enumerate(sales, 1):
             product_desc = (
                 getattr(row, 'product', None)
@@ -13331,6 +13346,7 @@ def product_history_pdf():
                 row.invoice_number or '',
                 row.customer_name or '',
                 product_desc,
+                getattr(row, 'item_notes', '') or getattr(row, 'invoice_notes', '') or '',
                 str(int(row.quantity)) if row.quantity else '0',
                 f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
                 f"{float(row.total_price):.2f}" if row.total_price else '0.00'
@@ -13401,7 +13417,9 @@ def product_history_email():
                 PurchaseInvoiceItem.product_name.label('product'),
                 PurchaseInvoiceItem.quantity,
                 PurchaseInvoiceItem.unit_price,
-                PurchaseInvoiceItem.total_price
+                PurchaseInvoiceItem.total_price,
+                PurchaseInvoice.remarks.label('invoice_remarks'),
+                PurchaseInvoiceItem.remarks.label('item_remarks')
             )
             .join(Purchase, PurchaseInvoice.purchase_id == Purchase.id)
             .join(PurchaseInvoiceItem, PurchaseInvoice.id == PurchaseInvoiceItem.invoice_id)
@@ -13416,7 +13434,8 @@ def product_history_email():
                 SupplierReturn.description.label('product'),
                 SupplierReturn.quantity,
                 SupplierReturn.unit_price,
-                SupplierReturn.total_value.label('total_amount')
+                SupplierReturn.total_value.label('total_amount'),
+                SupplierReturn.remarks.label('notes')
             )
             .join(Supplier, SupplierReturn.supplier_id == Supplier.id)
         )
@@ -13430,7 +13449,9 @@ def product_history_email():
                 func.coalesce(RegularProduct.description, NonProduct.description, 'Unknown').label('product'),
                 SaleItem.quantity,
                 SaleItem.unit_price,
-                SaleItem.total_price
+                SaleItem.total_price,
+                SaleItem.notes.label('item_notes'),
+                Sale.notes.label('invoice_notes')
             )
             .join(SaleItem, Sale.id == SaleItem.sale_id)
             .join(Customer, Sale.customer_id == Customer.id)
@@ -13448,7 +13469,8 @@ def product_history_email():
                 CustomerReturn.description.label('product'),
                 CustomerReturn.quantity,
                 CustomerReturn.unit_price,
-                CustomerReturn.total_value.label('total_amount')
+                CustomerReturn.total_value.label('total_amount'),
+                CustomerReturn.remarks.label('notes')
             )
             .join(Customer, CustomerReturn.customer_id == Customer.id)
         )
@@ -13458,9 +13480,10 @@ def product_history_email():
             db.session.query(
                 DumpEntry.date,
                 DumpEntry.description.label('product'),
-                func.sum(DumpEntry.quantity).label('total_qty')
+                func.sum(DumpEntry.quantity).label('total_qty'),
+                DumpEntry.remarks.label('notes')
             )
-            .group_by(DumpEntry.date, DumpEntry.description)
+            .group_by(DumpEntry.date, DumpEntry.description, DumpEntry.remarks)
         )
         
         # Apply filters to each query individually
@@ -13581,6 +13604,7 @@ def product_history_email():
                 quantity=0,
                 unit_price=0,
                 total_price=-float(discount.amount or 0),
+                notes=discount.reason or '',
             ))
         customer_returns = customer_returns_query.all()
         dumps = dumps_query.all()
@@ -13625,11 +13649,11 @@ def product_history_email():
         
         # Add all tables
         tables_data = [
-            ('FROM SUPPLIER', purchases, ['Sl.No', 'Date', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total']),
-            ('SUPPLIER RETURNS', supplier_returns, ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Qty', 'Unit Price', 'Total']),
-            ('SALES', sales, ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']),
-            ('CUSTOMER RETURNS', customer_returns, ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Qty', 'Unit Price', 'Total']),
-            ('DUMPS', dumps, ['Sl.No', 'Date', 'Product', 'Total Qty'])
+            ('FROM SUPPLIER', purchases, ['Sl.No', 'Date', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
+            ('SUPPLIER RETURNS', supplier_returns, ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
+            ('SALES', sales, ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
+            ('CUSTOMER RETURNS', customer_returns, ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
+            ('DUMPS', dumps, ['Sl.No', 'Date', 'Product', 'Notes', 'Total Qty'])
         ]
         
         for title, data, headers in tables_data:
@@ -13645,6 +13669,7 @@ def product_history_email():
                             str(idx),
                             row.date.strftime('%Y-%m-%d') if row.date else '',
                             str(row.product or ''),
+                            str(row.notes or ''),
                             str(int(row.total_qty)) if row.total_qty else '0'
                         ])
                     else:
@@ -13654,6 +13679,7 @@ def product_history_email():
                             str(getattr(row, 'invoice_number', '') or getattr(row, 'supplier_name', '') or getattr(row, 'customer_name', '')),
                             str(getattr(row, 'supplier_name', '') or getattr(row, 'customer_name', '')),
                             str(row.product or ''),
+                            str(getattr(row, 'item_notes', '') or getattr(row, 'invoice_notes', '') or getattr(row, 'notes', '') or ''),
                             str(int(row.quantity)) if row.quantity else '0',
                             f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
                             f"{float(getattr(row, 'total_price', 0) or getattr(row, 'total_amount', 0)):.2f}"

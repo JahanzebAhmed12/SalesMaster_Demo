@@ -136,6 +136,7 @@ def main():
                 paid_amount=Decimal("0.00"),
                 status="finalized",
                 date=datetime(2026, 6, 1, 10, 0),
+                notes="Sale invoice note",
                 created_by=user.id,
             )
             db.session.add(sale)
@@ -146,6 +147,7 @@ def main():
                 quantity=Decimal("10.000"),
                 unit_price=Decimal("10.00"),
                 total_price=Decimal("100.00"),
+                notes="Product-specific note",
             )
             db.session.add_all([
                 item,
@@ -373,6 +375,17 @@ def main():
             assert len(general_product_history["sales"]) == 1
             assert general_product_history["sales"][0]["isCustomerDiscount"] is True
             assert general_product_history["sales"][0]["total"] == -20
+            assert general_product_history["sales"][0]["notes"] == "Commercial allowance"
+
+            sale_history_response = client.get(
+                "/api/reports/product-history"
+                f"?productId={product.id}&fromDate=2026-06-01&toDate=2026-06-02",
+                headers=headers,
+            )
+            sale_history = sale_history_response.get_json() or {}
+            assert sale_history_response.status_code == 200
+            assert len(sale_history["sales"]) == 1
+            assert sale_history["sales"][0]["notes"] == "Product-specific note"
 
             product_sales_response = client.get(
                 "/api/reports/product-sales"
