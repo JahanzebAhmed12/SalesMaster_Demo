@@ -93,6 +93,77 @@ const formatDateForAPI = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
+interface WrappedTableOptions {
+  x: number;
+  y: number;
+  bottom: number;
+  columnWidths: number[];
+  headerFontSize: number;
+  bodyFontSize: number;
+  nextPageY: number;
+}
+
+const drawWrappedPdfTable = (
+  doc: jsPDF,
+  headers: string[],
+  rows: ExportCell[][],
+  options: WrappedTableOptions,
+) => {
+  const { x, bottom, columnWidths, headerFontSize, bodyFontSize, nextPageY } = options;
+  const tableWidth = columnWidths.reduce((total, width) => total + width, 0);
+  const padding = 2;
+  let yPosition = options.y;
+
+  const drawHeader = () => {
+    doc.setFontSize(headerFontSize);
+    const wrappedHeaders = headers.map((header, index) =>
+      doc.splitTextToSize(header, Math.max(1, columnWidths[index] - padding * 2))
+    );
+    const lineHeight = headerFontSize * 0.45;
+    const rowHeight = Math.max(8, ...wrappedHeaders.map(lines => lines.length * lineHeight + padding * 2));
+    doc.setFillColor(59, 130, 246);
+    doc.rect(x, yPosition, tableWidth, rowHeight, 'F');
+    doc.setTextColor(255, 255, 255);
+    let xPosition = x;
+    wrappedHeaders.forEach((lines, index) => {
+      doc.text(lines, xPosition + padding, yPosition + padding + lineHeight);
+      xPosition += columnWidths[index];
+    });
+    yPosition += rowHeight;
+  };
+
+  drawHeader();
+  doc.setTextColor(0, 0, 0);
+
+  rows.forEach((row, rowIndex) => {
+    doc.setFontSize(bodyFontSize);
+    const wrappedCells = row.map((cell, index) =>
+      doc.splitTextToSize(String(cell), Math.max(1, columnWidths[index] - padding * 2))
+    );
+    const lineHeight = bodyFontSize * 0.45;
+    const rowHeight = Math.max(8, ...wrappedCells.map(lines => lines.length * lineHeight + padding * 2));
+    if (yPosition + rowHeight > bottom) {
+      doc.addPage();
+      yPosition = nextPageY;
+      drawHeader();
+      doc.setTextColor(0, 0, 0);
+    }
+
+    if (rowIndex % 2 === 0) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(x, yPosition, tableWidth, rowHeight, 'F');
+    }
+    doc.setFontSize(bodyFontSize);
+    let xPosition = x;
+    wrappedCells.forEach((lines, index) => {
+      const lineHeight = bodyFontSize * 0.45;
+      doc.text(lines, xPosition + padding, yPosition + padding + lineHeight);
+      xPosition += columnWidths[index];
+    });
+    yPosition += rowHeight;
+  });
+};
+
 export default function MonthlyReports() {
   const { toast } = useToast();
   
@@ -239,43 +310,15 @@ export default function MonthlyReports() {
       item.totalHours.toString()
     ]);
     
-    // Create table manually
-    let yPosition = 65;
-    const cellHeight = 8;
-    const startX = 10;
     const headers = ['Employee', 'Present', 'Absent', 'Leave', 'Holiday', 'Attendance %', 'Total Hours'];
-    const cellWidth = (210 - 20) / headers.length; // A4 width minus margins
-    
-    // Draw headers
-    doc.setFillColor(59, 130, 246);
-    doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(8);
-    headers.forEach((header, index) => {
-      doc.text(header, startX + (index * cellWidth) + 2, yPosition + 5);
-    });
-    
-    yPosition += cellHeight;
-    doc.setTextColor(0, 0, 0);
-    
-    // Draw data rows
-    tableData.forEach((row, rowIndex) => {
-      if (yPosition > 270) { // Start new page if needed
-        doc.addPage();
-        yPosition = 20;
-      }
-      
-      // Alternate row colors
-      if (rowIndex % 2 === 0) {
-        doc.setFillColor(248, 250, 252);
-        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-      }
-      
-      row.forEach((cell, cellIndex) => {
-        doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 5);
-      });
-      
-      yPosition += cellHeight;
+    drawWrappedPdfTable(doc, headers, tableData, {
+      x: 10,
+      y: 65,
+      bottom: 270,
+      columnWidths: [52, ...Array(6).fill(23)],
+      headerFontSize: 9,
+      bodyFontSize: 10,
+      nextPageY: 20,
     });
     
     doc.save(`attendance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
@@ -397,43 +440,15 @@ export default function MonthlyReports() {
       return row;
     });
     
-    // Create table manually
-    let yPosition = 50;
-    const cellHeight = 6;
-    const startX = 10;
-    const cellWidth = (297 - 20) / headers.length; // A4 landscape width minus margins
-    
-    // Draw headers
-    doc.setFillColor(59, 130, 246);
-    doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(7);
-    headers.forEach((header, index) => {
-      doc.text(header, startX + (index * cellWidth) + 2, yPosition + 4);
-    });
-    
-    yPosition += cellHeight;
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(6);
-    
-    // Draw data rows
-    tableData.forEach((row, rowIndex) => {
-      if (yPosition > 200) { // Start new page if needed
-        doc.addPage();
-        yPosition = 20;
-      }
-      
-      // Alternate row colors
-      if (rowIndex % 2 === 0) {
-        doc.setFillColor(248, 250, 252);
-        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-      }
-      
-      row.forEach((cell, cellIndex) => {
-        doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 4);
-      });
-      
-      yPosition += cellHeight;
+    const dayColumnWidth = (277 - 50 - 27 - 30) / days.length;
+    drawWrappedPdfTable(doc, headers, tableData, {
+      x: 10,
+      y: 50,
+      bottom: 200,
+      columnWidths: [50, ...Array(days.length).fill(dayColumnWidth), 27, 30],
+      headerFontSize: 8,
+      bodyFontSize: 8,
+      nextPageY: 20,
     });
     
     doc.save(`detailed-attendance-${format(new Date(), 'yyyy-MM-dd')}.pdf`);
@@ -596,42 +611,15 @@ export default function MonthlyReports() {
           item.totalHours.toString()
         ]);
         
-        // Create table manually
-        let yPosition = 65;
-        const cellHeight = 8;
-        const startX = 10;
         const headers = ['Employee', 'Present', 'Absent', 'Leave', 'Holiday', 'Attendance %', 'Total Hours'];
-        const cellWidth = (210 - 20) / headers.length;
-        
-        // Draw headers
-        doc.setFillColor(59, 130, 246);
-        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(8);
-        headers.forEach((header, index) => {
-          doc.text(header, startX + (index * cellWidth) + 2, yPosition + 5);
-        });
-        
-        yPosition += cellHeight;
-        doc.setTextColor(0, 0, 0);
-        
-        // Draw data rows
-        tableData.forEach((row, rowIndex) => {
-          if (yPosition > 270) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          
-          if (rowIndex % 2 === 0) {
-            doc.setFillColor(248, 250, 252);
-            doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-          }
-          
-          row.forEach((cell, cellIndex) => {
-            doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 5);
-          });
-          
-          yPosition += cellHeight;
+        drawWrappedPdfTable(doc, headers, tableData, {
+          x: 10,
+          y: 65,
+          bottom: 270,
+          columnWidths: [52, ...Array(6).fill(23)],
+          headerFontSize: 9,
+          bodyFontSize: 10,
+          nextPageY: 20,
         });
         
         pdfBlob = doc.output('blob');
@@ -723,41 +711,15 @@ export default function MonthlyReports() {
           return row;
         });
         
-        // Create table manually
-        let yPosition = 50;
-        const cellHeight = 6;
-        const startX = 10;
-        const cellWidth = (297 - 20) / headers.length;
-        
-        // Draw headers
-        doc.setFillColor(59, 130, 246);
-        doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(7);
-        headers.forEach((header, index) => {
-          doc.text(header, startX + (index * cellWidth) + 2, yPosition + 4);
-        });
-        
-        yPosition += cellHeight;
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(6);
-        
-        tableData.forEach((row, rowIndex) => {
-          if (yPosition > 200) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          
-          if (rowIndex % 2 === 0) {
-            doc.setFillColor(248, 250, 252);
-            doc.rect(startX, yPosition, cellWidth * headers.length, cellHeight, 'F');
-          }
-          
-          row.forEach((cell, cellIndex) => {
-            doc.text(String(cell), startX + (cellIndex * cellWidth) + 2, yPosition + 4);
-          });
-          
-          yPosition += cellHeight;
+        const dayColumnWidth = (277 - 50 - 27 - 30) / days.length;
+        drawWrappedPdfTable(doc, headers, tableData, {
+          x: 10,
+          y: 50,
+          bottom: 200,
+          columnWidths: [50, ...Array(days.length).fill(dayColumnWidth), 27, 30],
+          headerFontSize: 8,
+          bodyFontSize: 8,
+          nextPageY: 20,
         });
         
         pdfBlob = doc.output('blob');
@@ -1098,7 +1060,6 @@ export default function MonthlyReports() {
           <h3 className="text-lg font-semibold">Weekly Payroll (6 Working Days)</h3>
           <div className="flex gap-2">
             <Button variant="outline" size="icon" onClick={handlePrint} title="Print"><Printer className="w-4 h-4" /></Button>
-            <Button variant="outline" size="icon" onClick={handlePDFExport} title="Export PDF"><FileText className="w-4 h-4" /></Button>
             <Button variant="outline" size="icon" onClick={handleExcelExport} title="Export Excel"><Download className="w-4 h-4" /></Button>
             <Button variant="outline" size="sm" onClick={handleDetailedPDFExport} className="flex items-center gap-1">
               <FileText className="w-4 h-4" />
