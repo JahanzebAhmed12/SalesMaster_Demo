@@ -7,7 +7,7 @@ import { isInvoicePaid } from '@/lib/invoice-paid';
 import { Button } from '@/components/ui/button';
 import { fetchCustomerReturnInvoices } from '@/lib/customer-return-invoice';
 
-interface InvoiceData {
+export interface DotMatrixInvoiceData {
   company: any;
   customer: any;
   sale: any;
@@ -15,6 +15,13 @@ interface InvoiceData {
   paidAmount: number;
   balance: number;
   notes: string;
+}
+
+interface DotMatrixInvoicePrintProps {
+  invoiceData?: DotMatrixInvoiceData;
+  isLastDocument?: boolean;
+  includePrintStyles?: boolean;
+  hidePreviewControls?: boolean;
 }
 
 type TextAlign = 'left' | 'right' | 'center' | 'justify';
@@ -115,12 +122,17 @@ const MOBILE_PDF_POSITIONS = {
   }
 };
 
-export default function DotMatrixInvoicePrintPage() {
+export default function DotMatrixInvoicePrintPage({
+  invoiceData,
+  isLastDocument = true,
+  includePrintStyles = true,
+  hidePreviewControls = false,
+}: DotMatrixInvoicePrintProps = {}) {
   const [match, params] = useRoute('/print/dot-matrix-invoice/:invoiceNumber');
   const invoiceNumber = params?.invoiceNumber;
   const returnId = new URLSearchParams(window.location.search).get('returnId');
-  const [data, setData] = useState<InvoiceData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<DotMatrixInvoiceData | null>(invoiceData || null);
+  const [loading, setLoading] = useState(!invoiceData);
   const [error, setError] = useState<string | null>(null);
   const [isServerPDF, setIsServerPDF] = useState(false);
 
@@ -133,6 +145,13 @@ export default function DotMatrixInvoicePrintPage() {
     (typeof window !== 'undefined' && window.screen.width <= 1024 && navigator.maxTouchPoints > 0);
 
   useEffect(() => {
+    if (invoiceData) {
+      setData(invoiceData);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     if (!returnId && !invoiceNumber) {
       setError('No invoice number provided');
       setLoading(false);
@@ -156,7 +175,7 @@ export default function DotMatrixInvoicePrintPage() {
     };
 
     fetchInvoice();
-  }, [invoiceNumber, returnId]);
+  }, [invoiceNumber, returnId, invoiceData]);
 
   // Mobile print proxy handler
   const handleMobilePrint = async () => {
@@ -487,7 +506,7 @@ export default function DotMatrixInvoicePrintPage() {
 
   return (
     <div className="min-h-screen">
-      <style>{`
+      {includePrintStyles && <style>{`
         /* Force exact dimensions and prevent scaling */
         * {
           box-sizing: border-box !important;
@@ -564,7 +583,7 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-before: avoid !important;
             break-before: avoid !important;
           }
-          .dot-matrix-print:last-child {
+          .dot-matrix-print-final {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
@@ -676,7 +695,7 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-before: avoid !important;
             break-before: avoid !important;
           }
-          .dot-matrix-print:last-child {
+          .dot-matrix-print-final {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
@@ -767,7 +786,7 @@ export default function DotMatrixInvoicePrintPage() {
             page-break-before: avoid !important;
             break-before: avoid !important;
           }
-          .dot-matrix-print:last-child {
+          .dot-matrix-print-final {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
@@ -791,10 +810,10 @@ export default function DotMatrixInvoicePrintPage() {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
           }
         }
-      `}</style>
+      `}</style>}
 
       {/* Print Preview Header - hidden during print */}
-      <div className="p-4 bg-gray-100 print:hidden">
+      {!hidePreviewControls && <div className="p-4 bg-gray-100 print:hidden">
         <h1 className="text-xl font-bold mb-2">Dot Matrix Print Preview</h1>
         <p className="text-sm text-gray-600 mb-4">{sale?.isCustomerReturn ? 'Customer Return' : 'Invoice'}: {sale?.invoice_number}</p>
         <div className="flex gap-2 flex-wrap">
@@ -844,7 +863,7 @@ export default function DotMatrixInvoicePrintPage() {
             🏷️ Print Label
           </Button>
         </div>
-      </div>
+      </div>}
 
       {/* Dot Matrix Content - only this shows during print */}
       <div className={`print-content ${isServerPDF ? 'server-pdf-mode' : ''}`} style={{ margin: 0, padding: 0 }}>
@@ -855,7 +874,7 @@ export default function DotMatrixInvoicePrintPage() {
           return (
             <div
               key={pageIndex}
-              className="dot-matrix-print"
+              className={`dot-matrix-print${isLastDocument && pageIndex === pages.length - 1 ? ' dot-matrix-print-final' : ''}`}
               style={{
                 position: 'relative',
                 width: '189mm',
@@ -866,8 +885,8 @@ export default function DotMatrixInvoicePrintPage() {
                 fontFamily: 'monospace',
                 color: '#000',
                 backgroundColor: '#fff',
-                pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
-                breakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'page',
+                pageBreakAfter: isLastDocument && pageIndex === pages.length - 1 ? 'avoid' : 'always',
+                breakAfter: isLastDocument && pageIndex === pages.length - 1 ? 'avoid' : 'page',
                 pageBreakBefore: pageIndex === 0 ? 'avoid' : 'auto',
                 breakBefore: pageIndex === 0 ? 'avoid' : 'auto',
                 pageBreakInside: 'avoid',
