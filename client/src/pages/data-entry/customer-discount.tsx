@@ -289,13 +289,8 @@ export default function CustomerDiscountPage() {
       return;
     }
     if (!window.confirm(`Delete ${discount.reference} for ${money(discount.amount)}? This reverses its balance and report effect.`)) return;
-    const deletionReason = window.prompt("Enter a reason for deleting this discount:");
-    if (!deletionReason?.trim()) {
-      toast({ title: "Deletion cancelled", description: "A deletion reason is required.", variant: "destructive" });
-      return;
-    }
     try {
-      await apiRequest("DELETE", `/api/customer-discounts/${discount.id}`, { reason: deletionReason.trim() });
+      await apiRequest("DELETE", `/api/customer-discounts/${discount.id}`);
       await invalidateDiscountData(discount);
       toast({ title: "Discount deleted", description: `${discount.reference} was reversed.` });
       if (editingDiscount?.id === discount.id) resetForm();

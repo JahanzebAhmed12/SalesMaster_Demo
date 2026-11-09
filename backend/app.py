@@ -12554,8 +12554,6 @@ def delete_customer_discount(discount_id):
             return jsonify({"error": "Active customer discount not found."}), 404
         data = request.get_json(silent=True) or {}
         reason = str(data.get("reason") or "").strip()
-        if not reason:
-            return jsonify({"error": "A deletion reason is required."}), 400
         if len(reason) > 500:
             return jsonify({"error": "Reason must be 500 characters or fewer."}), 400
         permission_error = _check_discount_date_permission(
@@ -12573,7 +12571,7 @@ def delete_customer_discount(discount_id):
         discount.is_deleted = True
         discount.deleted_by = user_id
         discount.deleted_at = datetime.utcnow()
-        discount.deletion_reason = reason
+        discount.deletion_reason = reason or None
         discount.updated_by = user_id
         customer.running_balance = _money_decimal(customer.running_balance) + amount
         _refresh_sale_payment_status(sale)

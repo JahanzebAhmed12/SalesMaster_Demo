@@ -649,7 +649,6 @@ def main():
             db.session.commit()
             delete_response = client.delete(
                 f"/api/customer-discounts/{created['id']}",
-                json={"reason": "Entered in error"},
                 headers=headers,
             )
             assert delete_response.status_code == 200, delete_response.get_json()
