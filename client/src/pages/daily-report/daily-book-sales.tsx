@@ -1439,7 +1439,7 @@ export default function DailyBookSales() {
                         <TableCell className="text-xs sm:text-sm">
                           {sale.invoiceNo}
                           {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
-                          {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Discount)</span>}
+                          {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Credit/Adj)</span>}
                         </TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
                           {sale.isCustomerReturn || sale.isCustomerDiscount ? (
