@@ -27,6 +27,7 @@ import { copyToClipboard } from "@/lib/export-utils";
 interface StatementData {
   id: number;
   slNo: number;
+  batchId?: number | null;
   date: string;
   invoiceNo: string;
   description: string;
@@ -75,11 +76,16 @@ export default function CustomerStatement() {
     const groupedData: { [key: string]: StatementData[] } = {};
     const invoiceRecords: StatementData[] = [];
     const paymentRecords: StatementData[] = [];
+    const batchPaymentRecords: StatementData[] = [];
 
     // Separate invoices and payments
     statementData.forEach(record => {
       if (record.description && record.description.toLowerCase().includes('payment received')) {
-        paymentRecords.push(record);
+        if (record.batchId != null) {
+          batchPaymentRecords.push(record);
+        } else {
+          paymentRecords.push(record);
+        }
       } else {
         invoiceRecords.push(record);
       }
@@ -111,7 +117,8 @@ export default function CustomerStatement() {
     // Combine invoices and consolidated payments
     const allRecords = [
       ...invoiceRecords,
-      ...Object.values(consolidatedPayments)
+      ...Object.values(consolidatedPayments),
+      ...batchPaymentRecords
     ];
 
     // Sort by date, then by type (invoices first, then payments)

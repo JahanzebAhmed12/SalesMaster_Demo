@@ -7358,6 +7358,17 @@ def customer_statement():
             'timestamp': discount_datetime.timestamp(),
         })
     
+    # Customer Payment may split one method across several invoices. Show one
+    # statement row per method for the batch, rather than one row per invoice.
+    batch_payment_groups = {}
+    payment_method_labels = {
+        'cash': 'Cash',
+        'bank': 'Card',
+        'card': 'Card',
+        'bank_transfer': 'Bank Transfer',
+        'cheque': 'Cheque',
+    }
+
     # Add payment entries
     for payment in payments:
         if payment.payment_type == 'credit':
@@ -7365,6 +7376,24 @@ def customer_statement():
             # as a Credit Note sale entry, so skip the redundant 0-amount line.
             continue
         payment_datetime = datetime.combine(payment.payment_date, datetime.min.time())
+        is_customer_payment_batch = (
+            payment.payment_source == 'customer_payment'
+            and payment.batch_id is not None
+        )
+        payment_mode = (payment.payment_mode or '').lower()
+        payment_method = payment_method_labels.get(
+            payment_mode,
+            (payment.payment_mode or 'Payment').replace('_', ' ').title(),
+        )
+
+        if is_customer_payment_batch:
+            group_key = (payment.batch_id, payment.payment_date, payment_mode)
+            group = batch_payment_groups.setdefault(group_key, {
+                'amount': 0.0,
+                'payment_method': payment_method,
+            })
+            group['amount'] += float(payment.amount)
+            continue
         
         if payment.sale_id:
             # Payment linked to specific invoice
@@ -7390,8 +7419,30 @@ def customer_statement():
             'balance': -float(payment.amount),  # Payments reduce balance (negative)
             'sale_id': payment.sale_id,
             'payment_id': payment.id,
+            'batch_id': None,
             'sort_priority': sort_priority,
             'timestamp': payment_datetime.timestamp()
+        })
+
+    for (batch_id, payment_date, _payment_mode), group in batch_payment_groups.items():
+        payment_datetime = datetime.combine(payment_date, datetime.min.time())
+        amount = group['amount']
+        entries.append({
+            'date': payment_datetime,
+            'type': 'payment',
+            'invoiceNo': str(batch_id),
+            'description': f"Payment Received - {group['payment_method']}",
+            'accountInv': 0,
+            'cashInv': 0,
+            'paid': amount,
+            'accountAdj': 0,
+            'discountAdj': 0,
+            'balance': -amount,
+            'sale_id': None,
+            'payment_id': None,
+            'batch_id': batch_id,
+            'sort_priority': 2,
+            'timestamp': payment_datetime.timestamp(),
         })
     
     # Sort by date, then by priority (sales first, then invoice payments, then on-account)
@@ -7413,7 +7464,8 @@ def customer_statement():
             'accountAdj': entry['accountAdj'],
             'discountAdj': entry['discountAdj'],
             'balance': entry['balance'],
-            'runningBalance': running_balance
+            'runningBalance': running_balance,
+            'batchId': entry.get('batch_id')
         })
         sl_no += 1
 

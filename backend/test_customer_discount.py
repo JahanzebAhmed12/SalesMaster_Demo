@@ -248,8 +248,9 @@ def main():
             statement = statement_response.get_json() or []
             assert statement_response.status_code == 200
             assert len(statement) == 1
-            assert statement[0]["discountAdj"] == 20
-            assert statement[0]["balance"] == -20
+            discount_row = next(row for row in statement if row["discountAdj"])
+            assert discount_row["discountAdj"] == 20
+            assert discount_row["balance"] == -20
 
             product_history_response = client.get(
                 "/api/reports/product-sales-history"
@@ -316,6 +317,112 @@ def main():
                 row for row in aging.get("data", []) if row["id"] == customer.id
             )
             assert aging_customer["totalOutstanding"] == 80
+
+            payment_customer = Customer(
+                customer_code="CUST-BATCH-PAYMENT-TEST",
+                customer_name="Batch Payment Test Customer",
+                running_balance=Decimal("1000.00"),
+            )
+            db.session.add(payment_customer)
+            db.session.flush()
+            payment_sale = Sale(
+                invoice_number="BATCH-PAYMENT-100",
+                customer_id=payment_customer.id,
+                customer_type="account",
+                payment_status="pending",
+                subtotal=Decimal("1000.00"),
+                total_amount=Decimal("1000.00"),
+                paid_amount=Decimal("0.00"),
+                status="finalized",
+                date=datetime(2026, 6, 1, 10, 0),
+                created_by=user.id,
+            )
+            db.session.add(payment_sale)
+            db.session.flush()
+            second_payment_sale = Sale(
+                invoice_number="BATCH-PAYMENT-101",
+                customer_id=payment_customer.id,
+                customer_type="account",
+                payment_status="pending",
+                subtotal=Decimal("100.00"),
+                total_amount=Decimal("100.00"),
+                paid_amount=Decimal("0.00"),
+                status="finalized",
+                date=datetime(2026, 6, 2, 10, 0),
+                created_by=user.id,
+            )
+            db.session.add(second_payment_sale)
+            db.session.flush()
+            db.session.add_all([
+                Payment(
+                    customer_id=payment_customer.id,
+                    sale_id=payment_sale.id,
+                    amount=Decimal("150.00"),
+                    payment_mode="cash",
+                    payment_date=date(2026, 6, 15),
+                    batch_id=42,
+                    payment_type="direct",
+                    payment_source="customer_payment",
+                    created_by=user.id,
+                ),
+                Payment(
+                    customer_id=payment_customer.id,
+                    sale_id=second_payment_sale.id,
+                    amount=Decimal("50.00"),
+                    payment_mode="cash",
+                    payment_date=date(2026, 6, 15),
+                    batch_id=42,
+                    payment_type="direct",
+                    payment_source="customer_payment",
+                    created_by=user.id,
+                ),
+                Payment(
+                    customer_id=payment_customer.id,
+                    sale_id=payment_sale.id,
+                    amount=Decimal("600.00"),
+                    payment_mode="bank",
+                    payment_date=date(2026, 6, 15),
+                    batch_id=42,
+                    payment_type="direct",
+                    payment_source="customer_payment",
+                    created_by=user.id,
+                ),
+                Payment(
+                    customer_id=payment_customer.id,
+                    sale_id=payment_sale.id,
+                    amount=Decimal("200.00"),
+                    payment_mode="bank_transfer",
+                    payment_date=date(2026, 6, 15),
+                    batch_id=42,
+                    payment_type="direct",
+                    payment_source="customer_payment",
+                    created_by=user.id,
+                ),
+            ])
+            db.session.commit()
+            split_statement_response = client.get(
+                "/api/reports/customer-statement"
+                f"?customerId={payment_customer.id}&fromDate=2026-06-15&toDate=2026-06-15",
+                headers=headers,
+            )
+            split_statement = split_statement_response.get_json() or []
+            assert split_statement_response.status_code == 200
+            payment_rows = [row for row in split_statement if row["paid"] > 0]
+            assert len(payment_rows) == 3
+            assert {row["invoiceNo"] for row in payment_rows} == {"42"}
+            assert {row["batchId"] for row in payment_rows} == {42}
+            assert {row["description"] for row in payment_rows} == {
+                "Payment Received - Cash",
+                "Payment Received - Card",
+                "Payment Received - Bank Transfer",
+            }
+            assert {
+                row["description"]: row["paid"] for row in payment_rows
+            } == {
+                "Payment Received - Cash": 200,
+                "Payment Received - Card": 600,
+                "Payment Received - Bank Transfer": 200,
+            }
 
             partial_customer = Customer(
                 customer_code="CUST-DISCOUNT-PARTIAL",
