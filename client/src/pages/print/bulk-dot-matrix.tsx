@@ -66,7 +66,7 @@ const ITEMS_START_TOP_MM = parseInt(FIELD_POSITIONS.itemsStartTop);
 const ITEMS_AVAILABLE_HEIGHT_MM = 72;
 const NOTES_EXTRA_GAP_MM = 3.5;
 
-function InvoicePages({ data }: { data: InvoiceData }) {
+function InvoicePages({ data, isLastInvoice }: { data: InvoiceData; isLastInvoice: boolean }) {
   const { sale, items, customer } = data;
   const isPaid = isInvoicePaid(sale, data.paidAmount, data.balance);
   const totalAmount = items?.reduce((sum, item) => sum + (item.total_price || item.totalPrice || 0), 0) || 0;
@@ -121,19 +121,19 @@ function InvoicePages({ data }: { data: InvoiceData }) {
       {pages.map((page, pageIndex) => (
         <div
           key={pageIndex}
-          className="dot-matrix-print"
+          className={`dot-matrix-print${isLastInvoice && pageIndex === pages.length - 1 ? ' dot-matrix-print-final' : ''}`}
           style={{
             position: 'relative',
             width: '189mm',
-            height: '203mm',
+            height: '203.2mm',
             margin: '0',
             padding: '0',
             boxSizing: 'border-box',
             fontFamily: 'monospace',
             color: '#000',
             backgroundColor: '#fff',
-            pageBreakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'always',
-            breakAfter: pageIndex === pages.length - 1 ? 'avoid' : 'page',
+            pageBreakAfter: isLastInvoice && pageIndex === pages.length - 1 ? 'avoid' : 'always',
+            breakAfter: isLastInvoice && pageIndex === pages.length - 1 ? 'avoid' : 'page',
             pageBreakBefore: pageIndex === 0 ? 'avoid' : 'auto',
             breakBefore: pageIndex === 0 ? 'avoid' : 'auto',
             pageBreakInside: 'avoid',
@@ -548,7 +548,7 @@ export default function BulkDotMatrixPrintPage() {
             margin: 0 !important;
             padding: 0 !important;
             width: 189mm !important;
-            height: 203mm !important;
+            height: 203.2mm !important;
             box-sizing: border-box !important;
             overflow: visible !important;
             position: relative !important;
@@ -559,7 +559,7 @@ export default function BulkDotMatrixPrintPage() {
             break-after: page !important;
             break-inside: avoid !important;
           }
-          .dot-matrix-print:last-child {
+          .dot-matrix-print-final {
             page-break-after: avoid !important;
             break-after: avoid !important;
           }
@@ -568,7 +568,7 @@ export default function BulkDotMatrixPrintPage() {
             top: 0 !important;
             left: 0 !important;
             width: 189mm !important;
-            height: 203mm !important;
+            height: 203.2mm !important;
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -617,7 +617,7 @@ export default function BulkDotMatrixPrintPage() {
 
       {invoices.map((data, idx) => (
         <div key={idx}>
-          <InvoicePages data={data} />
+          <InvoicePages data={data} isLastInvoice={idx === invoices.length - 1} />
         </div>
       ))}
     </div>
