@@ -517,7 +517,7 @@ export default function ProductPurchaseFullView() {
                               <Button
                                 variant="link"
                                 className="p-0 text-blue-600 underline"
-                                onClick={() => window.open(`/data-entry/purchase-invoice?purchaseId=${row.invNo}&edit=true`, '_self')}
+                                onClick={() => window.open(`/data-entry/purchase-invoice?invoiceId=${row.invNo}&edit=true`, '_self')}
                               >
                                 {row.invNo}
                               </Button>
