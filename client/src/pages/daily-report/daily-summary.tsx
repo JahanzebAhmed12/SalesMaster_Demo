@@ -16,7 +16,15 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import { useCompanyDetails } from "@/hooks/use-company-details";
 import { useBackdatePermissions } from "@/hooks/usePermissions";
 import PageLayout from "@/components/common/page-layout";
-import { generateInvoicePdfBlob } from "@/lib/invoice-pdf";
+import {
+  downloadCustomerDiscountPdf,
+  downloadCustomerReturnPdf,
+  generateInvoicePdfBlob,
+  sendCustomerDiscountPdfEmail,
+  sendCustomerReturnPdfEmail,
+} from "@/lib/invoice-pdf";
+import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
+import { fetchCustomerDiscountInvoices } from "@/lib/customer-discount-invoice";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import "./styles.css";
@@ -130,6 +138,8 @@ interface DailySummaryData {
   sales_summary: Array<{
     customer_name: string;
     invoice_no: string; // Changed to invoice_no for sales summary
+    customer_return_id?: number;
+    customer_discount_id?: number;
     cash_sales: number;
     card_paid: number;
     bank_transfer: number;
@@ -358,6 +368,87 @@ export default function DailySummary() {
         ? `/print/a5-invoice/${invoiceNumber}`
         : `/print/invoice/${invoiceNumber}`;
     window.open(url, '_blank');
+  };
+
+  const handlePrintAdjustmentFormat = (
+    adjustment: DailySummaryData["sales_summary"][number],
+    fmt: 'a4' | 'a5' | 'dotmatrix',
+  ) => {
+    const printPath = fmt === 'dotmatrix'
+      ? `/print/dot-matrix-invoice/${encodeURIComponent(adjustment.invoice_no)}`
+      : fmt === 'a5'
+        ? `/print/a5-invoice/${encodeURIComponent(adjustment.invoice_no)}`
+        : `/print/invoice/${encodeURIComponent(adjustment.invoice_no)}`;
+    const query = adjustment.is_customer_discount
+      ? `discountId=${adjustment.customer_discount_id}`
+      : `returnId=${adjustment.customer_return_id}`;
+    window.open(`${printPath}?${query}`, '_blank');
+  };
+
+  const handleDownloadAdjustmentPdf = async (
+    adjustment: DailySummaryData["sales_summary"][number],
+    fmt: 'a4' | 'a5' | 'dotmatrix',
+  ) => {
+    try {
+      const documentId = adjustment.is_customer_discount
+        ? adjustment.customer_discount_id
+        : adjustment.customer_return_id;
+      if (!documentId) throw new Error("Adjustment ID is missing.");
+      if (fmt === 'dotmatrix') {
+        if (adjustment.is_customer_discount) {
+          await downloadCustomerDiscountPdf(documentId);
+        } else {
+          await downloadCustomerReturnPdf(documentId);
+        }
+        return;
+      }
+
+      const invoiceData = adjustment.is_customer_discount
+        ? fetchCustomerDiscountInvoices([String(documentId)]).then(([data]) => data)
+        : fetchCustomerReturnInvoices([String(documentId)]).then(([data]) => data);
+      const [data, settingsData] = await Promise.all([
+        invoiceData,
+        apiRequest("GET", "/api/settings").catch(() => ({} as any)),
+      ]);
+      if (!data) throw new Error("Adjustment could not be loaded.");
+      const downloadUrl = window.URL.createObjectURL(generateInvoicePdfBlob({
+        ...data,
+        invoiceFooter: settingsData.invoiceFooter || "",
+      }));
+      const link = window.document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `${adjustment.is_customer_discount ? "customer-discount" : "customer-return"}-${adjustment.invoice_no}-${fmt}.pdf`;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      toast({ title: "Success", description: `${fmt.toUpperCase()} PDF downloaded` });
+    } catch (error) {
+      toast({
+        title: "Unable to download PDF",
+        description: error instanceof Error ? error.message : "The adjustment PDF could not be downloaded.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEmailAdjustment = async (adjustment: DailySummaryData["sales_summary"][number]) => {
+    try {
+      if (adjustment.is_customer_discount && adjustment.customer_discount_id) {
+        await sendCustomerDiscountPdfEmail(adjustment.customer_discount_id);
+      } else if (adjustment.is_customer_return && adjustment.customer_return_id) {
+        await sendCustomerReturnPdfEmail(adjustment.customer_return_id);
+      } else {
+        throw new Error("Adjustment ID is missing.");
+      }
+      toast({ title: "Success", description: "Adjustment email sent." });
+    } catch (error) {
+      toast({
+        title: "Unable to send email",
+        description: error instanceof Error ? error.message : "The adjustment email could not be sent.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Fetch stock check data
@@ -1354,16 +1445,61 @@ export default function DailySummary() {
                             </TableCell>
                             <TableCell className="border">
                               {sale.invoice_no ? (
-                                sale.is_customer_discount ? (
-                                  <span>
-                                    {sale.invoice_no}
-                                    <span className="ml-1 text-xs text-orange-700">(Discount)</span>
-                                  </span>
-                                ) : sale.is_customer_return ? (
-                                  <span>
-                                    {sale.invoice_no}
-                                    <span className="ml-1 text-xs text-red-600">(Return)</span>
-                                  </span>
+                                sale.is_customer_discount || sale.is_customer_return ? (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="link"
+                                        className="p-0 text-blue-600 underline hover:text-blue-800 cursor-pointer text-left font-normal h-auto min-h-0"
+                                      >
+                                        {sale.invoice_no}
+                                        <span className={`ml-1 text-xs ${sale.is_customer_discount ? "text-orange-700" : "text-red-600"}`}>
+                                          {sale.is_customer_discount ? "(Discount)" : "(Return)"}
+                                        </span>
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-56">
+                                      <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger className="text-sm py-2">
+                                          <Download className="mr-2 h-4 w-4" />
+                                          Download PDF
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent className="w-44">
+                                          <DropdownMenuItem className="text-sm" onClick={() => handleDownloadAdjustmentPdf(sale, 'a4')}>
+                                            <FileText className="mr-2 h-4 w-4" /> A4 PDF
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem className="text-sm" onClick={() => handleDownloadAdjustmentPdf(sale, 'a5')}>
+                                            <FileText className="mr-2 h-4 w-4" /> A5 PDF
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem className="text-sm" onClick={() => handleDownloadAdjustmentPdf(sale, 'dotmatrix')}>
+                                            <FileText className="mr-2 h-4 w-4" /> Dot Matrix PDF
+                                          </DropdownMenuItem>
+                                        </DropdownMenuSubContent>
+                                      </DropdownMenuSub>
+                                      <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger className="text-sm py-2">
+                                          <Printer className="mr-2 h-4 w-4" />
+                                          Print
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent className="w-40">
+                                          <DropdownMenuItem className="text-sm" onClick={() => handlePrintAdjustmentFormat(sale, 'a4')}>
+                                            A4
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem className="text-sm" onClick={() => handlePrintAdjustmentFormat(sale, 'a5')}>
+                                            A5
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem className="text-sm" onClick={() => handlePrintAdjustmentFormat(sale, 'dotmatrix')}>
+                                            Dot Matrix
+                                          </DropdownMenuItem>
+                                        </DropdownMenuSubContent>
+                                      </DropdownMenuSub>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem className="text-sm py-2" onClick={() => handleEmailAdjustment(sale)}>
+                                        <Mail className="mr-2 h-4 w-4" />
+                                        Email
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 ) : (
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>

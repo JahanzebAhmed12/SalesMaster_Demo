@@ -70,7 +70,11 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
 
   return responseData.returns.map(({ customer, returnItem, originalInvoiceDate }) => {
     const amount = Number(returnItem.totalValue || 0);
-    const itemNotes = [returnItem.returnReason, returnItem.remarks].filter(Boolean).join(" - ");
+    const itemNotes = Array.from(new Set(
+      [returnItem.returnReason, returnItem.remarks]
+        .map(note => note?.trim())
+        .filter((note): note is string => Boolean(note)),
+    )).join(" - ");
     const item = {
       id: returnItem.id,
       productName: returnItem.description,

@@ -301,7 +301,12 @@ def main():
             )
             daily_summary = daily_summary_response.get_json() or {}
             assert daily_summary_response.status_code == 200
-            assert any(row.get("is_customer_discount") for row in daily_summary["sales_summary"])
+            daily_discount_row = next(
+                row for row in daily_summary["sales_summary"]
+                if row.get("is_customer_discount")
+            )
+            assert daily_discount_row["customer_discount_id"] == created["id"]
+            assert daily_discount_row["invoice_no"] == created["documentInvoiceNumber"]
             db.session.add(SupplierReturn(
                 ref_number="SR-DISCOUNT-TEST",
                 date=date(2026, 6, 15),
@@ -866,6 +871,18 @@ def main():
             return_print_data = return_print_response.get_json() or {}
             assert return_print_response.status_code == 200
             assert return_print_data["returns"][0]["originalInvoiceDate"] == sale.date.date().isoformat()
+            return_summary_response = client.get(
+                "/api/reports/daily-summary?date=2026-06-15",
+                headers=headers,
+            )
+            return_summary = return_summary_response.get_json() or {}
+            summary_return_row = next(
+                row for row in return_summary["sales_summary"]
+                if row.get("is_customer_return")
+                and row.get("customer_return_id") == statement_return.id
+            )
+            assert return_summary_response.status_code == 200
+            assert summary_return_row["invoice_no"] == "1001"
             db.session.add(Payment(
                 customer_id=customer.id,
                 sale_id=sale.id,

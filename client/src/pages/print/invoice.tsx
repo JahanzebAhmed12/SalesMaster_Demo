@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { useRoute, useLocation } from "wouter";
+import { useRoute, useSearch } from "wouter";
 import logo from "@/public/printlogo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { getApiUrl } from "@/lib/config";
@@ -92,8 +92,8 @@ export default function InvoicePrintPage() {
   const [data, setData] = useState<InvoiceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [location] = useLocation();
-  const query = useMemo(() => new URLSearchParams(location.split('?')[1] || ''), [location]);
+  const search = useSearch();
+  const query = useMemo(() => new URLSearchParams(search), [search]);
   const showCashPaid = query.get('showCashPaid') === '1';
   const showBankPaid = query.get('showBankPaid') === '1';
   const backdate = query.get('backdate');

@@ -14855,6 +14855,7 @@ def daily_summary_report():
     # Get customer returns for the date (to show as negative credits)
     customer_returns = db.session.query(
         CustomerReturn.id,
+        CustomerReturn.document_invoice_number,
         CustomerReturn.customer_id,
         CustomerReturn.sale_id,
         CustomerReturn.total_value,
@@ -14991,7 +14992,8 @@ def daily_summary_report():
 
         sales_summary.append({
             'customer_name': return_item.customer_name,
-            'invoice_no': return_item.invoice_number or f"CR-{return_item.id}",
+            'invoice_no': return_item.document_invoice_number or return_item.invoice_number or f"CR-{return_item.id}",
+            'customer_return_id': return_item.id,
             'cash_sales': 0,
             'card_paid': 0,
             'bank_transfer': 0,
@@ -15016,7 +15018,8 @@ def daily_summary_report():
     for discount in daily_discounts:
         sales_summary.append({
             'customer_name': discount.customer.customer_name if discount.customer else '',
-            'invoice_no': discount.sale.invoice_number if discount.sale else '',
+            'invoice_no': discount.document_invoice_number or (discount.sale.invoice_number if discount.sale else ''),
+            'customer_discount_id': discount.id,
             'cash_sales': 0,
             'card_paid': 0,
             'bank_transfer': 0,

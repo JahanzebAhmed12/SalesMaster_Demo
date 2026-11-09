@@ -66,7 +66,12 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
 
   return responseData.discounts.map(({ customer, discount }) => {
     const amount = Number(discount.amount || 0);
-    const notes = discount.reason;
+    const notes = Array.from(new Set(
+      (discount.reason || "")
+        .split(/\s+-\s+/)
+        .map(note => note.trim())
+        .filter(Boolean),
+    )).join(" - ");
     const item = {
       id: discount.id,
       productName: discount.productName || "Customer discount",
