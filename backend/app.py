@@ -2997,15 +2997,9 @@ def create_purchase():
     data = request.get_json()
     try:
         user_id = get_jwt_identity()
-        # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
         business_date = get_business_date()
-        today = datetime.now().date()
-        if backdate_opt and not backdate_opt.editing and business_date < today:
-            return jsonify({'error': 'You do not have permission to create purchases for previous dates.'}), 403
-        
-        # Check current date editing permission
-        if backdate_opt and not getattr(backdate_opt, 'current_editing', True) and business_date == today:
+        if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
             return jsonify({'error': 'You do not have permission to create purchases for today.'}), 403
         
         purchase_data = PurchaseSchema(**data)
@@ -5902,7 +5896,7 @@ def handle_delete_payment_batch(batch_id, user_id):
         
         # Check backdate editing permission
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-        today = datetime.now().date()
+        today = get_business_date()
         
         # If editing not allowed and payment_date is in the past, block
         if backdate_opt and not backdate_opt.editing and payment_date < today:
@@ -6016,7 +6010,7 @@ def manage_payment_batch(batch_id):
         # Check permissions (same as delete)
         payment_date = payments[0].payment_date
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-        today = datetime.now().date()
+        today = get_business_date()
         
         if backdate_opt and not backdate_opt.editing and payment_date < today:
             return jsonify({"error": "You do not have permission to edit payments for previous dates."}), 403
@@ -11403,7 +11397,7 @@ def delete_customer_return(id):
         
         # Get today's date
         from datetime import datetime
-        today = datetime.now().date()
+        today = get_business_date()
         return_date = customer_return.date
         
         # Check permissions based on return date
@@ -11723,7 +11717,7 @@ def create_supplier_return():
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
         
         # Get today's date
-        today = datetime.now().date()
+        today = get_business_date()
         
         # Check permissions based on return date
         if parsed_date == today:
@@ -11871,7 +11865,7 @@ def update_supplier_return(id):
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
         
         # Get today's date. datetime is imported at module scope.
-        today = datetime.now().date()
+        today = get_business_date()
         
         # Check permissions based on return date (both old and new dates)
         dates_to_check = [supplier_return.date, parsed_date]
@@ -11996,7 +11990,7 @@ def delete_supplier_return(id):
         
         # Get today's date
         from datetime import datetime
-        today = datetime.now().date()
+        today = get_business_date()
         return_date = supplier_return.date
         
         # Check permissions based on return date
@@ -16476,7 +16470,7 @@ def delete_banking_entry(id):
         
         # Get today's date
         from datetime import datetime
-        today = datetime.now().date()
+        today = get_business_date()
         entry_date = entry.date
         
         # Check permissions based on entry date

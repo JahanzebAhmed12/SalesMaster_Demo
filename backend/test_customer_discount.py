@@ -194,6 +194,30 @@ def main():
                 "Authorization": f"Bearer {create_access_token(identity=str(user.id))}"
             }
 
+            current_business_date_return = CustomerReturn(
+                ref_number="CR-CURRENT-BUSINESS-DATE",
+                date=date(2026, 6, 15),
+                customer_id=customer.id,
+                product_id=product.id,
+                product_type="regular",
+                description=product.description,
+                quantity=Decimal("1.000"),
+                unit_price=Decimal("10.00"),
+                total_value=Decimal("10.00"),
+                return_reason="Permission regression test",
+                status="pending",
+                created_by=user.id,
+            )
+            db.session.add(current_business_date_return)
+            db.session.commit()
+            current_date_return_delete_response = client.delete(
+                f"/api/customer-returns/{current_business_date_return.id}",
+                headers=headers,
+            )
+            assert current_date_return_delete_response.status_code == 200, (
+                current_date_return_delete_response.get_json()
+            )
+
             invoices_response = client.get(
                 f"/api/customers/{customer.id}/invoices"
                 "?fromDate=2026-06-01&toDate=2026-06-15",
