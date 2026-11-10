@@ -349,6 +349,8 @@ def main():
             assert print_data["discounts"][0]["discount"]["documentInvoiceNumber"] == created["documentInvoiceNumber"]
             assert print_data["discounts"][0]["discount"]["originalInvoiceNumber"] == sale.invoice_number
             assert print_data["discounts"][0]["discount"]["originalInvoiceDate"] == sale.date.date().isoformat()
+            assert print_data["discounts"][0]["discount"]["originalQuantity"] == 10
+            assert print_data["discounts"][0]["discount"]["averagePriceAfterDiscount"] == 8
 
             daily_summary_response = client.get(
                 "/api/reports/daily-summary?date=2026-06-15", headers=headers

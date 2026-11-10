@@ -57,6 +57,8 @@ interface InvoiceData {
     isCustomerDiscount?: boolean;
     originalInvoiceNumber?: string;
     originalInvoiceDate?: string;
+    originalQuantity?: number;
+    averagePriceAfterDiscount?: number;
   };
   items?: InvoiceItem[];
   invoiceFooter?: string;
@@ -91,7 +93,11 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
 
   return (
     <article className="bulk-a5-invoice">
-      {isPaid && <div className="paid-watermark">PAID</div>}
+      {(isPaid || sale.isCustomerDiscount) && (
+        <div className={`paid-watermark${sale.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
+          {sale.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
+        </div>
+      )}
       <div className="invoice-header">
         <div>
           <div className="company-name">{company.companyName || "Company Name"}</div>
@@ -177,6 +183,11 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
           )}
         </div>
       </div>
+      {sale.isCustomerDiscount && (
+        <div className="discount-details">
+          Original quantity: {formatQuantity(sale.originalQuantity ?? 0)} | Average price after discount: £{Number(sale.averagePriceAfterDiscount ?? 0).toFixed(2)}
+        </div>
+      )}
 
       <div className="invoice-footer">
         <div>Invoice Time: {sale.date ? new Date(sale.date).toLocaleString() : "-"}</div>
@@ -264,6 +275,7 @@ export default function BulkA5InvoicePrintPage() {
         .bulk-a5-toolbar button { padding: 8px 16px; border: 1px solid #9ca3af; border-radius: 4px; background: #fff; cursor: pointer; }
         .bulk-a5-invoice { box-sizing: border-box; max-width: 480px; margin: 0 auto 20px; padding: 16px; background: #fff; font-family: Arial, sans-serif; color: #111; position: relative; }
         .bulk-a5-invoice .paid-watermark { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%) rotate(-22deg); border: 2px solid rgba(200,0,0,0.28); color: rgba(200,0,0,0.28); font-size: 40px; font-weight: 800; letter-spacing: 6px; padding: 3px 14px 3px 20px; border-radius: 8px; pointer-events: none; z-index: 10; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .bulk-a5-invoice .credit-note-watermark { font-size: 29px; letter-spacing: 3px; padding: 3px 10px; }
         .invoice-header, .billing-grid, .totals-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
         .invoice-header { font-size: 11px; line-height: 1.35; }
         .company-name { font-size: 15px; font-weight: 700; margin-bottom: 3px; }
@@ -286,6 +298,7 @@ export default function BulkA5InvoicePrintPage() {
         .item-original-invoice { font-size: 9px; }
         .subtotal-row { font-weight: 700; }
         .totals-grid { margin-top: 0; }
+        .discount-details { margin-top: 4px; font-size: 10px; font-weight: 700; }
         .invoice-notes { flex: 2; min-height: 50px; border: 1px solid #ccc; border-top: none; padding: 4px; white-space: pre-line; font-size: 9px; color: #666; font-style: italic; }
         .totals-box { flex: 1; border: 1px solid #ccc; border-top: none; padding: 0 5px; font-size: 10px; }
         .totals-box > div { display: flex; justify-content: space-between; padding: 2px 0; }

@@ -11387,6 +11387,21 @@ def print_customer_discounts():
         documents = []
         for discount in discounts:
             sale_item = discount.sale_item
+            original_quantity = Decimal(str(sale_item.quantity or 0)) if sale_item else Decimal("0")
+            discounted_total = (
+                max(
+                    Decimal("0.00"),
+                    _money_decimal(sale_item.total_price)
+                    - _active_discount_total_for_item(sale_item.id),
+                )
+                if sale_item
+                else Decimal("0.00")
+            )
+            average_price_after_discount = (
+                (discounted_total / original_quantity).quantize(CENT, rounding=ROUND_HALF_UP)
+                if original_quantity
+                else Decimal("0.00")
+            )
             product = (
                 sale_item.product.description if sale_item and sale_item.product
                 else sale_item.non_product.description if sale_item and sale_item.non_product
@@ -11405,7 +11420,9 @@ def print_customer_discounts():
                     ),
                     'date': discount.date.isoformat(),
                     'productName': product,
-                    'quantity': 1,
+                    'quantity': float(original_quantity),
+                    'originalQuantity': float(original_quantity),
+                    'averagePriceAfterDiscount': float(average_price_after_discount),
                     'unitPrice': float(discount.amount or 0),
                     'amount': float(discount.amount or 0),
                     'reason': discount.reason,

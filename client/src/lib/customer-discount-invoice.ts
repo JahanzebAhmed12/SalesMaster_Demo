@@ -10,6 +10,8 @@ interface CustomerDiscountPrintRecord {
     productName: string;
     originalInvoiceDate?: string;
     quantity: number;
+    originalQuantity: number;
+    averagePriceAfterDiscount: number;
     unitPrice: number;
     amount: number;
     reason: string;
@@ -36,6 +38,8 @@ export interface CustomerDiscountInvoiceData {
     isCustomerDiscount: true;
     originalInvoiceNumber?: string;
     originalInvoiceDate?: string;
+    originalQuantity: number;
+    averagePriceAfterDiscount: number;
   };
   items: Array<Record<string, unknown> & {
     id: number;
@@ -99,6 +103,8 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
         isCustomerDiscount: true,
         originalInvoiceNumber: discount.originalInvoiceNumber,
         originalInvoiceDate: discount.originalInvoiceDate,
+        originalQuantity: Number(discount.originalQuantity ?? discount.quantity ?? 0),
+        averagePriceAfterDiscount: Number(discount.averagePriceAfterDiscount ?? 0),
       },
       items: [item],
       paidAmount: 0,

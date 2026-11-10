@@ -82,7 +82,11 @@ export default function A5InvoicePrintPage() {
 
   return (
     <div className="invoice-container" style={{ maxWidth: 460, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 16, position: "relative" }}>
-      {isPaid && <div className="paid-watermark">PAID</div>}
+      {(isPaid || data.sale?.isCustomerDiscount) && (
+        <div className={`paid-watermark${data.sale?.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
+          {data.sale?.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
+        </div>
+      )}
       {/* Header: Company Details and Logo */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
@@ -188,6 +192,12 @@ export default function A5InvoicePrintPage() {
           </div>
         </div>
       </div>
+      {data.sale?.isCustomerDiscount && (
+        <div style={{ marginTop: 4, fontSize: 10, fontWeight: "bold" }}>
+          Original quantity: {formatQuantity(data.sale.originalQuantity ?? 0)}{" "}
+          | Average price after discount: £{(data.sale.averagePriceAfterDiscount ?? 0).toFixed(2)}
+        </div>
+      )}
 
       {showCashPaid && (
         <div style={{ fontSize: 11, color: '#1a237e', fontWeight: 'bold', marginTop: 8, marginBottom: 4, textAlign: 'right' }}>Cash Paid: £{Number(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}</div>
@@ -235,6 +245,7 @@ export default function A5InvoicePrintPage() {
           pointer-events: none; z-index: 10; background: transparent;
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
+        .credit-note-watermark { font-size: 27px; letter-spacing: 3px; padding: 3px 10px; }
         @media print {
           @page {
             size: A5 portrait;

@@ -932,7 +932,11 @@ export default function DotMatrixInvoicePrintPage({
               }}
             >
               {/* PAID stamp on last page only — sits beside the totals */}
-              {isPaid && page.isLastPage && <div className="paid-stamp"><span>PAID</span></div>}
+              {(isPaid || sale?.isCustomerDiscount) && page.isLastPage && (
+                <div className="paid-stamp">
+                  <span>{sale?.isCustomerDiscount ? 'CREDIT NOTE' : 'PAID'}</span>
+                </div>
+              )}
               {/* CRITICAL: Wrapper to reset positioning context for each page */}
               <div className="page-content-wrapper" style={{
                 position: 'absolute',
@@ -1233,6 +1237,23 @@ export default function DotMatrixInvoicePrintPage({
                   whiteSpace: 'normal'
                 }}>
                   ({formatQuantity(totalQuantity)} packages)
+                </div>
+              )}
+              {page.isLastPage && sale?.isCustomerDiscount && (
+                <div className="field-text" style={{
+                  position: 'absolute',
+                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM}mm`,
+                  left: fieldPositions.columns.description.left,
+                  width: fieldPositions.columns.description.width,
+                  fontFamily: '"Courier New", "Courier", monospace',
+                  fontSize: '10pt',
+                  fontWeight: 'bold',
+                  lineHeight: '1',
+                  margin: '0',
+                  padding: '0',
+                  whiteSpace: 'normal',
+                }}>
+                  Original quantity: {formatQuantity(Number(sale.originalQuantity || 0))} | Average price after discount: £{Number(sale.averagePriceAfterDiscount || 0).toFixed(2)}
                 </div>
               )}
 

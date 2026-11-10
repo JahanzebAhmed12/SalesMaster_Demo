@@ -63,6 +63,8 @@ interface Sale {
   isCustomerDiscount?: boolean;
   originalInvoiceNumber?: string;
   originalInvoiceDate?: string;
+  originalQuantity?: number;
+  averagePriceAfterDiscount?: number;
 }
 interface Item {
   id?: number;
@@ -145,7 +147,11 @@ export default function InvoicePrintPage() {
 
   return (
     <div className="invoice-container" style={{ maxWidth: 700, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24, position: "relative" }}>
-      {isPaid && <div className="paid-watermark">PAID</div>}
+      {(isPaid || data.sale?.isCustomerDiscount) && (
+        <div className={`paid-watermark${data.sale?.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
+          {data.sale?.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
+        </div>
+      )}
       {/* Header: Company Details and Logo */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         {/* Company Info on Left */}
@@ -253,6 +259,12 @@ export default function InvoicePrintPage() {
           </div>
         </div>
       </div>
+      {data.sale?.isCustomerDiscount && (
+        <div style={{ marginTop: 6, fontSize: 13, fontWeight: "bold" }}>
+          Original quantity: {formatQuantity(data.sale.originalQuantity ?? 0)}{" "}
+          | Average price after discount: £{(data.sale.averagePriceAfterDiscount ?? 0).toFixed(2)}
+        </div>
+      )}
       {showCashPaid && (
         <div style={{ fontSize: 15, color: '#1a237e', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Cash Paid: £{Number(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}</div>
       )}
@@ -296,6 +308,7 @@ export default function InvoicePrintPage() {
           pointer-events: none; z-index: 10; background: transparent;
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
+        .credit-note-watermark { font-size: 38px; letter-spacing: 4px; padding: 4px 14px; }
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }

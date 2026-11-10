@@ -69,7 +69,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
   }
 
   return responseData.returns.map(({ customer, returnItem, originalInvoiceDate }) => {
-    const amount = Number(returnItem.totalValue || 0);
+    const amount = -Math.abs(Number(returnItem.totalValue || 0));
     const itemNotes = Array.from(new Set(
       [returnItem.returnReason, returnItem.remarks]
         .map(note => note?.trim())
