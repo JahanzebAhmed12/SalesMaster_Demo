@@ -24,7 +24,7 @@ const formSchema = insertSupplierSchema.extend({
   address: z.string().nullable(),
   telephone: z.string().nullable(),
   fax: z.string().nullable(),
-  email: z.string().email().nullable(),
+  email: z.string().email().or(z.literal("")).nullable(),
   customer_country: z.string().nullable(),
   supplier_currency: z.string(),
   contact_no1: z.string().nullable(),
