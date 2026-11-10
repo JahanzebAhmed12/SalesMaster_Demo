@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from flask import make_response
 import re
 import html
-from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, CustomerDiscount, CustomerDiscountAudit, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave, SaleEditLock, InvoiceDocumentNumber
+from models import db, User, Sale, SaleHold, Purchase, RegularProduct, NonProduct, Customer, Supplier, SystemSettings, Attendance, SaleItem, Company, Expense, Payroll, Payment, PurchaseInvoice, PurchaseInvoiceItem, SupplierPayment, StockMovement, StockAdjustment, ExpenseEntry, DumpEntry, CustomerReturn, CustomerDiscount, CustomerDiscountAudit, SupplierReturn, CashCarryForward, BankingEntry, BankingBagNumber, UserRestriction, UserBackDateOption, UserTimingRestriction, UserInvoiceRestriction, UserDailyBookType, ClosingStock, Employee, EmployeeDocument, BusinessDate, HolidayRequest, Equipment, PrintQueue, Leave, SaleEditLock, InvoiceDocumentNumber, VoidedInvoiceDocument
 
 
 from schemas import (
@@ -392,8 +392,12 @@ def _allocate_invoice_document_number():
         for (value,) in db.session.query(Sale.invoice_number).all():
             if value and str(value).strip().isdigit():
                 existing_numbers.append(int(str(value).strip()))
-        for model in (CustomerReturn, CustomerDiscount):
-            for (value,) in db.session.query(model.document_invoice_number).all():
+        for model, column in (
+            (CustomerReturn, CustomerReturn.document_invoice_number),
+            (CustomerDiscount, CustomerDiscount.document_invoice_number),
+            (VoidedInvoiceDocument, VoidedInvoiceDocument.invoice_number),
+        ):
+            for (value,) in db.session.query(column).all():
                 if value and str(value).strip().isdigit():
                     existing_numbers.append(int(str(value).strip()))
         largest_allocation = db.session.query(func.max(InvoiceDocumentNumber.id)).scalar() or 0
@@ -408,14 +412,100 @@ def _allocate_invoice_document_number():
     return str(sequence.last_number)
 
 
+def _record_voided_invoice_document(
+    invoice_number,
+    document_type,
+    document_date,
+    customer_name=None,
+    original_invoice_number=None,
+    salesman=None,
+):
+    number = str(invoice_number or "").strip()
+    if not number or VoidedInvoiceDocument.query.filter_by(invoice_number=number).first():
+        return
+    db.session.add(VoidedInvoiceDocument(
+        invoice_number=number,
+        document_type=document_type,
+        date=document_date.date() if isinstance(document_date, datetime) else document_date,
+        customer_name=customer_name or "",
+        original_invoice_number=original_invoice_number,
+        salesman=salesman or "",
+    ))
+
+
+def ensure_voided_invoice_document_schema():
+    inspector = inspect(db.engine)
+    if not inspector.has_table(VoidedInvoiceDocument.__tablename__):
+        return
+    columns = {column['name'] for column in inspector.get_columns(VoidedInvoiceDocument.__tablename__)}
+    if 'date_unknown' not in columns:
+        db.session.execute(db.text(
+            "ALTER TABLE voided_invoice_document "
+            "ADD COLUMN date_unknown BOOLEAN NOT NULL DEFAULT 0"
+        ))
+        db.session.commit()
+
+
+def _backfill_missing_invoice_document_numbers():
+    occupied_numbers = set()
+    for model, column in (
+        (Sale, Sale.invoice_number),
+        (CustomerReturn, CustomerReturn.document_invoice_number),
+        (CustomerDiscount, CustomerDiscount.document_invoice_number),
+        (VoidedInvoiceDocument, VoidedInvoiceDocument.invoice_number),
+    ):
+        for (value,) in db.session.query(column).all():
+            number = str(value or '').strip()
+            if number.isdigit():
+                occupied_numbers.add(int(number))
+
+    sequence = InvoiceDocumentNumber.query.filter_by(id=1).first()
+    maximum = sequence.last_number if sequence else max(occupied_numbers, default=0)
+    minimum = min(occupied_numbers, default=1)
+    missing_numbers = [
+        number for number in range(minimum, maximum + 1)
+        if number not in occupied_numbers
+    ]
+    for number in missing_numbers:
+        db.session.add(VoidedInvoiceDocument(
+            invoice_number=str(number),
+            document_type='unknown',
+            date=date.min,
+            date_unknown=True,
+        ))
+    if missing_numbers:
+        db.session.commit()
+
+
+def _backfill_deleted_customer_discount_voids():
+    deleted_discounts = CustomerDiscount.query.filter(
+        CustomerDiscount.is_deleted.is_(True),
+    ).all()
+    for discount in deleted_discounts:
+        _record_voided_invoice_document(
+            discount.document_invoice_number,
+            "discount",
+            discount.date,
+            discount.customer.customer_name if discount.customer else None,
+            discount.sale.invoice_number if discount.sale else None,
+            discount.creator.username if discount.creator else None,
+        )
+    if deleted_discounts:
+        db.session.commit()
+
+
 def _initialize_invoice_document_numbers():
     """Seed the shared auto-increment series and number legacy adjustments."""
     existing_numbers = []
     for (value,) in db.session.query(Sale.invoice_number).all():
         if value and str(value).strip().isdigit():
             existing_numbers.append(int(str(value).strip()))
-    for model in (CustomerReturn, CustomerDiscount):
-        for (value,) in db.session.query(model.document_invoice_number).all():
+    for column in (
+        CustomerReturn.document_invoice_number,
+        CustomerDiscount.document_invoice_number,
+        VoidedInvoiceDocument.invoice_number,
+    ):
+        for (value,) in db.session.query(column).all():
             if value and str(value).strip().isdigit():
                 existing_numbers.append(int(str(value).strip()))
 
@@ -474,7 +564,10 @@ with app.app_context():
         CustomerDiscountAudit.__table__,
     )
     upgrade_invoice_document_numbers_schema(db.engine, InvoiceDocumentNumber.__table__)
+    ensure_voided_invoice_document_schema()
     _initialize_invoice_document_numbers()
+    _backfill_deleted_customer_discount_voids()
+    _backfill_missing_invoice_document_numbers()
     ensure_sale_item_highlight_column()
     ensure_print_service_settings_columns()
     create_admin_user()
@@ -2972,7 +3065,23 @@ def delete_sale(id):
         # Delete associated customer return records
         customer_returns = CustomerReturn.query.filter_by(sale_id=sale.id).all()
         for cr in customer_returns:
+            _record_voided_invoice_document(
+                cr.document_invoice_number,
+                "return",
+                cr.date,
+                cr.customer.customer_name if cr.customer else None,
+                cr.invoice_number,
+                cr.user.username if cr.user else None,
+            )
             db.session.delete(cr)
+
+        _record_voided_invoice_document(
+            sale.invoice_number,
+            "invoice",
+            sale.date,
+            sale.customer.customer_name if sale.customer else None,
+            salesman=sale.user.username if sale.user else None,
+        )
 
         # Delete all sale items
         for item in sale.items:
@@ -7073,6 +7182,65 @@ def daily_book_sales():
             'isCompany': bool(discount.customer.is_company) if discount.customer else False,
             'isCustomerDiscount': True,
         })
+
+    voids_query = VoidedInvoiceDocument.query
+    if from_date:
+        voids_query = voids_query.filter(
+            or_(
+                VoidedInvoiceDocument.date_unknown.is_(True),
+                VoidedInvoiceDocument.date >= datetime.strptime(from_date, "%Y-%m-%d").date(),
+            )
+        )
+    if to_date:
+        voids_query = voids_query.filter(
+            or_(
+                VoidedInvoiceDocument.date_unknown.is_(True),
+                VoidedInvoiceDocument.date <= datetime.strptime(to_date, "%Y-%m-%d").date(),
+            )
+        )
+    if salesman and salesman != 'all':
+        voids_query = voids_query.filter(
+            or_(
+                VoidedInvoiceDocument.date_unknown.is_(True),
+                VoidedInvoiceDocument.salesman == salesman,
+            )
+        )
+    if search:
+        voids_query = voids_query.filter(
+            VoidedInvoiceDocument.invoice_number.ilike(f'%{search}%') |
+            VoidedInvoiceDocument.customer_name.ilike(f'%{search}%')
+        )
+    for voided in voids_query.order_by(VoidedInvoiceDocument.date.desc(), VoidedInvoiceDocument.invoice_number.desc()).all():
+        slNo += 1
+        result.append({
+            'id': -2000000000 - voided.id,
+            'slNo': slNo,
+            'date': voided.date.isoformat() if not voided.date_unknown else None,
+            'salesman': voided.salesman,
+            'boxes': 0,
+            'invoiceNo': voided.invoice_number,
+            'originalInvoiceNo': voided.original_invoice_number or '',
+            'customerName': voided.customer_name,
+            'customerOthers': None,
+            'gateNumber': None,
+            'customerId': 0,
+            'vat': 0,
+            'amount': 0,
+            'cash': 0,
+            'bank': 0,
+            'bankTransfer': 0,
+            'cheque': 0,
+            'credit': 0,
+            'hasPayments': False,
+            'paymentSource': None,
+            'isPaidViaCustomerPayment': False,
+            'isFullyPaid': False,
+            'totalPaid': 0,
+            'isCompany': False,
+            'isVoid': True,
+            'isUnknownDate': bool(voided.date_unknown),
+            'voidedDocumentType': voided.document_type,
+        })
     return jsonify(result)
 
 @app.route('/api/reports/daily-sales-full-view', methods=['GET'])
@@ -7177,6 +7345,70 @@ def daily_sales_full_view():
         'isInvoiceTotal': True,
         'notes': ''
     })
+
+    voids_query = VoidedInvoiceDocument.query
+    if from_date:
+        voids_query = voids_query.filter(
+            or_(
+                VoidedInvoiceDocument.date_unknown.is_(True),
+                VoidedInvoiceDocument.date >= datetime.strptime(from_date, "%Y-%m-%d").date(),
+            )
+        )
+    if to_date:
+        voids_query = voids_query.filter(
+            or_(
+                VoidedInvoiceDocument.date_unknown.is_(True),
+                VoidedInvoiceDocument.date <= datetime.strptime(to_date, "%Y-%m-%d").date(),
+            )
+        )
+    if search:
+        voids_query = voids_query.filter(
+            VoidedInvoiceDocument.invoice_number.ilike(f'%{search}%') |
+            VoidedInvoiceDocument.customer_name.ilike(f'%{search}%')
+        )
+    for voided in voids_query.order_by(
+        VoidedInvoiceDocument.date.asc(),
+        VoidedInvoiceDocument.invoice_number.asc(),
+    ).all():
+        result.append({
+            'date': voided.date.isoformat() if not voided.date_unknown else None,
+            'invoiceNo': voided.invoice_number,
+            'customerName': voided.customer_name,
+            'productName': '',
+            'quantity': 0,
+            'unitPrice': 0,
+            'total': 0,
+            'isInvoiceHeader': True,
+            'isInvoiceTotal': False,
+            'isVoid': True,
+            'isUnknownDate': bool(voided.date_unknown),
+            'notes': (
+                "VOIDED DOCUMENT - DATE UNKNOWN" if voided.date_unknown
+                else f"VOIDED {voided.document_type.upper()} DOCUMENT"
+            ),
+        })
+
+    invoice_groups = []
+    for row in result:
+        if row.get('isInvoiceHeader'):
+            invoice_groups.append([row])
+        elif invoice_groups:
+            invoice_groups[-1].append(row)
+
+    def invoice_group_sort_key(group):
+        header = group[0]
+        invoice_number = str(header.get('invoiceNo') or '')
+        try:
+            invoice_key = (1, int(invoice_number))
+        except ValueError:
+            invoice_key = (0, invoice_number.casefold())
+        return (header.get('date') or '', invoice_key)
+
+    invoice_groups.sort(
+        key=invoice_group_sort_key,
+        reverse=sort_order == 'desc',
+    )
+    result = [row for group in invoice_groups for row in group]
     
     return jsonify(result)
 
@@ -11525,6 +11757,14 @@ def delete_customer_return(id):
                     customer_return.sale.payment_status = 'partial'
                 db.session.add(customer_return.sale)
         
+        _record_voided_invoice_document(
+            customer_return.document_invoice_number,
+            "return",
+            customer_return.date,
+            customer_return.customer.customer_name if customer_return.customer else None,
+            customer_return.invoice_number,
+            customer_return.user.username if customer_return.user else None,
+        )
         db.session.delete(customer_return)
         db.session.commit()
         return jsonify({"message": "Customer return deleted successfully"}), 200
@@ -12578,6 +12818,14 @@ def delete_customer_discount(discount_id):
         sale = Sale.query.filter_by(id=discount.sale_id).with_for_update().first()
         if not customer or not sale:
             return jsonify({"error": "Discount customer or invoice is no longer available."}), 409
+        _record_voided_invoice_document(
+            discount.document_invoice_number,
+            "discount",
+            discount.date,
+            customer.customer_name,
+            sale.invoice_number,
+            discount.creator.username if discount.creator else None,
+        )
         discount.is_deleted = True
         discount.deleted_by = user_id
         discount.deleted_at = datetime.utcnow()
@@ -14264,6 +14512,54 @@ def daily_book_history():
             'cash': total_cash,
             'isCompany': bool(sale.customer.is_company) if sale.customer else False,
         })
+    voids_query = VoidedInvoiceDocument.query.filter(
+        or_(
+            VoidedInvoiceDocument.date_unknown.is_(True),
+            (VoidedInvoiceDocument.date >= from_dt.date())
+            & (VoidedInvoiceDocument.date < to_dt.date()),
+        )
+    )
+    if user and user != 'All':
+        voids_query = voids_query.filter(
+            or_(
+                VoidedInvoiceDocument.date_unknown.is_(True),
+                VoidedInvoiceDocument.salesman == user,
+            )
+        )
+    if search:
+        voids_query = voids_query.filter(
+            or_(
+                VoidedInvoiceDocument.invoice_number.ilike(f'%{search}%'),
+                VoidedInvoiceDocument.customer_name.ilike(f'%{search}%'),
+                VoidedInvoiceDocument.salesman.ilike(f'%{search}%'),
+            )
+        )
+    for voided in voids_query.order_by(VoidedInvoiceDocument.date.desc(), VoidedInvoiceDocument.invoice_number.desc()).all():
+        result.append({
+            'slNo': len(result) + 1,
+            'date': voided.date.isoformat() if not voided.date_unknown else None,
+            'user': voided.salesman,
+            'invoiceNo': voided.invoice_number,
+            'customerName': voided.customer_name,
+            'account': 0,
+            'accountPaid': 0,
+            'cash': 0,
+            'isCompany': False,
+            'isVoid': True,
+            'isUnknownDate': bool(voided.date_unknown),
+            'voidedDocumentType': voided.document_type,
+        })
+    def report_row_sort_key(row):
+        invoice_number = str(row.get('invoiceNo') or '')
+        try:
+            invoice_key = (1, int(invoice_number))
+        except ValueError:
+            invoice_key = (0, invoice_number.casefold())
+        return (row.get('date') or '', invoice_key)
+
+    result.sort(key=report_row_sort_key, reverse=True)
+    for index, row in enumerate(result, 1):
+        row['slNo'] = index
     return jsonify(result)
 
 @app.route('/api/reports/full-analysis', methods=['GET'])
@@ -15033,6 +15329,32 @@ def daily_summary_report():
             'is_company': bool(discount.customer.is_company) if discount.customer else False,
             'is_customer_discount': True,
         })
+
+    voided_documents = VoidedInvoiceDocument.query.filter(
+        or_(
+            VoidedInvoiceDocument.date_unknown.is_(True),
+            VoidedInvoiceDocument.date == report_date,
+        )
+    ).order_by(VoidedInvoiceDocument.invoice_number.asc()).all()
+    for voided in voided_documents:
+        sales_summary.append({
+            'customer_name': voided.customer_name,
+            'invoice_no': voided.invoice_number,
+            'cash_sales': 0,
+            'card_paid': 0,
+            'bank_transfer': 0,
+            'cheque': 0,
+            'account_sales': 0,
+            'account_paid_cash': 0,
+            'account_paid_cheque': 0,
+            'account_credits': 0,
+            'customer_type': None,
+            'gate_number': None,
+            'is_company': False,
+            'is_void': True,
+            'is_unknown_date': bool(voided.date_unknown),
+            'voided_document_type': voided.document_type,
+        })
     
     # Add negative payments as separate entries (only if they're not for invoices already shown)
     for neg_payment in negative_payments:
@@ -15575,6 +15897,28 @@ def daily_summary_pdf():
                 'account_paid_cash': 0,
                 'account_paid_cheque': 0,
                 'account_credits': float(discount.amount or 0),
+            })
+
+        for voided in VoidedInvoiceDocument.query.filter(
+            or_(
+                VoidedInvoiceDocument.date_unknown.is_(True),
+                VoidedInvoiceDocument.date == report_date,
+            )
+        ).all():
+            sales_summary.append({
+                'customer_name': voided.customer_name,
+                'ticket_no': (
+                    f"{voided.invoice_number} (VOID - DATE UNKNOWN)"
+                    if voided.date_unknown else f"{voided.invoice_number} (VOID)"
+                ),
+                'cash_sales': 0,
+                'card_paid': 0,
+                'bank_transfer': 0,
+                'cheque': 0,
+                'account_sales': 0,
+                'account_paid_cash': 0,
+                'account_paid_cheque': 0,
+                'account_credits': 0,
             })
         
         # 2. Customer Payments

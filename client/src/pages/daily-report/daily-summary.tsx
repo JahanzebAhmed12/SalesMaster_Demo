@@ -153,6 +153,9 @@ interface DailySummaryData {
     is_company?: boolean;
     is_customer_return?: boolean;
     is_customer_discount?: boolean;
+    is_void?: boolean;
+    is_unknown_date?: boolean;
+    voided_document_type?: string;
   }>;
   customer_payments: Array<{
     customer_name: string;
@@ -712,7 +715,7 @@ export default function DailySummary() {
       [
         ...sortedSalesSummary.map(s => [
           getDisplayCustomerName(s),
-          s.invoice_no || '-',
+          `${s.invoice_no || '-'}${s.is_void ? (s.is_unknown_date ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
           s.cash_sales > 0 ? s.cash_sales.toFixed(2) : '-',
           s.card_paid > 0 ? s.card_paid.toFixed(2) : '-',
           (s.bank_transfer || 0) > 0 ? (s.bank_transfer || 0).toFixed(2) : '-',
@@ -1433,7 +1436,7 @@ export default function DailySummary() {
                       </TableHeader>
                       <TableBody>
                         {sortedSalesSummary.map((sale, index) => (
-                          <TableRow key={index} className={sale.is_company ? 'bg-amber-50' : ''}>
+                          <TableRow key={index} className={sale.is_void ? 'bg-gray-100 text-gray-500' : sale.is_company ? 'bg-amber-50' : ''}>
                             <TableCell className="border">
                               <span className="flex items-center gap-1">
                                 {getDisplayCustomerName(sale)}
@@ -1445,7 +1448,13 @@ export default function DailySummary() {
                             </TableCell>
                             <TableCell className="border">
                               {sale.invoice_no ? (
-                                sale.is_customer_discount || sale.is_customer_return ? (
+                                sale.is_void ? (
+                                  <span className="font-medium text-gray-600">
+                                    {sale.invoice_no} <span className="text-xs font-semibold">
+                                      {sale.is_unknown_date ? "(VOID - DATE UNKNOWN)" : "(VOID)"}
+                                    </span>
+                                  </span>
+                                ) : sale.is_customer_discount || sale.is_customer_return ? (
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                       <Button

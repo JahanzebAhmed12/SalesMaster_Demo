@@ -17,7 +17,13 @@ os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(run_dir, 'test.db')}"
 os.environ["STOCK_AUDIT_LOG_DIR"] = os.path.join(run_dir, "logs")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app import app, db, _initialize_invoice_document_numbers  # noqa: E402
+from app import (  # noqa: E402
+    app,
+    db,
+    _backfill_deleted_customer_discount_voids,
+    _backfill_missing_invoice_document_numbers,
+    _initialize_invoice_document_numbers,
+)
 from migrations.customer_discount_v1 import upgrade  # noqa: E402
 from migrations.invoice_document_numbers_v1 import upgrade as upgrade_invoice_document_numbers  # noqa: E402
 from models import (  # noqa: E402
@@ -39,6 +45,7 @@ from models import (  # noqa: E402
     UserBackDateOption,
     UserRestriction,
     InvoiceDocumentNumber,
+    VoidedInvoiceDocument,
 )
 from flask_jwt_extended import create_access_token  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
@@ -198,6 +205,7 @@ def main():
 
             current_business_date_return = CustomerReturn(
                 ref_number="CR-CURRENT-BUSINESS-DATE",
+                document_invoice_number="VOID-RETURN-TEST",
                 date=date(2026, 6, 15),
                 customer_id=customer.id,
                 product_id=product.id,
@@ -218,6 +226,52 @@ def main():
             )
             assert current_date_return_delete_response.status_code == 200, (
                 current_date_return_delete_response.get_json()
+            )
+            assert VoidedInvoiceDocument.query.filter_by(
+                invoice_number="VOID-RETURN-TEST",
+                document_type="return",
+            ).count() == 1
+            return_void_report = client.get(
+                "/api/reports/daily-book-sales"
+                "?fromDate=2026-06-15&toDate=2026-06-15",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row["invoiceNo"] == "VOID-RETURN-TEST" and row["isVoid"]
+                for row in return_void_report
+            )
+
+            sale_to_delete = Sale(
+                invoice_number="VOID-SALE-TEST",
+                customer_id=customer.id,
+                customer_type="account",
+                payment_status="pending",
+                subtotal=Decimal("0.00"),
+                total_amount=Decimal("0.00"),
+                paid_amount=Decimal("0.00"),
+                status="draft",
+                date=datetime(2026, 6, 15, 11, 0),
+                created_by=user.id,
+            )
+            db.session.add(sale_to_delete)
+            db.session.commit()
+            sale_delete_response = client.delete(
+                f"/api/sales/{sale_to_delete.id}",
+                headers=headers,
+            )
+            assert sale_delete_response.status_code == 200, sale_delete_response.get_json()
+            assert VoidedInvoiceDocument.query.filter_by(
+                invoice_number="VOID-SALE-TEST",
+                document_type="invoice",
+            ).count() == 1
+            sale_void_report = client.get(
+                "/api/reports/daily-book-sales"
+                "?fromDate=2026-06-15&toDate=2026-06-15",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row["invoiceNo"] == "VOID-SALE-TEST" and row["isVoid"]
+                for row in sale_void_report
             )
 
             invoices_response = client.get(
@@ -281,11 +335,11 @@ def main():
             )
             daily_book = daily_book_response.get_json() or []
             assert daily_book_response.status_code == 200
-            assert len(daily_book) == 1
-            assert daily_book[0]["isCustomerDiscount"] is True
-            assert daily_book[0]["invoiceNo"] == created["documentInvoiceNumber"]
-            assert daily_book[0]["originalInvoiceNo"] == sale.invoice_number
-            assert daily_book[0]["credit"] == 20
+            active_discount_rows = [row for row in daily_book if row.get("isCustomerDiscount")]
+            assert len(active_discount_rows) == 1
+            assert active_discount_rows[0]["invoiceNo"] == created["documentInvoiceNumber"]
+            assert active_discount_rows[0]["originalInvoiceNo"] == sale.invoice_number
+            assert active_discount_rows[0]["credit"] == 20
 
             print_response = client.get(
                 f"/api/customer-discounts/print?ids={created['id']}"
@@ -666,6 +720,43 @@ def main():
             assert CustomerDiscountAudit.query.filter_by(
                 discount_id=created["id"], action="deleted"
             ).count() == 1
+            assert VoidedInvoiceDocument.query.filter_by(
+                invoice_number=created["documentInvoiceNumber"],
+                document_type="discount",
+            ).count() == 1
+            discount_void_report = client.get(
+                "/api/reports/daily-book-sales"
+                "?fromDate=2026-06-10&toDate=2026-06-10",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row["invoiceNo"] == created["documentInvoiceNumber"] and row["isVoid"]
+                for row in discount_void_report
+            )
+            discount_void_summary = client.get(
+                "/api/reports/daily-summary?date=2026-06-10",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row["invoice_no"] == created["documentInvoiceNumber"] and row["is_void"]
+                for row in discount_void_summary["sales_summary"]
+            )
+            full_view_voids = client.get(
+                "/api/reports/daily-sales-full-view"
+                "?fromDate=2026-06-10&toDate=2026-06-15&sortOrder=asc",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row.get("isVoid")
+                and row["invoiceNo"] == created["documentInvoiceNumber"]
+                for row in full_view_voids
+            )
+            summary_pdf_void = client.get(
+                "/api/reports/daily-summary/pdf?date=2026-06-10",
+                headers=headers,
+            )
+            assert summary_pdf_void.status_code == 200
+            assert f"{created['documentInvoiceNumber']} (VOID)" in summary_pdf_void.get_data(as_text=True)
 
             db.session.add(Payment(
                 customer_id=customer.id,
@@ -966,9 +1057,81 @@ def main():
 
             assert customer.customer_name == "Discount Test Customer"
             assert sale.total_amount == Decimal("100.00")
+            legacy_deleted_discount = CustomerDiscount(
+                customer_id=customer.id,
+                sale_id=sale.id,
+                sale_item_id=item.id,
+                document_invoice_number="OLD-DISC-VOID-TEST",
+                amount=Decimal("5.00"),
+                date=date(2026, 6, 11),
+                reason="Historical deleted discount",
+                created_by=user.id,
+                is_deleted=True,
+            )
+            db.session.add(legacy_deleted_discount)
+            db.session.commit()
+            _backfill_deleted_customer_discount_voids()
+            legacy_discount_void = VoidedInvoiceDocument.query.filter_by(
+                invoice_number="OLD-DISC-VOID-TEST",
+            ).one()
+            assert legacy_discount_void.date == date(2026, 6, 11)
+            assert legacy_discount_void.date_unknown is False
+            legacy_discount_rows = client.get(
+                "/api/reports/daily-book-sales"
+                "?fromDate=2026-06-11&toDate=2026-06-11",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row["invoiceNo"] == "OLD-DISC-VOID-TEST"
+                and row["isVoid"]
+                and row["date"] == "2026-06-11"
+                for row in legacy_discount_rows
+            )
             assert db.session.execute(
                 db.text("SELECT COUNT(*) FROM customer_discount")
-            ).scalar_one() == 3
+            ).scalar_one() == 4
+
+            sequence = InvoiceDocumentNumber.query.filter_by(id=1).one()
+            missing_document_number = sequence.last_number + 1
+            number_gap_sale = Sale(
+                invoice_number=str(missing_document_number + 1),
+                customer_id=customer.id,
+                customer_type="account",
+                payment_status="pending",
+                subtotal=Decimal("0.00"),
+                total_amount=Decimal("0.00"),
+                paid_amount=Decimal("0.00"),
+                status="finalized",
+                date=datetime(2026, 6, 15, 12, 0),
+                created_by=user.id,
+            )
+            sequence.last_number = missing_document_number + 1
+            db.session.add(number_gap_sale)
+            db.session.commit()
+            _backfill_missing_invoice_document_numbers()
+            backfilled_gap = VoidedInvoiceDocument.query.filter_by(
+                invoice_number=str(missing_document_number),
+                date_unknown=True,
+            ).one()
+            assert backfilled_gap.date is not None
+            historical_gap_rows = client.get(
+                "/api/reports/daily-book-sales"
+                "?fromDate=2026-11-10&toDate=2026-11-10",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row["invoiceNo"] == str(missing_document_number) and row["isUnknownDate"]
+                and row["date"] is None
+                for row in historical_gap_rows
+            )
+            historical_gap_summary = client.get(
+                "/api/reports/daily-summary?date=2026-11-10",
+                headers=headers,
+            ).get_json()
+            assert any(
+                row["invoice_no"] == str(missing_document_number) and row["is_unknown_date"]
+                for row in historical_gap_summary["sales_summary"]
+            )
         finally:
             db.session.remove()
             db.drop_all()

@@ -40,7 +40,7 @@ import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 interface SalesEntry {
   id: number;
   slNo: number;
-  date: string;
+  date: string | null;
   salesman: string;
   boxes: number;
   invoiceNo: string;
@@ -64,6 +64,9 @@ interface SalesEntry {
   isCompany?: boolean;
   isCustomerReturn?: boolean;
   isCustomerDiscount?: boolean;
+  isVoid?: boolean;
+  isUnknownDate?: boolean;
+  voidedDocumentType?: string;
   discountReference?: string;
 }
 
@@ -344,9 +347,9 @@ export default function DailyBookSales() {
   const totalCredit = useMemo(() => salesData.filter(i => !i.isCompany).reduce((sum, item) => sum + (item.credit || 0), 0), [salesData]);
 
   const filteredData = useMemo(() => salesData, [salesData]);
-  const selectableData = filteredData;
+  const selectableData = filteredData.filter(sale => !sale.isVoid);
   const selectedPaymentSales = useMemo(
-    () => salesData.filter(sale => selectedSales.has(sale.id) && !sale.isCustomerReturn && !sale.isCustomerDiscount),
+    () => salesData.filter(sale => selectedSales.has(sale.id) && !sale.isVoid && !sale.isCustomerReturn && !sale.isCustomerDiscount),
     [salesData, selectedSales]
   );
 
@@ -467,8 +470,8 @@ export default function DailyBookSales() {
     html += '</tr></thead><tbody>';
     salesData.forEach(sale => {
       html += '<tr>';
-      html += `<td>${formatDateForDisplay(sale.date)}</td>`;
-      html += `<td>${sale.invoiceNo}</td>`;
+      html += `<td>${sale.isUnknownDate ? 'Unknown' : formatDateForDisplay(sale.date)}</td>`;
+      html += `<td>${sale.invoiceNo}${sale.isVoid ? (sale.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}</td>`;
       html += `<td>${getDisplayCustomerName(sale)}</td>`;
       html += `<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`;
       html += `<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`;
@@ -485,8 +488,8 @@ export default function DailyBookSales() {
   const handleExcel = () => {
     const ws = XLSX.utils.json_to_sheet(salesData.map((item: SalesEntry) => ({
       'Sl.No': item.slNo,
-      'Date': item.date,
-      'Invoice No': item.invoiceNo,
+      'Date': item.isUnknownDate ? 'Unknown' : item.date,
+      'Invoice No': `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
       'Customer Name': getDisplayCustomerName(item),
       'Account': item.amount,
       'Cash': item.cash,
@@ -551,8 +554,8 @@ export default function DailyBookSales() {
         // Use the business date from the item if available, otherwise use the current business date
         const saleDate = item.date ? new Date(item.date) : (businessDate ?? new Date());
         return [
-          format(saleDate, "MM/dd/yy"),
-          item.invoiceNo,
+          item.isUnknownDate ? 'Unknown' : format(saleDate, "MM/dd/yy"),
+          `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
           getDisplayCustomerName(item),
           `£${Number(item.amount ?? 0).toFixed(2)}`,
           `£${Number(item.cash ?? 0).toFixed(2)}`,
@@ -594,8 +597,8 @@ export default function DailyBookSales() {
     const header = ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Account', 'Cash', 'Card Payment', 'Bank Transfer', 'Cheque', 'Credit'];
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
-      item.date,
-      item.invoiceNo,
+      item.isUnknownDate ? 'Unknown' : item.date,
+      `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
       getDisplayCustomerName(item),
       item.amount,
       item.cash,
@@ -1418,12 +1421,13 @@ export default function DailyBookSales() {
                       <TableRow
                         key={sale.id}
                         className={cn(
+                          sale.isVoid && 'bg-gray-100 text-gray-500',
                           sale.isCustomerReturn && 'bg-red-50 border-red-200',
                           sale.isCustomerDiscount && 'bg-orange-50 border-orange-200',
                           sale.isCompany && 'bg-amber-50 border-amber-200',
-                          !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200',
-                          !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200',
-                          !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200'
+                          !sale.isVoid && !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && !sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-red-50 border-red-200',
+                          !sale.isVoid && !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && sale.isFullyPaid && sale.isPaidViaCustomerPayment && 'bg-green-50 border-green-200',
+                          !sale.isVoid && !sale.isCustomerReturn && !sale.isCustomerDiscount && !sale.isCompany && sale.isFullyPaid && !sale.isPaidViaCustomerPayment && 'bg-blue-50 border-blue-200'
                         )}
                       >
                         <TableCell>
@@ -1431,18 +1435,28 @@ export default function DailyBookSales() {
                             type="checkbox"
                             className="rounded"
                             checked={selectedSales.has(sale.id)}
+                            disabled={sale.isVoid}
                             onChange={(e) => handleCheckboxChange(sale.id, e.target.checked)}
                           />
                         </TableCell>
                         <TableCell className="text-center text-xs sm:text-sm text-muted-foreground">{idx + 1}</TableCell>
-                        <TableCell className="text-xs sm:text-sm">{formatDateForDisplay(sale.date, 'MM/dd/yy')}</TableCell>
+                        <TableCell className="text-xs sm:text-sm">
+                          {sale.isUnknownDate ? 'Unknown' : formatDateForDisplay(sale.date, 'MM/dd/yy')}
+                        </TableCell>
                         <TableCell className="text-xs sm:text-sm">
                           {sale.invoiceNo}
                           {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
                           {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Credit/Adj)</span>}
+                          {sale.isVoid && (
+                            <span className="ml-1 text-xs font-semibold text-gray-600">
+                              {sale.isUnknownDate ? "(VOID - DATE UNKNOWN)" : "(VOID)"}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-blue-600 text-xs sm:text-sm">
-                          {sale.isCustomerReturn || sale.isCustomerDiscount ? (
+                          {sale.isVoid ? (
+                            <span className="text-gray-500">{getDisplayCustomerName(sale)}</span>
+                          ) : sale.isCustomerReturn || sale.isCustomerDiscount ? (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="link" className="p-0 text-blue-600 underline cursor-pointer text-left">
@@ -1501,7 +1515,7 @@ export default function DailyBookSales() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start" className="w-48">
-                              {(isPastDate(sale.date) ? canEditBackdate : canEditCurrentDate) && (
+                              {(isPastDate(sale.date || '') ? canEditBackdate : canEditCurrentDate) && (
                                 <DropdownMenuItem
                                   className="text-sm py-2"
                                   onClick={() => {

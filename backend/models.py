@@ -105,6 +105,25 @@ class InvoiceDocumentNumber(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     last_number = db.Column(db.Integer, nullable=False, default=0, server_default='0')
 
+
+class VoidedInvoiceDocument(db.Model):
+    """Preserves numbered sales, returns, and discounts after deletion."""
+    __tablename__ = 'voided_invoice_document'
+    __table_args__ = (
+        db.Index('ix_voided_invoice_document_date', 'date'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_number = db.Column(db.String(50), nullable=False, unique=True)
+    document_type = db.Column(db.String(20), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    date_unknown = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
+    customer_name = db.Column(db.String(200), nullable=False, default='')
+    original_invoice_number = db.Column(db.String(50))
+    salesman = db.Column(db.String(100), nullable=False, default='')
+    voided_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
 class SaleEditLock(db.Model):
     """Exclusive server-side lease for editing an existing invoice.
 

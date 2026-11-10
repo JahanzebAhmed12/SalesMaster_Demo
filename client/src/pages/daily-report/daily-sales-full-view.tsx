@@ -20,7 +20,7 @@ import autoTable from 'jspdf-autotable';
 import { printHtmlTable } from "@/lib/export-utils";
 
 interface FullViewRow {
-  date: string;
+  date: string | null;
   invoiceNo: string;
   customerName: string;
   productName: string;
@@ -30,6 +30,8 @@ interface FullViewRow {
   total: number;
   isInvoiceHeader?: boolean;
   isInvoiceTotal?: boolean;
+  isVoid?: boolean;
+  isUnknownDate?: boolean;
   notes?: string;
 }
 
@@ -201,8 +203,8 @@ export default function DailySalesFullView() {
     displayData.forEach((row, index) => {
       if (row.isInvoiceHeader) {
         processedData.push([
-          row.date,
-          row.invoiceNo,
+          row.date || 'Unknown',
+          `${row.invoiceNo}${row.isVoid ? (row.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
           row.customerName,
           '', row.notes || '', '', '', ''
         ]);
@@ -295,8 +297,8 @@ export default function DailySalesFullView() {
     displayData.forEach((row, index) => {
       if (row.isInvoiceHeader) {
         processedData.push([
-          row.date,
-          row.invoiceNo,
+          row.date || 'Unknown',
+          `${row.invoiceNo}${row.isVoid ? (row.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
           row.customerName,
           '', row.notes || '', '', '', ''
         ]);
@@ -529,9 +531,16 @@ export default function DailySalesFullView() {
                     displayData.map((row: FullViewRow, idx: number) => {
                       if (row.isInvoiceHeader) {
                         return (
-                          <TableRow key={idx} className="bg-gray-50 font-semibold border-t-2 border-gray-200">
-                            <TableCell>{row.date}</TableCell>
-                            <TableCell>{row.invoiceNo}</TableCell>
+                          <TableRow key={idx} className={row.isVoid ? "bg-gray-100 text-gray-500 font-semibold border-t-2 border-gray-200" : "bg-gray-50 font-semibold border-t-2 border-gray-200"}>
+                            <TableCell>{row.date || 'Unknown'}</TableCell>
+                            <TableCell>
+                              {row.invoiceNo}
+                              {row.isVoid && (
+                                <span className="ml-1 text-xs font-bold">
+                                  {row.isUnknownDate ? "(VOID - DATE UNKNOWN)" : "(VOID)"}
+                                </span>
+                              )}
+                            </TableCell>
                             <TableCell>{row.customerName}</TableCell>
                             <TableCell colSpan={2}></TableCell>
                             <TableCell className="text-sm text-muted-foreground italic whitespace-normal break-words" colSpan={3}>
@@ -552,7 +561,7 @@ export default function DailySalesFullView() {
                           <TableRow key={idx} className="bg-white">
                             <TableCell></TableCell>
                             <TableCell>
-                              {canEditInvoice(row.date) ? (
+                              {canEditInvoice(row.date || '') ? (
                                 <Button 
                                   variant="link" 
                                   className="p-0 text-blue-600 underline" 

@@ -21,7 +21,7 @@ import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 
 interface DailyBookData {
   slNo: number;
-  date: string;
+  date: string | null;
   user: string;
   invoiceNo: string;
   customerName: string;
@@ -29,6 +29,9 @@ interface DailyBookData {
   accountPaid: number;
   cash: number;
   isCompany?: boolean;
+  isVoid?: boolean;
+  isUnknownDate?: boolean;
+  voidedDocumentType?: string;
 }
 
 function toLocalDateString(date: Date) {
@@ -116,9 +119,9 @@ export default function DailyBookHistory() {
     dailyBookData.forEach((item) => {
       html += '<tr>';
       html += `<td>${item.slNo}</td>`;
-      html += `<td>${format(new Date(item.date), "dd-MM-yyyy")}</td>`;
+      html += `<td>${item.isUnknownDate ? 'Unknown' : format(new Date(item.date || ''), "dd-MM-yyyy")}</td>`;
       html += `<td>${item.user}</td>`;
-      html += `<td>${item.invoiceNo}</td>`;
+      html += `<td>${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}</td>`;
       html += `<td>${item.customerName}</td>`;
       html += `<td>£${(item.account || 0).toFixed(2)}</td>`;
       html += `<td>£${(item.accountPaid || 0).toFixed(2)}</td>`;
@@ -150,9 +153,9 @@ export default function DailyBookHistory() {
     // Data sheet
     const ws = XLSX.utils.json_to_sheet(dailyBookData.map((item) => ({
       'Sl.No': item.slNo,
-      'Date': format(new Date(item.date), "dd-MM-yyyy"),
+      'Date': item.isUnknownDate ? 'Unknown' : format(new Date(item.date || ''), "dd-MM-yyyy"),
       'User': item.user,
-      'Invoice No': item.invoiceNo,
+      'Invoice No': `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
       'Customer Name': item.customerName,
       'Account': item.account || 0,
       'Account Paid': item.accountPaid || 0,
@@ -171,9 +174,9 @@ export default function DailyBookHistory() {
     doc.text(`Period: ${fromDate ? format(fromDate, "dd/MM/yyyy") : ''} to ${toDate ? format(toDate, "dd/MM/yyyy") : ''}`, 105, 40, { align: 'center' });
     const tableData = dailyBookData.map((item) => [
       item.slNo,
-      format(new Date(item.date), "dd-MM-yyyy"),
+      item.isUnknownDate ? 'Unknown' : format(new Date(item.date || ''), "dd-MM-yyyy"),
       item.user,
-      item.invoiceNo,
+      `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
       item.customerName,
       `£${(item.account || 0).toFixed(2)}`,
       `£${(item.accountPaid || 0).toFixed(2)}`,
@@ -214,9 +217,9 @@ export default function DailyBookHistory() {
     let text = 'Sl.No\tDate\tUser\tInvoice No\tCustomer Name\tAccount\tAccount Paid\tCash\n';
     text += dailyBookData.map((item) => [
       item.slNo,
-      format(new Date(item.date), "dd-MM-yyyy"),
+      item.isUnknownDate ? 'Unknown' : format(new Date(item.date || ''), "dd-MM-yyyy"),
       item.user,
-      item.invoiceNo,
+      `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
       item.customerName,
       item.account || 0,
       item.accountPaid || 0,
@@ -405,17 +408,25 @@ export default function DailyBookHistory() {
                   ) : dailyBookData.map((item) => (
                     <TableRow key={item.slNo} className={cn(item.isCompany && "bg-amber-50")}>
                       <TableCell className="text-center">{item.slNo}</TableCell>
-                      <TableCell className="text-center">{format(new Date(item.date), "dd-MM-yyyy")}</TableCell>
+                      <TableCell className="text-center">
+                        {item.isUnknownDate ? 'Unknown' : format(new Date(item.date || ''), "dd-MM-yyyy")}
+                      </TableCell>
                       <TableCell className="text-center">{item.user}</TableCell>
                       <TableCell className="text-center">
-                        <div className="flex items-center gap-2 justify-center">
-                          <span className="flex gap-1">
-                            <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 p-1 text-xs" onClick={() => handleInvoice(item.invoiceNo)}>
-                              📄
-                            </Button>
+                        {item.isVoid ? (
+                          <span className="text-gray-500">
+                            {item.invoiceNo} <strong>{item.isUnknownDate ? "(VOID - DATE UNKNOWN)" : "(VOID)"}</strong>
                           </span>
-                          {item.invoiceNo}
-                        </div>
+                        ) : (
+                          <div className="flex items-center gap-2 justify-center">
+                            <span className="flex gap-1">
+                              <Button size="sm" className="bg-cyan-500 hover:bg-cyan-600 p-1 text-xs" onClick={() => handleInvoice(item.invoiceNo)}>
+                                📄
+                              </Button>
+                            </span>
+                            {item.invoiceNo}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <span className="flex items-center gap-1 justify-center">
