@@ -15888,7 +15888,7 @@ def daily_summary_pdf():
         for discount in daily_discounts:
             sales_summary.append({
                 'customer_name': discount.customer.customer_name if discount.customer else '',
-                'ticket_no': discount.sale.invoice_number if discount.sale else '',
+                'ticket_no': f"{discount.document_invoice_number or ''} (Credit/Adj)",
                 'cash_sales': 0,
                 'card_paid': 0,
                 'bank_transfer': 0,
