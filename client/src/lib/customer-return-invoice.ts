@@ -8,6 +8,7 @@ interface CustomerReturnPrintRecord {
     id: number;
     refNumber: string;
     documentInvoiceNumber?: string;
+    sourceSaleItemId?: number;
     date: string;
     invoiceNumber?: string;
     description: string;
@@ -68,14 +69,39 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
     throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
   }
 
-  return responseData.returns.map(({ customer, returnItem, originalInvoiceDate }) => {
+  const groupedReturns = new Map<string, {
+    customer: Record<string, unknown>;
+    documentNumber: string;
+    date: string;
+    originalInvoiceNumber?: string;
+    originalInvoiceDate?: string;
+    items: CustomerReturnInvoiceData["items"];
+    total: number;
+    notes: string[];
+  }>();
+
+  for (const { customer, returnItem, originalInvoiceDate } of responseData.returns) {
+    const documentNumber = returnItem.documentInvoiceNumber || returnItem.refNumber;
+    const key = returnItem.documentInvoiceNumber
+      ? `document-${returnItem.documentInvoiceNumber}`
+      : `return-${returnItem.id}`;
+    const group = groupedReturns.get(key) || {
+      customer,
+      documentNumber,
+      date: returnItem.date,
+      originalInvoiceNumber: returnItem.invoiceNumber,
+      originalInvoiceDate,
+      items: [],
+      total: 0,
+      notes: [],
+    };
     const amount = -Math.abs(Number(returnItem.totalValue || 0));
     const itemNotes = Array.from(new Set(
       [returnItem.returnReason, returnItem.remarks]
         .map(note => note?.trim())
         .filter((note): note is string => Boolean(note)),
     )).join(" - ");
-    const item = {
+    group.items.push({
       id: returnItem.id,
       productName: returnItem.description,
       description: returnItem.description,
@@ -85,30 +111,33 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
       total_price: amount,
       notes: itemNotes || undefined,
       remarks: itemNotes || undefined,
-    };
+    });
+    group.total += amount;
+    if (itemNotes && !group.notes.includes(itemNotes)) group.notes.push(itemNotes);
+    groupedReturns.set(key, group);
+  }
 
-    return {
-      company: responseData.company,
-      customer,
-      sale: {
-        invoice_number: returnItem.documentInvoiceNumber || returnItem.refNumber,
-        invoiceNumber: returnItem.documentInvoiceNumber || returnItem.refNumber,
-        date: returnItem.date,
-        subtotal: amount,
-        total_amount: amount,
-        totalAmount: amount,
-        vat_amount: 0,
-        porterage: 0,
-        customer_id: customer.id,
-        customer_type: "account",
-        isCustomerReturn: true,
-        originalInvoiceNumber: returnItem.invoiceNumber,
-        originalInvoiceDate,
-      },
-      items: [item],
-      paidAmount: 0,
-      balance: amount,
-      notes: itemNotes,
-    };
-  });
+  return Array.from(groupedReturns.values()).map((group) => ({
+    company: responseData.company,
+    customer: group.customer,
+    sale: {
+      invoice_number: group.documentNumber,
+      invoiceNumber: group.documentNumber,
+      date: group.date,
+      subtotal: group.total,
+      total_amount: group.total,
+      totalAmount: group.total,
+      vat_amount: 0,
+      porterage: 0,
+      customer_id: group.customer.id,
+      customer_type: "account",
+      isCustomerReturn: true as const,
+      originalInvoiceNumber: group.originalInvoiceNumber,
+      originalInvoiceDate: group.originalInvoiceDate,
+    },
+    items: group.items,
+    paidAmount: 0,
+    balance: group.total,
+    notes: group.notes.join(" - "),
+  }));
 }

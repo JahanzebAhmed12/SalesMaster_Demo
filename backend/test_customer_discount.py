@@ -351,6 +351,117 @@ def main():
             assert print_data["discounts"][0]["discount"]["originalInvoiceDate"] == sale.date.date().isoformat()
             assert print_data["discounts"][0]["discount"]["originalQuantity"] == 10
             assert print_data["discounts"][0]["discount"]["averagePriceAfterDiscount"] == 8
+            batch_product = RegularProduct(
+                product_code="PROD-RETURN-BATCH-TEST",
+                description="Second Return Test Product",
+                selling_price=Decimal("4.00"),
+            )
+            db.session.add(batch_product)
+            db.session.flush()
+            second_sale_item = SaleItem(
+                sale_id=sale.id,
+                product_id=batch_product.id,
+                quantity=Decimal("3.000"),
+                unit_price=Decimal("4.00"),
+                total_price=Decimal("12.00"),
+            )
+            db.session.add(second_sale_item)
+            db.session.commit()
+
+            returnable_lines = client.get(
+                f"/api/customer-returns/invoices/{sale.id}", headers=headers
+            )
+            returnable_line_data = returnable_lines.get_json() or {}
+            assert returnable_lines.status_code == 200
+            first_return_line = next(
+                line for line in returnable_line_data["items"] if line["id"] == item.id
+            )
+            assert first_return_line["effectiveUnitPrice"] == 8
+            assert first_return_line["returnableQuantity"] == 10
+            initial_product_stock = Decimal(str(product.current_stock or 0))
+            initial_batch_product_stock = Decimal(str(batch_product.current_stock or 0))
+
+            batch_return_response = client.post(
+                "/api/customer-returns",
+                json={
+                    "customerId": customer.id,
+                    "saleId": sale.id,
+                    "invoiceNumber": sale.invoice_number,
+                    "date": "2026-06-15",
+                    "remarks": "Multi-product return",
+                    "items": [
+                        {
+                            "productId": product.id,
+                            "productType": "regular",
+                            "quantity": 2,
+                            "unitPrice": 8,
+                            "sourceSaleItemId": item.id,
+                        },
+                        {
+                            "productId": batch_product.id,
+                            "productType": "regular",
+                            "quantity": 1,
+                            "unitPrice": 4,
+                            "sourceSaleItemId": second_sale_item.id,
+                        },
+                    ],
+                },
+                headers=headers,
+            )
+            batch_returns = batch_return_response.get_json() or []
+            assert batch_return_response.status_code == 201, batch_returns
+            assert len(batch_returns) == 2
+            assert batch_returns[0]["documentInvoiceNumber"] == batch_returns[1]["documentInvoiceNumber"]
+            grouped_print_response = client.get(
+                f"/api/customer-returns/print?ids={batch_returns[0]['id']}"
+            )
+            grouped_print = grouped_print_response.get_json() or {}
+            assert grouped_print_response.status_code == 200
+            assert len(grouped_print["returns"]) == 2
+            excessive_return_response = client.post(
+                "/api/customer-returns",
+                json={
+                    "customerId": customer.id,
+                    "saleId": sale.id,
+                    "date": "2026-06-14",
+                    "items": [{
+                        "productId": product.id,
+                        "productType": "regular",
+                        "quantity": 9,
+                        "unitPrice": 8,
+                        "sourceSaleItemId": item.id,
+                    }],
+                },
+                headers=headers,
+            )
+            assert excessive_return_response.status_code == 400
+            returnable_after_batch = client.get(
+                f"/api/customer-returns/invoices/{sale.id}", headers=headers
+            ).get_json()
+            updated_return_line = next(
+                line for line in returnable_after_batch["items"] if line["id"] == item.id
+            )
+            assert updated_return_line["returnedQuantity"] == 2
+            assert updated_return_line["returnableQuantity"] == 8
+            assert Decimal(str(product.current_stock)) == initial_product_stock + Decimal("2")
+            assert Decimal(str(batch_product.current_stock)) == initial_batch_product_stock + Decimal("1")
+
+            delete_batch_response = client.delete(
+                f"/api/customer-returns/{batch_returns[0]['id']}",
+                headers=headers,
+            )
+            assert delete_batch_response.status_code == 200, delete_batch_response.get_json()
+            assert CustomerReturn.query.filter_by(
+                document_invoice_number=batch_returns[0]["documentInvoiceNumber"]
+            ).count() == 0
+            assert VoidedInvoiceDocument.query.filter_by(
+                invoice_number=batch_returns[0]["documentInvoiceNumber"],
+                document_type="return",
+            ).count() == 1
+            db.session.refresh(product)
+            db.session.refresh(batch_product)
+            assert Decimal(str(product.current_stock)) == initial_product_stock
+            assert Decimal(str(batch_product.current_stock)) == initial_batch_product_stock
 
             daily_summary_response = client.get(
                 "/api/reports/daily-summary?date=2026-06-15", headers=headers

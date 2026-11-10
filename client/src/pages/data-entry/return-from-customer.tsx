@@ -1,8 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import React, { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,9 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { RotateCcw, Search, Save, Trash2, Loader2 } from "lucide-react";
+import { RotateCcw, Search, Save, Trash2, Loader2, Plus, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import { Customer, RegularProduct, NonProduct } from "@shared/schema";
+import { RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
 import { formatQuantity } from "@/lib/utils";
@@ -23,41 +20,37 @@ import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 
-// Simplified schema for return form
-const returnSchema = z.object({
-  date: z.string().min(1, "Date is required"),
-  customerId: z.number().min(1, "Customer is required"),
-  productId: z.number().min(1, "Product is required"),
-  productType: z.enum(["regular", "non"]),
-  invoiceId: z.number().optional().nullable(),
-  invoiceNumber: z.string().trim().max(50, "Invoice number must be 50 characters or fewer").optional().nullable(),
-  quantity: z.coerce.number().min(0.001, "Quantity must be greater than 0"),
-  unitPrice: z.coerce.number().min(0, "Unit price must be positive"),
-  remarks: z.string().optional().nullable(),
-}).refine(
-  data => Boolean(data.invoiceId || data.invoiceNumber?.trim()),
-  { message: "Select an invoice or enter a manual invoice number", path: ["invoiceNumber"] }
-);
-
-type ReturnFormData = z.infer<typeof returnSchema>;
-
 interface CustomerInvoice {
   id: number;
   invoiceNumber: string;
   date: string;
   totalAmount: number;
-  items: Array<{
-    id?: number;
-    productId: number;
-    productType: string;
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    price?: number; // Alternative field name
-    product_id?: number; // Alternative field name
-    nonProductId?: number; // Non-product identifier returned by some invoice responses
-    product_type?: string; // Alternative field name
-  }>;
+}
+
+interface ReturnableInvoiceLine {
+  id: number;
+  productId: number;
+  productType: "regular" | "non";
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  originalTotal: number;
+  discountTotal: number;
+  effectiveUnitPrice: number;
+  returnedQuantity: number;
+  returnableQuantity: number;
+}
+
+interface DraftReturnItem {
+  key: string;
+  productId: number;
+  productType: "regular" | "non";
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  selected?: boolean;
+  sourceSaleItemId?: number;
+  availableQuantity?: number;
 }
 
 interface CustomerReturn {
@@ -72,440 +65,404 @@ interface CustomerReturn {
   remarks: string | null;
 }
 
+interface ReturnItemPayload {
+  productId: number;
+  productType: "regular" | "non";
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  sourceSaleItemId?: number;
+}
+
+const money = (value: number) => `£${Number(value || 0).toFixed(2)}`;
+
 export default function ReturnFromCustomer() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { notifyInventoryMutation } = useCrossTabSync({ enablePolling: false });
-  
-  // Get business date
   const { businessDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
-  
-  // Customer search hook
   const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
-  
-  // State management
-  const [searchFromDate, setSearchFromDate] = useState<string>(format(subDays(businessDate || new Date(), 30), "yyyy-MM-dd"));
+
+  const businessDateString = businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
+  const [searchFromDate, setSearchFromDate] = useState(format(subDays(new Date(businessDateString), 30), "yyyy-MM-dd"));
   const [customerSearched, setCustomerSearched] = useState(false);
-  const [selectedProductType, setSelectedProductType] = useState<"regular" | "non">("regular");
   const [invoicesFetched, setInvoicesFetched] = useState(false);
-
-  const form = useForm<ReturnFormData>({
-    resolver: zodResolver(returnSchema),
-    defaultValues: {
-      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
-      customerId: 0,
-      productId: 0,
-      productType: "regular",
-    },
-  });
-
-  // Product search state
-  const [productSearch, setProductSearch] = useState("");
+  const [selectedSaleId, setSelectedSaleId] = useState("");
+  const [manualInvoiceNumber, setManualInvoiceNumber] = useState("");
+  const [returnDate, setReturnDate] = useState(businessDateString);
+  const [remarks, setRemarks] = useState("");
+  const [selectedInvoiceLines, setSelectedInvoiceLines] = useState<Record<number, DraftReturnItem>>({});
+  const [manualItems, setManualItems] = useState<DraftReturnItem[]>([]);
+  const [manualProductType, setManualProductType] = useState<"regular" | "non">("regular");
+  const [manualProductSearch, setManualProductSearch] = useState("");
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [highlightedProduct, setHighlightedProduct] = useState(-1);
-  const productInputRef = useRef<HTMLInputElement>(null);
+  const [pendingProduct, setPendingProduct] = useState<(RegularProduct | NonProduct) | null>(null);
+  const [manualQuantity, setManualQuantity] = useState("1");
+  const [manualUnitPrice, setManualUnitPrice] = useState("0");
 
-  // Set date field to business date when it becomes available
   useEffect(() => {
-    if (businessDate) {
-      form.setValue("date", format(new Date(businessDate), "yyyy-MM-dd"));
-    }
-  }, [businessDate, form]);
-
-  // Update form when customer changes
-  React.useEffect(() => {
-    if (selectedCustomer) {
-      form.setValue("customerId", selectedCustomer.id);
-    } else {
-      form.setValue("customerId", 0);
-    }
-  }, [selectedCustomer, form]);
+    setReturnDate(businessDateString);
+  }, [businessDateString]);
 
   useEffect(() => {
     setInvoicesFetched(false);
-    form.setValue("invoiceId", null);
-    form.setValue("invoiceNumber", "");
-  }, [customerId, searchFromDate, form]);
+    setSelectedSaleId("");
+    setManualInvoiceNumber("");
+    setSelectedInvoiceLines({});
+    setManualItems([]);
+  }, [customerId, searchFromDate]);
 
-  // Fetch products
-  const { data: products = { regularProducts: [] as RegularProduct[], nonProducts: [] as NonProduct[] } } = useQuery<{ regularProducts: RegularProduct[]; nonProducts: NonProduct[] }>({
-    queryKey: ['products'],
-    queryFn: () => apiRequest('GET', '/api/products')
+  const { data: products = { regularProducts: [] as RegularProduct[], nonProducts: [] as NonProduct[] } } = useQuery<{
+    regularProducts: RegularProduct[];
+    nonProducts: NonProduct[];
+  }>({
+    queryKey: ["products"],
+    queryFn: () => apiRequest("GET", "/api/products"),
   });
 
-  // Fetch user permissions
   const { data: userPermissions } = useQuery<any>({
-    queryKey: ['/api/user-backdate-options', user?.id],
-    queryFn: () => apiRequest('GET', `/api/user-backdate-options/${user?.id}`),
+    queryKey: ["/api/user-backdate-options", user?.id],
+    queryFn: () => apiRequest("GET", `/api/user-backdate-options/${user?.id}`),
     enabled: !!user?.id,
   });
 
-  // Check if user can delete a customer return based on date
-  const canDeleteReturn = (returnDate: string) => {
-    if (!userPermissions) return false;
-    
-    const today = businessDate ? format(new Date(businessDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd');
-    const returnDateFormatted = format(new Date(returnDate), 'yyyy-MM-dd');
-    
-    if (returnDateFormatted === today) {
-      // For current date entries, check current_editing permission
-      return userPermissions.current_editing !== false;
-    } else {
-      // For back date entries, check deleting permission
-      return userPermissions.deleting === true;
-    }
-  };
-
-  // Fetch customer returns (only after customer is searched)
   const { data: returns = [], refetch: refetchReturns } = useQuery<CustomerReturn[]>({
-    queryKey: ['customer-returns', customerId, searchFromDate],
+    queryKey: ["customer-returns", customerId, searchFromDate],
     queryFn: () => {
       if (!customerId || !customerSearched) return [];
-      return apiRequest('GET', `/api/customer-returns?customerId=${customerId}&fromDate=${searchFromDate}`);
+      return apiRequest("GET", `/api/customer-returns?customerId=${customerId}&fromDate=${searchFromDate}`);
     },
-    enabled: !!customerId && customerSearched
+    enabled: !!customerId && customerSearched,
   });
 
-  // Fetch customer invoices (only when "Get Invoices" is clicked)
-  const { data: customerInvoices = [], refetch: refetchInvoices } = useQuery<CustomerInvoice[]>({
-    queryKey: ['customer-invoices', customerId, searchFromDate],
+  const {
+    data: customerInvoices = [],
+    refetch: refetchInvoices,
+    isFetching: invoicesLoading,
+  } = useQuery<CustomerInvoice[]>({
+    queryKey: ["customer-invoices", customerId, searchFromDate],
     queryFn: async () => {
       if (!customerId) return [];
-      const toDate = businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd");
-      
-      // Use searchFromDate as the fromDate parameter to filter invoices
-      const invoices = await apiRequest('GET', `/api/customers/${customerId}/invoices?fromDate=${searchFromDate}&toDate=${toDate}`);
-      
-      // Then fetch detailed data for each invoice to get items
-      const detailedInvoices = await Promise.all(
-        invoices.map(async (invoice: any) => {
-          try {
-            const details = await apiRequest('GET', `/api/sales/${invoice.id}`);
-            return {
-              id: invoice.id,
-              invoiceNumber: invoice.invoiceNumber,
-              date: invoice.date,
-              totalAmount: invoice.totalAmount || details.totalAmount || 0,
-              items: details.items || details.saleItems || []
-            };
-          } catch (error) {
-            console.error(`Failed to fetch details for invoice ${invoice.id}:`, error);
-            return {
-              id: invoice.id,
-              invoiceNumber: invoice.invoiceNumber,
-              date: invoice.date,
-              totalAmount: invoice.totalAmount || 0,
-              items: []
-            };
-          }
-        })
+      return apiRequest(
+        "GET",
+        `/api/customers/${customerId}/invoices?fromDate=${encodeURIComponent(searchFromDate)}&toDate=${encodeURIComponent(businessDateString)}`,
       );
-      
-      console.log("Detailed invoices with items:", detailedInvoices);
-      return detailedInvoices;
     },
-    enabled: false // Only fetch when manually triggered
+    enabled: false,
   });
 
-  // Create return mutation
+  const {
+    data: invoiceDetails,
+    isFetching: invoiceDetailsLoading,
+    error: invoiceDetailsError,
+  } = useQuery<{
+    items: ReturnableInvoiceLine[];
+  }>({
+    queryKey: ["customer-returnable-invoice-lines", selectedSaleId],
+    queryFn: () => apiRequest("GET", `/api/customer-returns/invoices/${selectedSaleId}`),
+    enabled: !!selectedSaleId,
+  });
+
+  useEffect(() => {
+    if (!invoiceDetails) return;
+    setSelectedInvoiceLines(Object.fromEntries(invoiceDetails.items.map((line) => [
+      line.id,
+      {
+        key: `invoice-${line.id}`,
+        productId: line.productId,
+        productType: line.productType,
+        description: line.productName,
+        quantity: line.returnableQuantity,
+        unitPrice: line.effectiveUnitPrice,
+        selected: false,
+        sourceSaleItemId: line.id,
+        availableQuantity: line.returnableQuantity,
+      },
+    ])));
+  }, [invoiceDetails]);
+
+  const allProducts = manualProductType === "regular"
+    ? products.regularProducts
+    : products.nonProducts;
+  const filteredProducts = useMemo(() => {
+    const term = manualProductSearch.trim().toLowerCase();
+    if (!term) return allProducts;
+    return allProducts.filter((product) => {
+      const code = String((product as any).productCode || (product as any).product_code || "").toLowerCase();
+      return code.startsWith(term) || product.description.toLowerCase().startsWith(term);
+    });
+  }, [allProducts, manualProductSearch]);
+
+  const chosenInvoice = customerInvoices.find((invoice) => invoice.id.toString() === selectedSaleId);
+  const activeInvoiceItems = Object.values(selectedInvoiceLines).filter((item) => item.selected && item.quantity > 0);
+  const itemsToSubmit = [...activeInvoiceItems, ...manualItems];
+  const estimatedTotal = itemsToSubmit.reduce((total, item) => total + item.quantity * item.unitPrice, 0);
+
   const createReturnMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('POST', '/api/customer-returns', data),
-    onSuccess: (_result, variables) => {
-      notifyInventoryMutation({
-        source: 'customer-return',
-        productId: variables?.productId,
-        productType: variables?.productType,
-      });
-      queryClient.invalidateQueries({ queryKey: ["daily-book-sales"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/reports/daily-summary"] });
-      refetchReturns();
-      form.reset({
-        date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
-        customerId: selectedCustomer?.id || 0,
-        productId: 0,
-        productType: selectedProductType,
-      });
+    mutationFn: (data: {
+      customerId: number;
+      saleId: number | null;
+      invoiceNumber: string;
+      date: string;
+      remarks: string;
+      items: ReturnItemPayload[];
+    }) => apiRequest("POST", "/api/customer-returns", data),
+    onSuccess: async (_result, variables) => {
+      notifyInventoryMutation({ source: "customer-return" });
+      await Promise.all([
+        ...[
+          ["daily-book-sales"],
+          ["/api/reports/daily-summary"],
+          ["/api/reports/customer-statement"],
+          ["/api/reports/customer-history"],
+          ["/api/reports/all-customer-history"],
+          ["/api/reports/product-sales-history"],
+          ["/api/reports/product-sales"],
+          ["/api/reports/prod-customer-history"],
+          ["/api/reports/date-wise-sales"],
+          ["/api/reports/sales-analysis"],
+          ["/api/reports/stock-check"],
+          ["/api/customers"],
+          ["customer-returnable-invoice-lines"],
+          ["customer-returns"],
+          ["stock-check"],
+          ["product-history"],
+          ["product-sales-history"],
+          ["product-sales-report"],
+          ["prod-customer-history"],
+          ["date-wise-sales"],
+        ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+        refetchReturns(),
+      ]);
+      setSelectedInvoiceLines({});
+      setManualItems([]);
+      setRemarks("");
       toast({
         title: "Success",
-        description: "Customer return created successfully",
+        description: `${variables.items.length} customer return item(s) created successfully`,
       });
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to create customer return",
+        description: error?.error || error?.message || "Failed to create customer return",
         variant: "destructive",
       });
-    }
+    },
   });
 
-  // Delete return mutation
   const deleteReturnMutation = useMutation({
-    mutationFn: (id: number) => apiRequest('DELETE', `/api/customer-returns/${id}`),
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/customer-returns/${id}`),
     onSuccess: () => {
-      notifyInventoryMutation({ source: 'customer-return' });
-      queryClient.invalidateQueries({ queryKey: ["daily-book-sales"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/reports/daily-summary"] });
+      notifyInventoryMutation({ source: "customer-return" });
+      [
+        ["daily-book-sales"],
+        ["/api/reports/daily-summary"],
+        ["/api/reports/customer-statement"],
+        ["/api/reports/customer-history"],
+        ["/api/reports/all-customer-history"],
+        ["/api/reports/product-sales-history"],
+        ["/api/reports/product-sales"],
+        ["/api/reports/prod-customer-history"],
+        ["/api/reports/date-wise-sales"],
+        ["/api/reports/sales-analysis"],
+        ["/api/reports/stock-check"],
+        ["/api/customers"],
+        ["customer-returnable-invoice-lines"],
+        ["customer-returns"],
+        ["stock-check"],
+        ["product-history"],
+        ["product-sales-history"],
+        ["product-sales-report"],
+        ["prod-customer-history"],
+        ["date-wise-sales"],
+      ].forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
       refetchReturns();
-      toast({
-        title: "Success",
-        description: "Customer return deleted successfully",
-      });
+      toast({ title: "Success", description: "Customer return deleted successfully" });
     },
     onError: (error: any) => {
-      const errorMessage = error?.error || error?.message || "Failed to delete customer return";
       toast({
         title: "Error",
-        description: errorMessage,
+        description: error?.error || error?.message || "Failed to delete customer return",
         variant: "destructive",
       });
-    }
+    },
   });
 
-  // Handle customer search
+  const canDeleteReturn = (date: string) => {
+    if (!userPermissions) return false;
+    const today = businessDateString;
+    const returnDateForPermission = format(new Date(date), "yyyy-MM-dd");
+    return returnDateForPermission === today
+      ? userPermissions.current_editing !== false
+      : userPermissions.deleting === true;
+  };
+
   const handleCustomerSearch = () => {
     if (!selectedCustomer) {
-      toast({
-        title: "Error",
-        description: "Please select a customer first",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "Please select a customer first", variant: "destructive" });
       return;
     }
     setCustomerSearched(true);
-    form.setValue("customerId", selectedCustomer.id);
   };
 
-  // Handle get invoices
   const handleGetInvoices = async () => {
     if (!selectedCustomer) {
+      toast({ title: "Error", description: "Please select a customer first", variant: "destructive" });
+      return;
+    }
+    const result = await refetchInvoices();
+    if (result.error) {
       toast({
         title: "Error",
-        description: "Please select a customer first",
+        description: result.error instanceof Error ? result.error.message : "Failed to fetch invoices",
         variant: "destructive",
       });
       return;
     }
-    
-    try {
-      await refetchInvoices();
-      setInvoicesFetched(true);
-      toast({
-        title: "Success",
-        description: "Invoices fetched successfully",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to fetch invoices",
-        variant: "destructive",
-      });
-    }
+    setInvoicesFetched(true);
   };
 
-  // Handle invoice selection
-  const handleInvoiceSelect = (invoiceId: string) => {
-    if (invoiceId === "none") {
-      form.setValue("invoiceId", null);
-      form.setValue("invoiceNumber", "");
+  const handleInvoiceSelect = (saleId: string) => {
+    setSelectedInvoiceLines({});
+    setManualItems([]);
+    if (saleId === "manual") {
+      setSelectedSaleId("");
       return;
     }
-
-    // Check if customerInvoices exists and is an array
-    if (!customerInvoices || !Array.isArray(customerInvoices)) {
-      console.log("No customer invoices available");
-      return;
-    }
-
-    const selectedInvoice = customerInvoices.find((inv: CustomerInvoice) => inv.id.toString() === invoiceId);
-    if (selectedInvoice) {
-      console.log("Selected invoice:", selectedInvoice);
-      form.setValue("invoiceId", selectedInvoice.id);
-      form.setValue("invoiceNumber", selectedInvoice.invoiceNumber);
-      
-      // If a product is selected, try to auto-fill quantity and price from invoice
-      const productId = form.watch("productId");
-      console.log("Current product ID:", productId, "Product type:", selectedProductType);
-      
-      if (productId > 0 && selectedInvoice.items && Array.isArray(selectedInvoice.items)) {
-        console.log("Invoice items:", selectedInvoice.items);
-        
-        const invoiceItem = selectedInvoice.items.find(item => {
-          console.log("Checking item:", item, "against productId:", productId, "productType:", selectedProductType);
-          
-          // Handle different possible field names from API
-          const itemProductId = item.productId || item.product_id;
-          
-          // Determine product type from the item structure
-          let itemProductType = item.productType || item.product_type;
-          if (!itemProductType) {
-            // If no explicit productType, infer from the data structure
-            if (item.productId && !item.nonProductId) {
-              itemProductType = "regular";
-            } else if (item.nonProductId && !item.productId) {
-              itemProductType = "non";
-            }
-          }
-          
-          console.log("Resolved item productId:", itemProductId, "productType:", itemProductType);
-          return itemProductId === productId && itemProductType === selectedProductType;
-        });
-        
-        if (invoiceItem) {
-          console.log("Found matching item:", invoiceItem);
-          const quantity = invoiceItem.quantity || 1;
-          const unitPrice = invoiceItem.unitPrice || invoiceItem.price || 0;
-          
-          form.setValue("quantity", quantity);
-          form.setValue("unitPrice", unitPrice);
-          toast({
-            title: "Auto-filled",
-            description: `Quantity (${quantity}) and price (£${unitPrice}) auto-filled from invoice`,
-          });
-        } else {
-          console.log("No matching item found in invoice");
-          toast({
-            title: "Info",
-            description: "No matching product found in selected invoice",
-          });
-        }
-      } else {
-        console.log("No product selected or no invoice items");
-      }
-    } else {
-      console.log("Invoice not found");
-    }
+    const invoice = customerInvoices.find((item) => item.id.toString() === saleId);
+    setSelectedSaleId(saleId);
+    setManualInvoiceNumber(invoice?.invoiceNumber || "");
   };
 
-  // Handle product selection
-  const handleProductSelect = (productId: string) => {
-    form.setValue("productId", parseInt(productId));
-    
-    // If an invoice is selected, try to auto-fill quantity and price
-    const invoiceId = form.watch("invoiceId");
-    console.log("Product selected:", productId, "Current invoice ID:", invoiceId);
-    
-    if (invoiceId && customerInvoices && Array.isArray(customerInvoices)) {
-      const selectedInvoice = customerInvoices.find((inv: CustomerInvoice) => inv.id === invoiceId);
-      if (selectedInvoice && selectedInvoice.items && Array.isArray(selectedInvoice.items)) {
-        console.log("Looking for product in invoice items:", selectedInvoice.items);
-        
-        const invoiceItem = selectedInvoice.items.find(item => {
-          console.log("Checking item:", item, "against productId:", parseInt(productId), "productType:", selectedProductType);
-          
-          // Handle different possible field names from API
-          const itemProductId = item.productId || item.product_id;
-          
-          // Determine product type from the item structure
-          let itemProductType = item.productType || item.product_type;
-          if (!itemProductType) {
-            // If no explicit productType, infer from the data structure
-            if (item.productId && !item.nonProductId) {
-              itemProductType = "regular";
-            } else if (item.nonProductId && !item.productId) {
-              itemProductType = "non";
-            }
-          }
-          
-          console.log("Resolved item productId:", itemProductId, "productType:", itemProductType);
-          return itemProductId === parseInt(productId) && itemProductType === selectedProductType;
-        });
-        
-        if (invoiceItem) {
-          console.log("Found matching item for product:", invoiceItem);
-          const quantity = invoiceItem.quantity || 1;
-          const unitPrice = invoiceItem.unitPrice || invoiceItem.price || 0;
-          
-          form.setValue("quantity", quantity);
-          form.setValue("unitPrice", unitPrice);
-          toast({
-            title: "Auto-filled",
-            description: `Quantity (${quantity}) and price (£${unitPrice}) auto-filled from invoice`,
-          });
-        } else {
-          console.log("No matching item found for product");
-        }
-      }
-    }
+  const handleProductSelect = (product: RegularProduct | NonProduct) => {
+    setPendingProduct(product);
+    const sellingPrice = Number(
+      (product as any).sellingPrice ?? (product as any).selling_price ?? 0,
+    );
+    setManualUnitPrice(sellingPrice.toFixed(2));
+    setManualProductSearch(`${(product as any).productCode || (product as any).product_code || ""} - ${product.description}`);
+    setShowProductDropdown(false);
   };
 
-  // Get filtered products based on type and search
-  const allFilteredProducts = selectedProductType === 'regular' 
-    ? (products?.regularProducts || [])
-    : (products?.nonProducts || []);
-
-  const filteredProducts = allFilteredProducts.filter((p: any) => {
-    if (!productSearch) return true;
-    const term = productSearch.toLowerCase();
-    return (p.productCode?.toLowerCase().startsWith(term) ||
-            p.description?.toLowerCase().startsWith(term));
-  });
-
-  // Keyboard navigation for product search
-  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!showProductDropdown || filteredProducts.length === 0) {
-      if (e.key === "Enter" && form.watch("productId")) {
-        e.preventDefault();
-      }
+  const addManualItem = () => {
+    if (!pendingProduct) {
+      toast({ title: "Select a product", description: "Choose a product to add to the return.", variant: "destructive" });
       return;
     }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightedProduct((prev) => (prev < filteredProducts.length - 1 ? prev + 1 : 0));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightedProduct((prev) => (prev > 0 ? prev - 1 : filteredProducts.length - 1));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      if (highlightedProduct >= 0 && highlightedProduct < filteredProducts.length) {
-        const p = filteredProducts[highlightedProduct];
-        form.setValue("productId", p.id);
-        form.setValue("productType", selectedProductType);
-        setProductSearch(`${p.productCode || ""} - ${p.description}`);
-        setShowProductDropdown(false);
-      }
-    } else if (e.key === "Escape") {
+    const quantity = Number(manualQuantity);
+    const unitPrice = Number(manualUnitPrice);
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+      toast({ title: "Invalid item", description: "Enter a positive quantity and a non-negative unit price.", variant: "destructive" });
+      return;
+    }
+    setManualItems((current) => [...current, {
+      key: `manual-${Date.now()}-${Math.random()}`,
+      productId: pendingProduct.id,
+      productType: manualProductType,
+      description: pendingProduct.description,
+      quantity,
+      unitPrice,
+    }]);
+    setPendingProduct(null);
+    setManualProductSearch("");
+    setManualQuantity("1");
+    setManualUnitPrice("0");
+  };
+
+  const updateInvoiceLine = (line: ReturnableInvoiceLine, updates: Partial<DraftReturnItem>) => {
+    setSelectedInvoiceLines((current) => {
+      const existing = current[line.id] || {
+        key: `invoice-${line.id}`,
+        productId: line.productId,
+        productType: line.productType,
+        description: line.productName,
+        quantity: line.returnableQuantity,
+        unitPrice: line.effectiveUnitPrice,
+        selected: false,
+        sourceSaleItemId: line.id,
+        availableQuantity: line.returnableQuantity,
+      };
+      return { ...current, [line.id]: { ...existing, ...updates } };
+    });
+  };
+
+  const updateManualItem = (key: string, updates: Partial<DraftReturnItem>) => {
+    setManualItems((current) => current.map((item) => item.key === key ? { ...item, ...updates } : item));
+  };
+
+  const removeManualItem = (key: string) => {
+    setManualItems((current) => current.filter((item) => item.key !== key));
+  };
+
+  const handleProductKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showProductDropdown || filteredProducts.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedProduct((current) => current < filteredProducts.length - 1 ? current + 1 : 0);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedProduct((current) => current > 0 ? current - 1 : filteredProducts.length - 1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (highlightedProduct >= 0) handleProductSelect(filteredProducts[highlightedProduct]);
+    } else if (event.key === "Escape") {
       setShowProductDropdown(false);
     }
   };
 
-  const handleProductBlur = () => {
-    setTimeout(() => setShowProductDropdown(false), 150);
-  };
-
-  const onSubmit = (data: ReturnFormData) => {
-    // The search text contains the selected label after selection, so the
-    // filtered list may be empty. Resolve the product from the full type list
-    // to always persist its description for the existing-returns table.
-    const selectedProduct = allFilteredProducts.find(p => p.id === data.productId);
-    
-    const returnData = {
-      customerId: data.customerId,
-      saleId: data.invoiceId || null,
-      productId: data.productId,
-      productType: data.productType,
-      description: selectedProduct?.description || "",
-      invoiceNumber: data.invoiceNumber?.trim(),
-      remarks: data.remarks,
-      quantity: data.quantity,
-      unitPrice: data.unitPrice,
-      returnReason: data.remarks,
-      creditNoteIssued: false,
-      creditNoteAmount: 0,
-      status: "completed", // Directly set to completed as per requirement
-      date: data.date,
-      refNumber: "", // Will be generated by backend
-      totalValue: data.quantity * data.unitPrice
-    };
-    
-    createReturnMutation.mutate(returnData);
+  const onSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const invoiceNumber = chosenInvoice?.invoiceNumber || manualInvoiceNumber.trim();
+    if (!customerId || !selectedCustomer) {
+      toast({ title: "Customer required", description: "Select a customer before saving.", variant: "destructive" });
+      return;
+    }
+    if (!invoiceNumber) {
+      toast({ title: "Invoice required", description: "Select an invoice or enter an invoice number.", variant: "destructive" });
+      return;
+    }
+    if (!returnDate) {
+      toast({ title: "Date required", description: "Select the return date.", variant: "destructive" });
+      return;
+    }
+    if (itemsToSubmit.length === 0) {
+      toast({ title: "No items selected", description: "Select invoice items or add manual products to return.", variant: "destructive" });
+      return;
+    }
+    const invalidQuantity = itemsToSubmit.some((item) =>
+      !Number.isFinite(item.quantity)
+      || item.quantity <= 0
+      || (item.availableQuantity !== undefined && item.quantity > item.availableQuantity)
+      || !Number.isFinite(item.unitPrice)
+      || item.unitPrice < 0,
+    );
+    if (invalidQuantity) {
+      toast({ title: "Invalid return item", description: "Check each quantity and unit price. Invoice quantities cannot exceed the remaining returnable amount.", variant: "destructive" });
+      return;
+    }
+    createReturnMutation.mutate({
+      customerId: Number(customerId),
+      saleId: chosenInvoice?.id || null,
+      invoiceNumber,
+      date: returnDate,
+      remarks,
+      items: itemsToSubmit.map((item) => ({
+        productId: item.productId,
+        productType: item.productType,
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        sourceSaleItemId: item.sourceSaleItemId,
+      })),
+    });
   };
 
   return (
     <PageLayout title="Returns from Customer" breadcrumb="Data Entry > Returns from Customer">
       <div className="space-y-6">
-        {/* Step 1: Customer Selection */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -525,22 +482,12 @@ export default function ReturnFromCustomer() {
                   allowClear
                 />
               </div>
-              
               <div>
                 <Label>Search from date:</Label>
-                <Input
-                  type="date"
-                  value={searchFromDate}
-                  onChange={(e) => setSearchFromDate(e.target.value)}
-                />
+                <Input type="date" value={searchFromDate} onChange={(event) => setSearchFromDate(event.target.value)} />
               </div>
-              
               <div>
-                <Button 
-                  className="bg-blue-500 hover:bg-blue-600 w-full"
-                  onClick={handleCustomerSearch}
-                  disabled={!selectedCustomer}
-                >
+                <Button className="w-full bg-blue-500 hover:bg-blue-600" onClick={handleCustomerSearch} disabled={!selectedCustomer}>
                   <Search className="mr-2 h-4 w-4" />
                   Search
                 </Button>
@@ -549,197 +496,251 @@ export default function ReturnFromCustomer() {
           </CardContent>
         </Card>
 
-        {/* Step 2: Return Entry Form (shown after customer search) */}
         {customerSearched && (
           <Card>
-            <CardHeader>
-              <CardTitle>Step 2: Add New Return</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Step 2: Add New Return</CardTitle></CardHeader>
             <CardContent>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={onSubmit} className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <Label>Date:</Label>
-                    <Input
-                      type="date"
-                      {...form.register("date")}
-                    />
-                    {form.formState.errors.date && (
-                      <p className="text-sm text-red-600 mt-1">
-                        {form.formState.errors.date.message}
-                      </p>
-                    )}
+                    <Label htmlFor="return-date">Return Date</Label>
+                    <Input id="return-date" type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} disabled={isLoadingBusinessDate} />
                   </div>
-                  
-                  <div>
-                    <Label>Product Type:</Label>
-                    <Select
-                      value={selectedProductType}
-                      onValueChange={(value) => {
-                        setSelectedProductType(value as "regular" | "non");
-                        form.setValue("productType", value as "regular" | "non");
-                        form.setValue("productId", 0);
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="regular">Regular Product</SelectItem>
-                        <SelectItem value="non">Non-Product</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div>
-                    <Label>Product:</Label>
-                    <div className="relative">
-                      <Input
-                        ref={productInputRef}
-                        value={productSearch}
-                        onChange={(e) => {
-                          setProductSearch(e.target.value);
-                          setShowProductDropdown(true);
-                          setHighlightedProduct(-1);
-                          form.setValue("productId", 0);
-                        }}
-                        onFocus={() => setShowProductDropdown(true)}
-                        onKeyDown={handleProductKeyDown}
-                        onBlur={handleProductBlur}
-                        placeholder="Search product by code or name..."
-                      />
-                      {showProductDropdown && filteredProducts.length > 0 && (
-                        <div
-                          className="absolute z-50 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto"
-                        >
-                          {filteredProducts.map((product: RegularProduct | NonProduct, idx: number) => (
-                            <div
-                              key={product.id}
-                              className={`px-3 py-2 cursor-pointer text-sm ${
-                                idx === highlightedProduct ? "bg-blue-100" : "hover:bg-gray-100"
-                              }`}
-                              onMouseDown={() => {
-                                form.setValue("productId", product.id);
-                                form.setValue("productType", selectedProductType);
-                                setProductSearch(`${(product as any).productCode || ""} - ${product.description}`);
-                                setShowProductDropdown(false);
-                              }}
-                            >
-                              <div className="font-medium">{(product as any).productCode || ""}</div>
-                              <div className="text-gray-600">{product.description}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <Label>Invoice (select an invoice or enter it manually):</Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleGetInvoices}
-                        disabled={!selectedCustomer}
-                      >
+                      <Label>Original Invoice</Label>
+                      <Button type="button" variant="outline" size="sm" onClick={handleGetInvoices} disabled={!selectedCustomer || invoicesLoading}>
+                        {invoicesLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                         Get Invoices
                       </Button>
                     </div>
-                    <Select
-                      value={form.watch("invoiceId")?.toString() || "none"}
-                      onValueChange={handleInvoiceSelect}
-                      disabled={!invoicesFetched}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an invoice or enter it manually" />
-                      </SelectTrigger>
+                    <Select value={selectedSaleId || "manual"} onValueChange={handleInvoiceSelect} disabled={!invoicesFetched}>
+                      <SelectTrigger><SelectValue placeholder="Select invoice or enter manually" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">Enter invoice manually</SelectItem>
-                        {customerInvoices.map((invoice: CustomerInvoice) => (
+                        <SelectItem value="manual">Manual invoice number</SelectItem>
+                        {customerInvoices.map((invoice) => (
                           <SelectItem key={invoice.id} value={invoice.id.toString()}>
-                            {invoice.invoiceNumber} - {format(new Date(invoice.date), "dd/MM/yyyy")} - £{invoice.totalAmount.toFixed(2)}
+                            {invoice.invoiceNumber} — {format(new Date(invoice.date), "dd/MM/yyyy")} — {money(invoice.totalAmount)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  
                   <div>
-                    <Label>
-                      Manual Invoice Number{form.watch("invoiceId") ? " (optional)" : " (required)"}:
-                    </Label>
+                    <Label htmlFor="manual-invoice-number">Invoice Number {chosenInvoice ? "(selected invoice)" : "(required)"}</Label>
                     <Input
-                      {...form.register("invoiceNumber")}
-                      disabled={Boolean(form.watch("invoiceId"))}
-                      placeholder={form.watch("invoiceId") ? "Using selected invoice number" : "Enter invoice number manually"}
+                      id="manual-invoice-number"
+                      value={chosenInvoice?.invoiceNumber || manualInvoiceNumber}
+                      onChange={(event) => setManualInvoiceNumber(event.target.value)}
+                      disabled={!!chosenInvoice}
+                      maxLength={50}
+                      placeholder="Enter invoice number"
                     />
-                    {form.formState.errors.invoiceNumber && (
-                      <p className="text-sm text-red-600 mt-1">
-                        {form.formState.errors.invoiceNumber.message}
-                      </p>
-                    )}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Quantity:</Label>
-                    <Input
-                      type="number"
-                      step="0.001"
-                      {...form.register("quantity")}
-                      placeholder="Enter quantity"
-                    />
-                    {form.formState.errors.quantity && (
-                      <p className="text-sm text-red-600 mt-1">
-                        {form.formState.errors.quantity.message}
+                {chosenInvoice && (
+                  <div className="space-y-2">
+                    <div>
+                      <h3 className="font-semibold">Products on {chosenInvoice.invoiceNumber}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Unit prices include discounts already applied to the invoice. Adjust quantity and price as needed.
                       </p>
+                    </div>
+                    {invoiceDetailsLoading ? (
+                      <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading invoice items...</div>
+                    ) : invoiceDetailsError ? (
+                      <p className="text-sm text-red-600">Failed to load invoice items. Please reselect the invoice and try again.</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Select</TableHead>
+                              <TableHead>Product</TableHead>
+                              <TableHead className="text-right">Sold</TableHead>
+                              <TableHead className="text-right">Previously Returned</TableHead>
+                              <TableHead className="text-right">Return Qty</TableHead>
+                              <TableHead className="text-right">Unit Price</TableHead>
+                              <TableHead className="text-right">Line Total</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {invoiceDetails?.items.map((line) => {
+                              const draft = selectedInvoiceLines[line.id];
+                              const checked = !!draft?.selected;
+                              return (
+                                <TableRow key={line.id}>
+                                  <TableCell>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      disabled={line.returnableQuantity <= 0}
+                                      onChange={(event) => updateInvoiceLine(line, {
+                                        selected: event.target.checked,
+                                        quantity: event.target.checked ? line.returnableQuantity : 0,
+                                      })}
+                                      aria-label={`Select ${line.productName} for return`}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="font-medium">{line.productName}</div>
+                                    {line.discountTotal > 0 && <div className="text-xs text-muted-foreground">Discount applied: {money(line.discountTotal)}</div>}
+                                  </TableCell>
+                                  <TableCell className="text-right">{formatQuantity(line.quantity)}</TableCell>
+                                  <TableCell className="text-right">{formatQuantity(line.returnedQuantity)}</TableCell>
+                                  <TableCell className="w-32">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max={line.returnableQuantity}
+                                      step="0.001"
+                                      value={draft?.quantity ?? 0}
+                                      disabled={!checked}
+                                      onChange={(event) => updateInvoiceLine(line, { quantity: Number(event.target.value) })}
+                                      aria-label={`${line.productName} return quantity`}
+                                    />
+                                    <div className="text-xs text-muted-foreground">Available: {formatQuantity(line.returnableQuantity)}</div>
+                                  </TableCell>
+                                  <TableCell className="w-36">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={draft?.unitPrice ?? line.effectiveUnitPrice}
+                                      disabled={!checked}
+                                      onChange={(event) => updateInvoiceLine(line, { unitPrice: Number(event.target.value) })}
+                                      aria-label={`${line.productName} return unit price`}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="text-right">{money((draft?.quantity || 0) * (draft?.unitPrice ?? line.effectiveUnitPrice))}</TableCell>
+                                </TableRow>
+                              );
+                            })}
+                            {invoiceDetails?.items.length === 0 && (
+                              <TableRow><TableCell colSpan={7} className="text-center">No products found on this invoice.</TableCell></TableRow>
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
                     )}
                   </div>
-                  
+                )}
+
+                <div className="space-y-3 rounded-md border p-4">
                   <div>
-                    <Label>Unit Price:</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      {...form.register("unitPrice")}
-                      placeholder="Enter unit price"
-                    />
+                    <h3 className="font-semibold">Add Manual Product</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Add a product not listed on the selected invoice, or build a return without selecting an invoice.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                    <div>
+                      <Label>Product Type</Label>
+                      <Select
+                        value={manualProductType}
+                        onValueChange={(value: "regular" | "non") => {
+                          setManualProductType(value);
+                          setManualProductSearch("");
+                          setPendingProduct(null);
+                        }}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="regular">Regular Product</SelectItem>
+                          <SelectItem value="non">Non-Product</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="relative md:col-span-2">
+                      <Label htmlFor="manual-product">Product</Label>
+                      <Input
+                        id="manual-product"
+                        value={manualProductSearch}
+                        onChange={(event) => {
+                          setManualProductSearch(event.target.value);
+                          setPendingProduct(null);
+                          setShowProductDropdown(true);
+                          setHighlightedProduct(-1);
+                        }}
+                        onFocus={() => setShowProductDropdown(true)}
+                        onBlur={() => window.setTimeout(() => setShowProductDropdown(false), 150)}
+                        onKeyDown={handleProductKeyDown}
+                        placeholder="Search product by code or name"
+                      />
+                      {showProductDropdown && filteredProducts.length > 0 && (
+                        <div className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
+                          {filteredProducts.map((product, index) => (
+                            <button
+                              key={product.id}
+                              type="button"
+                              className={`block w-full px-3 py-2 text-left text-sm ${index === highlightedProduct ? "bg-blue-100" : "hover:bg-gray-100"}`}
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => handleProductSelect(product)}
+                            >
+                              <div className="font-medium">{(product as any).productCode || (product as any).product_code || ""}</div>
+                              <div className="text-gray-600">{product.description}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="manual-quantity">Quantity</Label>
+                      <Input id="manual-quantity" type="number" min="0.001" step="0.001" value={manualQuantity} onChange={(event) => setManualQuantity(event.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="manual-unit-price">Unit Price</Label>
+                      <Input id="manual-unit-price" type="number" min="0" step="0.01" value={manualUnitPrice} onChange={(event) => setManualUnitPrice(event.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="button" variant="outline" onClick={addManualItem}>
+                      <Plus className="mr-2 h-4 w-4" />Add Product
+                    </Button>
                   </div>
                 </div>
+
+                {manualItems.length > 0 && (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Manual Product</TableHead>
+                          <TableHead className="w-36">Quantity</TableHead>
+                          <TableHead className="w-36">Unit Price</TableHead>
+                          <TableHead className="text-right">Line Total</TableHead>
+                          <TableHead className="w-12" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {manualItems.map((item) => (
+                          <TableRow key={item.key}>
+                            <TableCell>{item.description}</TableCell>
+                            <TableCell><Input type="number" min="0.001" step="0.001" value={item.quantity} onChange={(event) => updateManualItem(item.key, { quantity: Number(event.target.value) })} /></TableCell>
+                            <TableCell><Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateManualItem(item.key, { unitPrice: Number(event.target.value) })} /></TableCell>
+                            <TableCell className="text-right">{money(item.quantity * item.unitPrice)}</TableCell>
+                            <TableCell>
+                              <Button type="button" variant="ghost" size="icon" onClick={() => removeManualItem(item.key)} aria-label={`Remove ${item.description}`}>
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
 
                 <div>
-                  <Label>Remarks:</Label>
-                  <Textarea
-                    {...form.register("remarks")}
-                    placeholder="Enter any remarks or return reason"
-                  />
+                  <Label htmlFor="return-remarks">Remarks</Label>
+                  <Textarea id="return-remarks" value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Enter any remarks or return reason" />
                 </div>
-
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => form.reset({
-                      date: businessDate ? format(new Date(businessDate), "yyyy-MM-dd") : "",
-                      customerId: selectedCustomer?.id || 0,
-                      productId: 0,
-                      productType: selectedProductType,
-                    })}
-                  >
-                    Reset
-                  </Button>
-                  <Button 
-                    type="submit" 
-                    disabled={createReturnMutation.isPending}
-                    className="bg-green-600 hover:bg-green-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {createReturnMutation.isPending ? "Saving..." : "Save Return"}
+                <div className="flex items-center justify-between border-t pt-4">
+                  <div className="text-lg font-semibold">Return total: {money(estimatedTotal)}</div>
+                  <Button type="submit" disabled={createReturnMutation.isPending || invoiceDetailsLoading} className="bg-green-600 hover:bg-green-700">
+                    {createReturnMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                    {createReturnMutation.isPending ? "Saving..." : `Save Return${itemsToSubmit.length ? ` (${itemsToSubmit.length} item${itemsToSubmit.length === 1 ? "" : "s"})` : ""}`}
                   </Button>
                 </div>
               </form>
@@ -747,12 +748,9 @@ export default function ReturnFromCustomer() {
           </Card>
         )}
 
-        {/* Step 3: Customer Returns Table (shown after customer search) */}
         {customerSearched && selectedCustomer && (
           <Card>
-            <CardHeader>
-              <CardTitle>Step 3: Existing Returns - {selectedCustomer?.customer_name}</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>Step 3: Existing Returns - {selectedCustomer.customer_name}</CardTitle></CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <Table>
@@ -770,55 +768,35 @@ export default function ReturnFromCustomer() {
                   </TableHeader>
                   <TableBody>
                     {returns.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-4">
-                          No returns found for this customer
+                      <TableRow><TableCell colSpan={8} className="py-4 text-center">No returns found for this customer</TableCell></TableRow>
+                    ) : returns.map((returnItem) => (
+                      <TableRow key={returnItem.id}>
+                        <TableCell>{format(new Date(returnItem.date), "dd/MM/yyyy")}</TableCell>
+                        <TableCell>{returnItem.productDescription}</TableCell>
+                        <TableCell>{returnItem.invoiceNumber || "-"}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
+                        <TableCell className="text-center">{money(returnItem.unitPrice)}</TableCell>
+                        <TableCell className="text-center">{money(returnItem.totalValue)}</TableCell>
+                        <TableCell>{returnItem.remarks || "-"}</TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={!canDeleteReturn(returnItem.date) || deleteReturnMutation.isPending}
+                            title={canDeleteReturn(returnItem.date) ? "Delete return" : "You don't have permission to delete this return"}
+                            onClick={() => {
+                              if (canDeleteReturn(returnItem.date) && confirm("Delete this return document and all of its product lines?")) {
+                                deleteReturnMutation.mutate(returnItem.id);
+                              }
+                            }}
+                          >
+                            {deleteReturnMutation.isPending
+                              ? <Loader2 className="h-4 w-4 animate-spin" />
+                              : <Trash2 className={`h-4 w-4 ${canDeleteReturn(returnItem.date) ? "text-red-600" : "text-gray-400"}`} />}
+                          </Button>
                         </TableCell>
                       </TableRow>
-                    ) : (
-                      returns.map((returnItem: CustomerReturn) => (
-                        <TableRow key={returnItem.id}>
-                          <TableCell>{format(new Date(returnItem.date), "dd/MM/yyyy")}</TableCell>
-                          <TableCell>{returnItem.productDescription}</TableCell>
-                          <TableCell>{returnItem.invoiceNumber || "-"}</TableCell>
-                          <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
-                          <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
-                          <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
-                          <TableCell>{returnItem.remarks || "-"}</TableCell>
-                          <TableCell className="text-center">
-                            {canDeleteReturn(returnItem.date) ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm("Are you sure you want to delete this customer return?")) {
-                                    deleteReturnMutation.mutate(returnItem.id);
-                                  }
-                                }}
-                                disabled={deleteReturnMutation.isPending}
-                                title="Delete return"
-                              >
-                                {deleteReturnMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                )}
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                disabled
-                                className="text-gray-400 cursor-not-allowed"
-                                title="You don't have permission to delete this return"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
+                    ))}
                   </TableBody>
                 </Table>
               </div>

@@ -1040,6 +1040,7 @@ class CustomerReturn(db.Model):
     __table_args__ = (
         db.Index('ix_customer_return_date', 'date'),
         db.Index('ix_customer_return_customer_id', 'customer_id'),
+        db.Index('ix_customer_return_source_sale_item_id', 'source_sale_item_id'),
     )
 
     id = db.Column(db.Integer, primary_key=True)
@@ -1047,6 +1048,8 @@ class CustomerReturn(db.Model):
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False)
     sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'))  # Optional, link to original sale
+    source_sale_item_id = db.Column(db.Integer, db.ForeignKey('sale_item.id'))
+    is_manual = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
     product_id = db.Column(db.Integer, nullable=False)  # ID of the product being returned
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     description = db.Column(db.String(200), nullable=False)
@@ -1067,6 +1070,7 @@ class CustomerReturn(db.Model):
     # Relationships
     customer = db.relationship('Customer', backref='returns')
     sale = db.relationship('Sale', backref='returns')
+    source_sale_item = db.relationship('SaleItem')
     user = db.relationship('User', backref='customer_returns_created', foreign_keys=[created_by])
 
     def to_dict(self):
@@ -1077,6 +1081,8 @@ class CustomerReturn(db.Model):
             'customerId': self.customer_id,
             'customerName': self.customer.customer_name if self.customer else None,
             'saleId': self.sale_id,
+            'sourceSaleItemId': self.source_sale_item_id,
+            'isManual': bool(self.is_manual),
             'productId': self.product_id,
             'productType': self.product_type,
             'description': self.description,

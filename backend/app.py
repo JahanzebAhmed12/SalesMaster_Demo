@@ -24,6 +24,7 @@ import uuid
 from werkzeug.utils import secure_filename
 from users import verify_password, create_admin_user
 from migrations.customer_discount_v1 import upgrade as upgrade_customer_discount_schema
+from migrations.customer_return_sale_item_v1 import upgrade as upgrade_customer_return_sale_item_schema
 from migrations.invoice_document_numbers_v1 import upgrade as upgrade_invoice_document_numbers_schema
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
@@ -563,6 +564,7 @@ with app.app_context():
         CustomerDiscount.__table__,
         CustomerDiscountAudit.__table__,
     )
+    upgrade_customer_return_sale_item_schema(db.engine)
     upgrade_invoice_document_numbers_schema(db.engine, InvoiceDocumentNumber.__table__)
     ensure_voided_invoice_document_schema()
     _initialize_invoice_document_numbers()
@@ -11328,6 +11330,69 @@ def get_customer_returns():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def _customer_returnable_invoice_lines(sale):
+    lines = []
+    for item in sale.items:
+        line_total = _money_decimal(item.total_price)
+        line_discount = _active_discount_total_for_item(item.id)
+        remaining = max(Decimal("0.00"), line_total - line_discount)
+        returned_quantity = db.session.query(
+            func.coalesce(func.sum(CustomerReturn.quantity), 0)
+        ).filter(
+            CustomerReturn.sale_id == sale.id,
+            CustomerReturn.status.in_(("pending", "approved", "completed")),
+            or_(
+                CustomerReturn.source_sale_item_id == item.id,
+                and_(
+                    CustomerReturn.source_sale_item_id.is_(None),
+                    CustomerReturn.is_manual.is_(False),
+                    CustomerReturn.product_id == (item.product_id or item.non_product_id),
+                    CustomerReturn.product_type == ("regular" if item.product_id else "non"),
+                ),
+            ),
+        ).scalar() or 0
+        returned_quantity = Decimal(str(returned_quantity))
+        returnable_quantity = max(
+            Decimal("0"),
+            Decimal(str(item.quantity or 0)) - returned_quantity,
+        )
+        product_name = (
+            item.product.description if item.product
+            else item.non_product.description if item.non_product
+            else ""
+        )
+        lines.append({
+            "id": item.id,
+            "productId": item.product_id or item.non_product_id,
+            "productType": "regular" if item.product_id else "non",
+            "productName": product_name,
+            "description": product_name,
+            "quantity": float(item.quantity or 0),
+            "returnedQuantity": float(returned_quantity),
+            "returnableQuantity": float(returnable_quantity),
+            "unitPrice": float(item.unit_price or 0),
+            "originalTotal": float(line_total),
+            "discountTotal": float(line_discount),
+            "remainingValue": float(remaining),
+            "effectiveUnitPrice": float(
+                (remaining / Decimal(str(item.quantity))) if item.quantity else 0
+            ),
+        })
+    return lines
+
+
+@app.route('/api/customer-returns/invoices/<int:sale_id>', methods=['GET'])
+@jwt_required()
+def get_customer_return_invoice_lines(sale_id):
+    sale = Sale.query.filter_by(id=sale_id, status="finalized").first()
+    if not sale:
+        return jsonify({"error": "Finalized invoice not found."}), 404
+    return jsonify({
+        "saleId": sale.id,
+        "invoiceNumber": sale.invoice_number,
+        "items": _customer_returnable_invoice_lines(sale),
+    }), 200
+
 @app.route('/api/customer-returns/print', methods=['GET'])
 def print_customer_returns():
     """Return selected customer-return documents for the public print view."""
@@ -11337,11 +11402,23 @@ def print_customer_returns():
         if not return_ids or any(return_id <= 0 for return_id in return_ids):
             return jsonify({"error": "At least one valid customer return ID is required"}), 400
 
-        return_items = CustomerReturn.query.filter(
+        requested_items = CustomerReturn.query.filter(
             CustomerReturn.id.in_(set(return_ids))
         ).order_by(CustomerReturn.id).all()
-        if len(return_items) != len(set(return_ids)):
+        if len(requested_items) != len(set(return_ids)):
             return jsonify({"error": "One or more customer returns were not found"}), 404
+        document_numbers = {
+            item.document_invoice_number for item in requested_items
+            if item.document_invoice_number
+        }
+        return_items = CustomerReturn.query.filter(
+            or_(
+                CustomerReturn.id.in_(set(return_ids)),
+                CustomerReturn.document_invoice_number.in_(document_numbers)
+                if document_numbers
+                else CustomerReturn.id.in_(set(return_ids)),
+            )
+        ).order_by(CustomerReturn.id).all()
 
         company = Company.query.first()
         documents = []
@@ -11448,6 +11525,173 @@ def create_customer_return():
             return jsonify({"error": "A customer return payload is required"}), 400
 
         user_id = get_jwt_identity()
+        if "items" in data:
+            items = data.get("items")
+            if not isinstance(items, list) or not items:
+                return jsonify({"error": "At least one return item is required"}), 400
+
+            customer = Customer.query.get(data.get("customerId"))
+            if not customer:
+                return jsonify({"error": "Customer not found"}), 404
+
+            sale_id = data.get("saleId")
+            sale = Sale.query.get(sale_id) if sale_id else None
+            if sale_id and not sale:
+                return jsonify({"error": "Sale not found"}), 404
+            if sale and sale.customer_id != customer.id:
+                return jsonify({"error": "Selected invoice does not belong to this customer"}), 400
+
+            invoice_number = str(data.get("invoiceNumber") or "").strip()
+            if sale:
+                invoice_number = sale.invoice_number
+            if not invoice_number:
+                return jsonify({"error": "Select an invoice or enter a manual invoice number"}), 400
+            if len(invoice_number) > 50:
+                return jsonify({"error": "Invoice number must be 50 characters or fewer"}), 400
+
+            try:
+                parsed_date = datetime.strptime(data.get("date", ""), "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                return jsonify({"error": "Return date must use YYYY-MM-DD format"}), 400
+
+            prepared_items = []
+            source_quantities = {}
+            for item_data in items:
+                if not isinstance(item_data, dict):
+                    return jsonify({"error": "Each return item must be an object"}), 400
+                product_type = item_data.get("productType")
+                if product_type not in ("regular", "non"):
+                    return jsonify({"error": "Return product type must be regular or non"}), 400
+                product_id = item_data.get("productId")
+                product_model = RegularProduct if product_type == "regular" else NonProduct
+                product = product_model.query.get(product_id)
+                if not product:
+                    return jsonify({"error": f"Product {product_id} was not found"}), 404
+
+                try:
+                    quantity = Decimal(str(item_data.get("quantity", "")))
+                    unit_price = Decimal(str(item_data.get("unitPrice", "")))
+                except (InvalidOperation, TypeError, ValueError):
+                    return jsonify({"error": "Return quantities and prices must be valid numbers"}), 400
+                if not quantity.is_finite() or quantity <= 0:
+                    return jsonify({"error": "Return quantity must be greater than zero"}), 400
+                if quantity.as_tuple().exponent < -3:
+                    return jsonify({"error": "Return quantity cannot have more than three decimal places"}), 400
+                if not unit_price.is_finite() or unit_price < 0:
+                    return jsonify({"error": "Return unit price must be non-negative"}), 400
+                unit_price = unit_price.quantize(CENT, rounding=ROUND_HALF_UP)
+
+                source_item_id = item_data.get("sourceSaleItemId")
+                source_sale_item = None
+                if source_item_id is not None:
+                    if not sale:
+                        return jsonify({"error": "An invoice-linked item requires a selected invoice"}), 400
+                    source_sale_item = SaleItem.query.filter_by(
+                        id=source_item_id,
+                        sale_id=sale.id,
+                    ).with_for_update().first()
+                    if (
+                        not source_sale_item
+                        or source_sale_item.product_id != (product.id if product_type == "regular" else None)
+                        or source_sale_item.non_product_id != (product.id if product_type == "non" else None)
+                    ):
+                        return jsonify({"error": "Return item does not match the selected invoice"}), 400
+
+                    already_returned = db.session.query(
+                        func.coalesce(func.sum(CustomerReturn.quantity), 0)
+                    ).filter(
+                        CustomerReturn.sale_id == sale.id,
+                        CustomerReturn.status.in_(("pending", "approved", "completed")),
+                        or_(
+                            CustomerReturn.source_sale_item_id == source_sale_item.id,
+                            and_(
+                                CustomerReturn.source_sale_item_id.is_(None),
+                                CustomerReturn.is_manual.is_(False),
+                                CustomerReturn.product_id == product.id,
+                                CustomerReturn.product_type == product_type,
+                            ),
+                        ),
+                    ).scalar() or 0
+                    source_key = source_sale_item.id
+                    already_returned = Decimal(str(already_returned)) + source_quantities.get(source_key, Decimal("0"))
+                    available_quantity = max(
+                        Decimal("0"),
+                        Decimal(str(source_sale_item.quantity or 0)) - already_returned,
+                    )
+                    if quantity > available_quantity:
+                        return jsonify({
+                            "error": (
+                                f"Return quantity for {product.description} exceeds the "
+                                f"remaining invoice quantity ({available_quantity})."
+                            )
+                        }), 400
+                    source_quantities[source_key] = source_quantities.get(
+                        source_key, Decimal("0")
+                    ) + quantity
+
+                prepared_items.append({
+                    "product": product,
+                    "product_id": product.id,
+                    "product_type": product_type,
+                    "description": str(item_data.get("description") or product.description)[:200],
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "total_value": (quantity * unit_price).quantize(CENT, rounding=ROUND_HALF_UP),
+                    "source_sale_item_id": source_sale_item.id if source_sale_item else None,
+                    "is_manual": source_sale_item is None,
+                })
+
+            document_invoice_number = _allocate_invoice_document_number()
+            last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
+            next_return_number = (last_return.id if last_return else 0) + 1
+            created_returns = []
+            remarks = data.get("remarks")
+            for item in prepared_items:
+                ref_number = f"CR{next_return_number:04d}"
+                next_return_number += 1
+                customer_return = CustomerReturn(
+                    ref_number=ref_number,
+                    document_invoice_number=document_invoice_number,
+                    date=parsed_date,
+                    customer_id=customer.id,
+                    sale_id=sale.id if sale else None,
+                    source_sale_item_id=item["source_sale_item_id"],
+                    is_manual=item["is_manual"],
+                    product_id=item["product_id"],
+                    product_type=item["product_type"],
+                    description=item["description"],
+                    invoice_number=invoice_number,
+                    remarks=remarks,
+                    quantity=item["quantity"],
+                    unit_price=item["unit_price"],
+                    total_value=item["total_value"],
+                    return_reason=remarks,
+                    credit_note_issued=False,
+                    credit_note_amount=Decimal("0.00"),
+                    status="completed",
+                    created_by=user_id,
+                )
+                db.session.add(customer_return)
+                db.session.flush()
+                success, result = update_product_stock(
+                    product_id=item["product_id"],
+                    product_type=item["product_type"],
+                    quantity_change=float(item["quantity"]),
+                    movement_type="customer_return",
+                    reference_id=customer_return.id,
+                    reference_type="customer_return",
+                    remarks=f"Customer return: {ref_number}",
+                    user_id=user_id,
+                    movement_date=parsed_date,
+                )
+                if not success:
+                    db.session.rollback()
+                    return jsonify({"error": f"Stock update failed: {result}"}), 400
+                created_returns.append(customer_return)
+
+            db.session.commit()
+            return jsonify([customer_return.to_dict() for customer_return in created_returns]), 201
+
         # Use business date
         business_date = get_business_date()
         # Generate reference number
@@ -11712,68 +11956,59 @@ def delete_customer_return(id):
     try:
         user_id = get_jwt_identity()
         customer_return = CustomerReturn.query.get_or_404(id)
-        
+        returns_to_delete = [customer_return]
+        if customer_return.document_invoice_number:
+            returns_to_delete = CustomerReturn.query.filter_by(
+                document_invoice_number=customer_return.document_invoice_number
+            ).order_by(CustomerReturn.id).all()
+
         # Get user's backdate options
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-        
-        # Get today's date
-        from datetime import datetime
         today = get_business_date()
-        return_date = customer_return.date
-        
-        # Check permissions based on return date
-        if return_date == today:
-            # For current date entries, check current_editing permission
-            if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
-                return jsonify({'error': 'You do not have permission to delete returns for today.'}), 403
-        else:
-            # For back date entries, check deleting permission
-            if not backdate_opt or not backdate_opt.deleting:
+        for return_item in returns_to_delete:
+            if return_item.date == today:
+                if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
+                    return jsonify({'error': 'You do not have permission to delete returns for today.'}), 403
+            elif not backdate_opt or not backdate_opt.deleting:
                 return jsonify({'error': 'You do not have permission to delete back-dated returns.'}), 403
-        
-        # Remove only the effective inventory impact. Pending/rejected customer
-        # returns have no Stock Check effect and therefore must not change stock
-        # when deleted.
-        success, result = _apply_return_stock_transition(
-            return_kind='customer',
-            reference_id=customer_return.id,
-            old_product_id=customer_return.product_id,
-            old_product_type=customer_return.product_type,
-            old_status=customer_return.status,
-            old_quantity=customer_return.quantity,
-            new_product_id=customer_return.product_id,
-            new_product_type=customer_return.product_type,
-            new_status='deleted',
-            new_quantity=0,
-            user_id=get_jwt_identity(),
-            movement_date=customer_return.date,
-            movement_type='customer_return_cancellation',
-            remarks=f"Customer return cancelled: {customer_return.description}"
-        )
-        if not success:
-            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
-        
-        # Remove credit note payment if exists
-        credit_payment = Payment.query.filter(
-            Payment.customer_id == customer_return.customer_id,
-            Payment.payment_mode == 'credit_note',
-            Payment.remarks.like(f"%{customer_return.ref_number}%")
-        ).first()
-        
-        if credit_payment:
-            db.session.delete(credit_payment)
-            
-            # Restore sale payment status if linked
-            if customer_return.sale:
-                current_paid = float(customer_return.sale.paid_amount or 0)
-                restored_paid = current_paid + customer_return.credit_note_amount
-                customer_return.sale.paid_amount = restored_paid
-                if restored_paid >= float(customer_return.sale.total_amount):
-                    customer_return.sale.payment_status = 'paid'
-                else:
-                    customer_return.sale.payment_status = 'partial'
-                db.session.add(customer_return.sale)
-        
+
+        for return_item in returns_to_delete:
+            success, result = _apply_return_stock_transition(
+                return_kind='customer',
+                reference_id=return_item.id,
+                old_product_id=return_item.product_id,
+                old_product_type=return_item.product_type,
+                old_status=return_item.status,
+                old_quantity=return_item.quantity,
+                new_product_id=return_item.product_id,
+                new_product_type=return_item.product_type,
+                new_status='deleted',
+                new_quantity=0,
+                user_id=user_id,
+                movement_date=return_item.date,
+                movement_type='customer_return_cancellation',
+                remarks=f"Customer return cancelled: {return_item.description}"
+            )
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+
+            credit_payment = Payment.query.filter(
+                Payment.customer_id == return_item.customer_id,
+                Payment.payment_mode == 'credit_note',
+                Payment.remarks.like(f"%{return_item.ref_number}%")
+            ).first()
+            if credit_payment:
+                db.session.delete(credit_payment)
+                if return_item.sale:
+                    current_paid = float(return_item.sale.paid_amount or 0)
+                    restored_paid = current_paid + float(return_item.credit_note_amount or 0)
+                    return_item.sale.paid_amount = restored_paid
+                    return_item.sale.payment_status = (
+                        'paid' if restored_paid >= float(return_item.sale.total_amount) else 'partial'
+                    )
+
+        db.session.flush()
         _record_voided_invoice_document(
             customer_return.document_invoice_number,
             "return",
@@ -11782,7 +12017,8 @@ def delete_customer_return(id):
             customer_return.invoice_number,
             customer_return.user.username if customer_return.user else None,
         )
-        db.session.delete(customer_return)
+        for return_item in returns_to_delete:
+            db.session.delete(return_item)
         db.session.commit()
         return jsonify({"message": "Customer return deleted successfully"}), 200
     except Exception as e:
@@ -12666,29 +12902,7 @@ def get_customer_discount_invoice_lines(sale_id):
     discount_total = _active_discount_total_for_sale(sale.id)
     outstanding = _sale_outstanding(sale)
     available_discount_value = _sale_available_discount_value(sale)
-    lines = []
-    for item in sale.items:
-        line_total = _money_decimal(item.total_price)
-        line_discount = _active_discount_total_for_item(item.id)
-        remaining = max(Decimal("0.00"), line_total - line_discount)
-        product_name = (
-            item.product.description if item.product
-            else item.non_product.description if item.non_product
-            else ""
-        )
-        lines.append({
-            "id": item.id,
-            "productId": item.product_id or item.non_product_id,
-            "productType": "regular" if item.product_id else "non",
-            "productName": product_name,
-            "description": product_name,
-            "quantity": float(item.quantity or 0),
-            "unitPrice": float(item.unit_price or 0),
-            "originalTotal": float(line_total),
-            "discountTotal": float(line_discount),
-            "remainingValue": float(remaining),
-            "effectiveUnitPrice": float((remaining / Decimal(str(item.quantity))) if item.quantity else 0),
-        })
+    lines = _customer_returnable_invoice_lines(sale)
 
     return jsonify({
         "saleId": sale.id,
