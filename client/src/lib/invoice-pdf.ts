@@ -267,17 +267,35 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   const notesWidth = tableWidth * 0.6;
   const totalsWidth = tableWidth * 0.4;
   const totalsX = tableStartX + notesWidth;
+  doc.setFontSize(9);
+  const invoiceRemarks = String(invoiceData.sale?.notes || "").trim();
+  const remarkLines = invoiceRemarks
+    ? doc.splitTextToSize(`Remarks: ${invoiceRemarks}`, notesWidth - 4)
+    : [];
+  const invoiceFooter = invoiceData.invoiceFooter || "";
+  const footerLines = invoiceFooter
+    ? doc.splitTextToSize(invoiceFooter, notesWidth - 4)
+    : [];
+  const notesBoxHeight = Math.max(
+    20,
+    5 + remarkLines.length * 4 + (footerLines.length ? 3 + footerLines.length * 4 : 0),
+  );
 
   doc.setFillColor(255, 255, 255);
-  doc.rect(tableStartX, yPos, notesWidth, 20);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "italic");
+  doc.rect(tableStartX, yPos, notesWidth, notesBoxHeight);
   doc.setTextColor(136, 136, 136);
 
-  const invoiceFooter = invoiceData.invoiceFooter || "";
-  if (invoiceFooter) {
-    const noteLines = doc.splitTextToSize(invoiceFooter, notesWidth - 4);
-    doc.text(noteLines, tableStartX + 2, yPos + 5);
+  let noteY = yPos + 5;
+  if (remarkLines.length) {
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text(remarkLines, tableStartX + 2, noteY);
+    noteY += remarkLines.length * 4 + 3;
+  }
+  if (footerLines.length) {
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(136, 136, 136);
+    doc.text(footerLines, tableStartX + 2, noteY);
   }
 
   doc.setTextColor(0, 0, 0);
@@ -305,7 +323,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     doc.text(`${displayMode} £${(invoiceData.sale?.paid_amount || invoiceData.sale?.paidAmount || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 27, { align: 'right' });
   }
 
-  yPos += 50;
+  yPos += notesBoxHeight + 30;
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(68, 68, 68);

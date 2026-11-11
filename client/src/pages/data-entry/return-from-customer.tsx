@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { Pagination } from "@/components/ui/pagination";
 import { RotateCcw, Search, Save, Trash2, Loader2, Plus, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { RegularProduct, NonProduct } from "@shared/schema";
@@ -19,6 +20,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
+import { groupCustomerReturnDocuments } from "@/lib/customer-return-documents";
 
 interface CustomerInvoice {
   id: number;
@@ -39,6 +41,7 @@ interface ReturnableInvoiceLine {
   effectiveUnitPrice: number;
   returnedQuantity: number;
   returnableQuantity: number;
+  itemRemarks?: string;
 }
 
 interface DraftReturnItem {
@@ -51,6 +54,7 @@ interface DraftReturnItem {
   selected?: boolean;
   sourceSaleItemId?: number;
   availableQuantity?: number;
+  itemRemarks?: string;
 }
 
 interface CustomerReturn {
@@ -59,10 +63,12 @@ interface CustomerReturn {
   customerName: string;
   productDescription: string;
   invoiceNumber: string | null;
+  documentInvoiceNumber?: string | null;
   quantity: number;
   unitPrice: number;
   totalValue: number;
   remarks: string | null;
+  itemRemarks: string | null;
 }
 
 interface ReturnItemPayload {
@@ -72,6 +78,7 @@ interface ReturnItemPayload {
   quantity: number;
   unitPrice: number;
   sourceSaleItemId?: number;
+  itemRemarks?: string;
 }
 
 const money = (value: number) => `£${Number(value || 0).toFixed(2)}`;
@@ -92,6 +99,12 @@ export default function ReturnFromCustomer() {
   const [manualInvoiceNumber, setManualInvoiceNumber] = useState("");
   const [returnDate, setReturnDate] = useState(businessDateString);
   const [remarks, setRemarks] = useState("");
+  const [invoiceProductPicker, setInvoiceProductPicker] = useState("");
+  const [returnsFromDate, setReturnsFromDate] = useState(format(subDays(new Date(businessDateString), 30), "yyyy-MM-dd"));
+  const [returnsToDate, setReturnsToDate] = useState(businessDateString);
+  const [returnsInvoiceSearch, setReturnsInvoiceSearch] = useState("");
+  const [returnsPage, setReturnsPage] = useState(1);
+  const [returnsPageSize, setReturnsPageSize] = useState(10);
   const [selectedInvoiceLines, setSelectedInvoiceLines] = useState<Record<number, DraftReturnItem>>({});
   const [manualItems, setManualItems] = useState<DraftReturnItem[]>([]);
   const [manualProductType, setManualProductType] = useState<"regular" | "non">("regular");
@@ -129,13 +142,23 @@ export default function ReturnFromCustomer() {
   });
 
   const { data: returns = [], refetch: refetchReturns } = useQuery<CustomerReturn[]>({
-    queryKey: ["customer-returns", customerId, searchFromDate],
+    queryKey: ["customer-returns", customerId, returnsFromDate, returnsToDate, returnsInvoiceSearch],
     queryFn: () => {
       if (!customerId || !customerSearched) return [];
-      return apiRequest("GET", `/api/customer-returns?customerId=${customerId}&fromDate=${searchFromDate}`);
+      const params = new URLSearchParams({
+        customerId: String(customerId),
+        fromDate: returnsFromDate,
+        toDate: returnsToDate,
+      });
+      if (returnsInvoiceSearch.trim()) params.set("search", returnsInvoiceSearch.trim());
+      return apiRequest("GET", `/api/customer-returns?${params.toString()}`);
     },
     enabled: !!customerId && customerSearched,
   });
+  const returnDocuments = useMemo(
+    () => groupCustomerReturnDocuments(returns),
+    [returns],
+  );
 
   const {
     data: customerInvoices = [],
@@ -199,6 +222,12 @@ export default function ReturnFromCustomer() {
   const activeInvoiceItems = Object.values(selectedInvoiceLines).filter((item) => item.selected && item.quantity > 0);
   const itemsToSubmit = [...activeInvoiceItems, ...manualItems];
   const estimatedTotal = itemsToSubmit.reduce((total, item) => total + item.quantity * item.unitPrice, 0);
+  const returnsTotalPages = Math.max(1, Math.ceil(returnDocuments.length / returnsPageSize));
+  const paginatedReturns = returnDocuments.slice((returnsPage - 1) * returnsPageSize, returnsPage * returnsPageSize);
+
+  useEffect(() => {
+    setReturnsPage(1);
+  }, [customerId, returnsFromDate, returnsToDate, returnsInvoiceSearch, returnsPageSize]);
 
   const createReturnMutation = useMutation({
     mutationFn: (data: {
@@ -300,12 +329,22 @@ export default function ReturnFromCustomer() {
       : userPermissions.deleting === true;
   };
 
-  const handleCustomerSearch = () => {
-    if (!selectedCustomer) {
-      toast({ title: "Error", description: "Please select a customer first", variant: "destructive" });
-      return;
-    }
-    setCustomerSearched(true);
+  const addInvoiceLine = (lineId: string) => {
+    const line = invoiceDetails?.items.find((item) => item.id.toString() === lineId);
+    if (!line || line.returnableQuantity <= 0) return;
+    updateInvoiceLine(line, {
+      selected: true,
+      quantity: line.returnableQuantity,
+      itemRemarks: "",
+    });
+    setInvoiceProductPicker("");
+  };
+
+  const removeInvoiceLine = (lineId: number) => {
+    setSelectedInvoiceLines((current) => ({
+      ...current,
+      [lineId]: { ...current[lineId], selected: false, quantity: 0 },
+    }));
   };
 
   const handleGetInvoices = async () => {
@@ -313,6 +352,7 @@ export default function ReturnFromCustomer() {
       toast({ title: "Error", description: "Please select a customer first", variant: "destructive" });
       return;
     }
+    setCustomerSearched(true);
     const result = await refetchInvoices();
     if (result.error) {
       toast({
@@ -328,6 +368,7 @@ export default function ReturnFromCustomer() {
   const handleInvoiceSelect = (saleId: string) => {
     setSelectedInvoiceLines({});
     setManualItems([]);
+    setInvoiceProductPicker("");
     if (saleId === "manual") {
       setSelectedSaleId("");
       return;
@@ -365,6 +406,7 @@ export default function ReturnFromCustomer() {
       description: pendingProduct.description,
       quantity,
       unitPrice,
+      itemRemarks: "",
     }]);
     setPendingProduct(null);
     setManualProductSearch("");
@@ -456,6 +498,7 @@ export default function ReturnFromCustomer() {
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         sourceSaleItemId: item.sourceSaleItemId,
+        itemRemarks: item.itemRemarks?.trim(),
       })),
     });
   };
@@ -471,7 +514,7 @@ export default function ReturnFromCustomer() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div>
                 <CustomerSearch
                   label="Customer"
@@ -483,14 +526,17 @@ export default function ReturnFromCustomer() {
                 />
               </div>
               <div>
-                <Label>Search from date:</Label>
+                <Label>Invoice from date:</Label>
                 <Input type="date" value={searchFromDate} onChange={(event) => setSearchFromDate(event.target.value)} />
               </div>
               <div>
-                <Button className="w-full bg-blue-500 hover:bg-blue-600" onClick={handleCustomerSearch} disabled={!selectedCustomer}>
-                  <Search className="mr-2 h-4 w-4" />
-                  Search
+                <Button className="w-full bg-blue-500 hover:bg-blue-600" onClick={handleGetInvoices} disabled={!selectedCustomer || invoicesLoading}>
+                  {invoicesLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                  Get Invoices
                 </Button>
+              </div>
+              <div className="md:col-span-3 -mt-2 text-sm text-muted-foreground">
+                The button loads this customer's invoices from the selected date and shows their existing returns below.
               </div>
             </div>
           </CardContent>
@@ -507,13 +553,7 @@ export default function ReturnFromCustomer() {
                     <Input id="return-date" type="date" value={returnDate} onChange={(event) => setReturnDate(event.target.value)} disabled={isLoadingBusinessDate} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Label>Original Invoice</Label>
-                      <Button type="button" variant="outline" size="sm" onClick={handleGetInvoices} disabled={!selectedCustomer || invoicesLoading}>
-                        {invoicesLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Get Invoices
-                      </Button>
-                    </div>
+                    <Label>Original Invoice</Label>
                     <Select value={selectedSaleId || "manual"} onValueChange={handleInvoiceSelect} disabled={!invoicesFetched}>
                       <SelectTrigger><SelectValue placeholder="Select invoice or enter manually" /></SelectTrigger>
                       <SelectContent>
@@ -540,89 +580,119 @@ export default function ReturnFromCustomer() {
                 </div>
 
                 {chosenInvoice && (
-                  <div className="space-y-2">
-                    <div>
-                      <h3 className="font-semibold">Products on {chosenInvoice.invoiceNumber}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Unit prices include discounts already applied to the invoice. Adjust quantity and price as needed.
-                      </p>
+                  <div className="space-y-2 rounded-md border p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <h3 className="font-semibold">Add products from {chosenInvoice.invoiceNumber}</h3>
+                        <p className="text-xs text-muted-foreground">
+                          Select only the products being returned. Prices include invoice discounts.
+                        </p>
+                      </div>
+                      {!invoiceDetailsLoading && !invoiceDetailsError && (
+                        <div className="w-full sm:max-w-md">
+                          <Label htmlFor="invoice-product-picker" className="text-xs">Invoice product</Label>
+                          <Select
+                            value={invoiceProductPicker || "choose"}
+                            onValueChange={(value) => value !== "choose" && addInvoiceLine(value)}
+                          >
+                            <SelectTrigger id="invoice-product-picker" className="h-9">
+                              <SelectValue placeholder="Choose a product to add" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="choose">Choose a product to add</SelectItem>
+                              {invoiceDetails?.items
+                                .filter((line) => line.returnableQuantity > 0 && !selectedInvoiceLines[line.id]?.selected)
+                                .map((line) => (
+                                  <SelectItem key={line.id} value={line.id.toString()}>
+                                    {line.productName} · Sold {formatQuantity(line.quantity)} · Returned {formatQuantity(line.returnedQuantity)} · Available {formatQuantity(line.returnableQuantity)}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
                     </div>
                     {invoiceDetailsLoading ? (
                       <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading invoice items...</div>
                     ) : invoiceDetailsError ? (
                       <p className="text-sm text-red-600">Failed to load invoice items. Please reselect the invoice and try again.</p>
-                    ) : (
+                    ) : activeInvoiceItems.length > 0 ? (
                       <div className="overflow-x-auto">
                         <Table>
-                          <TableHeader>
+                          <TableHeader className="[&_th]:h-8 [&_th]:px-2 [&_th]:text-xs">
                             <TableRow>
-                              <TableHead>Select</TableHead>
                               <TableHead>Product</TableHead>
-                              <TableHead className="text-right">Sold</TableHead>
-                              <TableHead className="text-right">Previously Returned</TableHead>
-                              <TableHead className="text-right">Return Qty</TableHead>
-                              <TableHead className="text-right">Unit Price</TableHead>
-                              <TableHead className="text-right">Line Total</TableHead>
+                              <TableHead className="text-right">Sold / Returned</TableHead>
+                              <TableHead className="w-24 text-right">Return Qty</TableHead>
+                              <TableHead className="w-28 text-right">Unit Price</TableHead>
+                              <TableHead className="text-right">Total</TableHead>
+                              <TableHead className="min-w-40">Product Remarks</TableHead>
+                              <TableHead className="w-10" />
                             </TableRow>
                           </TableHeader>
-                          <TableBody>
-                            {invoiceDetails?.items.map((line) => {
+                          <TableBody className="[&_td]:px-2 [&_td]:py-1.5">
+                            {invoiceDetails?.items.filter((line) => selectedInvoiceLines[line.id]?.selected).map((line) => {
                               const draft = selectedInvoiceLines[line.id];
-                              const checked = !!draft?.selected;
                               return (
                                 <TableRow key={line.id}>
-                                  <TableCell>
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      disabled={line.returnableQuantity <= 0}
-                                      onChange={(event) => updateInvoiceLine(line, {
-                                        selected: event.target.checked,
-                                        quantity: event.target.checked ? line.returnableQuantity : 0,
-                                      })}
-                                      aria-label={`Select ${line.productName} for return`}
-                                    />
+                                  <TableCell className="max-w-52">
+                                    <div className="truncate text-sm font-medium" title={line.productName}>{line.productName}</div>
+                                    {line.discountTotal > 0 && <div className="text-[11px] text-muted-foreground">Discount: {money(line.discountTotal)}</div>}
                                   </TableCell>
-                                  <TableCell>
-                                    <div className="font-medium">{line.productName}</div>
-                                    {line.discountTotal > 0 && <div className="text-xs text-muted-foreground">Discount applied: {money(line.discountTotal)}</div>}
+                                  <TableCell className="whitespace-nowrap text-right text-xs">
+                                    {formatQuantity(line.quantity)} / {formatQuantity(line.returnedQuantity)}
+                                    <div className="text-[11px] text-muted-foreground">Available {formatQuantity(line.returnableQuantity)}</div>
                                   </TableCell>
-                                  <TableCell className="text-right">{formatQuantity(line.quantity)}</TableCell>
-                                  <TableCell className="text-right">{formatQuantity(line.returnedQuantity)}</TableCell>
-                                  <TableCell className="w-32">
+                                  <TableCell className="w-24">
                                     <Input
                                       type="number"
-                                      min="0"
+                                      min="0.001"
                                       max={line.returnableQuantity}
                                       step="0.001"
                                       value={draft?.quantity ?? 0}
-                                      disabled={!checked}
                                       onChange={(event) => updateInvoiceLine(line, { quantity: Number(event.target.value) })}
                                       aria-label={`${line.productName} return quantity`}
+                                      className="h-8 px-2 text-right"
                                     />
-                                    <div className="text-xs text-muted-foreground">Available: {formatQuantity(line.returnableQuantity)}</div>
                                   </TableCell>
-                                  <TableCell className="w-36">
+                                  <TableCell className="w-28">
                                     <Input
                                       type="number"
                                       min="0"
                                       step="0.01"
                                       value={draft?.unitPrice ?? line.effectiveUnitPrice}
-                                      disabled={!checked}
                                       onChange={(event) => updateInvoiceLine(line, { unitPrice: Number(event.target.value) })}
                                       aria-label={`${line.productName} return unit price`}
+                                      className="h-8 px-2 text-right"
                                     />
                                   </TableCell>
-                                  <TableCell className="text-right">{money((draft?.quantity || 0) * (draft?.unitPrice ?? line.effectiveUnitPrice))}</TableCell>
+                                  <TableCell className="whitespace-nowrap text-right text-sm">{money((draft?.quantity || 0) * (draft?.unitPrice ?? line.effectiveUnitPrice))}</TableCell>
+                                  <TableCell>
+                                    <Input
+                                      value={draft?.itemRemarks || ""}
+                                      onChange={(event) => updateInvoiceLine(line, { itemRemarks: event.target.value })}
+                                      placeholder="Optional"
+                                      aria-label={`${line.productName} remarks`}
+                                      className="h-8 min-w-36 px-2 text-xs"
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeInvoiceLine(line.id)} aria-label={`Remove ${line.productName}`}>
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </TableCell>
                                 </TableRow>
                               );
                             })}
-                            {invoiceDetails?.items.length === 0 && (
-                              <TableRow><TableCell colSpan={7} className="text-center">No products found on this invoice.</TableCell></TableRow>
-                            )}
                           </TableBody>
                         </Table>
                       </div>
+                    ) : (
+                      <p className="py-2 text-sm text-muted-foreground">
+                        {invoiceDetails?.items.some((line) => line.returnableQuantity > 0)
+                          ? "Choose an invoice product above to add it to this return."
+                          : "No returnable products remain on this invoice."}
+                      </p>
                     )}
                   </div>
                 )}
@@ -709,6 +779,7 @@ export default function ReturnFromCustomer() {
                           <TableHead>Manual Product</TableHead>
                           <TableHead className="w-36">Quantity</TableHead>
                           <TableHead className="w-36">Unit Price</TableHead>
+                          <TableHead>Product Remarks</TableHead>
                           <TableHead className="text-right">Line Total</TableHead>
                           <TableHead className="w-12" />
                         </TableRow>
@@ -719,6 +790,7 @@ export default function ReturnFromCustomer() {
                             <TableCell>{item.description}</TableCell>
                             <TableCell><Input type="number" min="0.001" step="0.001" value={item.quantity} onChange={(event) => updateManualItem(item.key, { quantity: Number(event.target.value) })} /></TableCell>
                             <TableCell><Input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateManualItem(item.key, { unitPrice: Number(event.target.value) })} /></TableCell>
+                            <TableCell><Input value={item.itemRemarks || ""} onChange={(event) => updateManualItem(item.key, { itemRemarks: event.target.value })} placeholder="Product remarks" /></TableCell>
                             <TableCell className="text-right">{money(item.quantity * item.unitPrice)}</TableCell>
                             <TableCell>
                               <Button type="button" variant="ghost" size="icon" onClick={() => removeManualItem(item.key)} aria-label={`Remove ${item.description}`}>
@@ -733,8 +805,8 @@ export default function ReturnFromCustomer() {
                 )}
 
                 <div>
-                  <Label htmlFor="return-remarks">Remarks</Label>
-                  <Textarea id="return-remarks" value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Enter any remarks or return reason" />
+                  <Label htmlFor="return-remarks">Invoice Remarks (applies to the whole return)</Label>
+                  <Textarea id="return-remarks" value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Enter a remark for the complete return document" />
                 </div>
                 <div className="flex items-center justify-between border-t pt-4">
                   <div className="text-lg font-semibold">Return total: {money(estimatedTotal)}</div>
@@ -752,6 +824,25 @@ export default function ReturnFromCustomer() {
           <Card>
             <CardHeader><CardTitle>Step 3: Existing Returns - {selectedCustomer.customer_name}</CardTitle></CardHeader>
             <CardContent>
+              <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-4 md:items-end">
+                <div>
+                  <Label htmlFor="returns-from-date">From date</Label>
+                  <Input id="returns-from-date" type="date" value={returnsFromDate} onChange={(event) => setReturnsFromDate(event.target.value)} />
+                </div>
+                <div>
+                  <Label htmlFor="returns-to-date">To date</Label>
+                  <Input id="returns-to-date" type="date" value={returnsToDate} onChange={(event) => setReturnsToDate(event.target.value)} />
+                </div>
+                <div className="md:col-span-2">
+                  <Label htmlFor="returns-invoice-search">Invoice number</Label>
+                  <Input
+                    id="returns-invoice-search"
+                    value={returnsInvoiceSearch}
+                    onChange={(event) => setReturnsInvoiceSearch(event.target.value)}
+                    placeholder="Search original or return invoice number"
+                  />
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -762,14 +853,15 @@ export default function ReturnFromCustomer() {
                       <TableHead className="text-center">Quantity</TableHead>
                       <TableHead className="text-center">Unit Price</TableHead>
                       <TableHead className="text-center">Total</TableHead>
-                      <TableHead>Remarks</TableHead>
+                      <TableHead>Product Remarks</TableHead>
+                      <TableHead>Invoice Remarks</TableHead>
                       <TableHead className="text-center">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {returns.length === 0 ? (
-                      <TableRow><TableCell colSpan={8} className="py-4 text-center">No returns found for this customer</TableCell></TableRow>
-                    ) : returns.map((returnItem) => (
+                    {returnDocuments.length === 0 ? (
+                      <TableRow><TableCell colSpan={9} className="py-4 text-center">No returns found for this customer and filter range</TableCell></TableRow>
+                    ) : paginatedReturns.map((returnItem) => (
                       <TableRow key={returnItem.id}>
                         <TableCell>{format(new Date(returnItem.date), "dd/MM/yyyy")}</TableCell>
                         <TableCell>{returnItem.productDescription}</TableCell>
@@ -777,6 +869,7 @@ export default function ReturnFromCustomer() {
                         <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                         <TableCell className="text-center">{money(returnItem.unitPrice)}</TableCell>
                         <TableCell className="text-center">{money(returnItem.totalValue)}</TableCell>
+                        <TableCell>{returnItem.itemRemarks || "-"}</TableCell>
                         <TableCell>{returnItem.remarks || "-"}</TableCell>
                         <TableCell className="text-center">
                           <Button
@@ -800,6 +893,14 @@ export default function ReturnFromCustomer() {
                   </TableBody>
                 </Table>
               </div>
+              <Pagination
+                currentPage={returnsPage}
+                totalPages={returnsTotalPages}
+                totalItems={returnDocuments.length}
+                itemsPerPage={returnsPageSize}
+                onPageChange={setReturnsPage}
+                onItemsPerPageChange={setReturnsPageSize}
+              />
             </CardContent>
           </Card>
         )}

@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app import app, db  # noqa: E402
 from models import Company, Customer, CustomerReturn, RegularProduct  # noqa: E402
+from flask_jwt_extended import create_access_token  # noqa: E402
 
 
 def main():
@@ -76,6 +77,39 @@ def main():
             assert documents[0]["returnItem"]["documentInvoiceNumber"] == "RET1"
             assert documents[1]["returnItem"]["refNumber"] == "CRPRINT2"
             assert float(documents[1]["returnItem"]["totalValue"]) == 25.0
+
+            grouped_returns = [
+                CustomerReturn(
+                    ref_number=f"CRGROUP{index}",
+                    date=date(2026, 8, 3),
+                    customer_id=customer.id,
+                    product_id=product.id,
+                    product_type="regular",
+                    description=product.description,
+                    invoice_number="INV-200",
+                    document_invoice_number="RET-GROUP",
+                    quantity=Decimal(index),
+                    unit_price=Decimal("12.50"),
+                    total_value=Decimal(index) * Decimal("12.50"),
+                    status="completed",
+                )
+                for index, product in enumerate(products, start=1)
+            ]
+            db.session.add_all(grouped_returns)
+            db.session.commit()
+            token = create_access_token(identity="return-print-test")
+            daily_book_response = client.get(
+                "/api/reports/daily-book-sales?fromDate=2026-08-03&toDate=2026-08-03",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            daily_book_returns = [
+                row for row in (daily_book_response.get_json() or [])
+                if row.get("invoiceNo") == "RET-GROUP"
+            ]
+            assert daily_book_response.status_code == 200
+            assert len(daily_book_returns) == 1
+            assert daily_book_returns[0]["credit"] == 37.5
+            assert daily_book_returns[0]["boxes"] == -3
 
             missing_response = client.get("/api/customer-returns/print?ids=999999")
             assert missing_response.status_code == 404

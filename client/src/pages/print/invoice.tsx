@@ -63,6 +63,7 @@ interface Sale {
   isCustomerDiscount?: boolean;
   originalInvoiceNumber?: string;
   originalInvoiceDate?: string;
+  notes?: string;
   originalQuantity?: number;
   averagePriceAfterDiscount?: number;
 }
@@ -244,8 +245,9 @@ export default function InvoicePrintPage() {
       </table>
       {/* Notes and Totals */}
       <div style={{ display: "flex", marginTop: 0 }}>
-        <div style={{ flex: 2, fontSize: 11, fontStyle: "italic", border: "1px solid #ccc", borderTop: "none", padding: 4 }}>
-          {invoiceFooter ? invoiceFooter.split("\n").map((line, i) => <div key={i}>{line}</div>) : ""}
+        <div style={{ flex: 2, fontSize: 11, border: "1px solid #ccc", borderTop: "none", padding: 4, whiteSpace: "pre-line" }}>
+          {data.sale?.notes?.trim() && <div><strong>Remarks:</strong> {data.sale.notes}</div>}
+          {invoiceFooter && <div style={{ fontStyle: "italic", marginTop: data.sale?.notes?.trim() ? 4 : 0 }}>{invoiceFooter}</div>}
         </div>
         <div style={{ flex: 1, border: "1px solid #ccc", borderLeft: "none", borderTop: "none", fontSize: 13 }}>
           {(data.sale?.porterage ?? 0) > 0 && (

@@ -22,6 +22,10 @@ def upgrade(engine):
             connection.execute(text(
                 "ALTER TABLE customer_return ADD COLUMN is_manual BOOLEAN NOT NULL DEFAULT 0"
             ))
+        if "item_remarks" not in columns:
+            connection.execute(text(
+                "ALTER TABLE customer_return ADD COLUMN item_remarks TEXT"
+            ))
         connection.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_customer_return_source_sale_item_id "
             "ON customer_return (source_sale_item_id)"

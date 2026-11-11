@@ -25,6 +25,7 @@ import {
 } from "@/lib/invoice-pdf";
 import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
 import { fetchCustomerDiscountInvoices } from "@/lib/customer-discount-invoice";
+import { groupCustomerReturnDocuments } from "@/lib/customer-return-documents";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import "./styles.css";
@@ -112,6 +113,7 @@ interface CustomerReturnRow {
   customerName: string;
   productDescription: string;
   invoiceNumber: string | null;
+  documentInvoiceNumber?: string | null;
   quantity: number;
   unitPrice: number;
   totalValue: number;
@@ -471,7 +473,7 @@ export default function DailySummary() {
     gcTime: 0,
   });
 
-  const { data: customerReturns = [], isError: customerReturnsError } = useQuery<CustomerReturnRow[]>({
+  const { data: customerReturnLines = [], isError: customerReturnsError } = useQuery<CustomerReturnRow[]>({
     queryKey: ["daily-summary-customer-returns", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
     queryFn: () => apiRequest(
       "GET",
@@ -481,6 +483,10 @@ export default function DailySummary() {
     staleTime: 0,
     gcTime: 0,
   });
+  const customerReturns = useMemo(
+    () => groupCustomerReturnDocuments(customerReturnLines),
+    [customerReturnLines],
+  );
 
   const { data: supplierReturns = [], isError: supplierReturnsError } = useQuery<SupplierReturnRow[]>({
     queryKey: ["daily-summary-supplier-returns", selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""],
@@ -640,7 +646,7 @@ export default function DailySummary() {
     } catch {
       // fall back to cached stockData
     }
-    const [pdfCustomerReturns, pdfSupplierReturns] = await Promise.all([
+    const [pdfCustomerReturnLines, pdfSupplierReturns] = await Promise.all([
       apiRequest<CustomerReturnRow[]>(
         "GET",
         `/api/customer-returns?fromDate=${dateString}&toDate=${dateString}`
@@ -650,6 +656,7 @@ export default function DailySummary() {
         `/api/supplier-returns?fromDate=${dateString}&toDate=${dateString}`
       ),
     ]);
+    const pdfCustomerReturns = groupCustomerReturnDocuments(pdfCustomerReturnLines);
 
     const doc = new jsPDF();
     let y = 20;

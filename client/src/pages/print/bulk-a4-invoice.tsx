@@ -57,6 +57,7 @@ interface InvoiceData {
     isCustomerDiscount?: boolean;
     originalInvoiceNumber?: string;
     originalInvoiceDate?: string;
+    notes?: string;
     originalQuantity?: number;
     averagePriceAfterDiscount?: number;
   };
@@ -173,7 +174,10 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
       </table>
 
       <div className="totals-grid">
-        <div className="invoice-notes">{data.invoiceFooter || ""}</div>
+        <div className="invoice-notes">
+          {sale.notes?.trim() && <div className="invoice-remarks"><strong>Remarks:</strong> {sale.notes}</div>}
+          {data.invoiceFooter && <div className={sale.notes?.trim() ? "invoice-footer-notes" : ""}>{data.invoiceFooter}</div>}
+        </div>
         <div className="totals-box">
           {vatAmount > 0 && <div><span>Vat</span><span>£{vatAmount.toFixed(2)}</span></div>}
           {porterage > 0 && <div><span>Porterage</span><span>£{porterage.toFixed(2)}</span></div>}
@@ -300,6 +304,8 @@ export default function BulkA4InvoicePrintPage() {
         .totals-grid { margin-top: 0; }
         .discount-details { margin-top: 6px; font-size: 13px; font-weight: 700; }
         .invoice-notes { flex: 2; min-height: 70px; border: 1px solid #ccc; border-top: none; padding: 6px; white-space: pre-line; font-size: 11px; color: #666; font-style: italic; }
+        .invoice-remarks { color: #111; font-style: normal; }
+        .invoice-footer-notes { margin-top: 4px; }
         .totals-box { flex: 1; border: 1px solid #ccc; border-top: none; padding: 0 6px; font-size: 13px; }
         .totals-box > div { display: flex; justify-content: space-between; padding: 5px 0; }
         .grand-total { font-weight: 700; font-size: 15px; }

@@ -1256,6 +1256,24 @@ export default function DotMatrixInvoicePrintPage({
                   Original quantity: {formatQuantity(Number(sale.originalQuantity || 0))} | Average price after discount: £{Number(sale.averagePriceAfterDiscount || 0).toFixed(2)}
                 </div>
               )}
+              {page.isLastPage && sale?.notes?.trim() && (
+                <div className="field-text" style={{
+                  position: 'absolute',
+                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM * (sale?.isCustomerDiscount ? 2 : 1)}mm`,
+                  left: fieldPositions.columns.description.left,
+                  width: fieldPositions.columns.description.width,
+                  fontFamily: '"Courier New", "Courier", monospace',
+                  fontSize: '9pt',
+                  fontWeight: 'normal',
+                  lineHeight: '1.1',
+                  margin: '0',
+                  padding: '0',
+                  wordWrap: 'break-word',
+                  whiteSpace: 'pre-wrap',
+                }}>
+                  Remarks: {sale.notes}
+                </div>
+              )}
 
               {/* Totals - only show on last page */}
               {page.isLastPage && (

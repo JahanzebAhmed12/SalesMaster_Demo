@@ -7078,23 +7078,46 @@ def daily_book_sales():
         )
     if salesman and salesman != 'all':
         returns_query = returns_query.filter(User.username == salesman)
-    if search:
-        returns_query = returns_query.filter(
-            CustomerReturn.invoice_number.ilike(f'%{search}%') |
-            CustomerReturn.document_invoice_number.ilike(f'%{search}%') |
-            Customer.customer_name.ilike(f'%{search}%')
-        )
-
+    return_documents = {}
     for customer_return in returns_query.order_by(CustomerReturn.id.desc()).all():
         # Negative-quantity sales already appear above as credit rows. Their
         # linked return entity records stock movement and must not be duplicated.
         if customer_return.sale_id in negative_sale_ids:
             continue
 
-        credit_amount = abs(float(customer_return.total_value or 0))
-        if payment_type == 'Credit' and credit_amount <= 0:
+        document_number = (
+            customer_return.document_invoice_number
+            or f'CR-{customer_return.ref_number}'
+        )
+        document = return_documents.setdefault(document_number, {
+            'return': customer_return,
+            'boxes': 0.0,
+            'credit': 0.0,
+            'products': [],
+        })
+        document['boxes'] -= abs(float(customer_return.quantity or 0))
+        document['credit'] += abs(float(customer_return.total_value or 0))
+        document['products'].append({
+            'description': customer_return.description,
+            'quantity': float(customer_return.quantity or 0),
+        })
+
+    for document_number, document in return_documents.items():
+        customer_return = document['return']
+        if payment_type == 'Credit' and document['credit'] <= 0:
             continue
         if payment_type and payment_type not in ('All', 'Credit'):
+            continue
+        customer_name = customer_return.customer.customer_name if customer_return.customer else ''
+        if search and not any(
+            search.lower() in value.lower()
+            for value in [
+                document_number,
+                customer_return.invoice_number or '',
+                customer_name,
+                *(item['description'] for item in document['products']),
+            ]
+        ):
             continue
 
         slNo += 1
@@ -7103,10 +7126,10 @@ def daily_book_sales():
             'slNo': slNo,
             'date': customer_return.date.isoformat(),
             'salesman': customer_return.user.username if customer_return.user else '',
-            'boxes': -abs(float(customer_return.quantity or 0)),
-            'invoiceNo': customer_return.document_invoice_number or customer_return.invoice_number or f'CR-{customer_return.ref_number}',
+            'boxes': document['boxes'],
+            'invoiceNo': document_number,
             'originalInvoiceNo': customer_return.invoice_number,
-            'customerName': customer_return.customer.customer_name if customer_return.customer else '',
+            'customerName': customer_name,
             'customerOthers': customer_return.customer.others if customer_return.customer else None,
             'gateNumber': None,
             'customerId': customer_return.customer_id,
@@ -7116,7 +7139,7 @@ def daily_book_sales():
             'bank': 0,
             'bankTransfer': 0,
             'cheque': 0,
-            'credit': credit_amount,
+            'credit': document['credit'],
             'hasPayments': False,
             'paymentSource': None,
             'isPaidViaCustomerPayment': False,
@@ -7124,6 +7147,7 @@ def daily_book_sales():
             'totalPaid': 0,
             'isCompany': bool(customer_return.customer.is_company) if customer_return.customer else False,
             'isCustomerReturn': True,
+            'products': document['products'],
         })
 
     discounts_query = CustomerDiscount.query.join(
@@ -7695,6 +7719,7 @@ def customer_statement():
         })
 
     statement_return_refs = set()
+    statement_return_documents = {}
     for customer_return in customer_returns:
         # Negative-quantity sales already appear as credit rows; their linked
         # return records are only for inventory tracking.
@@ -7702,17 +7727,26 @@ def customer_statement():
             continue
 
         statement_return_refs.add(customer_return.ref_number)
-        return_amount = abs(float(customer_return.total_value or 0))
+        document_number = (
+            customer_return.document_invoice_number
+            or customer_return.invoice_number
+            or customer_return.ref_number
+        )
+        document = statement_return_documents.setdefault(document_number, {
+            'return': customer_return,
+            'amount': 0.0,
+        })
+        document['amount'] += abs(float(customer_return.total_value or 0))
+
+    for document_number, document in statement_return_documents.items():
+        customer_return = document['return']
+        return_amount = document['amount']
         return_datetime = datetime.combine(customer_return.date, datetime.min.time())
         original_invoice = customer_return.invoice_number
         entries.append({
             'date': return_datetime,
             'type': 'customer_return',
-            'invoiceNo': (
-                customer_return.document_invoice_number
-                or original_invoice
-                or customer_return.ref_number
-            ),
+            'invoiceNo': document_number,
             'description': (
                 f'Customer Return - Invoice {original_invoice}'
                 if original_invoice
@@ -11321,6 +11355,7 @@ def get_customer_returns():
                 or_(
                     CustomerReturn.description.ilike(f'%{search}%'),
                     CustomerReturn.invoice_number.ilike(f'%{search}%'),
+                    CustomerReturn.document_invoice_number.ilike(f'%{search}%'),
                     Customer.customer_name.ilike(f'%{search}%')
                 )
             )
@@ -11634,6 +11669,7 @@ def create_customer_return():
                     "product_id": product.id,
                     "product_type": product_type,
                     "description": str(item_data.get("description") or product.description)[:200],
+                    "item_remarks": str(item_data.get("itemRemarks") or "").strip() or None,
                     "quantity": quantity,
                     "unit_price": unit_price,
                     "total_value": (quantity * unit_price).quantize(CENT, rounding=ROUND_HALF_UP),
@@ -11662,6 +11698,7 @@ def create_customer_return():
                     description=item["description"],
                     invoice_number=invoice_number,
                     remarks=remarks,
+                    item_remarks=item["item_remarks"],
                     quantity=item["quantity"],
                     unit_price=item["unit_price"],
                     total_value=item["total_value"],
@@ -11777,6 +11814,7 @@ def create_customer_return():
             description=customer_return_data.description,
             invoice_number=invoice_number,
             remarks=customer_return_data.remarks,
+            item_remarks=str(data.get("itemRemarks") or "").strip() or None,
             quantity=quantity,
             unit_price=unit_price,
             total_value=total_value,
@@ -15512,14 +15550,29 @@ def daily_summary_report():
             'is_company': bool(sale.is_company) if sale.is_company is not None else False,
         })
     
-    # Add customer returns as separate entries
+    # Keep one Daily Summary entry per return document, even though stock and
+    # audit data are stored as one CustomerReturn row per product.
+    return_documents = {}
     for return_item in customer_returns:
         if return_item.sale_id in negative_sale_ids:
             continue
 
+        document_number = (
+            return_item.document_invoice_number
+            or return_item.invoice_number
+            or f"CR-{return_item.id}"
+        )
+        document = return_documents.setdefault(document_number, {
+            'return': return_item,
+            'total': 0.0,
+        })
+        document['total'] += abs(float(return_item.total_value or 0))
+
+    for document_number, document in return_documents.items():
+        return_item = document['return']
         sales_summary.append({
             'customer_name': return_item.customer_name,
-            'invoice_no': return_item.document_invoice_number or return_item.invoice_number or f"CR-{return_item.id}",
+            'invoice_no': document_number,
             'customer_return_id': return_item.id,
             'cash_sales': 0,
             'card_paid': 0,
@@ -15528,7 +15581,7 @@ def daily_summary_report():
             'account_sales': 0,
             'account_paid_cash': 0,
             'account_paid_cheque': 0,
-            'account_credits': abs(float(return_item.total_value or 0)),
+            'account_credits': document['total'],
             'customer_type': None,
             'gate_number': None,
             'is_company': bool(return_item.is_company) if return_item.is_company is not None else False,
@@ -16083,6 +16136,7 @@ def daily_summary_pdf():
 
         customer_returns = db.session.query(
             CustomerReturn.id,
+            CustomerReturn.document_invoice_number,
             CustomerReturn.sale_id,
             CustomerReturn.total_value,
             CustomerReturn.invoice_number,
@@ -16093,12 +16147,26 @@ def daily_summary_pdf():
             CustomerReturn.date == report_date,
             CustomerReturn.status == 'completed'
         ).all()
+        return_documents = {}
         for customer_return in customer_returns:
             if customer_return.sale_id in negative_sale_ids:
                 continue
+            document_number = (
+                customer_return.document_invoice_number
+                or customer_return.invoice_number
+                or f"CR-{customer_return.id}"
+            )
+            document = return_documents.setdefault(document_number, {
+                'return': customer_return,
+                'total': 0.0,
+            })
+            document['total'] += abs(float(customer_return.total_value or 0))
+
+        for document_number, document in return_documents.items():
+            customer_return = document['return']
             sales_summary.append({
                 'customer_name': customer_return.customer_name,
-                'ticket_no': customer_return.invoice_number or f"CR-{customer_return.id}",
+                'ticket_no': document_number,
                 'cash_sales': 0,
                 'card_paid': 0,
                 'bank_transfer': 0,
@@ -16106,7 +16174,7 @@ def daily_summary_pdf():
                 'account_sales': 0,
                 'account_paid_cash': 0,
                 'account_paid_cheque': 0,
-                'account_credits': abs(float(customer_return.total_value or 0)),
+                'account_credits': document['total'],
             })
 
         daily_discounts = CustomerDiscount.query.options(

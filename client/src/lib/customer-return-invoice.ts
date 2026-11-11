@@ -17,6 +17,7 @@ interface CustomerReturnPrintRecord {
     totalValue: number;
     returnReason?: string;
     remarks?: string;
+    itemRemarks?: string;
   };
 }
 
@@ -97,7 +98,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
     };
     const amount = -Math.abs(Number(returnItem.totalValue || 0));
     const itemNotes = Array.from(new Set(
-      [returnItem.returnReason, returnItem.remarks]
+      [returnItem.itemRemarks || returnItem.returnReason]
         .map(note => note?.trim())
         .filter((note): note is string => Boolean(note)),
     )).join(" - ");
@@ -113,7 +114,8 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
       remarks: itemNotes || undefined,
     });
     group.total += amount;
-    if (itemNotes && !group.notes.includes(itemNotes)) group.notes.push(itemNotes);
+    const documentNotes = returnItem.remarks?.trim() || returnItem.returnReason?.trim();
+    if (documentNotes && !group.notes.includes(documentNotes)) group.notes.push(documentNotes);
     groupedReturns.set(key, group);
   }
 
@@ -134,6 +136,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
       isCustomerReturn: true as const,
       originalInvoiceNumber: group.originalInvoiceNumber,
       originalInvoiceDate: group.originalInvoiceDate,
+      notes: group.notes.join(" - "),
     },
     items: group.items,
     paidAmount: 0,

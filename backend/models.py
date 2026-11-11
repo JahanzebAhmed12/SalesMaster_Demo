@@ -1050,6 +1050,7 @@ class CustomerReturn(db.Model):
     sale_id = db.Column(db.Integer, db.ForeignKey('sale.id'))  # Optional, link to original sale
     source_sale_item_id = db.Column(db.Integer, db.ForeignKey('sale_item.id'))
     is_manual = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
+    item_remarks = db.Column(db.Text)
     product_id = db.Column(db.Integer, nullable=False)  # ID of the product being returned
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     description = db.Column(db.String(200), nullable=False)
@@ -1083,6 +1084,7 @@ class CustomerReturn(db.Model):
             'saleId': self.sale_id,
             'sourceSaleItemId': self.source_sale_item_id,
             'isManual': bool(self.is_manual),
+            'itemRemarks': self.item_remarks,
             'productId': self.product_id,
             'productType': self.product_type,
             'description': self.description,
