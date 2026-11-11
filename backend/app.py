@@ -16542,30 +16542,9 @@ def daily_summary_pdf():
         include_purchase = request.args.get('includePurchase', 'false').lower() == 'true'
         from html import escape as html_escape
 
-        customer_return_records = CustomerReturn.query.filter(
-            CustomerReturn.date == report_date
-        ).order_by(CustomerReturn.date, CustomerReturn.id).all()
         supplier_return_records = SupplierReturn.query.filter(
             SupplierReturn.date == report_date
         ).order_by(SupplierReturn.date, SupplierReturn.id).all()
-
-        customer_return_rows = ""
-        for return_item in customer_return_records:
-            customer_name = return_item.customer.customer_name if return_item.customer else ""
-            customer_return_rows += f"""
-                <tr>
-                    <td>{html_escape(return_item.date.strftime("%d/%m/%Y") if return_item.date else "-")}</td>
-                    <td>{html_escape(customer_name or "-")}</td>
-                    <td>{html_escape(return_item.description or "-")}</td>
-                    <td>{html_escape(return_item.invoice_number or "-")}</td>
-                    <td class="text-center">{float(return_item.quantity or 0):g}</td>
-                    <td class="text-right">£{float(return_item.unit_price or 0):.2f}</td>
-                    <td class="text-right">£{float(return_item.total_value or 0):.2f}</td>
-                    <td>{html_escape(return_item.remarks or "-")}</td>
-                </tr>
-            """
-        if not customer_return_rows:
-            customer_return_rows = '<tr><td colspan="8" class="text-center">No customer returns found</td></tr>'
 
         supplier_return_rows = ""
         for return_item in supplier_return_records:
@@ -16579,13 +16558,13 @@ def daily_summary_pdf():
                 else return_item.description
             )
             supplier_return_rows += f"""
-                <tr>
+                <tr class="supplier-return-record">
                     <td>{html_escape(return_item.date.strftime("%d/%m/%Y") if return_item.date else "-")}</td>
-                    <td>{html_escape(return_item.ref_number or "-")}</td>
                     <td>{html_escape(supplier_name or "-")}</td>
                     <td>{html_escape(product_name or "-")}</td>
                     <td>{html_escape(return_item.description or "-")}</td>
                     <td>{html_escape(return_item.invoice_number or "-")}</td>
+                    <td>{html_escape(return_item.remarks or "-")}</td>
                     <td class="text-center">{float(return_item.quantity or 0):g}</td>
                     <td class="text-right">£{float(return_item.unit_price or 0):.2f}</td>
                     <td class="text-right">£{float(return_item.total_value or 0):.2f}</td>
@@ -16822,7 +16801,6 @@ def daily_summary_pdf():
         <head>
             <title>Daily Summary - {date_str}</title>
             <style>
-                @page return-portrait {{ size: A4 portrait; margin: 10mm; }}
                 body {{ font-family: Arial, sans-serif; margin: 20px; font-size: 12px; }}
                 table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
                 th, td {{ border: 1px solid #000; padding: 8px; text-align: left; }}
@@ -16836,9 +16814,9 @@ def daily_summary_pdf():
                 @media print {{
                     body {{ margin: 0; }}
                     .no-print {{ display: none; }}
-                    .return-report-page {{ page: return-portrait; padding-top: 8mm; }}
-                    .return-report-page table {{ width: 100%; table-layout: fixed; }}
-                    .return-report-page th, .return-report-page td {{ padding: 3px; font-size: 8px; overflow-wrap: anywhere; word-break: break-word; }}
+                    .supplier-return-report table {{ width: 100%; table-layout: fixed; }}
+                    .supplier-return-report th, .supplier-return-report td {{ padding: 3px; font-size: 8px; overflow-wrap: anywhere; word-break: break-word; }}
+                    .supplier-return-record td {{ border-bottom: 1px solid #000; }}
                 }}
             </style>
         </head>
@@ -17122,29 +17100,16 @@ def daily_summary_pdf():
                 </table>
             </div>"""
 
-        # Return registers follow Stock Check and always start on their own pages.
+        # Supplier returns continue immediately after Stock Check.
         html_content += f"""
-            <div class="return-report-page" style="page-break-before: always; break-before: page;">
-                <h1>Customer Returns</h1>
-                <h2>Date: {datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Date</th><th>Customer</th><th>Product</th><th>Invoice No</th>
-                            <th>Quantity</th><th>Unit Price</th><th>Total</th><th>Remarks</th>
-                        </tr>
-                    </thead>
-                    <tbody>{customer_return_rows}</tbody>
-                </table>
-            </div>
-            <div class="return-report-page" style="page-break-before: always; break-before: page;">
+            <div class="supplier-return-report">
                 <h1>Supplier Returns</h1>
                 <h2>Date: {datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")}</h2>
                 <table>
                     <thead>
                         <tr>
-                            <th>Date</th><th>Reference</th><th>Supplier</th><th>Product</th><th>Description</th>
-                            <th>Invoice No</th><th>Quantity</th><th>Unit Price</th><th>Total Value</th>
+                            <th>Date</th><th>Supplier</th><th>Product</th><th>Description</th>
+                            <th>Invoice No</th><th>Remarks</th><th>Quantity</th><th>Unit Price</th><th>Total Value</th>
                         </tr>
                     </thead>
                     <tbody>{supplier_return_rows}</tbody>
