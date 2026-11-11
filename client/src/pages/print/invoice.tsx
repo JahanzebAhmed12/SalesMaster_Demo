@@ -144,13 +144,14 @@ export default function InvoicePrintPage() {
     return <div>No data found</div>;
   }
 
-  const isPaid = isInvoicePaid(data.sale, data.paidAmount, data.balance);
+  const isPaid = !data.sale?.isCustomerReturn && !data.sale?.isCustomerDiscount &&
+    isInvoicePaid(data.sale, data.paidAmount, data.balance);
 
   return (
     <div className="invoice-container" style={{ maxWidth: 700, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 24, position: "relative" }}>
-      {(isPaid || data.sale?.isCustomerDiscount) && (
-        <div className={`paid-watermark${data.sale?.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
-          {data.sale?.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
+      {(isPaid || data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && (
+        <div className={`paid-watermark${data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
+          {data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
         </div>
       )}
       {/* Header: Company Details and Logo */}
@@ -310,7 +311,7 @@ export default function InvoicePrintPage() {
           pointer-events: none; z-index: 10; background: transparent;
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
-        .credit-note-watermark { font-size: 38px; letter-spacing: 4px; padding: 4px 14px; }
+        .credit-note-watermark { width: max-content; max-width: none; white-space: nowrap; font-size: 34px; letter-spacing: 2px; padding: 4px 10px; }
         @media print {
           .no-print { display: none !important; }
           body { background: #fff !important; }

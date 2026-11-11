@@ -13,8 +13,22 @@ os.environ["DATABASE_URL"] = f"sqlite:///{os.path.join(run_dir, 'test.db')}"
 os.environ["STOCK_AUDIT_LOG_DIR"] = os.path.join(run_dir, "logs")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app import app, db  # noqa: E402
-from models import Company, Customer, CustomerReturn, RegularProduct  # noqa: E402
+from app import (  # noqa: E402
+    app,
+    db,
+    _allocate_invoice_document_number,
+    _prune_trailing_customer_return_voids,
+    _record_voided_invoice_document,
+    _release_latest_invoice_document_number,
+)
+from models import (  # noqa: E402
+    Company,
+    Customer,
+    CustomerReturn,
+    InvoiceDocumentNumber,
+    RegularProduct,
+    VoidedInvoiceDocument,
+)
 from flask_jwt_extended import create_access_token  # noqa: E402
 
 
@@ -39,6 +53,63 @@ def main():
             ]
             db.session.add_all([company, customer, *products])
             db.session.flush()
+
+            db.session.add(InvoiceDocumentNumber(id=1, last_number=7430))
+            db.session.add(VoidedInvoiceDocument(
+                invoice_number="7430",
+                document_type="return",
+                date=date(2026, 8, 3),
+            ))
+            db.session.commit()
+            _prune_trailing_customer_return_voids()
+            assert InvoiceDocumentNumber.query.get(1).last_number == 7429
+            released = VoidedInvoiceDocument.query.filter_by(invoice_number="7430").first()
+            assert released and released.document_type == "released"
+            assert _allocate_invoice_document_number() == "7430"
+            assert not VoidedInvoiceDocument.query.filter_by(invoice_number="7430").first()
+            _record_voided_invoice_document(
+                "7430",
+                "return",
+                date(2026, 8, 3),
+            )
+            assert _allocate_invoice_document_number() == "7431"
+            assert not _release_latest_invoice_document_number("7430")
+            void_7430 = VoidedInvoiceDocument.query.filter_by(invoice_number="7430").first()
+            assert void_7430 and void_7430.document_type == "return"
+
+            VoidedInvoiceDocument.query.delete()
+            InvoiceDocumentNumber.query.get(1).last_number = 7431
+            db.session.add_all([
+                VoidedInvoiceDocument(
+                    invoice_number="7430",
+                    document_type="return",
+                    date=date(2026, 8, 3),
+                ),
+                VoidedInvoiceDocument(
+                    invoice_number="7431",
+                    document_type="return",
+                    date=date(2026, 8, 4),
+                ),
+            ])
+            db.session.commit()
+            _prune_trailing_customer_return_voids()
+            assert InvoiceDocumentNumber.query.get(1).last_number == 7430
+            assert VoidedInvoiceDocument.query.filter_by(
+                invoice_number="7430",
+                document_type="return",
+            ).first()
+            assert VoidedInvoiceDocument.query.filter_by(
+                invoice_number="7431",
+                document_type="released",
+            ).first()
+            _prune_trailing_customer_return_voids()
+            assert InvoiceDocumentNumber.query.get(1).last_number == 7430
+            assert VoidedInvoiceDocument.query.filter_by(
+                invoice_number="7430",
+                document_type="return",
+            ).first()
+            assert _allocate_invoice_document_number() == "7431"
+            assert not VoidedInvoiceDocument.query.filter_by(invoice_number="7431").first()
 
             returns = [
                 CustomerReturn(

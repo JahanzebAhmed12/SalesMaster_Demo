@@ -396,11 +396,15 @@ def _allocate_invoice_document_number():
         for model, column in (
             (CustomerReturn, CustomerReturn.document_invoice_number),
             (CustomerDiscount, CustomerDiscount.document_invoice_number),
-            (VoidedInvoiceDocument, VoidedInvoiceDocument.invoice_number),
         ):
             for (value,) in db.session.query(column).all():
                 if value and str(value).strip().isdigit():
                     existing_numbers.append(int(str(value).strip()))
+        for (value,) in db.session.query(VoidedInvoiceDocument.invoice_number).filter(
+            VoidedInvoiceDocument.document_type != "released"
+        ).all():
+            if value and str(value).strip().isdigit():
+                existing_numbers.append(int(str(value).strip()))
         largest_allocation = db.session.query(func.max(InvoiceDocumentNumber.id)).scalar() or 0
         sequence = InvoiceDocumentNumber(
             id=1,
@@ -409,6 +413,12 @@ def _allocate_invoice_document_number():
         db.session.add(sequence)
         db.session.flush()
     sequence.last_number += 1
+    released_number = VoidedInvoiceDocument.query.filter_by(
+        invoice_number=str(sequence.last_number),
+        document_type="released",
+    ).first()
+    if released_number:
+        db.session.delete(released_number)
     db.session.flush()
     return str(sequence.last_number)
 
@@ -422,16 +432,113 @@ def _record_voided_invoice_document(
     salesman=None,
 ):
     number = str(invoice_number or "").strip()
-    if not number or VoidedInvoiceDocument.query.filter_by(invoice_number=number).first():
+    if not number:
         return
-    db.session.add(VoidedInvoiceDocument(
+    existing = VoidedInvoiceDocument.query.filter_by(invoice_number=number).first()
+    if existing:
+        if existing.document_type == "released":
+            existing.document_type = document_type
+            existing.date = (
+                document_date.date()
+                if isinstance(document_date, datetime)
+                else document_date
+            )
+            existing.date_unknown = False
+            existing.customer_name = customer_name or ""
+            existing.original_invoice_number = original_invoice_number
+            existing.salesman = salesman or ""
+        else:
+            return
+    else:
+        db.session.add(VoidedInvoiceDocument(
+            invoice_number=number,
+            document_type=document_type,
+            date=document_date.date() if isinstance(document_date, datetime) else document_date,
+            customer_name=customer_name or "",
+            original_invoice_number=original_invoice_number,
+            salesman=salesman or "",
+        ))
+
+
+def _release_latest_invoice_document_number(invoice_number, document_date=None):
+    """Release a deleted document number only when it is still the series tail."""
+    number = str(invoice_number or "").strip()
+    if not number.isdigit():
+        return False
+
+    sequence = InvoiceDocumentNumber.query.filter_by(id=1).with_for_update().first()
+    if not sequence or sequence.last_number != int(number):
+        return False
+
+    released_entry = VoidedInvoiceDocument.query.filter_by(
         invoice_number=number,
-        document_type=document_type,
-        date=document_date.date() if isinstance(document_date, datetime) else document_date,
-        customer_name=customer_name or "",
-        original_invoice_number=original_invoice_number,
-        salesman=salesman or "",
-    ))
+    ).first()
+    if released_entry:
+        released_entry.document_type = "released"
+        if document_date:
+            released_entry.date = (
+                document_date.date()
+                if isinstance(document_date, datetime)
+                else document_date
+            )
+        released_entry.date_unknown = False
+    else:
+        db.session.add(VoidedInvoiceDocument(
+            invoice_number=number,
+            document_type="released",
+            date=(
+                document_date.date()
+                if isinstance(document_date, datetime)
+                else document_date or date.min
+            ),
+            date_unknown=document_date is None,
+        ))
+    sequence.last_number -= 1
+    db.session.flush()
+    return True
+
+
+def _prune_trailing_customer_return_voids():
+    """Undo legacy voids for deleted returns that still occupy the series tail."""
+    sequence = InvoiceDocumentNumber.query.filter_by(id=1).with_for_update().first()
+    if not sequence:
+        return
+
+    changed = False
+    while sequence.last_number > 0:
+        number = str(sequence.last_number)
+        voided_return = VoidedInvoiceDocument.query.filter_by(
+            invoice_number=number,
+            document_type="return",
+        ).first()
+        if not voided_return:
+            break
+        released_numbers = [
+            int(value)
+            for (value,) in db.session.query(VoidedInvoiceDocument.invoice_number).filter(
+                VoidedInvoiceDocument.document_type == "released"
+            ).all()
+            if str(value or "").strip().isdigit()
+        ]
+        if any(value > sequence.last_number for value in released_numbers):
+            break
+        if Sale.query.filter_by(invoice_number=number).first():
+            break
+        if CustomerReturn.query.filter_by(document_invoice_number=number).first():
+            break
+        if CustomerDiscount.query.filter_by(
+            document_invoice_number=number,
+            is_deleted=False,
+        ).first():
+            break
+
+        voided_return.document_type = "released"
+        voided_return.date_unknown = False
+        sequence.last_number -= 1
+        changed = True
+
+    if changed:
+        db.session.commit()
 
 
 def ensure_voided_invoice_document_schema():
@@ -504,11 +611,15 @@ def _initialize_invoice_document_numbers():
     for column in (
         CustomerReturn.document_invoice_number,
         CustomerDiscount.document_invoice_number,
-        VoidedInvoiceDocument.invoice_number,
     ):
         for (value,) in db.session.query(column).all():
             if value and str(value).strip().isdigit():
                 existing_numbers.append(int(str(value).strip()))
+    for (value,) in db.session.query(VoidedInvoiceDocument.invoice_number).filter(
+        VoidedInvoiceDocument.document_type != "released"
+    ).all():
+        if value and str(value).strip().isdigit():
+            existing_numbers.append(int(str(value).strip()))
 
     largest_allocation = db.session.query(func.max(InvoiceDocumentNumber.id)).scalar() or 0
     largest_number = max(max(existing_numbers, default=0), int(largest_allocation))
@@ -568,6 +679,7 @@ with app.app_context():
     upgrade_invoice_document_numbers_schema(db.engine, InvoiceDocumentNumber.__table__)
     ensure_voided_invoice_document_schema()
     _initialize_invoice_document_numbers()
+    _prune_trailing_customer_return_voids()
     _backfill_deleted_customer_discount_voids()
     _backfill_missing_invoice_document_numbers()
     ensure_sale_item_highlight_column()
@@ -7209,7 +7321,9 @@ def daily_book_sales():
             'isCustomerDiscount': True,
         })
 
-    voids_query = VoidedInvoiceDocument.query
+    voids_query = VoidedInvoiceDocument.query.filter(
+        VoidedInvoiceDocument.document_type != "released"
+    )
     if from_date:
         voids_query = voids_query.filter(
             or_(
@@ -7372,7 +7486,9 @@ def daily_sales_full_view():
         'notes': ''
     })
 
-    voids_query = VoidedInvoiceDocument.query
+    voids_query = VoidedInvoiceDocument.query.filter(
+        VoidedInvoiceDocument.document_type != "released"
+    )
     if from_date:
         voids_query = voids_query.filter(
             or_(
@@ -12047,14 +12163,18 @@ def delete_customer_return(id):
                     )
 
         db.session.flush()
-        _record_voided_invoice_document(
+        if not _release_latest_invoice_document_number(
             customer_return.document_invoice_number,
-            "return",
             customer_return.date,
-            customer_return.customer.customer_name if customer_return.customer else None,
-            customer_return.invoice_number,
-            customer_return.user.username if customer_return.user else None,
-        )
+        ):
+            _record_voided_invoice_document(
+                customer_return.document_invoice_number,
+                "return",
+                customer_return.date,
+                customer_return.customer.customer_name if customer_return.customer else None,
+                customer_return.invoice_number,
+                customer_return.user.username if customer_return.user else None,
+            )
         for return_item in returns_to_delete:
             db.session.delete(return_item)
         db.session.commit()
@@ -14782,6 +14902,7 @@ def daily_book_history():
             'isCompany': bool(sale.customer.is_company) if sale.customer else False,
         })
     voids_query = VoidedInvoiceDocument.query.filter(
+        VoidedInvoiceDocument.document_type != "released",
         or_(
             VoidedInvoiceDocument.date_unknown.is_(True),
             (VoidedInvoiceDocument.date >= from_dt.date())
@@ -15615,6 +15736,7 @@ def daily_summary_report():
         })
 
     voided_documents = VoidedInvoiceDocument.query.filter(
+        VoidedInvoiceDocument.document_type != "released",
         or_(
             VoidedInvoiceDocument.date_unknown.is_(True),
             VoidedInvoiceDocument.date == report_date,
@@ -16199,6 +16321,7 @@ def daily_summary_pdf():
             })
 
         for voided in VoidedInvoiceDocument.query.filter(
+            VoidedInvoiceDocument.document_type != "released",
             or_(
                 VoidedInvoiceDocument.date_unknown.is_(True),
                 VoidedInvoiceDocument.date == report_date,

@@ -932,9 +932,13 @@ export default function DotMatrixInvoicePrintPage({
               }}
             >
               {/* PAID stamp on last page only — sits beside the totals */}
-              {(isPaid || sale?.isCustomerDiscount) && page.isLastPage && (
+              {(isPaid || sale?.isCustomerReturn || sale?.isCustomerDiscount) && page.isLastPage && (
                 <div className="paid-stamp">
-                  <span>{sale?.isCustomerDiscount ? 'CREDIT NOTE' : 'PAID'}</span>
+                  <span>
+                    {sale?.isCustomerReturn || sale?.isCustomerDiscount
+                      ? 'CREDIT NOTE'
+                      : 'PAID'}
+                  </span>
                 </div>
               )}
               {/* CRITICAL: Wrapper to reset positioning context for each page */}
