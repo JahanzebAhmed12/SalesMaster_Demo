@@ -4,8 +4,8 @@ interface CustomerDiscountPrintRecord {
   customer: Record<string, unknown>;
   discount: {
     id: number;
-    documentInvoiceNumber: string;
-    originalInvoiceNumber?: string;
+    documentInvoiceNumber: string | null;
+    originalInvoiceNumber?: string | null;
     date: string;
     productName: string;
     originalInvoiceDate?: string;
@@ -40,6 +40,7 @@ export interface CustomerDiscountInvoiceData {
     originalInvoiceDate?: string;
     originalQuantity: number;
     averagePriceAfterDiscount: number;
+    hasMultipleDiscountLines: boolean;
   };
   items: Array<Record<string, unknown> & {
     id: number;
@@ -68,48 +69,80 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
     throw new Error(responseData.message || responseData.error || `HTTP error! status: ${response.status}`);
   }
 
-  return responseData.discounts.map(({ customer, discount }) => {
-    const amount = Number(discount.amount || 0);
-    const notes = Array.from(new Set(
-      (discount.reason || "")
-        .split(/\s+-\s+/)
-        .map(note => note.trim())
-        .filter(Boolean),
-    )).join(" - ");
-    const item = {
-      id: discount.id,
-      productName: discount.productName || "Customer discount",
-      description: discount.productName || "Customer discount",
-      quantity: 1,
-      unitPrice: amount,
-      totalPrice: -amount,
-      total_price: -amount,
-      notes,
-    };
+  const groupedDiscounts = new Map<string, CustomerDiscountPrintRecord[]>();
+  responseData.discounts.forEach(record => {
+    const key = record.discount.documentInvoiceNumber || `discount-${record.discount.id}`;
+    groupedDiscounts.set(key, [...(groupedDiscounts.get(key) || []), record]);
+  });
+
+  return Array.from(groupedDiscounts.values()).map(records => {
+    const [firstRecord] = records;
+    const discounts = records.map(record => record.discount);
+    const totalAmount = discounts.reduce((total, discount) => total + Number(discount.amount || 0), 0);
+    const invoiceNumbers = Array.from(new Set(
+      discounts.map(discount => discount.originalInvoiceNumber).filter((value): value is string => !!value),
+    ));
+    const invoiceDates = Array.from(new Set(
+      discounts.map(discount => discount.originalInvoiceDate).filter((value): value is string => !!value),
+    ));
+    const hasMultipleDiscountLines = discounts.length > 1;
+    const items = discounts.map(discount => {
+      const amount = Number(discount.amount || 0);
+      const lineNotes = hasMultipleDiscountLines
+        ? [
+            `Invoice ${discount.originalInvoiceNumber || "-"}`,
+            discount.originalInvoiceDate ? formatInvoiceDate(discount.originalInvoiceDate) : "",
+            `Original quantity: ${Number(discount.originalQuantity ?? discount.quantity ?? 0)}`,
+            `Average price after discount: £${Number(discount.averagePriceAfterDiscount ?? 0).toFixed(2)}`,
+            discount.reason,
+          ].filter(Boolean).join(" · ")
+        : discount.reason;
+
+      return {
+        id: discount.id,
+        productName: discount.productName || "Customer discount",
+        description: discount.productName || "Customer discount",
+        quantity: 1,
+        unitPrice: amount,
+        totalPrice: -amount,
+        total_price: -amount,
+        notes: lineNotes,
+      };
+    });
 
     return {
       company: responseData.company,
-      customer,
+      customer: firstRecord.customer,
       sale: {
-        invoice_number: discount.documentInvoiceNumber,
-        invoiceNumber: discount.documentInvoiceNumber,
-        date: discount.date,
-        subtotal: -amount,
-        total_amount: -amount,
-        totalAmount: -amount,
+        invoice_number: firstRecord.discount.documentInvoiceNumber || "",
+        invoiceNumber: firstRecord.discount.documentInvoiceNumber || "",
+        date: firstRecord.discount.date,
+        subtotal: -totalAmount,
+        total_amount: -totalAmount,
+        totalAmount: -totalAmount,
         vat_amount: 0,
         porterage: 0,
         customer_type: "account",
         isCustomerDiscount: true,
-        originalInvoiceNumber: discount.originalInvoiceNumber,
-        originalInvoiceDate: discount.originalInvoiceDate,
-        originalQuantity: Number(discount.originalQuantity ?? discount.quantity ?? 0),
-        averagePriceAfterDiscount: Number(discount.averagePriceAfterDiscount ?? 0),
+        originalInvoiceNumber: invoiceNumbers.join(", "),
+        originalInvoiceDate: invoiceDates.length === 1 ? invoiceDates[0] : undefined,
+        originalQuantity: hasMultipleDiscountLines
+          ? 0
+          : Number(discounts[0].originalQuantity ?? discounts[0].quantity ?? 0),
+        averagePriceAfterDiscount: hasMultipleDiscountLines
+          ? 0
+          : Number(discounts[0].averagePriceAfterDiscount ?? 0),
+        hasMultipleDiscountLines,
       },
-      items: [item],
+      items,
       paidAmount: 0,
-      balance: -amount,
-      notes,
+      balance: -totalAmount,
+      notes: "",
     };
   });
+}
+
+function formatInvoiceDate(value: string): string {
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
 }

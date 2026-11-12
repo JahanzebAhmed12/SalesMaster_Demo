@@ -1621,6 +1621,14 @@ def _active_discount_total_for_item(sale_item_id, exclude_id=None):
     return _money_decimal(query.scalar())
 
 
+def _group_customer_discount_tickets(discounts):
+    tickets = {}
+    for discount in discounts:
+        key = discount.document_invoice_number or f"discount-{discount.id}"
+        tickets.setdefault(str(key), []).append(discount)
+    return tickets
+
+
 def _sale_paid_amount(sale, through_date=None):
     if _money_decimal(sale.total_amount) < 0:
         return _money_decimal(sale.paid_amount)
@@ -7283,27 +7291,37 @@ def daily_book_sales():
         )
     if salesman and salesman != 'all':
         discounts_query = discounts_query.filter(User.username == salesman)
-    if search:
-        discounts_query = discounts_query.filter(
-            Sale.invoice_number.ilike(f'%{search}%') |
-            CustomerDiscount.document_invoice_number.ilike(f'%{search}%') |
-            Customer.customer_name.ilike(f'%{search}%')
-        )
-
-    for discount in discounts_query.order_by(CustomerDiscount.id.desc()).all():
+    discounts = discounts_query.order_by(CustomerDiscount.id.desc()).all()
+    for ticket_lines in _group_customer_discount_tickets(discounts).values():
         if payment_type and payment_type not in ('All', 'Credit'):
+            continue
+        discount = ticket_lines[0]
+        customer_name = discount.customer.customer_name if discount.customer else ''
+        invoice_numbers = list(dict.fromkeys(
+            line.sale.invoice_number
+            for line in ticket_lines
+            if line.sale and line.sale.invoice_number
+        ))
+        if search and not any(
+            search.lower() in value.lower()
+            for value in [
+                discount.document_invoice_number or '',
+                customer_name,
+                *invoice_numbers,
+            ]
+        ):
             continue
         slNo += 1
         result.append({
             'id': -1000000000 - discount.id,
             'slNo': slNo,
-            'date': discount.date.isoformat(),
+            'date': min(line.date for line in ticket_lines).isoformat(),
             'salesman': discount.creator.username if discount.creator else '',
             'boxes': 0,
             'invoiceNo': discount.document_invoice_number or '',
-            'originalInvoiceNo': discount.sale.invoice_number if discount.sale else '',
-            'discountReference': discount.reference,
-            'customerName': discount.customer.customer_name if discount.customer else '',
+            'originalInvoiceNo': ', '.join(invoice_numbers),
+            'discountReference': ', '.join(line.reference for line in ticket_lines),
+            'customerName': customer_name,
             'customerOthers': discount.customer.others if discount.customer else None,
             'gateNumber': None,
             'customerId': discount.customer_id,
@@ -7313,7 +7331,7 @@ def daily_book_sales():
             'bank': 0,
             'bankTransfer': 0,
             'cheque': 0,
-            'credit': float(discount.amount or 0),
+            'credit': sum(float(line.amount or 0) for line in ticket_lines),
             'hasPayments': False,
             'paymentSource': None,
             'isPaidViaCustomerPayment': False,
@@ -7887,23 +7905,35 @@ def customer_statement():
         CustomerDiscount.date < to_dt.date(),
         CustomerDiscount.is_deleted.is_(False),
     ).order_by(CustomerDiscount.date.asc(), CustomerDiscount.id.asc()).all()
-    for discount in discounts:
-        discount_datetime = datetime.combine(discount.date, datetime.min.time())
+    for ticket_lines in _group_customer_discount_tickets(discounts).values():
+        discount = ticket_lines[0]
+        discount_datetime = datetime.combine(
+            min(line.date for line in ticket_lines),
+            datetime.min.time(),
+        )
+        invoice_numbers = list(dict.fromkeys(
+            line.sale.invoice_number
+            for line in ticket_lines
+            if line.sale and line.sale.invoice_number
+        ))
+        ticket_number = discount.document_invoice_number or discount.reference
+        total_amount = sum(float(line.amount or 0) for line in ticket_lines)
         entries.append({
             'date': discount_datetime,
             'type': 'customer_discount',
-            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'invoiceNo': ticket_number,
             'description': (
-                f'Customer Discount - Invoice {discount.sale.invoice_number}'
-                if discount.sale else f'Customer Discount - {discount.reference}'
+                f"Customer Discount - Invoices {', '.join(invoice_numbers)}"
+                if invoice_numbers else f'Customer Discount - {ticket_number}'
             ),
             'accountInv': 0,
             'cashInv': 0,
             'paid': 0,
             'accountAdj': 0,
-            'discountAdj': float(discount.amount or 0),
-            'balance': -float(discount.amount or 0),
+            'discountAdj': total_amount,
+            'balance': -total_amount,
             'sale_id': discount.sale_id,
+            'sourceInvoiceNumbers': ', '.join(invoice_numbers),
             'sort_priority': 2,
             'timestamp': discount_datetime.timestamp(),
         })
@@ -8132,16 +8162,31 @@ def customer_history():
         CustomerDiscount.date >= from_dt.date(),
         CustomerDiscount.date < to_dt.date(),
         CustomerDiscount.is_deleted.is_(False),
-    ).all()
-    for discount in customer_discounts:
+    ).order_by(CustomerDiscount.date.asc(), CustomerDiscount.id.asc()).all()
+    for ticket_lines in _group_customer_discount_tickets(customer_discounts).values():
+        discount = ticket_lines[0]
+        invoice_numbers = list(dict.fromkeys(
+            line.sale.invoice_number
+            for line in ticket_lines
+            if line.sale and line.sale.invoice_number
+        ))
+        ticket_number = discount.document_invoice_number or discount.reference
+        total_amount = sum(float(line.amount or 0) for line in ticket_lines)
         all_transactions.append({
-            'date': datetime.combine(discount.date, datetime.min.time()),
+            'date': datetime.combine(
+                min(line.date for line in ticket_lines),
+                datetime.min.time(),
+            ),
             'type': 'customer_discount',
-            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'invoiceNo': ticket_number,
             'accountInv': 0,
             'cashInv': 0,
             'paid': 0,
-            'balance': -float(discount.amount or 0),
+            'accountAdj': 0,
+            'discountAdj': total_amount,
+            'balance': -total_amount,
+            'isCustomerDiscount': True,
+            'sourceInvoiceNumbers': ', '.join(invoice_numbers),
         })
     
     # Sort all transactions by date
@@ -8171,9 +8216,13 @@ def customer_history():
             'slNo': sl_no,
             'date': transaction['date'].strftime("%Y-%m-%d"),
             'invoiceNo': transaction['invoiceNo'],
+            'isCustomerDiscount': transaction.get('isCustomerDiscount', False),
+            'sourceInvoiceNumbers': transaction.get('sourceInvoiceNumbers', ''),
             'accountInv': transaction['accountInv'],
             'cashInv': transaction['cashInv'],
             'paid': transaction['paid'],
+            'creditAdj': transaction.get('accountAdj', 0),
+            'discountAdj': transaction.get('discountAdj', 0),
             'balance': transaction['balance'],
             'runningBalance': running_balance
         })
@@ -11607,12 +11656,25 @@ def print_customer_discounts():
         if not discount_ids or any(discount_id <= 0 for discount_id in discount_ids):
             return jsonify({"error": "At least one valid customer discount ID is required"}), 400
 
-        discounts = CustomerDiscount.query.filter(
+        selected_discounts = CustomerDiscount.query.filter(
             CustomerDiscount.id.in_(set(discount_ids)),
             CustomerDiscount.is_deleted.is_(False),
         ).order_by(CustomerDiscount.id).all()
-        if len(discounts) != len(set(discount_ids)):
+        if len(selected_discounts) != len(set(discount_ids)):
             return jsonify({"error": "One or more customer discounts were not found"}), 404
+
+        document_numbers = {
+            discount.document_invoice_number
+            for discount in selected_discounts
+            if discount.document_invoice_number
+        }
+        discounts = CustomerDiscount.query.filter(
+            CustomerDiscount.is_deleted.is_(False),
+            or_(
+                CustomerDiscount.id.in_(set(discount_ids)),
+                CustomerDiscount.document_invoice_number.in_(document_numbers),
+            ) if document_numbers else CustomerDiscount.id.in_(set(discount_ids)),
+        ).order_by(CustomerDiscount.id).all()
 
         documents = []
         for discount in discounts:
@@ -13735,6 +13797,95 @@ def create_customer_discount():
         return jsonify({"error": access_error}), 403
     try:
         data = request.get_json()
+        if not isinstance(data, dict):
+            return jsonify({"error": "A customer discount payload is required."}), 400
+
+        items = data.get("items")
+        if items is not None:
+            if not isinstance(items, list) or not items:
+                return jsonify({"error": "At least one discount line is required."}), 400
+            try:
+                customer_id = int(data.get("customerId"))
+            except (TypeError, ValueError):
+                raise ValueError("A customer is required.")
+            transaction_date = _parse_discount_date(data.get("date"), get_business_date())
+            permission_error = _check_discount_date_permission(user_id, transaction_date, "create")
+            if permission_error:
+                return jsonify({"error": permission_error}), 403
+
+            prepared_items = []
+            seen_sale_item_ids = set()
+            invoice_totals = {}
+            invoice_limits = {}
+            for item in items:
+                if not isinstance(item, dict):
+                    raise ValueError("Every discount line must be an object.")
+                payload = {
+                    "customerId": customer_id,
+                    "saleId": item.get("saleId"),
+                    "saleItemId": item.get("saleItemId"),
+                    "amount": item.get("amount"),
+                    "date": transaction_date.isoformat(),
+                    "reason": item.get("reason"),
+                }
+                validated_customer_id, sale, sale_item, amount, validated_date, reason = (
+                    _validate_discount_target(payload, user_id)
+                )
+                if validated_customer_id != customer_id:
+                    raise ValueError("All discount lines must belong to the selected customer.")
+                if validated_date != transaction_date:
+                    raise ValueError("All discount lines must use the same transaction date.")
+                if sale_item.id in seen_sale_item_ids:
+                    raise ValueError("A product line can only appear once in a discount ticket.")
+                seen_sale_item_ids.add(sale_item.id)
+
+                if sale.id not in invoice_limits:
+                    invoice_limits[sale.id] = _sale_available_discount_value(sale)
+                    invoice_totals[sale.id] = Decimal("0.00")
+                invoice_totals[sale.id] += amount
+                if invoice_totals[sale.id] > invoice_limits[sale.id]:
+                    raise ValueError(
+                        f"Combined discounts exceed the remaining undiscounted value of invoice {sale.invoice_number}."
+                    )
+                prepared_items.append((sale, sale_item, amount, reason))
+
+            customer = Customer.query.filter_by(id=customer_id).with_for_update().first()
+            if not customer:
+                return jsonify({"error": "Customer not found."}), 404
+
+            document_number = _allocate_invoice_document_number()
+            discounts = []
+            for sale, sale_item, amount, reason in prepared_items:
+                discount = CustomerDiscount(
+                    customer_id=customer_id,
+                    sale_id=sale.id,
+                    sale_item_id=sale_item.id,
+                    document_invoice_number=document_number,
+                    amount=amount,
+                    date=transaction_date,
+                    reason=reason,
+                    created_by=user_id,
+                )
+                db.session.add(discount)
+                db.session.flush()
+                db.session.add(CustomerDiscountAudit(
+                    discount_id=discount.id,
+                    action="created",
+                    after_values=_discount_audit_values(discount),
+                    reason=reason,
+                    changed_by=user_id,
+                ))
+                customer.running_balance = _money_decimal(customer.running_balance) - amount
+                discounts.append(discount)
+
+            for sale in {item[0].id: item[0] for item in prepared_items}.values():
+                _refresh_sale_payment_status(sale)
+            db.session.commit()
+            return jsonify({
+                "documentInvoiceNumber": document_number,
+                "discounts": [discount.to_dict() for discount in discounts],
+            }), 201
+
         customer_id, sale, sale_item, amount, transaction_date, reason = _validate_discount_target(data, user_id)
         permission_error = _check_discount_date_permission(user_id, transaction_date, "create")
         if permission_error:
@@ -13840,47 +13991,65 @@ def delete_customer_discount(discount_id):
         discount = CustomerDiscount.query.filter_by(id=discount_id, is_deleted=False).with_for_update().first()
         if not discount:
             return jsonify({"error": "Active customer discount not found."}), 404
+        ticket_lines = (
+            CustomerDiscount.query.filter(
+                CustomerDiscount.document_invoice_number == discount.document_invoice_number,
+                CustomerDiscount.customer_id == discount.customer_id,
+                CustomerDiscount.is_deleted.is_(False),
+            )
+            .order_by(CustomerDiscount.id.asc())
+            .with_for_update()
+            .all()
+            if discount.document_invoice_number else [discount]
+        )
         data = request.get_json(silent=True) or {}
         reason = str(data.get("reason") or "").strip()
         if len(reason) > 500:
             return jsonify({"error": "Reason must be 500 characters or fewer."}), 400
-        permission_error = _check_discount_date_permission(
-            user_id, discount.date, "delete", existing_date=discount.date
-        )
-        if permission_error:
-            return jsonify({"error": permission_error}), 403
-
-        before_values = _discount_audit_values(discount)
-        amount = _money_decimal(discount.amount)
+        for line in ticket_lines:
+            permission_error = _check_discount_date_permission(
+                user_id, line.date, "delete", existing_date=line.date
+            )
+            if permission_error:
+                return jsonify({"error": permission_error}), 403
         customer = Customer.query.filter_by(id=discount.customer_id).with_for_update().first()
-        sale = Sale.query.filter_by(id=discount.sale_id).with_for_update().first()
-        if not customer or not sale:
+        sales = {
+            sale_id: Sale.query.filter_by(id=sale_id).with_for_update().first()
+            for sale_id in {line.sale_id for line in ticket_lines}
+        }
+        if not customer or any(sale is None for sale in sales.values()):
             return jsonify({"error": "Discount customer or invoice is no longer available."}), 409
-        _record_voided_invoice_document(
-            discount.document_invoice_number,
-            "discount",
-            discount.date,
-            customer.customer_name,
-            sale.invoice_number,
-            discount.creator.username if discount.creator else None,
-        )
-        discount.is_deleted = True
-        discount.deleted_by = user_id
-        discount.deleted_at = datetime.utcnow()
-        discount.deletion_reason = reason or None
-        discount.updated_by = user_id
-        customer.running_balance = _money_decimal(customer.running_balance) + amount
-        _refresh_sale_payment_status(sale)
-        db.session.add(CustomerDiscountAudit(
-            discount_id=discount.id,
-            action="deleted",
-            before_values=before_values,
-            after_values={"isDeleted": True},
-            reason=reason,
-            changed_by=user_id,
-        ))
+        now = datetime.utcnow()
+        for line in ticket_lines:
+            before_values = _discount_audit_values(line)
+            amount = _money_decimal(line.amount)
+            line.is_deleted = True
+            line.deleted_by = user_id
+            line.deleted_at = now
+            line.deletion_reason = reason or None
+            line.updated_by = user_id
+            customer.running_balance = _money_decimal(customer.running_balance) + amount
+            db.session.add(CustomerDiscountAudit(
+                discount_id=line.id,
+                action="deleted",
+                before_values=before_values,
+                after_values={"isDeleted": True},
+                reason=reason,
+                changed_by=user_id,
+            ))
+        for sale in sales.values():
+            _refresh_sale_payment_status(sale)
+        if discount.document_invoice_number:
+            _record_voided_invoice_document(
+                discount.document_invoice_number,
+                "discount",
+                discount.date,
+                customer.customer_name,
+                discount.sale.invoice_number if discount.sale else None,
+                discount.creator.username if discount.creator else None,
+            )
         db.session.commit()
-        return jsonify({"message": "Customer discount deleted successfully."})
+        return jsonify({"message": "Customer discount ticket deleted successfully."})
     except Exception:
         db.session.rollback()
         app.logger.exception("Failed to delete customer discount %s", discount_id)
@@ -16365,11 +16534,18 @@ def daily_summary_report():
         CustomerDiscount.date == report_date,
         CustomerDiscount.is_deleted.is_(False),
     ).all()
-    for discount in daily_discounts:
+    for ticket_lines in _group_customer_discount_tickets(daily_discounts).values():
+        discount = ticket_lines[0]
+        invoice_numbers = list(dict.fromkeys(
+            line.sale.invoice_number
+            for line in ticket_lines
+            if line.sale and line.sale.invoice_number
+        ))
         sales_summary.append({
             'customer_name': discount.customer.customer_name if discount.customer else '',
             'invoice_no': discount.document_invoice_number or (discount.sale.invoice_number if discount.sale else ''),
             'customer_discount_id': discount.id,
+            'original_invoice_numbers': ', '.join(invoice_numbers),
             'cash_sales': 0,
             'card_paid': 0,
             'bank_transfer': 0,
@@ -16377,7 +16553,7 @@ def daily_summary_report():
             'account_sales': 0,
             'account_paid_cash': 0,
             'account_paid_cheque': 0,
-            'account_credits': float(discount.amount or 0),
+            'account_credits': sum(float(line.amount or 0) for line in ticket_lines),
             'customer_type': None,
             'gate_number': None,
             'is_company': bool(discount.customer.is_company) if discount.customer else False,
@@ -16955,10 +17131,20 @@ def daily_summary_pdf():
             CustomerDiscount.date == report_date,
             CustomerDiscount.is_deleted.is_(False),
         ).all()
-        for discount in daily_discounts:
+        for ticket_lines in _group_customer_discount_tickets(daily_discounts).values():
+            discount = ticket_lines[0]
+            invoice_numbers = list(dict.fromkeys(
+                line.sale.invoice_number
+                for line in ticket_lines
+                if line.sale and line.sale.invoice_number
+            ))
+            source_invoices = (
+                f" - Invoices: {', '.join(invoice_numbers)}"
+                if invoice_numbers else ""
+            )
             sales_summary.append({
                 'customer_name': discount.customer.customer_name if discount.customer else '',
-                'ticket_no': f"{discount.document_invoice_number or ''} (Credit/Adj)",
+                'ticket_no': f"{discount.document_invoice_number or ''} (Credit/Adj){source_invoices}",
                 'cash_sales': 0,
                 'card_paid': 0,
                 'bank_transfer': 0,
@@ -16966,7 +17152,7 @@ def daily_summary_pdf():
                 'account_sales': 0,
                 'account_paid_cash': 0,
                 'account_paid_cheque': 0,
-                'account_credits': float(discount.amount or 0),
+                'account_credits': sum(float(line.amount or 0) for line in ticket_lines),
             })
 
         for voided in VoidedInvoiceDocument.query.filter(
@@ -18824,13 +19010,49 @@ def send_customer_history_email_api():
                 'runningBalance': running_balance
             })
             sl_no += 1
+
+        discounts = CustomerDiscount.query.filter(
+            CustomerDiscount.customer_id == customer_id,
+            CustomerDiscount.date >= from_date.date(),
+            CustomerDiscount.date <= to_date.date(),
+            CustomerDiscount.is_deleted.is_(False),
+        ).order_by(CustomerDiscount.date.asc(), CustomerDiscount.id.asc()).all()
+        for ticket_lines in _group_customer_discount_tickets(discounts).values():
+            discount = ticket_lines[0]
+            invoice_numbers = list(dict.fromkeys(
+                line.sale.invoice_number
+                for line in ticket_lines
+                if line.sale and line.sale.invoice_number
+            ))
+            total_amount = sum(float(line.amount or 0) for line in ticket_lines)
+            history_data.append({
+                'slNo': sl_no,
+                'date': min(line.date for line in ticket_lines).strftime('%d/%m/%Y'),
+                'invoiceNo': discount.document_invoice_number or discount.reference,
+                'sourceInvoiceNumbers': ', '.join(invoice_numbers),
+                'isCustomerDiscount': True,
+                'accountInv': 0,
+                'cashInv': 0,
+                'paid': 0,
+                'creditAdj': 0,
+                'discountAdj': total_amount,
+                'balance': -total_amount,
+                'runningBalance': 0,
+            })
+            sl_no += 1
         
         # Sort by date
-        history_data.sort(key=lambda x: datetime.strptime(x['date'], '%d/%m/%Y'))
+        history_data.sort(key=lambda x: (
+            datetime.strptime(x['date'], '%d/%m/%Y'),
+            x['slNo'],
+        ))
         
-        # Update sl_no after sorting
+        # Recalculate running balances after the complete ticket rows are sorted.
+        running_balance = 0
         for i, item in enumerate(history_data, 1):
             item['slNo'] = i
+            running_balance += item['balance']
+            item['runningBalance'] = running_balance
         
         # Send email to all addresses
         emails = [email.strip() for email in customer.email.split(',') if email.strip()]

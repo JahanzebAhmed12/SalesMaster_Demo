@@ -60,6 +60,7 @@ interface InvoiceData {
     notes?: string;
     originalQuantity?: number;
     averagePriceAfterDiscount?: number;
+    hasMultipleDiscountLines?: boolean;
   };
   items?: InvoiceItem[];
   invoiceFooter?: string;
@@ -148,7 +149,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
             <tr key={item.id || index} className={item.highlighted ? "highlighted-row" : undefined}>
               <td>
                 {item.productName || item.description || "-"}
-                {(sale.isCustomerReturn || sale.isCustomerDiscount) && sale.originalInvoiceNumber && (
+                {sale.isCustomerReturn && sale.originalInvoiceNumber && (
                   <span className="item-original-invoice">
                     {" ("}
                     {sale.originalInvoiceDate && `${new Date(`${sale.originalInvoiceDate}T00:00:00`).toLocaleDateString()}, `}
@@ -157,6 +158,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
                     {")"}
                   </span>
                 )}
+                {sale.isCustomerDiscount && item.notes && <span className="item-notes"> ({item.notes})</span>}
                 {item.notes && !(sale.isCustomerReturn || sale.isCustomerDiscount) && <span className="item-notes"> - {item.notes}</span>}
               </td>
               <td>{formatQuantity(Number(item.quantity || 0))}</td>
@@ -187,7 +189,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
           )}
         </div>
       </div>
-      {sale.isCustomerDiscount && (
+      {sale.isCustomerDiscount && !sale.hasMultipleDiscountLines && (
         <div className="discount-details">
           Original quantity: {formatQuantity(sale.originalQuantity ?? 0)} | Average price after discount: £{Number(sale.averagePriceAfterDiscount ?? 0).toFixed(2)}
         </div>

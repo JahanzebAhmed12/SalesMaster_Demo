@@ -66,6 +66,7 @@ interface Sale {
   notes?: string;
   originalQuantity?: number;
   averagePriceAfterDiscount?: number;
+  hasMultipleDiscountLines?: boolean;
 }
 interface Item {
   id?: number;
@@ -218,7 +219,7 @@ export default function InvoicePrintPage() {
             <tr key={item.id || idx} style={{ background: item.highlighted ? '#fff3a3' : undefined }}>
               <td style={{ border: "1px solid #ccc", padding: "1px 4px", wordWrap: "break-word", wordBreak: "break-word" }}>
                 {item.productName || item.description || "-"}
-                {(data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && data.sale.originalInvoiceNumber && (
+                {data.sale?.isCustomerReturn && data.sale.originalInvoiceNumber && (
                   <span style={{ fontSize: 12, fontStyle: "italic" }}>
                     {" ("}
                     {data.sale.originalInvoiceDate && `${new Date(`${data.sale.originalInvoiceDate}T00:00:00`).toLocaleDateString()}, `}
@@ -226,6 +227,9 @@ export default function InvoicePrintPage() {
                     {item.notes ? `, ${item.notes}` : ""}
                     {")"}
                   </span>
+                )}
+                {data.sale?.isCustomerDiscount && item.notes && (
+                  <span style={{ fontSize: 12, fontStyle: "italic" }}> ({item.notes})</span>
                 )}
                 {item.notes && !(data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && (
                   <span style={{ fontSize: "12px", fontStyle: "italic" }}> - {item.notes}</span>
@@ -262,7 +266,7 @@ export default function InvoicePrintPage() {
           </div>
         </div>
       </div>
-      {data.sale?.isCustomerDiscount && (
+      {data.sale?.isCustomerDiscount && !data.sale.hasMultipleDiscountLines && (
         <div style={{ marginTop: 6, fontSize: 13, fontWeight: "bold" }}>
           Original quantity: {formatQuantity(data.sale.originalQuantity ?? 0)}{" "}
           | Average price after discount: £{(data.sale.averagePriceAfterDiscount ?? 0).toFixed(2)}

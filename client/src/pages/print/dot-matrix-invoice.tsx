@@ -474,8 +474,8 @@ export default function DotMatrixInvoicePrintPage({
     for (const item of items) {
       const lines = estimateLines(getItemDisplayText(
         item,
-        sale?.originalInvoiceNumber,
-        sale?.originalInvoiceDate,
+        sale?.isCustomerReturn ? sale.originalInvoiceNumber : undefined,
+        sale?.isCustomerReturn ? sale.originalInvoiceDate : undefined,
       ));
       const hasNotes = !!(item.notes || item.remarks);
       const height = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
@@ -1087,8 +1087,8 @@ export default function DotMatrixInvoicePrintPage({
                 return page.items.map((item, itemIndex) => {
                   const lines = estimateLines(getItemDisplayText(
                     item,
-                    sale?.originalInvoiceNumber,
-                    sale?.originalInvoiceDate,
+                    sale?.isCustomerReturn ? sale.originalInvoiceNumber : undefined,
+                    sale?.isCustomerReturn ? sale.originalInvoiceDate : undefined,
                   ));
                   const hasNotes = !!(item.notes || item.remarks);
                   const itemHeight = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
@@ -1130,13 +1130,18 @@ export default function DotMatrixInvoicePrintPage({
                         whiteSpace: 'normal'
                       }}>
                         {item.product_name || item.productName || item.description}
-                        {(sale?.isCustomerReturn || sale?.isCustomerDiscount) && sale?.originalInvoiceNumber && (
+                        {sale?.isCustomerReturn && sale?.originalInvoiceNumber && (
                           <span style={{ fontStyle: 'normal', fontWeight: 'normal' }}>
                             {" ("}
                             {sale.originalInvoiceDate && `${new Date(`${sale.originalInvoiceDate}T00:00:00`).toLocaleDateString('en-GB')}, `}
                             Invoice: {sale.originalInvoiceNumber}
                             {(item.notes || item.remarks) ? `, ${item.notes || item.remarks}` : ""}
                             {")"}
+                          </span>
+                        )}
+                        {sale?.isCustomerDiscount && (item.notes || item.remarks) && (
+                          <span style={{ fontStyle: 'normal', fontWeight: 'normal' }}>
+                            {' '}({item.notes || item.remarks})
                           </span>
                         )}
                         {(item.notes || item.remarks) && !(sale?.isCustomerReturn || sale?.isCustomerDiscount) && (
@@ -1243,7 +1248,7 @@ export default function DotMatrixInvoicePrintPage({
                   ({formatQuantity(totalQuantity)} packages)
                 </div>
               )}
-              {page.isLastPage && sale?.isCustomerDiscount && (
+              {page.isLastPage && sale?.isCustomerDiscount && !sale?.hasMultipleDiscountLines && (
                 <div className="field-text" style={{
                   position: 'absolute',
                   top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM}mm`,
@@ -1263,7 +1268,7 @@ export default function DotMatrixInvoicePrintPage({
               {page.isLastPage && sale?.notes?.trim() && (
                 <div className="field-text" style={{
                   position: 'absolute',
-                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM * (sale?.isCustomerDiscount ? 2 : 1)}mm`,
+                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM * (sale?.isCustomerDiscount && !sale?.hasMultipleDiscountLines ? 2 : 1)}mm`,
                   left: fieldPositions.columns.description.left,
                   width: fieldPositions.columns.description.width,
                   fontFamily: '"Courier New", "Courier", monospace',

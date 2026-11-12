@@ -139,9 +139,18 @@ export default function CustomerHistory() {
     accountInv: historyData.reduce((sum, row) => sum + (row.accountInv || 0), 0),
     cashInv: historyData.reduce((sum, row) => sum + (row.cashInv || 0), 0),
     paid: historyData.reduce((sum, row) => sum + (row.paid || 0), 0),
+    creditAdj: historyData.reduce((sum, row) => sum + (row.creditAdj || 0), 0),
+    discountAdj: historyData.reduce((sum, row) => sum + (row.discountAdj || 0), 0),
     balance: historyData.reduce((sum, row) => sum + (row.balance || 0), 0),
     runningBalance: historyData.length > 0 ? historyData[historyData.length - 1]?.runningBalance || 0 : 0
   }), [historyData]);
+  const selectableHistoryRows = useMemo(
+    () => historyData.filter(row => row.invoiceNo && !row.isCustomerDiscount),
+    [historyData]
+  );
+  const getHistoryInvoiceLabel = (row: any) => row.isCustomerDiscount
+    ? `${row.invoiceNo} (Credit/Adj${row.sourceInvoiceNumbers ? `; invoices ${row.sourceInvoiceNumbers}` : ""})`
+    : row.invoiceNo;
 
   // Handle checkbox selection
   const handleCheckboxChange = (invoiceNo: string, checked: boolean) => {
@@ -157,7 +166,7 @@ export default function CustomerHistory() {
   // Handle select all checkboxes
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      const allInvoices = historyData.map(row => row.invoiceNo).filter(Boolean);
+      const allInvoices = selectableHistoryRows.map(row => row.invoiceNo);
       setSelectedInvoices(new Set(allInvoices));
     } else {
       setSelectedInvoices(new Set());
@@ -307,6 +316,7 @@ export default function CustomerHistory() {
             `/api/reports/customer-history?customerId=${customerId}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=All`
           );
           setHistoryData(res);
+          setSelectedInvoices(new Set());
           console.log('[DEBUG] Fetched data:', res);
         } catch (err) {
           console.error('[DEBUG] Fetch error:', err);
@@ -363,12 +373,12 @@ export default function CustomerHistory() {
       html += '<tr>';
       html += `<td>${row.slNo}</td>`;
       html += `<td>${format(new Date(row.date), "yyyy-MM-dd")}</td>`;
-      html += `<td>${row.invoiceNo}</td>`;
+      html += `<td>${getHistoryInvoiceLabel(row)}</td>`;
       html += `<td>£${(row.accountInv || 0).toFixed(2)}</td>`;
       html += `<td>£${(row.cashInv || 0).toFixed(2)}</td>`;
       html += `<td>£${(row.paid || 0).toFixed(2)}</td>`;
-      html += `<td>£0.00</td>`;
-      html += `<td>£0.00</td>`;
+      html += `<td>£${(row.creditAdj || 0).toFixed(2)}</td>`;
+      html += `<td>£${(row.discountAdj || 0).toFixed(2)}</td>`;
       html += `<td>£${(row.balance || 0).toFixed(2)}</td>`;
       html += `<td>£${(row.runningBalance || 0).toFixed(2)}</td>`;
       html += '</tr>';
@@ -380,8 +390,8 @@ export default function CustomerHistory() {
     html += `<td><strong>£${totals.accountInv.toFixed(2)}</strong></td>`;
     html += `<td><strong>£${totals.cashInv.toFixed(2)}</strong></td>`;
     html += `<td><strong>£${totals.paid.toFixed(2)}</strong></td>`;
-    html += `<td><strong>£0.00</strong></td>`;
-    html += `<td><strong>£0.00</strong></td>`;
+    html += `<td><strong>£${totals.creditAdj.toFixed(2)}</strong></td>`;
+    html += `<td><strong>£${totals.discountAdj.toFixed(2)}</strong></td>`;
     html += `<td><strong>£${totals.balance.toFixed(2)}</strong></td>`;
     html += `<td><strong>£${totals.runningBalance.toFixed(2)}</strong></td>`;
     html += '</tr>';
@@ -446,14 +456,16 @@ export default function CustomerHistory() {
     doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, margin, margin + 65);
     
     // Prepare table data
-    const tableColumn = ['Sl.No', 'Date', 'Invoice #', 'Account Inv.', 'Cash Inv.', 'Paid', 'Balance', 'Running Balance'];
+    const tableColumn = ['Sl.No', 'Date', 'Invoice #', 'Account Inv.', 'Cash Inv.', 'Paid', 'Credit /Adj', 'Discount /Adj', 'Balance', 'Running Balance'];
     const tableRows = historyData.map(row => [
       row.slNo || '',
       row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
-      row.invoiceNo || '',
+      getHistoryInvoiceLabel(row) || '',
       parseFloat(row.accountInv || 0).toFixed(2),
       parseFloat(row.cashInv || 0).toFixed(2),
       parseFloat(row.paid || 0).toFixed(2),
+      parseFloat(row.creditAdj || 0).toFixed(2),
+      parseFloat(row.discountAdj || 0).toFixed(2),
       parseFloat(row.balance || 0).toFixed(2),
       parseFloat(row.runningBalance || 0).toFixed(2)
     ]);
@@ -466,6 +478,8 @@ export default function CustomerHistory() {
       parseFloat(totals.accountInv.toString()).toFixed(2),
       parseFloat(totals.cashInv.toString()).toFixed(2),
       parseFloat(totals.paid.toString()).toFixed(2),
+      parseFloat(totals.creditAdj.toString()).toFixed(2),
+      parseFloat(totals.discountAdj.toString()).toFixed(2),
       parseFloat(totals.balance.toString()).toFixed(2),
       parseFloat(totals.runningBalance.toString()).toFixed(2)
     ]);
@@ -534,6 +548,8 @@ export default function CustomerHistory() {
       'Account Inv.', 
       'Cash Inv.', 
       'Paid', 
+      'Credit /Adj',
+      'Discount /Adj',
       'Balance', 
       'Running Balance'
     ];
@@ -561,10 +577,12 @@ export default function CustomerHistory() {
       dataArray.push([
         row.slNo || '',
         row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
-        row.invoiceNo || '',
+        getHistoryInvoiceLabel(row) || '',
         parseFloat(row.accountInv || 0).toFixed(2),
         parseFloat(row.cashInv || 0).toFixed(2),
         parseFloat(row.paid || 0).toFixed(2),
+        parseFloat(row.creditAdj || 0).toFixed(2),
+        parseFloat(row.discountAdj || 0).toFixed(2),
         parseFloat(row.balance || 0).toFixed(2),
         parseFloat(row.runningBalance || 0).toFixed(2)
       ]);
@@ -578,6 +596,8 @@ export default function CustomerHistory() {
       parseFloat(totals.accountInv.toString()).toFixed(2),
       parseFloat(totals.cashInv.toString()).toFixed(2),
       parseFloat(totals.paid.toString()).toFixed(2),
+      parseFloat(totals.creditAdj.toString()).toFixed(2),
+      parseFloat(totals.discountAdj.toString()).toFixed(2),
       parseFloat(totals.balance.toString()).toFixed(2),
       parseFloat(totals.runningBalance.toString()).toFixed(2)
     ]);
@@ -593,6 +613,8 @@ export default function CustomerHistory() {
       { wch: 15 }, // Account Inv.
       { wch: 12 }, // Cash Inv.
       { wch: 12 }, // Paid
+      { wch: 12 }, // Credit /Adj
+      { wch: 12 }, // Discount /Adj
       { wch: 12 }, // Balance
       { wch: 15 }  // Running Balance
     ];
@@ -607,14 +629,16 @@ export default function CustomerHistory() {
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tDate\tInvoice #\tAccount Inv.\tCash Inv.\tPaid\tBalance\tRunning Balance\n';
+    let text = 'Sl.No\tDate\tInvoice #\tAccount Inv.\tCash Inv.\tPaid\tCredit /Adj\tDiscount /Adj\tBalance\tRunning Balance\n';
     text += historyData.map((row: any) => [
       row.slNo,
       row.date,
-      row.invoiceNo,
+      getHistoryInvoiceLabel(row),
       row.accountInv,
       row.cashInv,
       row.paid,
+      row.creditAdj,
+      row.discountAdj,
       row.balance,
       row.runningBalance
     ].join('\t')).join('\n');
@@ -695,6 +719,7 @@ export default function CustomerHistory() {
                       `/api/reports/customer-history?customerId=${customerId}&fromDate=${format(fromDate, "yyyy-MM-dd")}&toDate=${format(toDate, "yyyy-MM-dd")}&filterType=${encodeURIComponent(filterType)}`
                     );
                     setHistoryData(res);
+                    setSelectedInvoices(new Set());
                   } catch (err) {
                     // handle error, e.g. show toast
                   }
@@ -771,7 +796,7 @@ export default function CustomerHistory() {
                     <TableHead className="text-center">
                       <input
                         type="checkbox"
-                        checked={selectedInvoices.size === historyData.length && historyData.length > 0}
+                        checked={selectedInvoices.size === selectableHistoryRows.length && selectableHistoryRows.length > 0}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                         className="w-4 h-4"
                       />
@@ -798,7 +823,12 @@ export default function CustomerHistory() {
                         <TableCell>{row.slNo}</TableCell>
                         <TableCell>{format(new Date(row.date), "yyyy-MM-dd")}</TableCell>
                         <TableCell>
-                          {canEditInvoice(row.date) ? (
+                          {row.isCustomerDiscount ? (
+                            <span className="text-orange-700" title={row.sourceInvoiceNumbers ? `Invoices: ${row.sourceInvoiceNumbers}` : "Customer discount ticket"}>
+                              {row.invoiceNo} (Credit/Adj)
+                              {row.sourceInvoiceNumbers && <span className="block text-xs text-muted-foreground">Invoices: {row.sourceInvoiceNumbers}</span>}
+                            </span>
+                          ) : canEditInvoice(row.date) ? (
                             <Button 
                               variant="link" 
                               className="p-0 text-blue-600 underline" 
@@ -824,7 +854,8 @@ export default function CustomerHistory() {
                         <TableCell className="text-center">
                           <input
                             type="checkbox"
-                            checked={selectedInvoices.has(row.invoiceNo)}
+                            checked={!row.isCustomerDiscount && selectedInvoices.has(row.invoiceNo)}
+                            disabled={row.isCustomerDiscount}
                             onChange={(e) => handleCheckboxChange(row.invoiceNo, e.target.checked)}
                             className="w-4 h-4"
                           />
@@ -832,8 +863,8 @@ export default function CustomerHistory() {
                         <TableCell className="text-center">£{(row.accountInv ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{(row.cashInv ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center">£{(row.paid ?? 0).toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£0.00</TableCell>
-                        <TableCell className="text-center">£0.00</TableCell>
+                        <TableCell className="text-center">£{(row.creditAdj ?? 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-center">£{(row.discountAdj ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center font-medium">£{(row.balance ?? 0).toFixed(2)}</TableCell>
                         <TableCell className="text-center font-bold">£{(row.runningBalance ?? 0).toFixed(2)}</TableCell>
                       </TableRow>
@@ -868,8 +899,8 @@ export default function CustomerHistory() {
                     <TableCell className="text-center font-bold">£{totals.accountInv.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.cashInv.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.paid.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£0.00</TableCell>
-                    <TableCell className="text-center font-bold">£0.00</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.creditAdj.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">£{totals.discountAdj.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
                     <TableCell className="text-center font-bold">£{totals.runningBalance.toFixed(2)}</TableCell>
                   </TableRow>

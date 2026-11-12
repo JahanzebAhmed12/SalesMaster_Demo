@@ -127,6 +127,7 @@ interface DailySummaryData {
     invoice_no: string; // Changed to invoice_no for sales summary
     customer_return_id?: number;
     customer_discount_id?: number;
+    original_invoice_numbers?: string;
     cash_sales: number;
     card_paid: number;
     bank_transfer: number;
@@ -687,7 +688,9 @@ export default function DailySummary() {
           getDisplayCustomerName(s),
           `${s.invoice_no || '-'}${s.is_void
             ? (s.is_unknown_date ? ' (VOID - DATE UNKNOWN)' : ' (VOID)')
-            : s.is_customer_discount ? ' (Credit/Adj)' : s.is_customer_return ? ' (Return)' : ''}`,
+            : s.is_customer_discount
+              ? ` (Credit/Adj${s.original_invoice_numbers ? `; invoices ${s.original_invoice_numbers}` : ''})`
+              : s.is_customer_return ? ' (Return)' : ''}`,
           s.cash_sales > 0 ? s.cash_sales.toFixed(2) : '-',
           s.card_paid > 0 ? s.card_paid.toFixed(2) : '-',
           (s.bank_transfer || 0) > 0 ? (s.bank_transfer || 0).toFixed(2) : '-',
@@ -1406,9 +1409,16 @@ export default function DailySummary() {
                                         variant="link"
                                         className="p-0 text-blue-600 underline hover:text-blue-800 cursor-pointer text-left font-normal h-auto min-h-0"
                                       >
-                                        {sale.invoice_no}
-                                        <span className={`ml-1 text-xs ${sale.is_customer_discount ? "text-orange-700" : "text-red-600"}`}>
-                                          {sale.is_customer_discount ? "(Credit/Adj)" : "(Return)"}
+                                        <span className="flex flex-col items-start">
+                                          <span>
+                                            {sale.invoice_no}
+                                            <span className={`ml-1 text-xs ${sale.is_customer_discount ? "text-orange-700" : "text-red-600"}`}>
+                                              {sale.is_customer_discount ? "(Credit/Adj)" : "(Return)"}
+                                            </span>
+                                          </span>
+                                          {sale.is_customer_discount && sale.original_invoice_numbers && (
+                                            <span className="text-xs text-muted-foreground">Invoices: {sale.original_invoice_numbers}</span>
+                                          )}
                                         </span>
                                       </Button>
                                     </DropdownMenuTrigger>

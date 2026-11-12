@@ -62,11 +62,32 @@ interface CustomerDiscount {
   saleId: number;
   saleItemId: number;
   invoiceNumber: string;
+  documentInvoiceNumber?: string | null;
   productName: string;
   amount: number;
   date: string;
   reason: string;
   isDeleted: boolean;
+}
+
+interface DiscountTicketLine {
+  saleId: number;
+  saleItemId: number;
+  invoiceNumber: string;
+  invoiceDate: string;
+  productName: string;
+  amount: number;
+  reason: string;
+}
+
+interface DiscountTicketGroup {
+  key: string;
+  documentInvoiceNumber: string | null;
+  lines: CustomerDiscount[];
+  activeLines: CustomerDiscount[];
+  dates: string[];
+  invoiceNumbers: string[];
+  amount: number;
 }
 
 const money = (value: number) => `£${(Number.isFinite(value) ? value : 0).toFixed(2)}`;
@@ -87,6 +108,7 @@ export default function CustomerDiscountPage() {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [editingDiscount, setEditingDiscount] = useState<CustomerDiscount | null>(null);
+  const [ticketLines, setTicketLines] = useState<DiscountTicketLine[]>([]);
 
   useEffect(() => {
     if (!businessDateString) return;
@@ -101,6 +123,7 @@ export default function CustomerDiscountPage() {
     setAmount("");
     setReason("");
     setEditingDiscount(null);
+    setTicketLines([]);
   }, [customerId]);
 
   const invoicesQuery = useQuery<CustomerInvoice[]>({
@@ -127,17 +150,42 @@ export default function CustomerDiscountPage() {
     enabled: !!customerId,
   });
 
+  const discountTickets = useMemo<DiscountTicketGroup[]>(() => {
+    const groups = new Map<string, CustomerDiscount[]>();
+    for (const discount of discountsQuery.data || []) {
+      const key = discount.documentInvoiceNumber || `line-${discount.id}`;
+      const lines = groups.get(key) || [];
+      lines.push(discount);
+      groups.set(key, lines);
+    }
+    return Array.from(groups.entries()).map(([key, lines]) => {
+      const activeLines = lines.filter(line => !line.isDeleted);
+      return {
+        key,
+        documentInvoiceNumber: lines[0].documentInvoiceNumber || null,
+        lines,
+        activeLines,
+        dates: Array.from(new Set(lines.map(line => line.date))).sort(),
+        invoiceNumbers: Array.from(new Set(lines.map(line => line.invoiceNumber).filter(Boolean))),
+        amount: activeLines.reduce((total, line) => total + Number(line.amount || 0), 0),
+      };
+    });
+  }, [discountsQuery.data]);
+
   const selectedLine = useMemo(
     () => invoiceQuery.data?.items.find(line => line.id.toString() === selectedLineId),
     [invoiceQuery.data, selectedLineId]
   );
 
+  const ticketInvoiceAmount = ticketLines
+    .filter(line => line.saleId.toString() === selectedSaleId)
+    .reduce((total, line) => total + line.amount, 0);
   const editingAmount = editingDiscount?.amount || 0;
   const maxLineDiscount = selectedLine
     ? selectedLine.remainingValue + editingAmount
     : 0;
   const maxInvoiceDiscount = invoiceQuery.data
-    ? invoiceQuery.data.availableDiscountAmount + editingAmount
+    ? Math.max(0, invoiceQuery.data.availableDiscountAmount - ticketInvoiceAmount + editingAmount)
     : 0;
   const parsedAmount = Number(amount);
   const previewLineTotal = selectedLine
@@ -184,6 +232,7 @@ export default function CustomerDiscountPage() {
     setReason("");
     setTransactionDate(businessDateString);
     setEditingDiscount(null);
+    setTicketLines([]);
   };
 
   const canEditEntry = (entryDate: string) =>
@@ -221,25 +270,14 @@ export default function CustomerDiscountPage() {
     setEditingDiscount(null);
   };
 
-  const handleEdit = (discount: CustomerDiscount) => {
-    if (!canEditEntry(discount.date)) {
-      toast({ title: "Permission denied", description: "You cannot edit a discount for this date.", variant: "destructive" });
+  const handleAddTicketLine = () => {
+    const invoice = invoiceQuery.data;
+    const line = selectedLine;
+    if (!selectedCustomer || !invoice || !line) {
+      toast({ title: "Incomplete entry", description: "Select an invoice product line before adding it to the ticket.", variant: "destructive" });
       return;
     }
-    setEditingDiscount(discount);
-    setSelectedSaleId(discount.saleId.toString());
-    setSelectedLineId(discount.saleItemId.toString());
-    setAmount(discount.amount.toFixed(2));
-    setReason(discount.reason);
-    setTransactionDate(discount.date);
-  };
-
-  const handleSave = async () => {
-    if (!selectedCustomer || !selectedSaleId || !selectedLineId) {
-      toast({ title: "Incomplete entry", description: "Select a customer, invoice, and invoice product line.", variant: "destructive" });
-      return;
-    }
-    if (!transactionDate || transactionDate > businessDateString || !canSaveForDate) {
+    if (!transactionDate || transactionDate > businessDateString || !canCreateForDate) {
       toast({ title: "Date not permitted", description: "Choose the current business date or a backdate you are authorized to enter.", variant: "destructive" });
       return;
     }
@@ -252,27 +290,100 @@ export default function CustomerDiscountPage() {
       return;
     }
     if (!reason.trim()) {
-      toast({ title: "Reason required", description: "Enter a reason for this discount.", variant: "destructive" });
+      toast({ title: "Reason required", description: "Enter a reason for this discount line.", variant: "destructive" });
+      return;
+    }
+    if (ticketLines.some(ticketLine => ticketLine.saleItemId === line.id)) {
+      toast({ title: "Product line already added", description: "A product line can only appear once in a discount ticket.", variant: "destructive" });
       return;
     }
 
-    const payload = {
-      customerId: selectedCustomer.id,
-      saleId: Number(selectedSaleId),
-      saleItemId: Number(selectedLineId),
+    setTicketLines(previous => [...previous, {
+      saleId: invoice.saleId,
+      saleItemId: line.id,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.date,
+      productName: line.productName,
       amount: parsedAmount,
-      date: transactionDate,
       reason: reason.trim(),
-    };
+    }]);
+    setSelectedLineId("");
+    setAmount("");
+    setReason("");
+  };
+
+  const handleEdit = (discount: CustomerDiscount) => {
+    if (!canEditEntry(discount.date)) {
+      toast({ title: "Permission denied", description: "You cannot edit a discount for this date.", variant: "destructive" });
+      return;
+    }
+    setEditingDiscount(discount);
+    setTicketLines([]);
+    setSelectedSaleId(discount.saleId.toString());
+    setSelectedLineId(discount.saleItemId.toString());
+    setAmount(discount.amount.toFixed(2));
+    setReason(discount.reason);
+    setTransactionDate(discount.date);
+  };
+
+  const handleSave = async () => {
+    if (!selectedCustomer || (editingDiscount && (!selectedSaleId || !selectedLineId))) {
+      toast({ title: "Incomplete entry", description: "Select a customer, invoice, and invoice product line.", variant: "destructive" });
+      return;
+    }
+    if (!editingDiscount && ticketLines.length === 0) {
+      toast({ title: "Empty discount ticket", description: "Add at least one product line before recording the ticket.", variant: "destructive" });
+      return;
+    }
+    if (!transactionDate || transactionDate > businessDateString || !canSaveForDate) {
+      toast({ title: "Date not permitted", description: "Choose the current business date or a backdate you are authorized to enter.", variant: "destructive" });
+      return;
+    }
     try {
-      const saved = editingDiscount
-        ? await apiRequest<CustomerDiscount>("PUT", `/api/customer-discounts/${editingDiscount.id}`, payload)
-        : await apiRequest<CustomerDiscount>("POST", "/api/customer-discounts", payload);
-      await invalidateDiscountData(editingDiscount);
-      toast({
-        title: editingDiscount ? "Discount updated" : "Discount recorded",
-        description: `${saved.reference} was saved for ${saved.date}.`,
-      });
+      if (editingDiscount) {
+        if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || !/^\d+(\.\d{1,2})?$/.test(amount)) {
+          toast({ title: "Invalid amount", description: "Enter a positive discount amount with no more than two decimal places.", variant: "destructive" });
+          return;
+        }
+        if (parsedAmount > maxLineDiscount || parsedAmount > maxInvoiceDiscount) {
+          toast({ title: "Discount exceeds the limit", description: "The amount cannot exceed the remaining line value or undiscounted invoice value.", variant: "destructive" });
+          return;
+        }
+        if (!reason.trim()) {
+          toast({ title: "Reason required", description: "Enter a reason for this discount.", variant: "destructive" });
+          return;
+        }
+        const saved = await apiRequest<CustomerDiscount>("PUT", `/api/customer-discounts/${editingDiscount.id}`, {
+          customerId: selectedCustomer.id,
+          saleId: Number(selectedSaleId),
+          saleItemId: Number(selectedLineId),
+          amount: parsedAmount,
+          date: transactionDate,
+          reason: reason.trim(),
+        });
+        await invalidateDiscountData(editingDiscount);
+        toast({ title: "Discount updated", description: `${saved.reference} was saved for ${saved.date}.` });
+      } else {
+        const result = await apiRequest<{ documentInvoiceNumber: string; discounts: CustomerDiscount[] }>(
+          "POST",
+          "/api/customer-discounts",
+          {
+            customerId: selectedCustomer.id,
+            date: transactionDate,
+            items: ticketLines.map(line => ({
+              saleId: line.saleId,
+              saleItemId: line.saleItemId,
+              amount: line.amount,
+              reason: line.reason,
+            })),
+          },
+        );
+        await invalidateDiscountData(null);
+        toast({
+          title: "Discount ticket recorded",
+          description: `Ticket ${result.documentInvoiceNumber} with ${result.discounts.length} product line${result.discounts.length === 1 ? "" : "s"} was saved.`,
+        });
+      }
       resetForm();
     } catch (error: any) {
       toast({
@@ -283,17 +394,25 @@ export default function CustomerDiscountPage() {
     }
   };
 
-  const handleDelete = async (discount: CustomerDiscount) => {
-    if (!canDeleteEntry(discount.date)) {
-      toast({ title: "Permission denied", description: "You cannot delete a discount for this date.", variant: "destructive" });
+  const earliestInvoiceDate = [
+    invoiceQuery.data?.date,
+    ...ticketLines.map(line => line.invoiceDate),
+  ].filter((value): value is string => !!value).sort().slice(-1)[0];
+
+  const handleDelete = async (ticket: DiscountTicketGroup) => {
+    const activeLine = ticket.activeLines[0];
+    if (!activeLine) return;
+    if (!ticket.activeLines.every(line => canDeleteEntry(line.date))) {
+      toast({ title: "Permission denied", description: "You cannot delete every discount line in this ticket.", variant: "destructive" });
       return;
     }
-    if (!window.confirm(`Delete ${discount.reference} for ${money(discount.amount)}? This reverses its balance and report effect.`)) return;
+    const ticketNumber = ticket.documentInvoiceNumber || activeLine.reference;
+    if (!window.confirm(`Delete ticket ${ticketNumber} (${ticket.activeLines.length} active line${ticket.activeLines.length === 1 ? "" : "s"}, ${money(ticket.amount)})? This reverses the ticket's balance and report effect.`)) return;
     try {
-      await apiRequest("DELETE", `/api/customer-discounts/${discount.id}`);
-      await invalidateDiscountData(discount);
-      toast({ title: "Discount deleted", description: `${discount.reference} was reversed.` });
-      if (editingDiscount?.id === discount.id) resetForm();
+      await apiRequest("DELETE", `/api/customer-discounts/${activeLine.id}`);
+      await invalidateDiscountData(activeLine);
+      toast({ title: "Discount ticket deleted", description: `Ticket ${ticketNumber} was reversed.` });
+      if (ticket.activeLines.some(line => line.id === editingDiscount?.id)) resetForm();
     } catch (error: any) {
       toast({
         title: "Unable to delete discount",
@@ -334,7 +453,7 @@ export default function CustomerDiscountPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>{editingDiscount ? `Edit ${editingDiscount.reference}` : "Record a Discount"}</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{editingDiscount ? `Edit ${editingDiscount.reference}` : "Create a Discount Ticket"}</CardTitle></CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -344,7 +463,7 @@ export default function CustomerDiscountPage() {
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   value={selectedSaleId}
                   onChange={event => handleInvoiceChange(event.target.value)}
-                  disabled={!searchEnabled && !editingDiscount}
+                  disabled={editingDiscount !== null || !searchEnabled}
                 >
                   <option value="">Select an invoice</option>
                   {selectedSaleId && invoiceQuery.data && !invoicesQuery.data?.some(item => item.id.toString() === selectedSaleId) && (
@@ -368,7 +487,7 @@ export default function CustomerDiscountPage() {
                   type="date"
                   value={transactionDate}
                   max={businessDateString}
-                  min={invoiceQuery.data?.date}
+                  min={earliestInvoiceDate}
                   onChange={event => setTransactionDate(event.target.value)}
                   disabled={isLoadingBusinessDate || !businessDateString || (!!editingDiscount && !canEditEntry(editingDiscount.date))}
                 />
@@ -405,7 +524,14 @@ export default function CustomerDiscountPage() {
               >
                 <option value="">Select a product line</option>
                 {(invoiceQuery.data?.items || []).map(line => (
-                <option key={line.id} value={line.id} disabled={line.remainingValue <= 0 && line.id.toString() !== editingDiscount?.saleItemId.toString()}>
+                  <option
+                    key={line.id}
+                    value={line.id}
+                    disabled={
+                      (line.remainingValue <= 0 && line.id.toString() !== editingDiscount?.saleItemId.toString()) ||
+                      (!editingDiscount && ticketLines.some(ticketLine => ticketLine.saleItemId === line.id))
+                    }
+                  >
                     {line.productName} — Qty {line.quantity} — remaining {money(line.remainingValue)}
                   </option>
                 ))}
@@ -452,18 +578,75 @@ export default function CustomerDiscountPage() {
 
             {selectedLine && Number.isFinite(parsedAmount) && parsedAmount > 0 && (
               <div className="rounded-md bg-blue-50 p-3 text-sm">
-                After this discount: line total <strong>{money(previewLineTotal)}</strong> · effective average unit price <strong>{money(previewUnitPrice)}</strong> · invoice balance <strong>{money((invoiceQuery.data?.outstandingAmount || 0) - parsedAmount + editingAmount)}</strong>
-                {(invoiceQuery.data?.outstandingAmount || 0) - parsedAmount + editingAmount < 0 && <> · customer credit <strong>{money(Math.abs((invoiceQuery.data?.outstandingAmount || 0) - parsedAmount + editingAmount))}</strong></>}
+                After this discount: line total <strong>{money(previewLineTotal)}</strong> · effective average unit price <strong>{money(previewUnitPrice)}</strong> · invoice balance <strong>{money((invoiceQuery.data?.outstandingAmount || 0) - ticketInvoiceAmount - parsedAmount + editingAmount)}</strong>
+                {(invoiceQuery.data?.outstandingAmount || 0) - ticketInvoiceAmount - parsedAmount + editingAmount < 0 && <> · customer credit <strong>{money(Math.abs((invoiceQuery.data?.outstandingAmount || 0) - ticketInvoiceAmount - parsedAmount + editingAmount))}</strong></>}
+              </div>
+            )}
+
+            {!editingDiscount && ticketLines.length > 0 && (
+              <div className="space-y-3 rounded-md border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-medium">Discount Ticket Draft</h3>
+                  <span className="text-sm font-semibold">
+                    Total: {money(ticketLines.reduce((total, line) => total + line.amount, 0))}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead className="text-right">Discount</TableHead>
+                        <TableHead>Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ticketLines.map(line => (
+                        <TableRow key={line.saleItemId}>
+                          <TableCell>{line.invoiceNumber}</TableCell>
+                          <TableCell>{line.productName}</TableCell>
+                          <TableCell className="max-w-xs whitespace-normal">{line.reason}</TableCell>
+                          <TableCell className="text-right">{money(line.amount)}</TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => setTicketLines(previous => previous.filter(item => item.saleItemId !== line.saleItemId))}
+                              aria-label={`Remove ${line.productName} from discount ticket`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
 
             <div className="flex flex-wrap gap-2">
+              {!editingDiscount && (
+                <Button
+                  variant="outline"
+                  onClick={handleAddTicketLine}
+                  disabled={!selectedLine || !reason.trim() || !amount || !canCreateForDate || invoiceQuery.isFetching}
+                >
+                  Add Product to Ticket
+                </Button>
+              )}
               <Button
                 onClick={handleSave}
-                disabled={!selectedLine || !reason.trim() || !amount || !canSaveForDate || invoiceQuery.isFetching}
+                disabled={
+                  editingDiscount
+                    ? !selectedLine || !reason.trim() || !amount || !canSaveForDate || invoiceQuery.isFetching
+                    : ticketLines.length === 0 || !canCreateForDate || invoiceQuery.isFetching
+                }
               >
                 {invoiceQuery.isFetching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingDiscount ? "Save Changes" : "Record Discount"}
+                {editingDiscount ? "Save Changes" : "Record Discount Ticket"}
               </Button>
               {editingDiscount && <Button variant="outline" onClick={resetForm}>Cancel Edit</Button>}
             </div>
@@ -482,37 +665,58 @@ export default function CustomerDiscountPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead><TableHead>Reference</TableHead><TableHead>Invoice</TableHead>
-                      <TableHead>Product</TableHead><TableHead>Reason</TableHead><TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Date</TableHead><TableHead>Reference(s)</TableHead><TableHead>Ticket No</TableHead><TableHead>Invoice(s)</TableHead>
+                      <TableHead>Products</TableHead><TableHead>Reasons</TableHead><TableHead className="text-right">Amount</TableHead>
                       <TableHead>Status</TableHead><TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(discountsQuery.data || []).map(discount => (
-                      <TableRow key={discount.id} className={discount.isDeleted ? "opacity-60" : ""}>
-                        <TableCell>{discount.date}</TableCell>
-                        <TableCell>{discount.reference}</TableCell>
-                        <TableCell>{discount.invoiceNumber}</TableCell>
-                        <TableCell>{discount.productName}</TableCell>
-                        <TableCell className="max-w-xs whitespace-normal">{discount.reason}</TableCell>
-                        <TableCell className="text-right">{money(discount.amount)}</TableCell>
-                        <TableCell>{discount.isDeleted ? "Deleted" : "Active"}</TableCell>
-                        <TableCell>
-                          {!discount.isDeleted && (
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="outline" onClick={() => handleEdit(discount)} disabled={!canEditEntry(discount.date)} aria-label={`Edit ${discount.reference}`}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button size="sm" variant="destructive" onClick={() => void handleDelete(discount)} disabled={!canDeleteEntry(discount.date)} aria-label={`Delete ${discount.reference}`}>
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                    {discountTickets.map(ticket => (
+                      <TableRow key={ticket.key} className={ticket.activeLines.length === 0 ? "opacity-60" : ""}>
+                        <TableCell>{ticket.dates.join(", ")}</TableCell>
+                        <TableCell>{ticket.lines.map(line => line.reference).join(", ")}</TableCell>
+                        <TableCell>{ticket.documentInvoiceNumber || "-"}</TableCell>
+                        <TableCell>{ticket.invoiceNumbers.join(", ") || "-"}</TableCell>
+                        <TableCell className="whitespace-normal">
+                          {ticket.lines.map(line => (
+                            <div key={line.id} className={line.isDeleted ? "line-through text-muted-foreground" : ""}>
+                              {line.productName}
                             </div>
-                          )}
+                          ))}
+                        </TableCell>
+                        <TableCell className="max-w-xs whitespace-normal">
+                          {ticket.lines.map(line => (
+                            <div key={line.id} className={line.isDeleted ? "line-through text-muted-foreground" : ""}>
+                              {line.reason}
+                            </div>
+                          ))}
+                        </TableCell>
+                        <TableCell className="text-right">{money(ticket.amount)}</TableCell>
+                        <TableCell>
+                          {ticket.activeLines.length === 0
+                            ? "Deleted"
+                            : ticket.activeLines.length === ticket.lines.length
+                              ? "Active"
+                              : "Partially Deleted"}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {ticket.activeLines.map(line => (
+                              <Button key={line.id} size="sm" variant="outline" onClick={() => handleEdit(line)} disabled={!canEditEntry(line.date)} aria-label={`Edit ${line.reference}`}>
+                                <Pencil className="mr-1 h-4 w-4" />{line.productName}
+                              </Button>
+                            ))}
+                            {ticket.activeLines.length > 0 && (
+                              <Button size="sm" variant="destructive" onClick={() => void handleDelete(ticket)} disabled={!ticket.activeLines.every(line => canDeleteEntry(line.date))} aria-label={`Delete ticket ${ticket.documentInvoiceNumber || ticket.key}`}>
+                                <Trash2 className="mr-1 h-4 w-4" />Delete Ticket
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
-                    {!(discountsQuery.data || []).length && (
-                      <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground">No discounts in this date range.</TableCell></TableRow>
+                    {!discountTickets.length && (
+                      <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">No discounts in this date range.</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>

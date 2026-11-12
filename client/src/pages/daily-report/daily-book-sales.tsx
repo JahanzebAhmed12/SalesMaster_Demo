@@ -68,6 +68,7 @@ interface SalesEntry {
   isUnknownDate?: boolean;
   voidedDocumentType?: string;
   discountReference?: string;
+  originalInvoiceNo?: string;
 }
 
 // Helper function to determine display name for cash customers
@@ -102,6 +103,16 @@ const getDisplayCustomerName = (sale: SalesEntry): string => {
 // Gate numbers only show for cash customers (handled by getDisplayCustomerName)
 // Saved customers' gate numbers are hidden — unsaved means zero stock next day
 const shouldShowGateInParentheses = (_sale: SalesEntry): boolean => false;
+
+const getInvoiceLabel = (sale: SalesEntry): string => {
+  const discountSources = sale.isCustomerDiscount && sale.originalInvoiceNo
+    ? ` (Credit/Adj; invoices ${sale.originalInvoiceNo})`
+    : "";
+  const voidStatus = sale.isVoid
+    ? sale.isUnknownDate ? " (VOID - DATE UNKNOWN)" : " (VOID)"
+    : "";
+  return `${sale.invoiceNo}${discountSources}${voidStatus}`;
+};
 
 export default function DailyBookSales() {
   // Get business date with formatting utilities
@@ -471,7 +482,7 @@ export default function DailyBookSales() {
     salesData.forEach(sale => {
       html += '<tr>';
       html += `<td>${sale.isUnknownDate ? 'Unknown' : formatDateForDisplay(sale.date)}</td>`;
-      html += `<td>${sale.invoiceNo}${sale.isVoid ? (sale.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}</td>`;
+      html += `<td>${getInvoiceLabel(sale)}</td>`;
       html += `<td>${getDisplayCustomerName(sale)}</td>`;
       html += `<td>£${Number(sale.amount ?? 0).toFixed(2)}</td>`;
       html += `<td>£${Number(sale.cash ?? 0).toFixed(2)}</td>`;
@@ -489,7 +500,7 @@ export default function DailyBookSales() {
     const ws = XLSX.utils.json_to_sheet(salesData.map((item: SalesEntry) => ({
       'Sl.No': item.slNo,
       'Date': item.isUnknownDate ? 'Unknown' : item.date,
-      'Invoice No': `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
+      'Invoice No': getInvoiceLabel(item),
       'Customer Name': getDisplayCustomerName(item),
       'Account': item.amount,
       'Cash': item.cash,
@@ -555,7 +566,7 @@ export default function DailyBookSales() {
         const saleDate = item.date ? new Date(item.date) : (businessDate ?? new Date());
         return [
           item.isUnknownDate ? 'Unknown' : format(saleDate, "MM/dd/yy"),
-          `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
+          getInvoiceLabel(item),
           getDisplayCustomerName(item),
           `£${Number(item.amount ?? 0).toFixed(2)}`,
           `£${Number(item.cash ?? 0).toFixed(2)}`,
@@ -598,7 +609,7 @@ export default function DailyBookSales() {
     const rows = salesData.map((item: SalesEntry) => [
       item.slNo,
       item.isUnknownDate ? 'Unknown' : item.date,
-      `${item.invoiceNo}${item.isVoid ? (item.isUnknownDate ? ' (VOID - DATE UNKNOWN)' : ' (VOID)') : ''}`,
+      getInvoiceLabel(item),
       getDisplayCustomerName(item),
       item.amount,
       item.cash,
@@ -1447,6 +1458,9 @@ export default function DailyBookSales() {
                           {sale.invoiceNo}
                           {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
                           {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Credit/Adj)</span>}
+                          {sale.isCustomerDiscount && sale.originalInvoiceNo && (
+                            <span className="block text-xs text-muted-foreground">Invoices: {sale.originalInvoiceNo}</span>
+                          )}
                           {sale.isVoid && (
                             <span className="ml-1 text-xs font-semibold text-gray-600">
                               {sale.isUnknownDate ? "(VOID - DATE UNKNOWN)" : "(VOID)"}

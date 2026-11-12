@@ -151,7 +151,12 @@
             <tr>
                 <td>{{ item.slNo }}</td>
                 <td class="date">{{ item.date }}</td>
-                <td>{{ item.invoiceNo }}</td>
+                <td>
+                    {{ item.invoiceNo }}
+                    {% if item.isCustomerDiscount %}
+                    <span> (Credit/Adj{% if item.sourceInvoiceNumbers %}; invoices {{ item.sourceInvoiceNumbers }}{% endif %})</span>
+                    {% endif %}
+                </td>
                 <td class="amount">{{ "%.2f"|format(item.accountInv) }}</td>
                 <td class="amount">{{ "%.2f"|format(item.cashInv) }}</td>
                 <td class="amount">{{ "%.2f"|format(item.paid) }}</td>
