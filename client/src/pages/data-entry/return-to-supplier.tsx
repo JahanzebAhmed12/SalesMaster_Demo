@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -34,7 +35,7 @@ import {
   Eye,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatQuantity } from "@/lib/utils";
 import { SupplierReturn, Supplier, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -53,13 +54,13 @@ const supplierReturnSchema = z.object({
   date: z.string().min(1, "Date is required"),
   supplierId: z.number().min(1, "Supplier is required"),
   purchaseInvoiceId: z.number().optional(),
-  productId: z.number().min(1, "Product is required"),
-  productType: z.enum(["regular", "non"]),
-  description: z.string().min(1, "Description is required"),
+  productId: z.number().optional(),
+  productType: z.enum(["regular", "non"]).optional(),
+  description: z.string().optional(),
   invoiceNumber: z.string().optional(),
   remarks: z.string().optional(),
-  quantity: z.number().min(1, "Quantity must be at least 1"),
-  unitPrice: z.number().min(0, "Unit price must be non-negative"),
+  quantity: z.number().optional(),
+  unitPrice: z.number().optional(),
   returnReason: z.string().optional(),
   creditNoteIssued: z.boolean().default(false),
   creditNoteAmount: z.number().min(0, "Credit note amount must be non-negative"),
@@ -67,6 +68,50 @@ const supplierReturnSchema = z.object({
 });
 
 type SupplierReturnFormData = z.infer<typeof supplierReturnSchema>;
+
+interface SupplierReturnDraftItem {
+  key: string;
+  id?: number;
+  productId: number;
+  productType: "regular" | "non";
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  sourcePurchaseInvoiceItemId?: number;
+  availableQuantity?: number;
+  isManual: boolean;
+}
+
+interface SupplierPurchaseInvoiceItem {
+  id: number;
+  productId: number;
+  productType: "regular" | "non";
+  productName: string;
+  description: string;
+  quantity: number;
+  returnedQuantity: number;
+  returnableQuantity: number;
+  unitPrice: number;
+}
+
+interface SupplierPurchaseInvoice {
+  id: number;
+  date: string;
+  invoiceNumber: string;
+  totalAmount: number;
+  items: SupplierPurchaseInvoiceItem[];
+}
+
+interface SupplierReturnDocument extends SupplierReturn {
+  documentRefNumber: string;
+  items: SupplierReturn[];
+  totalQuantity: number;
+  totalValue: number;
+}
+
+type SupplierReturnUpdateData = SupplierReturnFormData & {
+  items: Array<SupplierReturnDraftItem & { id: number }>;
+};
 
 // API functions
 const fetchSupplierReturns = async (params: {
@@ -93,15 +138,26 @@ const fetchProducts = async (): Promise<{ regularProducts: RegularProduct[]; non
   return apiRequest('GET', '/api/products');
 };
 
-const fetchPurchaseInvoices = async (supplierId: number, fromDate: string, toDate: string): Promise<any[]> => {
-  return apiRequest('GET', `/api/suppliers/${supplierId}/outstanding_invoices?fromDate=${fromDate}&toDate=${toDate}`);
+const fetchPurchaseInvoices = async (
+  supplierId: number,
+  fromDate?: string,
+  toDate?: string,
+  invoiceId?: number,
+  excludeReturnId?: number,
+): Promise<SupplierPurchaseInvoice[]> => {
+  const params = new URLSearchParams();
+  if (fromDate) params.set('fromDate', fromDate);
+  if (toDate) params.set('toDate', toDate);
+  if (invoiceId) params.set('invoiceId', String(invoiceId));
+  if (excludeReturnId) params.set('excludeReturnId', String(excludeReturnId));
+  return apiRequest('GET', `/api/suppliers/${supplierId}/purchase-invoices?${params}`);
 };
 
-const createSupplierReturn = async (data: SupplierReturnFormData): Promise<SupplierReturn> => {
+const createSupplierReturn = async (data: SupplierReturnFormData & { items: SupplierReturnDraftItem[] }): Promise<{ documentRefNumber: string; items: SupplierReturn[] }> => {
   return apiRequest('POST', '/api/supplier-returns', data);
 };
 
-const updateSupplierReturn = async ({ id, data }: { id: number; data: SupplierReturnFormData }): Promise<SupplierReturn> => {
+const updateSupplierReturn = async ({ id, data }: { id: number; data: SupplierReturnUpdateData }): Promise<{ items: SupplierReturn[] }> => {
   return apiRequest('PUT', `/api/supplier-returns/${id}`, data);
 };
 
@@ -129,13 +185,19 @@ export default function ReturnToSupplier() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingReturn, setEditingReturn] = useState<SupplierReturn | null>(null);
+  const [editingReturn, setEditingReturn] = useState<SupplierReturnDocument | null>(null);
   const [invoiceFromDate, setInvoiceFromDate] = useState(() => format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [invoiceToDate, setInvoiceToDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const invoiceDatesInitializedRef = useRef(false);
   const [productSearchValue, setProductSearchValue] = useState("");
   const [productSearchKey, setProductSearchKey] = useState(0);
   const tableRef = useRef<HTMLDivElement>(null);
+  const [returnItems, setReturnItems] = useState<SupplierReturnDraftItem[]>([]);
+  const [invoiceItemPicker, setInvoiceItemPicker] = useState("");
+  const [manualQuantity, setManualQuantity] = useState("1");
+  const [manualUnitPrice, setManualUnitPrice] = useState("0");
+  const [returnsPage, setReturnsPage] = useState(1);
+  const [returnsPageSize, setReturnsPageSize] = useState(10);
   
   // Sync supplierId with selectedSupplier
   useEffect(() => {
@@ -200,6 +262,35 @@ export default function ReturnToSupplier() {
       status: statusFilter !== 'all' ? statusFilter : undefined
     })
   });
+  const returnDocuments = useMemo(() => {
+    const groups = new Map<string, SupplierReturnDocument>();
+    supplierReturns.forEach((item: SupplierReturn) => {
+      const documentRefNumber = item.documentRefNumber || item.refNumber;
+      const existing = groups.get(documentRefNumber);
+      if (existing) {
+        existing.items.push(item);
+        existing.totalQuantity += Number(item.quantity || 0);
+        existing.totalValue += Number(item.totalValue || 0);
+        existing.creditNoteIssued = existing.creditNoteIssued || item.creditNoteIssued;
+        existing.creditNoteAmount += Number(item.creditNoteAmount || 0);
+      } else {
+        groups.set(documentRefNumber, {
+          ...item,
+          documentRefNumber,
+          items: [item],
+          totalQuantity: Number(item.quantity || 0),
+          totalValue: Number(item.totalValue || 0),
+          creditNoteAmount: Number(item.creditNoteAmount || 0),
+        });
+      }
+    });
+    return Array.from(groups.values());
+  }, [supplierReturns]);
+  const totalPages = Math.max(1, Math.ceil(returnDocuments.length / returnsPageSize));
+  const paginatedReturns = returnDocuments.slice(
+    (returnsPage - 1) * returnsPageSize,
+    returnsPage * returnsPageSize,
+  );
 
   const { data: suppliersData = [] } = useQuery({
     queryKey: ['suppliers'],
@@ -218,6 +309,11 @@ export default function ReturnToSupplier() {
       a.supplier_name.localeCompare(b.supplier_name, undefined, { sensitivity: 'base' })
     );
   }, [suppliersData]);
+  const getSupplierLabel = (id: number, fallback?: string | null) => {
+    const supplier = suppliers.find((item) => item.id === id);
+    if (!supplier) return fallback || "";
+    return `${supplier.supplier_code} - ${supplier.supplier_name}`;
+  };
 
   // Sort products alphabetically by description
   const products = useMemo(() => {
@@ -243,17 +339,54 @@ export default function ReturnToSupplier() {
     return `${product.productCode || ''}${product.productCode ? ' - ' : ''}${product.description}`;
   };
 
-  const { data: purchaseInvoices = [] } = useQuery({
-    queryKey: ['purchase-invoices', form.watch('supplierId'), invoiceFromDate, invoiceToDate],
+  const { data: purchaseInvoices = [] } = useQuery<SupplierPurchaseInvoice[]>({
+    queryKey: [
+      'purchase-invoices',
+      form.watch('supplierId'),
+      invoiceFromDate,
+      invoiceToDate,
+      editingReturn?.id,
+      editingReturn?.purchaseInvoiceId,
+    ],
     queryFn: () => {
       const supplierId = form.watch('supplierId');
-      if (supplierId && supplierId > 0) {
-        return fetchPurchaseInvoices(supplierId, invoiceFromDate, invoiceToDate);
+      if (supplierId && supplierId > 0 && (!editingReturn || editingReturn.purchaseInvoiceId)) {
+        return fetchPurchaseInvoices(
+          supplierId,
+          editingReturn ? undefined : invoiceFromDate,
+          editingReturn ? undefined : invoiceToDate,
+          editingReturn?.purchaseInvoiceId || undefined,
+          editingReturn?.id,
+        );
       }
       return Promise.resolve([]);
     },
-    enabled: !!form.watch('supplierId') && form.watch('supplierId') > 0
+    enabled: !!form.watch('supplierId')
+      && form.watch('supplierId') > 0
+      && (!editingReturn || !!editingReturn.purchaseInvoiceId)
   });
+  const selectedPurchaseInvoiceId = form.watch('purchaseInvoiceId');
+  const selectedPurchaseInvoice = purchaseInvoices.find(
+    (invoice) => invoice.id === selectedPurchaseInvoiceId,
+  );
+  const availableInvoiceItems = selectedPurchaseInvoice?.items.filter(
+    (item) => item.returnableQuantity > 0
+      && !returnItems.some((selected) => selected.sourcePurchaseInvoiceItemId === item.id),
+  ) || [];
+  const getReturnItemMaxQuantity = (item: SupplierReturnDraftItem) => {
+    if (editingReturn) {
+      if (!item.sourcePurchaseInvoiceItemId) return undefined;
+      const invoiceItem = selectedPurchaseInvoice?.items.find(
+        (candidate) => candidate.id === item.sourcePurchaseInvoiceItemId,
+      );
+      return invoiceItem?.returnableQuantity;
+    }
+    return item.availableQuantity;
+  };
+
+  useEffect(() => {
+    setReturnsPage(1);
+  }, [selectedSupplier, fromDate, toDate, searchTerm, statusFilter, returnsPageSize]);
 
   // Fetch company details
   const { companyDetails } = useCompanyDetails();
@@ -300,18 +433,17 @@ export default function ReturnToSupplier() {
   // Mutations
   const createMutation = useMutation({
     mutationFn: createSupplierReturn,
-    onSuccess: (newReturn) => {
-      notifyInventoryMutation({
-        source: 'supplier-return',
-        productId: newReturn?.productId,
-        productType: newReturn?.productType as 'regular' | 'non' | undefined,
+    onSuccess: async (created) => {
+      notifyInventoryMutation({ source: 'supplier-return' });
+      await queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
+      await queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] });
+      toast({
+        title: "Success",
+        description: `${created.items.length} product(s) added to return ${created.documentRefNumber}.`,
       });
-      queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
-        if (!old) return [newReturn];
-        return [newReturn, ...old];
-      });
-      toast({ title: "Success", description: "Supplier return created successfully" });
       setIsDialogOpen(false);
+      setReturnItems([]);
+      setInvoiceItemPicker("");
       setProductSearchValue('');
       setProductSearchKey((key) => key + 1);
       form.reset();
@@ -324,19 +456,14 @@ export default function ReturnToSupplier() {
 
   const updateMutation = useMutation({
     mutationFn: updateSupplierReturn,
-    onSuccess: (updatedReturn) => {
-      notifyInventoryMutation({
-        source: 'supplier-return',
-        productId: updatedReturn?.productId,
-        productType: updatedReturn?.productType as 'regular' | 'non' | undefined,
-      });
-      queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
-        if (!old) return [updatedReturn];
-        return old.map((item: any) => item.id === updatedReturn.id ? updatedReturn : item);
-      });
+    onSuccess: () => {
+      notifyInventoryMutation({ source: 'supplier-return' });
+      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] });
       toast({ title: "Success", description: "Supplier return updated successfully" });
       setIsDialogOpen(false);
       setEditingReturn(null);
+      setReturnItems([]);
       setProductSearchValue('');
       setProductSearchKey((key) => key + 1);
       form.reset();
@@ -352,6 +479,7 @@ export default function ReturnToSupplier() {
     onSuccess: () => {
       notifyInventoryMutation({ source: 'supplier-return' });
       queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
+      queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] });
       toast({ title: "Success", description: "Supplier return deleted successfully" });
     },
     onError: (error: any) => {
@@ -569,14 +697,42 @@ export default function ReturnToSupplier() {
 
   // Handlers
   const handleSubmit = (data: SupplierReturnFormData) => {
+    if (returnItems.length === 0) {
+      toast({ title: "No products added", description: "Select invoice products or add products manually.", variant: "destructive" });
+      return;
+    }
+    if (returnItems.some(item => {
+      const maxQuantity = getReturnItemMaxQuantity(item);
+      return !Number.isFinite(item.quantity)
+        || item.quantity <= 0
+        || (maxQuantity !== undefined && item.quantity > maxQuantity)
+        || !Number.isFinite(item.unitPrice)
+        || item.unitPrice < 0;
+    })) {
+      toast({ title: "Invalid product details", description: "Check quantities and unit prices for every return line.", variant: "destructive" });
+      return;
+    }
+
     if (editingReturn) {
-      updateMutation.mutate({ id: editingReturn.id, data });
+      updateMutation.mutate({
+        id: editingReturn.id,
+        data: {
+          ...data,
+          items: returnItems.map(item => ({
+            ...item,
+            id: item.id!,
+          })),
+        },
+      });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate({
+        ...data,
+        items: returnItems,
+      });
     }
   };
 
-  const handleEdit = (returnItem: SupplierReturn) => {
+  const handleEdit = (returnItem: SupplierReturnDocument) => {
     if (!canEditReturn(returnItem.date)) {
       toast({
         title: "Permission Denied",
@@ -587,7 +743,18 @@ export default function ReturnToSupplier() {
     }
     
     setEditingReturn(returnItem);
-    setProductSearchValue(getProductLabel(returnItem.productId, returnItem.productType as 'regular' | 'non'));
+    setReturnItems(returnItem.items.map(line => ({
+      key: `edit-${line.id}`,
+      id: line.id,
+      productId: line.productId,
+      productType: line.productType as "regular" | "non",
+      description: line.description,
+      quantity: Number(line.quantity),
+      unitPrice: Number(line.unitPrice),
+      sourcePurchaseInvoiceItemId: line.sourcePurchaseInvoiceItemId || undefined,
+      isManual: line.isManual,
+    })));
+    setProductSearchValue('');
     setProductSearchKey((key) => key + 1);
     form.reset({
       date: returnItem.date,
@@ -598,12 +765,12 @@ export default function ReturnToSupplier() {
       description: returnItem.description,
       invoiceNumber: returnItem.invoiceNumber || "",
       remarks: returnItem.remarks || "",
-      quantity: returnItem.quantity,
-      unitPrice: returnItem.unitPrice,
+      quantity: Number(returnItem.quantity),
+      unitPrice: Number(returnItem.unitPrice),
       returnReason: returnItem.returnReason || "",
       creditNoteIssued: returnItem.creditNoteIssued,
       creditNoteAmount: returnItem.creditNoteAmount,
-      status: "completed" as "pending" | "approved" | "rejected" | "completed"
+      status: returnItem.status as "pending" | "approved" | "rejected" | "completed"
     });
     setIsDialogOpen(true);
   };
@@ -625,6 +792,57 @@ export default function ReturnToSupplier() {
     if (confirm("Are you sure you want to delete this supplier return?")) {
       deleteMutation.mutate(returnItem.id);
     }
+  };
+
+  const addInvoiceItem = () => {
+    const item = selectedPurchaseInvoice?.items.find(
+      invoiceItem => String(invoiceItem.id) === invoiceItemPicker,
+    );
+    if (!item || item.returnableQuantity <= 0) return;
+    setReturnItems(current => [...current, {
+      key: `invoice-${item.id}`,
+      productId: item.productId,
+      productType: item.productType,
+      description: item.description || item.productName,
+      quantity: item.returnableQuantity,
+      unitPrice: item.unitPrice,
+      sourcePurchaseInvoiceItemId: item.id,
+      availableQuantity: item.returnableQuantity,
+      isManual: false,
+    }]);
+    setInvoiceItemPicker("");
+  };
+
+  const addManualItem = () => {
+    const productId = form.getValues("productId");
+    const productType = form.getValues("productType");
+    const product = (productType === "regular" ? products.regularProducts : products.nonProducts)
+      .find(item => item.id === productId);
+    const quantity = Number(manualQuantity);
+    const unitPrice = Number(manualUnitPrice);
+    if (!product || !productType || !Number.isFinite(quantity) || quantity <= 0
+      || !Number.isFinite(unitPrice) || unitPrice < 0) {
+      toast({ title: "Invalid product", description: "Select a product and enter a positive quantity and valid unit price.", variant: "destructive" });
+      return;
+    }
+    setReturnItems(current => [...current, {
+      key: `manual-${Date.now()}-${Math.random()}`,
+      productId: product.id,
+      productType,
+      description: product.description,
+      quantity,
+      unitPrice,
+      isManual: true,
+    }]);
+    setProductSearchValue("");
+    setProductSearchKey(key => key + 1);
+    form.setValue("productId", 0);
+    setManualQuantity("1");
+    setManualUnitPrice("0");
+  };
+
+  const updateReturnItem = (key: string, updates: Partial<SupplierReturnDraftItem>) => {
+    setReturnItems(current => current.map(item => item.key === key ? { ...item, ...updates } : item));
   };
 
 
@@ -708,7 +926,7 @@ export default function ReturnToSupplier() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
                   <Input
-                    placeholder="Search..."
+                    placeholder="Search invoice, return no., supplier..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10 w-48"
@@ -716,7 +934,23 @@ export default function ReturnToSupplier() {
                 </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button className="flex items-center gap-2">
+                    <Button
+                      className="flex items-center gap-2"
+                      onClick={() => {
+                        setEditingReturn(null);
+                        setReturnItems([]);
+                        setInvoiceItemPicker("");
+                        form.reset({
+                  date: businessDate ? format(new Date(businessDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
+                  productType: 'regular',
+                  quantity: 1,
+                  unitPrice: 0,
+                  creditNoteIssued: false,
+                  creditNoteAmount: 0,
+                  status: 'completed',
+                        });
+                      }}
+                    >
                       <Plus size={16} />
                       Add Return
                     </Button>
@@ -734,7 +968,19 @@ export default function ReturnToSupplier() {
                         {editingReturn ? 'Edit Supplier Return' : 'Add New Supplier Return'}
                       </DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                    <form
+                      onSubmit={form.handleSubmit(handleSubmit, (errors) => {
+                        const firstError = Object.entries(errors).find(([, error]) => error);
+                        toast({
+                          title: editingReturn ? "Unable to update return" : "Unable to create return",
+                          description: firstError
+                            ? `${firstError[0]}: ${String(firstError[1]?.message || "Invalid value")}`
+                            : "Check the required fields and correct any invalid values.",
+                          variant: "destructive",
+                        });
+                      })}
+                      className="space-y-4"
+                    >
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor="date">Date</Label>
@@ -750,7 +996,12 @@ export default function ReturnToSupplier() {
                         <div>
                           <Label htmlFor="supplierId">Supplier</Label>
                           <SupplierSearch
+                            key={editingReturn ? `supplier-${editingReturn.supplierId}` : "new-supplier"}
+                            value={editingReturn
+                              ? getSupplierLabel(editingReturn.supplierId, editingReturn.supplierName)
+                              : ""}
                             placeholder="Search supplier by code or name..."
+                            disabled={!!editingReturn}
                             onSupplierSelect={(supplier) => {
                               handleSupplierSelectHook(supplier);
                               if (supplier) {
@@ -758,6 +1009,10 @@ export default function ReturnToSupplier() {
                               } else {
                                 form.setValue('supplierId', 0);
                               }
+                              form.setValue('purchaseInvoiceId', undefined);
+                              form.setValue('invoiceNumber', '');
+                              setReturnItems([]);
+                              setInvoiceItemPicker("");
                             }}
                             required
                             showCode
@@ -765,96 +1020,6 @@ export default function ReturnToSupplier() {
                           />
                           {form.formState.errors.supplierId && (
                             <p className="text-red-500 text-sm">{form.formState.errors.supplierId.message}</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="productType">Product Type</Label>
-                          <Select
-                            value={form.watch('productType')}
-                            onValueChange={(value) => {
-                              const productType = value as 'regular' | 'non';
-                              form.setValue('productType', productType);
-                              form.setValue('productId', 0, { shouldValidate: true });
-                              setProductSearchValue('');
-                              setProductSearchKey((key) => key + 1);
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="regular">Regular Product</SelectItem>
-                              <SelectItem value="non">Non-Product</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <ProductSearch
-                            key={productSearchKey}
-                            label="Product"
-                            value={productSearchValue}
-                            products={searchableProducts}
-                            placeholder="Search product by code or name..."
-                            onProductSelect={(product) => {
-                              if (!product) {
-                                form.setValue('productId', 0, { shouldValidate: true });
-                                setProductSearchValue('');
-                                return;
-                              }
-                              form.setValue('productId', product.id, { shouldValidate: true });
-                              setProductSearchValue(
-                                `${product.productCode || ''}${product.productCode ? ' - ' : ''}${product.description || ''}`
-                              );
-                            }}
-                            required
-                            showCode
-                            allowClear
-                          />
-                          {form.formState.errors.productId && (
-                            <p className="text-red-500 text-sm">{form.formState.errors.productId.message}</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="description">Description</Label>
-                        <Input
-                          {...form.register('description')}
-                          placeholder="Return description"
-                          className={form.formState.errors.description ? 'border-red-500' : ''}
-                        />
-                        {form.formState.errors.description && (
-                          <p className="text-red-500 text-sm">{form.formState.errors.description.message}</p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="quantity">Quantity</Label>
-                          <Input
-                            type="number"
-                            {...form.register('quantity', { valueAsNumber: true })}
-                            min="1"
-                            className={form.formState.errors.quantity ? 'border-red-500' : ''}
-                          />
-                          {form.formState.errors.quantity && (
-                            <p className="text-red-500 text-sm">{form.formState.errors.quantity.message}</p>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor="unitPrice">Unit Price</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            {...form.register('unitPrice', { valueAsNumber: true })}
-                            min="0"
-                            className={form.formState.errors.unitPrice ? 'border-red-500' : ''}
-                          />
-                          {form.formState.errors.unitPrice && (
-                            <p className="text-red-500 text-sm">{form.formState.errors.unitPrice.message}</p>
                           )}
                         </div>
                       </div>
@@ -888,16 +1053,21 @@ export default function ReturnToSupplier() {
                         <Label htmlFor="purchaseInvoiceId">Purchase Invoice</Label>
                         <Select
                           value={form.watch('purchaseInvoiceId')?.toString() || 'none'}
+                          disabled={!!editingReturn}
                           onValueChange={(value) => {
                             if (value !== 'none') {
                               form.setValue('purchaseInvoiceId', parseInt(value));
                               const selectedInvoice = purchaseInvoices.find(inv => inv.id === parseInt(value));
                               if (selectedInvoice) {
-                                form.setValue('invoiceNumber', selectedInvoice.id.toString());
+                                form.setValue('invoiceNumber', selectedInvoice.invoiceNumber);
                               }
+                              setReturnItems([]);
+                              setInvoiceItemPicker("");
                             } else {
                               form.setValue('purchaseInvoiceId', undefined);
                               form.setValue('invoiceNumber', '');
+                              setReturnItems([]);
+                              setInvoiceItemPicker("");
                             }
                           }}
                         >
@@ -908,11 +1078,163 @@ export default function ReturnToSupplier() {
                             <SelectItem value="none">No Invoice</SelectItem>
                             {purchaseInvoices.map((inv) => (
                               <SelectItem key={inv.id} value={inv.id.toString()}>
-                                {inv.id} - {inv.date} - £{inv.totalAmount}
+                                {inv.invoiceNumber} - {format(new Date(inv.date), "dd/MM/yyyy")} - £{inv.totalAmount.toFixed(2)}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                      </div>
+
+                      {!editingReturn && selectedPurchaseInvoice && (
+                        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+                          <div>
+                            <Label>Invoice Products</Label>
+                            <Select value={invoiceItemPicker} onValueChange={setInvoiceItemPicker}>
+                              <SelectTrigger><SelectValue placeholder="Select an invoice product" /></SelectTrigger>
+                              <SelectContent>
+                                {availableInvoiceItems.map(item => (
+                                  <SelectItem key={item.id} value={String(item.id)}>
+                                    {item.productName} · purchased {item.quantity} · returnable {item.returnableQuantity}
+                                  </SelectItem>
+                                ))}
+                                {!availableInvoiceItems.length && (
+                                  <SelectItem value="none" disabled>No invoice products remain returnable</SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button type="button" variant="outline" onClick={addInvoiceItem} disabled={!invoiceItemPicker || invoiceItemPicker === "none"}>
+                            <Plus className="mr-1 h-4 w-4" /> Add Invoice Product
+                          </Button>
+                        </div>
+                      )}
+
+                      {!editingReturn && <div className="rounded-md border p-3 space-y-3">
+                        <div className="font-medium">Add Manual Product</div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                          <div>
+                            <Label>Product Type</Label>
+                            <Select
+                              value={form.watch('productType') || 'regular'}
+                              onValueChange={(value) => {
+                                form.setValue('productType', value as 'regular' | 'non');
+                                form.setValue('productId', 0);
+                                setProductSearchValue('');
+                                setProductSearchKey(key => key + 1);
+                              }}
+                            >
+                              <SelectTrigger><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="regular">Regular Product</SelectItem>
+                                <SelectItem value="non">Non-Product</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="md:col-span-3">
+                            <ProductSearch
+                              key={productSearchKey}
+                              label="Product"
+                              value={productSearchValue}
+                              products={searchableProducts}
+                              placeholder="Search product by code or name..."
+                              onProductSelect={(product) => {
+                                if (!product) {
+                                  form.setValue('productId', 0);
+                                  setProductSearchValue('');
+                                  return;
+                                }
+                                form.setValue('productId', product.id);
+                                form.setValue('description', product.description);
+                                setProductSearchValue(`${product.productCode || ''}${product.productCode ? ' - ' : ''}${product.description}`);
+                              }}
+                              showCode
+                              allowClear
+                            />
+                          </div>
+                          <div>
+                            <Label>Quantity</Label>
+                            <Input type="number" min="0.001" step="0.001" value={manualQuantity} onChange={event => setManualQuantity(event.target.value)} />
+                          </div>
+                          <div>
+                            <Label>Unit Price</Label>
+                            <Input type="number" min="0" step="0.01" value={manualUnitPrice} onChange={event => setManualUnitPrice(event.target.value)} />
+                          </div>
+                          <Button type="button" variant="outline" className="md:col-span-2" onClick={addManualItem}>
+                            <Plus className="mr-1 h-4 w-4" /> Add Manual Product
+                          </Button>
+                        </div>
+                      </div>}
+
+                      <div className="space-y-2">
+                        <Label>Products in this return</Label>
+                        <div className="overflow-x-auto rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Product</TableHead>
+                                <TableHead className="w-28">Quantity</TableHead>
+                                <TableHead className="w-32">Unit Price</TableHead>
+                                <TableHead className="w-32">Total</TableHead>
+                                <TableHead className="w-12" />
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {returnItems.map(item => {
+                                const maxQuantity = getReturnItemMaxQuantity(item);
+                                const invoiceLinked = !!item.sourcePurchaseInvoiceItemId;
+                                return (
+                                <TableRow key={item.key}>
+                                  <TableCell>
+                                    <div>{getProductLabel(item.productId, item.productType) || item.description}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {invoiceLinked
+                                        ? `Invoice product${maxQuantity !== undefined ? ` · max ${maxQuantity}` : ""}`
+                                        : "Manual product · no invoice quantity cap"}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      min="0.001"
+                                      step="0.001"
+                                      max={maxQuantity}
+                                      value={item.quantity}
+                                      onChange={event => updateReturnItem(item.key, { quantity: Number(event.target.value) })}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={item.unitPrice}
+                                      onChange={event => updateReturnItem(item.key, { unitPrice: Number(event.target.value) })}
+                                    />
+                                  </TableCell>
+                                  <TableCell>£{(item.quantity * item.unitPrice).toFixed(2)}</TableCell>
+                                  <TableCell>
+                                    {!editingReturn && (
+                                      <Button type="button" variant="ghost" size="icon" onClick={() => setReturnItems(current => current.filter(line => line.key !== item.key))}>
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                                );
+                              })}
+                              {!returnItems.length && (
+                                <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">Select invoice products or add manual products.</TableCell></TableRow>
+                              )}
+                              {!!returnItems.length && (
+                                <TableRow className="font-semibold">
+                                  <TableCell colSpan={3}>Return Total</TableCell>
+                                  <TableCell>£{returnItems.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0).toFixed(2)}</TableCell>
+                                  <TableCell />
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
@@ -974,6 +1296,7 @@ export default function ReturnToSupplier() {
                           onClick={() => {
                             setIsDialogOpen(false);
                             setEditingReturn(null);
+                            setReturnItems([]);
                             setProductSearchValue('');
                             setProductSearchKey((key) => key + 1);
                             form.reset();
@@ -983,7 +1306,7 @@ export default function ReturnToSupplier() {
                         </Button>
                         <Button
                           type="submit"
-                          disabled={createMutation.isPending || updateMutation.isPending}
+                          disabled={editingReturn ? updateMutation.isPending : createMutation.isPending}
                         >
                           {editingReturn ? 'Update' : 'Create'} Return
                         </Button>
@@ -1017,22 +1340,30 @@ export default function ReturnToSupplier() {
                         Loading...
                       </TableCell>
                     </TableRow>
-                  ) : supplierReturns.length === 0 ? (
+                  ) : returnDocuments.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                         No supplier returns found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    supplierReturns.map((returnItem) => (
+                    paginatedReturns.map((returnItem) => (
                       <TableRow key={returnItem.id}>
                         <TableCell>{format(new Date(returnItem.date), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell className="font-mono">{returnItem.refNumber}</TableCell>
+                        <TableCell className="font-mono">{returnItem.documentRefNumber}</TableCell>
                         <TableCell>{returnItem.supplierName}</TableCell>
-                        <TableCell>{getProductLabel(returnItem.productId, returnItem.productType as 'regular' | 'non') || returnItem.description}</TableCell>
-                        <TableCell>{returnItem.description}</TableCell>
-                        <TableCell className="text-center">{returnItem.quantity}</TableCell>
-                        <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
+                        <TableCell>
+                          {returnItem.items.map((item, index) => (
+                            <div key={item.id}>
+                              {returnItem.items.length > 1 ? `${index + 1}. ` : ""}
+                              {getProductLabel(item.productId, item.productType as 'regular' | 'non') || item.description}
+                              <span className="text-muted-foreground"> × {formatQuantity(Number(item.quantity || 0))}</span>
+                            </div>
+                          ))}
+                        </TableCell>
+                        <TableCell>{returnItem.items.map(item => item.description).filter(Boolean).join("; ")}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(returnItem.totalQuantity)}</TableCell>
+                        <TableCell className="text-center">—</TableCell>
                         <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
@@ -1049,7 +1380,7 @@ export default function ReturnToSupplier() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleEdit(returnItem)}
-                                title="Edit return"
+                                title="Edit return document"
                               >
                                 <Edit className="w-3 h-3" />
                               </Button>
@@ -1093,6 +1424,15 @@ export default function ReturnToSupplier() {
                 </TableBody>
               </Table>
             </div>
+            <Pagination
+              currentPage={returnsPage}
+              totalPages={totalPages}
+              totalItems={returnDocuments.length}
+              itemsPerPage={returnsPageSize}
+              onPageChange={setReturnsPage}
+              onItemsPerPageChange={setReturnsPageSize}
+              className="mt-4"
+            />
           </CardContent>
         </Card>
       </div>

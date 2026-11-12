@@ -25,6 +25,7 @@ from werkzeug.utils import secure_filename
 from users import verify_password, create_admin_user
 from migrations.customer_discount_v1 import upgrade as upgrade_customer_discount_schema
 from migrations.customer_return_sale_item_v1 import upgrade as upgrade_customer_return_sale_item_schema
+from migrations.supplier_return_documents_v1 import upgrade as upgrade_supplier_return_documents_schema
 from migrations.invoice_document_numbers_v1 import upgrade as upgrade_invoice_document_numbers_schema
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
@@ -676,6 +677,7 @@ with app.app_context():
         CustomerDiscountAudit.__table__,
     )
     upgrade_customer_return_sale_item_schema(db.engine)
+    upgrade_supplier_return_documents_schema(db.engine)
     upgrade_invoice_document_numbers_schema(db.engine, InvoiceDocumentNumber.__table__)
     ensure_voided_invoice_document_schema()
     _initialize_invoice_document_numbers()
@@ -12355,7 +12357,10 @@ def get_supplier_returns():
                 or_(
                     SupplierReturn.description.ilike(f'%{search}%'),
                     SupplierReturn.invoice_number.ilike(f'%{search}%'),
-                    Supplier.supplier_name.ilike(f'%{search}%')
+                    Supplier.supplier_name.ilike(f'%{search}%'),
+                    SupplierReturn.ref_number.ilike(f'%{search}%'),
+                    SupplierReturn.document_ref_number.ilike(f'%{search}%'),
+                    SupplierReturn.remarks.ilike(f'%{search}%'),
                 )
             )
         
@@ -12398,22 +12403,166 @@ def get_supplier_returns():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/suppliers/<int:supplier_id>/purchase-invoices', methods=['GET'])
+@jwt_required()
+def get_supplier_purchase_invoices_for_return(supplier_id):
+    """List a supplier's dated purchase invoices with returnable invoice lines."""
+    try:
+        supplier = Supplier.query.get(supplier_id)
+        if not supplier:
+            return jsonify({"error": "Supplier not found"}), 404
+
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+        invoice_id = request.args.get('invoiceId', type=int)
+        exclude_return_id = request.args.get('excludeReturnId', type=int)
+        excluded_document_ref = None
+        if exclude_return_id:
+            excluded_return = SupplierReturn.query.get(exclude_return_id)
+            if not excluded_return or excluded_return.supplier_id != supplier_id:
+                return jsonify({"error": "Supplier return not found"}), 404
+            excluded_document_ref = (
+                excluded_return.document_ref_number or excluded_return.ref_number
+            )
+
+        query = PurchaseInvoice.query.join(Purchase).filter(
+            Purchase.supplier_id == supplier_id,
+        )
+        if invoice_id:
+            query = query.filter(PurchaseInvoice.id == invoice_id)
+        if from_date:
+            query = query.filter(func.date(PurchaseInvoice.date) >= from_date)
+        if to_date:
+            query = query.filter(func.date(PurchaseInvoice.date) <= to_date)
+
+        invoices = query.order_by(PurchaseInvoice.date.desc(), PurchaseInvoice.id.desc()).all()
+        response = []
+        for invoice in invoices:
+            legacy_returns = {}
+            source_returns = {}
+            return_query = SupplierReturn.query.filter(
+                SupplierReturn.purchase_invoice_id == invoice.id,
+            )
+            if excluded_document_ref:
+                return_query = return_query.filter(or_(
+                    SupplierReturn.document_ref_number != excluded_document_ref,
+                    and_(
+                        SupplierReturn.document_ref_number.is_(None),
+                        SupplierReturn.ref_number != excluded_document_ref,
+                    ),
+                ))
+            for returned in return_query.all():
+                key = (returned.product_id, returned.product_type)
+                if returned.source_purchase_invoice_item_id:
+                    source_key = returned.source_purchase_invoice_item_id
+                    source_returns[source_key] = (
+                        source_returns.get(source_key, 0) + safe_float(returned.quantity)
+                    )
+                else:
+                    legacy_returns[key] = legacy_returns.get(key, 0) + safe_float(returned.quantity)
+
+            items = []
+            for invoice_item in invoice.items:
+                regular = RegularProduct.query.get(invoice_item.product_id)
+                non_product = None if regular else NonProduct.query.get(invoice_item.product_id)
+                product_type = "regular" if regular else "non"
+                product = regular or non_product
+                key = (invoice_item.product_id, product_type)
+                legacy_quantity = legacy_returns.get(key, 0)
+                legacy_applied = min(legacy_quantity, safe_float(invoice_item.quantity))
+                legacy_returns[key] = max(0, legacy_quantity - legacy_applied)
+                returned_quantity = (
+                    source_returns.get(invoice_item.id, 0) + legacy_applied
+                )
+                items.append({
+                    "id": invoice_item.id,
+                    "productId": invoice_item.product_id,
+                    "productType": product_type,
+                    "productName": (
+                        f"{product.product_code} - {product.description}"
+                        if product and product.product_code
+                        else product.description if product
+                        else invoice_item.product_name or "Unknown product"
+                    ),
+                    "description": product.description if product else invoice_item.product_name or "",
+                    "quantity": safe_float(invoice_item.quantity),
+                    "returnedQuantity": returned_quantity,
+                    "returnableQuantity": max(
+                        0,
+                        safe_float(invoice_item.quantity) - returned_quantity,
+                    ),
+                    "unitPrice": safe_float(invoice_item.unit_price),
+                })
+
+            total_amount = sum(safe_float(item.total_price) for item in invoice.items)
+            response.append({
+                "id": invoice.id,
+                "purchaseId": invoice.purchase_id,
+                "date": invoice.date.isoformat() if invoice.date else None,
+                "invoiceNumber": str(invoice.id),
+                "remarks": invoice.remarks,
+                "totalAmount": total_amount,
+                "items": items,
+            })
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/supplier-returns/<int:return_id>/print', methods=['GET'])
 def print_supplier_return(return_id):
-    """Return a complete supplier return for the public A4 print view."""
+    """Return all lines in a supplier return document for the A4 print view."""
     try:
         return_item = SupplierReturn.query.get_or_404(return_id)
         supplier = Supplier.query.get(return_item.supplier_id)
-        product_model = RegularProduct if return_item.product_type == 'regular' else NonProduct
-        product = product_model.query.get(return_item.product_id)
+        document_ref = return_item.document_ref_number or return_item.ref_number
+        document_items = SupplierReturn.query.filter(
+            or_(
+                SupplierReturn.document_ref_number == document_ref,
+                and_(
+                    SupplierReturn.document_ref_number.is_(None),
+                    SupplierReturn.ref_number == document_ref,
+                ),
+            )
+        ).order_by(SupplierReturn.id.asc()).all()
         company = Company.query.first()
         return_data = return_item.to_dict()
-        return_data['productName'] = product.description if product else return_item.description
+        items = []
+        total_quantity = 0
+        total_value = 0
+        credit_note_amount = 0
+        for line in document_items:
+            product_model = RegularProduct if line.product_type == 'regular' else NonProduct
+            product = product_model.query.get(line.product_id)
+            line_data = line.to_dict()
+            line_data['productName'] = (
+                f"{product.product_code} - {product.description}"
+                if product and product.product_code
+                else product.description if product
+                else line.description
+            )
+            line_data['productCode'] = product.product_code if product else ""
+            items.append(line_data)
+            total_quantity += safe_float(line.quantity)
+            total_value += safe_float(line.total_value)
+            if line.credit_note_issued:
+                credit_note_amount += safe_float(line.credit_note_amount)
+
+        first_product_model = (
+            RegularProduct if document_items[0].product_type == 'regular' else NonProduct
+        )
+        first_product = first_product_model.query.get(document_items[0].product_id)
+        return_data['documentRefNumber'] = document_ref
+        return_data['totalQuantity'] = total_quantity
+        return_data['totalValue'] = total_value
+        return_data['creditNoteIssued'] = any(line.credit_note_issued for line in document_items)
+        return_data['creditNoteAmount'] = credit_note_amount
         return jsonify({
             'company': company.to_dict() if company else {},
             'supplier': supplier.to_dict() if supplier else {},
-            'product': product.to_dict() if product else {},
+            'product': first_product.to_dict() if first_product else {},
             'returnItem': return_data,
+            'items': items,
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -12451,6 +12600,198 @@ def create_supplier_return():
             # For back date entries, check editing permission
             if not backdate_opt or not backdate_opt.editing:
                 return jsonify({'error': 'You do not have permission to create back-dated returns.'}), 403
+        if isinstance(data.get('items'), list):
+            items = data['items']
+            if not items:
+                return jsonify({"error": "Add at least one product to the return."}), 400
+
+            supplier_id = data.get('supplierId')
+            supplier = Supplier.query.get(supplier_id)
+            if not supplier:
+                return jsonify({"error": "Supplier not found"}), 404
+
+            purchase_invoice_id = data.get('purchaseInvoiceId')
+            purchase_invoice = None
+            if purchase_invoice_id:
+                purchase_invoice = PurchaseInvoice.query.get(purchase_invoice_id)
+                purchase = Purchase.query.get(purchase_invoice.purchase_id) if purchase_invoice else None
+                if not purchase_invoice or not purchase:
+                    return jsonify({"error": "Purchase invoice not found"}), 404
+                if purchase.supplier_id != supplier_id:
+                    return jsonify({"error": "Selected invoice does not belong to this supplier."}), 400
+
+            source_lines = {}
+            if purchase_invoice:
+                source_lines = {
+                    item.id: item
+                    for item in PurchaseInvoiceItem.query.filter_by(
+                        invoice_id=purchase_invoice.id
+                    ).all()
+                }
+            requested_by_source = {}
+            prepared_items = []
+            for item in items:
+                product_id = item.get('productId')
+                product_type = item.get('productType')
+                quantity = safe_float(item.get('quantity'))
+                unit_price = safe_float(item.get('unitPrice'))
+                if product_type not in ('regular', 'non'):
+                    return jsonify({"error": "Each product must have a valid product type."}), 400
+                if quantity <= 0 or unit_price < 0:
+                    return jsonify({"error": "Product quantities must be positive and prices cannot be negative."}), 400
+
+                product_model = RegularProduct if product_type == 'regular' else NonProduct
+                product = product_model.query.get(product_id)
+                if not product:
+                    return jsonify({"error": "A selected product could not be found."}), 404
+
+                source_item_id = item.get('sourcePurchaseInvoiceItemId')
+                source_invoice_item = None
+                if source_item_id is not None:
+                    try:
+                        source_invoice_item = source_lines.get(int(source_item_id))
+                    except (TypeError, ValueError):
+                        source_invoice_item = None
+                    source_regular = (
+                        RegularProduct.query.get(source_invoice_item.product_id)
+                        if source_invoice_item else None
+                    )
+                    source_type = "regular" if source_regular else "non"
+                    if (
+                        not source_invoice_item
+                        or source_invoice_item.product_id != product_id
+                        or source_type != product_type
+                    ):
+                        return jsonify({"error": "A selected product does not belong to the purchase invoice."}), 400
+
+                    source_key = (source_invoice_item.id, product_type)
+                    requested_by_source[source_key] = requested_by_source.get(source_key, 0) + quantity
+                    already_returned = db.session.query(
+                        func.coalesce(func.sum(SupplierReturn.quantity), 0)
+                    ).filter(
+                        SupplierReturn.source_purchase_invoice_item_id == source_invoice_item.id,
+                    ).scalar() or 0
+                    legacy_returned = db.session.query(
+                        func.coalesce(func.sum(SupplierReturn.quantity), 0)
+                    ).filter(
+                        SupplierReturn.purchase_invoice_id == purchase_invoice.id,
+                        SupplierReturn.product_id == product_id,
+                        SupplierReturn.product_type == product_type,
+                        SupplierReturn.source_purchase_invoice_item_id.is_(None),
+                    ).scalar() or 0
+                    available = max(
+                        0,
+                        safe_float(source_invoice_item.quantity)
+                        - safe_float(already_returned)
+                        - safe_float(legacy_returned)
+                        - (requested_by_source[source_key] - quantity),
+                    )
+                    if quantity > available:
+                        return jsonify({
+                            "error": (
+                                f"Return quantity for {product.description} exceeds the "
+                                f"remaining invoice quantity ({available:g})."
+                            )
+                        }), 400
+
+                prepared_items.append({
+                    "product_id": product_id,
+                    "product_type": product_type,
+                    "description": str(item.get('description') or product.description)[:200],
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "total_value": quantity * unit_price,
+                    "source_item_id": source_invoice_item.id if source_invoice_item else None,
+                    "is_manual": bool(item.get('isManual', source_invoice_item is None)),
+                    "remarks": str(item.get('remarks') or "").strip() or None,
+                })
+
+            status = data.get('status', 'completed')
+            if status not in ('pending', 'approved', 'completed', 'rejected'):
+                return jsonify({"error": "Invalid supplier return status."}), 400
+            credit_note_issued = bool(data.get('creditNoteIssued', False))
+            credit_note_amount = safe_float(data.get('creditNoteAmount', 0))
+            if credit_note_amount < 0:
+                return jsonify({"error": "Credit note amount cannot be negative."}), 400
+
+            created_returns = []
+            for index, item in enumerate(prepared_items):
+                supplier_return = SupplierReturn(
+                    ref_number=f"SR-TEMP-{uuid.uuid4().hex}",
+                    date=parsed_date,
+                    supplier_id=supplier_id,
+                    purchase_invoice_id=purchase_invoice.id if purchase_invoice else None,
+                    source_purchase_invoice_item_id=item['source_item_id'],
+                    is_manual=item['is_manual'],
+                    product_id=item['product_id'],
+                    product_type=item['product_type'],
+                    description=item['description'],
+                    invoice_number=data.get('invoiceNumber'),
+                    remarks=data.get('remarks'),
+                    quantity=item['quantity'],
+                    unit_price=item['unit_price'],
+                    total_value=item['total_value'],
+                    return_reason=data.get('returnReason'),
+                    credit_note_issued=credit_note_issued and index == 0,
+                    credit_note_amount=credit_note_amount if index == 0 else 0,
+                    status=status,
+                    created_by=user_id,
+                )
+                db.session.add(supplier_return)
+                created_returns.append(supplier_return)
+
+            db.session.flush()
+            next_reference = max(
+                (db.session.query(func.max(SupplierReturn.id)).scalar() or 0)
+                - len(created_returns) + 1,
+                1,
+            )
+            for supplier_return in created_returns:
+                while SupplierReturn.query.filter_by(
+                    ref_number=f"SR{next_reference:04d}"
+                ).first():
+                    next_reference += 1
+                supplier_return.ref_number = f"SR{next_reference:04d}"
+                next_reference += 1
+            document_ref_number = created_returns[0].ref_number
+            for supplier_return in created_returns:
+                supplier_return.document_ref_number = document_ref_number
+
+                success, result = update_product_stock(
+                    product_id=supplier_return.product_id,
+                    product_type=supplier_return.product_type,
+                    quantity_change=-safe_float(supplier_return.quantity),
+                    movement_type='supplier_return',
+                    reference_id=supplier_return.id,
+                    reference_type='supplier_return',
+                    remarks=f"Supplier return: {document_ref_number}",
+                    user_id=user_id,
+                    movement_date=parsed_date,
+                )
+                if not success:
+                    db.session.rollback()
+                    return jsonify({"error": f"Stock update failed: {result}"}), 400
+
+            if credit_note_issued and credit_note_amount > 0:
+                db.session.add(SupplierPayment(
+                    supplier_id=supplier_id,
+                    purchase_invoice_id=purchase_invoice.id if purchase_invoice else None,
+                    amount=-credit_note_amount,
+                    payment_mode='credit_note',
+                    payment_date=parsed_date,
+                    remarks=f"Credit note for return: {document_ref_number}",
+                ))
+                if purchase_invoice:
+                    new_paid = safe_float(purchase_invoice.paid_amount) - credit_note_amount
+                    purchase_invoice.paid_amount = max(0, new_paid)
+                    purchase_invoice.payment_status = 'pending' if new_paid <= 0 else 'partial'
+
+            db.session.commit()
+            return jsonify({
+                "documentRefNumber": document_ref_number,
+                "items": [supplier_return.to_dict() for supplier_return in created_returns],
+            }), 201
+
         # Generate reference number
         last_return = SupplierReturn.query.order_by(SupplierReturn.id.desc()).first()
         ref_number = f"SR{1 if not last_return else last_return.id + 1:04d}"
@@ -12494,6 +12835,7 @@ def create_supplier_return():
         
         supplier_return = SupplierReturn(
             ref_number=ref_number,
+            document_ref_number=ref_number,
             date=parsed_date,
             supplier_id=supplier_return_data.supplierId,
             purchase_invoice_id=supplier_return_data.purchaseInvoiceId,
@@ -12601,6 +12943,243 @@ def update_supplier_return(id):
                 # For back date entries, check editing permission
                 if not backdate_opt or not backdate_opt.editing:
                     return jsonify({'error': 'You do not have permission to edit back-dated returns.'}), 403
+
+        if isinstance(data.get('items'), list):
+            document_ref = supplier_return.document_ref_number or supplier_return.ref_number
+            document_lines = SupplierReturn.query.filter(
+                or_(
+                    SupplierReturn.document_ref_number == document_ref,
+                    and_(
+                        SupplierReturn.document_ref_number.is_(None),
+                        SupplierReturn.ref_number == document_ref,
+                    ),
+                )
+            ).order_by(SupplierReturn.id.asc()).all()
+            document_ids = {line.id for line in document_lines}
+            requested_items = data['items']
+            if not requested_items or len(requested_items) != len(document_lines):
+                return jsonify({"error": "All products in the return document must be included when editing."}), 400
+            if any(
+                line.date != today
+                and (not backdate_opt or not backdate_opt.editing)
+                for line in document_lines
+            ):
+                return jsonify({'error': 'You do not have permission to edit back-dated returns.'}), 403
+            if any(
+                line.date == today
+                and backdate_opt
+                and not getattr(backdate_opt, 'current_editing', True)
+                for line in document_lines
+            ):
+                return jsonify({'error': 'You do not have permission to edit returns for today.'}), 403
+
+            if data.get('supplierId') != supplier_return.supplier_id:
+                return jsonify({"error": "The supplier cannot be changed while editing a return."}), 400
+            if data.get('purchaseInvoiceId') != supplier_return.purchase_invoice_id:
+                return jsonify({"error": "The purchase invoice cannot be changed while editing a return."}), 400
+
+            supplier = Supplier.query.get(supplier_return.supplier_id)
+            if not supplier:
+                return jsonify({"error": "Supplier not found"}), 404
+
+            status = data.get('status', supplier_return.status)
+            if status not in ('pending', 'approved', 'completed', 'rejected'):
+                return jsonify({"error": "Invalid supplier return status."}), 400
+            credit_note_issued = bool(data.get('creditNoteIssued', False))
+            credit_note_amount = safe_float(data.get('creditNoteAmount', 0))
+            if credit_note_amount < 0:
+                return jsonify({"error": "Credit note amount cannot be negative."}), 400
+
+            selected_invoice = None
+            invoice_lines = {}
+            if supplier_return.purchase_invoice_id:
+                selected_invoice = PurchaseInvoice.query.get(supplier_return.purchase_invoice_id)
+                purchase = Purchase.query.get(selected_invoice.purchase_id) if selected_invoice else None
+                if not selected_invoice or not purchase or purchase.supplier_id != supplier.id:
+                    return jsonify({"error": "Purchase invoice not found for this supplier."}), 404
+                invoice_lines = {
+                    line.id: line for line in PurchaseInvoiceItem.query.filter_by(
+                        invoice_id=selected_invoice.id
+                    ).all()
+                }
+
+            existing_by_id = {line.id: line for line in document_lines}
+            seen_ids = set()
+            prepared_items = []
+            requested_by_source = {}
+            for item in requested_items:
+                try:
+                    line_id = int(item.get('id'))
+                except (TypeError, ValueError):
+                    return jsonify({"error": "Each edited product must reference an existing return line."}), 400
+                if line_id not in existing_by_id or line_id in seen_ids:
+                    return jsonify({"error": "The return document contains an invalid product line."}), 400
+                seen_ids.add(line_id)
+                original_line = existing_by_id[line_id]
+                product_id = item.get('productId')
+                product_type = item.get('productType')
+                quantity = safe_float(item.get('quantity'))
+                unit_price = safe_float(item.get('unitPrice'))
+                if (
+                    product_id != original_line.product_id
+                    or product_type != original_line.product_type
+                ):
+                    return jsonify({"error": "Products cannot be replaced while editing a return."}), 400
+                if quantity <= 0 or unit_price < 0:
+                    return jsonify({"error": "Product quantities must be positive and prices cannot be negative."}), 400
+
+                source_item_id = item.get('sourcePurchaseInvoiceItemId')
+                if source_item_id is not None:
+                    try:
+                        source_item_id = int(source_item_id)
+                    except (TypeError, ValueError):
+                        return jsonify({"error": "Invalid purchase invoice product line."}), 400
+                if source_item_id != original_line.source_purchase_invoice_item_id:
+                    return jsonify({"error": "Invoice-linked return products must remain linked to their original invoice line."}), 400
+
+                product_model = RegularProduct if product_type == 'regular' else NonProduct
+                product = product_model.query.get(product_id)
+                if not product:
+                    return jsonify({"error": "A selected product could not be found."}), 404
+
+                if source_item_id is not None:
+                    source_item = invoice_lines.get(source_item_id)
+                    source_regular = (
+                        RegularProduct.query.get(source_item.product_id)
+                        if source_item else None
+                    )
+                    source_type = "regular" if source_regular else "non"
+                    if (
+                        not source_item
+                        or source_item.product_id != product_id
+                        or source_type != product_type
+                    ):
+                        return jsonify({"error": "A selected product does not belong to the purchase invoice."}), 400
+                    source_key = (source_item.id, product_type)
+                    requested_by_source[source_key] = requested_by_source.get(source_key, 0) + quantity
+
+                prepared_items.append({
+                    "line": original_line,
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "total_value": quantity * unit_price,
+                    "description": str(item.get('description') or product.description)[:200],
+                })
+
+            if seen_ids != document_ids:
+                return jsonify({"error": "All products in the return document must be included when editing."}), 400
+
+            for (source_item_id, product_type), requested_quantity in requested_by_source.items():
+                source_item = invoice_lines[source_item_id]
+                outside_linked = db.session.query(
+                    func.coalesce(func.sum(SupplierReturn.quantity), 0)
+                ).filter(
+                    SupplierReturn.source_purchase_invoice_item_id == source_item_id,
+                    SupplierReturn.id.notin_(document_ids),
+                ).scalar() or 0
+                outside_legacy = db.session.query(
+                    func.coalesce(func.sum(SupplierReturn.quantity), 0)
+                ).filter(
+                    SupplierReturn.purchase_invoice_id == selected_invoice.id,
+                    SupplierReturn.product_id == source_item.product_id,
+                    SupplierReturn.product_type == product_type,
+                    SupplierReturn.source_purchase_invoice_item_id.is_(None),
+                    SupplierReturn.id.notin_(document_ids),
+                ).scalar() or 0
+                available_quantity = max(
+                    0,
+                    safe_float(source_item.quantity)
+                    - safe_float(outside_linked)
+                    - safe_float(outside_legacy),
+                )
+                if requested_quantity > available_quantity:
+                    return jsonify({
+                        "error": (
+                            f"Return quantity exceeds the remaining invoice quantity "
+                            f"({available_quantity:g})."
+                        )
+                    }), 400
+
+            for index, prepared in enumerate(prepared_items):
+                line = prepared['line']
+                old_quantity = safe_float(line.quantity)
+                old_status = line.status
+                line.date = parsed_date
+                line.remarks = data.get('remarks')
+                line.invoice_number = data.get('invoiceNumber')
+                line.return_reason = data.get('returnReason')
+                line.quantity = prepared['quantity']
+                line.unit_price = prepared['unit_price']
+                line.total_value = prepared['total_value']
+                line.status = status
+                line.credit_note_issued = credit_note_issued and index == 0
+                line.credit_note_amount = credit_note_amount if index == 0 else 0
+
+                success, result = _apply_return_stock_transition(
+                    return_kind='supplier',
+                    reference_id=line.id,
+                    old_product_id=line.product_id,
+                    old_product_type=line.product_type,
+                    old_status=old_status,
+                    old_quantity=old_quantity,
+                    new_product_id=line.product_id,
+                    new_product_type=line.product_type,
+                    new_status=status,
+                    new_quantity=prepared['quantity'],
+                    user_id=user_id,
+                    movement_date=parsed_date,
+                    movement_type='supplier_return_adjustment',
+                    remarks=f"Supplier return adjusted: {old_quantity}/{old_status} -> {prepared['quantity']}/{status}",
+                )
+                if not success:
+                    db.session.rollback()
+                    return jsonify({"error": f"Stock update failed: {result}"}), 400
+
+            payment_reference_filters = [
+                SupplierPayment.remarks == f"Credit note for return: {document_ref}",
+            ]
+            payment_reference_filters.extend(
+                SupplierPayment.remarks == f"Credit note for return: {line.ref_number}"
+                for line in document_lines
+            )
+            old_credit_payments = SupplierPayment.query.filter(
+                SupplierPayment.supplier_id == supplier.id,
+                SupplierPayment.payment_mode == 'credit_note',
+                or_(*payment_reference_filters),
+            ).all()
+            for payment in old_credit_payments:
+                payment_invoice = payment.purchase_invoice
+                if not payment_invoice:
+                    payment_invoice = selected_invoice
+                if payment_invoice:
+                    restored_paid = safe_float(payment_invoice.paid_amount) + abs(safe_float(payment.amount))
+                    payment_invoice.paid_amount = restored_paid
+                    invoice_total = sum(safe_float(row.total_price) for row in payment_invoice.items)
+                    payment_invoice.payment_status = (
+                        'paid' if restored_paid >= invoice_total else
+                        'partial' if restored_paid > 0 else 'pending'
+                    )
+                db.session.delete(payment)
+
+            if credit_note_issued and credit_note_amount > 0:
+                db.session.add(SupplierPayment(
+                    supplier_id=supplier.id,
+                    purchase_invoice_id=selected_invoice.id if selected_invoice else None,
+                    amount=-credit_note_amount,
+                    payment_mode='credit_note',
+                    payment_date=parsed_date,
+                    remarks=f"Credit note for return: {document_ref}",
+                ))
+                if selected_invoice:
+                    new_paid = safe_float(selected_invoice.paid_amount) - credit_note_amount
+                    selected_invoice.paid_amount = max(0, new_paid)
+                    selected_invoice.payment_status = 'pending' if new_paid <= 0 else 'partial'
+
+            db.session.commit()
+            return jsonify({
+                "documentRefNumber": document_ref,
+                "items": [line.to_dict() for line in document_lines],
+            }), 200
         
         # Capture the old effective inventory state and normalize quantities so
         # Decimal database values and JSON floats are safe to compare.
@@ -12618,6 +13197,50 @@ def update_supplier_return(id):
         new_product_id = data['productId']
         new_product_type = data['productType']
         new_date = datetime.strptime(data['date'], "%Y-%m-%d").date()
+
+        if supplier_return.source_purchase_invoice_item_id:
+            source_item = PurchaseInvoiceItem.query.get(
+                supplier_return.source_purchase_invoice_item_id
+            )
+            source_regular = (
+                RegularProduct.query.get(source_item.product_id)
+                if source_item else None
+            )
+            source_type = "regular" if source_regular else "non"
+            if (
+                not source_item
+                or data.get('purchaseInvoiceId') != supplier_return.purchase_invoice_id
+                or data.get('supplierId') != supplier_return.supplier_id
+                or new_product_id != source_item.product_id
+                or new_product_type != source_type
+            ):
+                return jsonify({
+                    "error": "Invoice-linked return products must remain linked to their original invoice line."
+                }), 400
+            other_linked_quantity = db.session.query(
+                func.coalesce(func.sum(SupplierReturn.quantity), 0)
+            ).filter(
+                SupplierReturn.source_purchase_invoice_item_id == source_item.id,
+                SupplierReturn.id != supplier_return.id,
+            ).scalar() or 0
+            legacy_quantity = db.session.query(
+                func.coalesce(func.sum(SupplierReturn.quantity), 0)
+            ).filter(
+                SupplierReturn.purchase_invoice_id == supplier_return.purchase_invoice_id,
+                SupplierReturn.product_id == source_item.product_id,
+                SupplierReturn.product_type == source_type,
+                SupplierReturn.source_purchase_invoice_item_id.is_(None),
+            ).scalar() or 0
+            available_quantity = max(
+                0,
+                safe_float(source_item.quantity)
+                - safe_float(other_linked_quantity)
+                - safe_float(legacy_quantity),
+            )
+            if quantity > available_quantity:
+                return jsonify({
+                    "error": f"Return quantity exceeds the remaining invoice quantity ({available_quantity:g})."
+                }), 400
         
         # Update fields
         supplier_return.date = new_date
@@ -12665,7 +13288,7 @@ def update_supplier_return(id):
             old_credit_payment = SupplierPayment.query.filter_by(
                 supplier_id=supplier_return.supplier_id,
                 payment_mode='credit_note',
-                remarks__like=f"%{supplier_return.ref_number}%"
+                remarks=f"Credit note for return: {supplier_return.document_ref_number or supplier_return.ref_number}"
             ).first()
             
             if old_credit_payment:
@@ -12679,7 +13302,7 @@ def update_supplier_return(id):
                     amount=-new_credit_amount,  # Negative amount for credit
                     payment_mode='credit_note',
                     payment_date=supplier_return.date,
-                    remarks=f"Credit note for return: {supplier_return.ref_number}"
+                    remarks=f"Credit note for return: {supplier_return.document_ref_number or supplier_return.ref_number}"
                 )
                 db.session.add(credit_payment)
                 
@@ -12703,7 +13326,7 @@ def update_supplier_return(id):
 @app.route('/api/supplier-returns/<int:id>', methods=['DELETE'])
 @jwt_required()
 def delete_supplier_return(id):
-    """Delete a supplier return with permission checks"""
+    """Delete all product lines in a supplier return document."""
     try:
         user_id = get_jwt_identity()
         supplier_return = SupplierReturn.query.get_or_404(id)
@@ -12714,6 +13337,16 @@ def delete_supplier_return(id):
         # Get today's date
         from datetime import datetime
         today = get_business_date()
+        document_ref = supplier_return.document_ref_number or supplier_return.ref_number
+        returns_to_delete = SupplierReturn.query.filter(
+            or_(
+                SupplierReturn.document_ref_number == document_ref,
+                and_(
+                    SupplierReturn.document_ref_number.is_(None),
+                    SupplierReturn.ref_number == document_ref,
+                ),
+            )
+        ).order_by(SupplierReturn.id.asc()).all()
         return_date = supplier_return.date
         
         # Check permissions based on return date
@@ -12726,53 +13359,69 @@ def delete_supplier_return(id):
             if not backdate_opt or not backdate_opt.deleting:
                 return jsonify({'error': 'You do not have permission to delete back-dated returns.'}), 403
         
-        # Remove the return’s effective stock impact. Supplier returns are
-        # included by the existing Stock Check formula while the row exists,
-        # regardless of status, so deletion restores exactly one quantity.
-        success, result = _apply_return_stock_transition(
-            return_kind='supplier',
-            reference_id=supplier_return.id,
-            old_product_id=supplier_return.product_id,
-            old_product_type=supplier_return.product_type,
-            old_status=supplier_return.status,
-            old_quantity=supplier_return.quantity,
-            new_product_id=supplier_return.product_id,
-            new_product_type=supplier_return.product_type,
-            new_status='deleted',
-            new_quantity=0,
-            user_id=get_jwt_identity(),
-            movement_date=supplier_return.date,
-            movement_type='supplier_return_cancellation',
-            remarks=f"Supplier return cancelled: {supplier_return.description}"
+        for return_line in returns_to_delete:
+            if return_line.date == today:
+                if backdate_opt and not getattr(backdate_opt, 'current_editing', True):
+                    return jsonify({'error': 'You do not have permission to delete returns for today.'}), 403
+            elif not backdate_opt or not backdate_opt.deleting:
+                return jsonify({'error': 'You do not have permission to delete back-dated returns.'}), 403
+
+        for return_line in returns_to_delete:
+            success, result = _apply_return_stock_transition(
+                return_kind='supplier',
+                reference_id=return_line.id,
+                old_product_id=return_line.product_id,
+                old_product_type=return_line.product_type,
+                old_status=return_line.status,
+                old_quantity=return_line.quantity,
+                new_product_id=return_line.product_id,
+                new_product_type=return_line.product_type,
+                new_status='deleted',
+                new_quantity=0,
+                user_id=user_id,
+                movement_date=return_line.date,
+                movement_type='supplier_return_cancellation',
+                remarks=f"Supplier return cancelled: {document_ref}",
+            )
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock restoration failed: {result}"}), 400
+
+        reference_filters = [
+            SupplierPayment.remarks == f"Credit note for return: {document_ref}",
+        ]
+        reference_filters.extend(
+            SupplierPayment.remarks == f"Credit note for return: {line.ref_number}"
+            for line in returns_to_delete
         )
-        if not success:
-            return jsonify({"error": f"Stock restoration failed: {result}"}), 400
-        
-        # Remove credit note payment if exists
-        credit_payment = SupplierPayment.query.filter(
+        credit_payments = SupplierPayment.query.filter(
             SupplierPayment.supplier_id == supplier_return.supplier_id,
             SupplierPayment.payment_mode == 'credit_note',
-            SupplierPayment.remarks.like(f"%{supplier_return.ref_number}%")
-        ).first()
-        
-        if credit_payment:
+            or_(*reference_filters),
+        ).all()
+        for credit_payment in credit_payments:
+            purchase_invoice = credit_payment.purchase_invoice
+            if not purchase_invoice:
+                purchase_invoice = next(
+                    (
+                        line.purchase_invoice for line in returns_to_delete
+                        if line.purchase_invoice_id == credit_payment.purchase_invoice_id
+                        and line.purchase_invoice
+                    ),
+                    None,
+                )
+            if purchase_invoice:
+                restored_paid = safe_float(purchase_invoice.paid_amount) + abs(safe_float(credit_payment.amount))
+                purchase_invoice.paid_amount = restored_paid
+                total_invoice_amount = sum(safe_float(item.total_price) for item in purchase_invoice.items)
+                purchase_invoice.payment_status = (
+                    'paid' if restored_paid >= total_invoice_amount else
+                    'partial' if restored_paid > 0 else 'pending'
+                )
             db.session.delete(credit_payment)
-            
-            # Restore purchase invoice payment status if linked
-            if supplier_return.purchase_invoice:
-                current_paid = float(supplier_return.purchase_invoice.paid_amount or 0)
-                restored_paid = current_paid + supplier_return.credit_note_amount
-                supplier_return.purchase_invoice.paid_amount = restored_paid
-                
-                # Calculate total invoice amount
-                total_invoice_amount = sum(item.total_price for item in supplier_return.purchase_invoice.items)
-                if restored_paid >= total_invoice_amount:
-                    supplier_return.purchase_invoice.payment_status = 'paid'
-                else:
-                    supplier_return.purchase_invoice.payment_status = 'partial'
-                db.session.add(supplier_return.purchase_invoice)
-        
-        db.session.delete(supplier_return)
+
+        for return_line in returns_to_delete:
+            db.session.delete(return_line)
         db.session.commit()
         return jsonify({"message": "Supplier return deleted successfully"}), 200
     except Exception as e:
@@ -12827,7 +13476,7 @@ def reject_supplier_return(id):
             credit_payment = SupplierPayment.query.filter_by(
                 supplier_id=supplier_return.supplier_id,
                 payment_mode='credit_note',
-                remarks__like=f"%{supplier_return.ref_number}%"
+                remarks=f"Credit note for return: {supplier_return.document_ref_number or supplier_return.ref_number}"
             ).first()
             
             if credit_payment:

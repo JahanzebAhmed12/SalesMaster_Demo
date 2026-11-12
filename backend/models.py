@@ -1192,9 +1192,12 @@ class SupplierReturn(db.Model):
     """Tracks supplier returns"""
     id = db.Column(db.Integer, primary_key=True)
     ref_number = db.Column(db.String(50), unique=True, nullable=False)
+    document_ref_number = db.Column(db.String(50), index=True)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
     purchase_invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id'))  # Optional, link to original purchase
+    source_purchase_invoice_item_id = db.Column(db.Integer, index=True)
+    is_manual = db.Column(db.Boolean, nullable=False, default=False, server_default='0')
     product_id = db.Column(db.Integer, nullable=False)  # ID of the product being returned
     product_type = db.Column(db.String(20), nullable=False)  # 'regular' or 'non'
     description = db.Column(db.String(200), nullable=False)
@@ -1217,13 +1220,18 @@ class SupplierReturn(db.Model):
     user = db.relationship('User', backref='supplier_returns_created', foreign_keys=[created_by])
 
     def to_dict(self):
+        document_ref_number = self.document_ref_number or self.ref_number
         return {
             'id': self.id,
-            'refNumber': self.ref_number,
+            'refNumber': document_ref_number,
+            'lineRefNumber': self.ref_number,
+            'documentRefNumber': document_ref_number,
             'date': self.date.isoformat() if self.date else None,
             'supplierId': self.supplier_id,
             'supplierName': self.supplier.supplier_name if self.supplier else None,
             'purchaseInvoiceId': self.purchase_invoice_id,
+            'sourcePurchaseInvoiceItemId': self.source_purchase_invoice_item_id,
+            'isManual': self.is_manual,
             'productId': self.product_id,
             'productType': self.product_type,
             'description': self.description,
