@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Pencil, Search, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Printer, Search, Trash2 } from "lucide-react";
 
 interface DiscountLine {
   id: number;
@@ -101,6 +101,9 @@ export default function CustomerDiscountPage() {
 
   const businessDateString = currentDate || "";
   const [fromDate, setFromDate] = useState("");
+  const [discountFromDate, setDiscountFromDate] = useState("");
+  const [discountToDate, setDiscountToDate] = useState("");
+  const [invoiceFilter, setInvoiceFilter] = useState("");
   const [transactionDate, setTransactionDate] = useState("");
   const [searchEnabled, setSearchEnabled] = useState(false);
   const [selectedProductKey, setSelectedProductKey] = useState("");
@@ -115,6 +118,8 @@ export default function CustomerDiscountPage() {
     if (!businessDateString) return;
     setTransactionDate(previous => !showDiscountDate || !previous ? businessDateString : previous);
     setFromDate(previous => previous || format(subDays(parseISO(businessDateString), 30), "yyyy-MM-dd"));
+    setDiscountFromDate(previous => previous || businessDateString);
+    setDiscountToDate(previous => previous || businessDateString);
   }, [businessDateString, showDiscountDate]);
 
   useEffect(() => {
@@ -144,12 +149,12 @@ export default function CustomerDiscountPage() {
   });
 
   const discountsQuery = useQuery<CustomerDiscount[]>({
-    queryKey: ["customer-discounts", customerId, fromDate, businessDateString],
+    queryKey: ["customer-discounts", customerId, discountFromDate, discountToDate],
     queryFn: () => apiRequest(
       "GET",
-      `/api/customer-discounts?customerId=${customerId}&fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(businessDateString)}`
+      `/api/customer-discounts?customerId=${customerId}&fromDate=${encodeURIComponent(discountFromDate)}&toDate=${encodeURIComponent(discountToDate)}`
     ),
-    enabled: !!customerId,
+    enabled: !!customerId && !!discountFromDate && !!discountToDate && discountFromDate <= discountToDate,
   });
 
   const productOptions = useMemo(() => {
@@ -202,6 +207,15 @@ export default function CustomerDiscountPage() {
       };
     });
   }, [discountsQuery.data]);
+
+  const visibleDiscountTickets = useMemo(() => {
+    const filter = invoiceFilter.trim().toLowerCase();
+    if (!filter) return discountTickets;
+    return discountTickets.filter(ticket =>
+      [ticket.documentInvoiceNumber, ...ticket.invoiceNumbers]
+        .some(invoiceNumber => invoiceNumber?.toLowerCase().includes(filter))
+    );
+  }, [discountTickets, invoiceFilter]);
 
   const selectedLine = useMemo(
     () => invoiceQuery.data?.items.find(line =>
@@ -470,6 +484,17 @@ export default function CustomerDiscountPage() {
     }
   };
 
+  const handlePrint = (ticket: DiscountTicketGroup) => {
+    const activeLine = ticket.activeLines[0];
+    if (!activeLine) return;
+    const ticketNumber = ticket.documentInvoiceNumber || activeLine.reference;
+    window.open(
+      `/print/invoice/${encodeURIComponent(ticketNumber)}?discountId=${activeLine.id}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
   return (
     <PageLayout title="Customer Discount" breadcrumb="Data Entry > Customer Discount">
       <div className="space-y-6">
@@ -729,69 +754,111 @@ export default function CustomerDiscountPage() {
           <CardContent>
             {!selectedCustomer ? (
               <p className="text-sm text-muted-foreground">Select a customer to view discounts.</p>
-            ) : discountsQuery.isLoading ? (
-              <div className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Loading discount history…</div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead><TableHead>Reference(s)</TableHead><TableHead>Ticket No</TableHead><TableHead>Invoice(s)</TableHead>
-                      <TableHead>Products</TableHead><TableHead>Reasons</TableHead><TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Status</TableHead><TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {discountTickets.map(ticket => (
-                      <TableRow key={ticket.key} className={ticket.activeLines.length === 0 ? "opacity-60" : ""}>
-                        <TableCell>{ticket.dates.join(", ")}</TableCell>
-                        <TableCell>{ticket.lines.map(line => line.reference).join(", ")}</TableCell>
-                        <TableCell>{ticket.documentInvoiceNumber || "-"}</TableCell>
-                        <TableCell>{ticket.invoiceNumbers.join(", ") || "-"}</TableCell>
-                        <TableCell className="whitespace-normal">
-                          {ticket.lines.map(line => (
-                            <div key={line.id} className={line.isDeleted ? "line-through text-muted-foreground" : ""}>
-                              {line.productName}
-                            </div>
-                          ))}
-                        </TableCell>
-                        <TableCell className="max-w-xs whitespace-normal">
-                          {ticket.lines.map(line => (
-                            <div key={line.id} className={line.isDeleted ? "line-through text-muted-foreground" : ""}>
-                              {line.reason}
-                            </div>
-                          ))}
-                        </TableCell>
-                        <TableCell className="text-right">{money(ticket.amount)}</TableCell>
-                        <TableCell>
-                          {ticket.activeLines.length === 0
-                            ? "Deleted"
-                            : ticket.activeLines.length === ticket.lines.length
-                              ? "Active"
-                              : "Partially Deleted"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-col gap-1">
-                            {ticket.activeLines.map(line => (
-                              <Button key={line.id} size="sm" variant="outline" onClick={() => handleEdit(line)} disabled={!canEditEntry(line.date)} aria-label={`Edit ${line.reference}`}>
-                                <Pencil className="mr-1 h-4 w-4" />{line.productName}
-                              </Button>
-                            ))}
-                            {ticket.activeLines.length > 0 && (
-                              <Button size="sm" variant="destructive" onClick={() => void handleDelete(ticket)} disabled={!ticket.activeLines.every(line => canDeleteEntry(line.date))} aria-label={`Delete ticket ${ticket.documentInvoiceNumber || ticket.key}`}>
-                                <Trash2 className="mr-1 h-4 w-4" />Delete Ticket
-                              </Button>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {!discountTickets.length && (
-                      <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">No discounts in this date range.</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <>
+                <div className="mb-4 grid gap-4 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="discount-history-from">Date from</Label>
+                    <Input
+                      id="discount-history-from"
+                      type="date"
+                      value={discountFromDate}
+                      max={businessDateString}
+                      onChange={event => setDiscountFromDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="discount-history-to">Date to</Label>
+                    <Input
+                      id="discount-history-to"
+                      type="date"
+                      value={discountToDate}
+                      max={businessDateString}
+                      onChange={event => setDiscountToDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="discount-history-invoice">Invoice number</Label>
+                    <Input
+                      id="discount-history-invoice"
+                      value={invoiceFilter}
+                      onChange={event => setInvoiceFilter(event.target.value)}
+                      placeholder="Filter by invoice or ticket number"
+                    />
+                  </div>
+                </div>
+                {discountFromDate > discountToDate ? (
+                  <p className="text-sm text-destructive">The start date must be on or before the end date.</p>
+                ) : discountsQuery.isLoading ? (
+                  <div className="flex items-center gap-2 text-sm"><Loader2 className="h-4 w-4 animate-spin" />Loading discount history…</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead><TableHead>Reference(s)</TableHead><TableHead>Ticket No</TableHead><TableHead>Invoice(s)</TableHead>
+                          <TableHead>Products</TableHead><TableHead>Reasons</TableHead><TableHead className="text-right">Amount</TableHead>
+                          <TableHead>Status</TableHead><TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {visibleDiscountTickets.map(ticket => (
+                          <TableRow key={ticket.key} className={ticket.activeLines.length === 0 ? "opacity-60" : ""}>
+                            <TableCell>{ticket.dates.join(", ")}</TableCell>
+                            <TableCell>{ticket.lines.map(line => line.reference).join(", ")}</TableCell>
+                            <TableCell>{ticket.documentInvoiceNumber || "-"}</TableCell>
+                            <TableCell>{ticket.invoiceNumbers.join(", ") || "-"}</TableCell>
+                            <TableCell className="whitespace-normal">
+                              {ticket.lines.map(line => (
+                                <div key={line.id} className={line.isDeleted ? "line-through text-muted-foreground" : ""}>
+                                  {line.productName}
+                                </div>
+                              ))}
+                            </TableCell>
+                            <TableCell className="max-w-xs whitespace-normal">
+                              {ticket.lines.map(line => (
+                                <div key={line.id} className={line.isDeleted ? "line-through text-muted-foreground" : ""}>
+                                  {line.reason}
+                                </div>
+                              ))}
+                            </TableCell>
+                            <TableCell className="text-right">{money(ticket.amount)}</TableCell>
+                            <TableCell>
+                              {ticket.activeLines.length === 0
+                                ? "Deleted"
+                                : ticket.activeLines.length === ticket.lines.length
+                                  ? "Active"
+                                  : "Partially Deleted"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                {ticket.activeLines.length > 0 && (
+                                  <Button size="sm" variant="outline" onClick={() => handlePrint(ticket)} aria-label={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}>
+                                    <Printer className="mr-1 h-4 w-4" />Print
+                                  </Button>
+                                )}
+                                {ticket.activeLines.map(line => (
+                                  <Button key={line.id} size="sm" variant="outline" onClick={() => handleEdit(line)} disabled={!canEditEntry(line.date)} aria-label={`Edit ${line.reference}`}>
+                                    <Pencil className="mr-1 h-4 w-4" />{line.productName}
+                                  </Button>
+                                ))}
+                                {ticket.activeLines.length > 0 && (
+                                  <Button size="sm" variant="destructive" onClick={() => void handleDelete(ticket)} disabled={!ticket.activeLines.every(line => canDeleteEntry(line.date))} aria-label={`Delete ticket ${ticket.documentInvoiceNumber || ticket.key}`}>
+                                    <Trash2 className="mr-1 h-4 w-4" />Delete Ticket
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {!visibleDiscountTickets.length && (
+                          <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground">No discounts match the selected filters.</TableCell></TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
