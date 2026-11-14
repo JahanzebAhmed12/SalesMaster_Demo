@@ -12,12 +12,14 @@ Implementation is complete and verified. The final report review included dashbo
 - Kept original invoice and line amounts, dates, quantities, stock, and payment records unchanged. Adjusted invoice outstanding/payment status and customer running balance from the separate discount transaction.
 - Integrated dated discounts into Daily Book Sales, Daily Summary and its printable output, customer statement/history, aging, product history/product sales reports, date-wise sales, sales analysis, dashboard totals/charts, monthly full analysis, and product Profit/Loss. Discounts are credited once on their transaction date.
 - Updated customer payment outstanding calculations so discounts reduce the selectable invoice balance and payment status remains consistent after payment batch changes.
-- Added `backend/test_customer_discount.py` for migration idempotency/preservation, CRUD/audit, permissions, invoice and line caps, paid/partially-paid invoice rules, and report integration.
+- Changed discount entry to select a product first and then choose a matching finalized invoice and exact product line.
+- Added a per-user **Show Customer Discount Date** restriction in Admin Functions. Existing users default to visible; when hidden, the server always records the current business date.
+- Extended `backend/test_customer_discount_ticket.py` to cover product-to-invoice lookup and server-enforced hidden-date behavior.
 - Extended report regression coverage to verify product sales, monthly net sales, and product Profit/Loss subtract the dated discount without rewriting the original gross invoice sales.
 
 Verified with:
 
-- `backend\venv\Scripts\python.exe backend\test_customer_discount.py`
+- `backend\venv\Scripts\python.exe backend\test_customer_discount_ticket.py`
 - `backend\venv\Scripts\python.exe backend\test_credit_payment.py`
 - `backend\venv\Scripts\python.exe backend\test_customer_return_print.py`
 - `backend\venv\Scripts\python.exe backend\test_invoice_edit_locks.py`
@@ -27,7 +29,7 @@ Verified with:
 ## Confirmed requirements
 
 - Add a dedicated **Customer Discount** page under Data Entry. It should be a clean transaction-entry page, using the customer-return flow as a reference without turning the feature into a return.
-- Select a customer, search that customer's finalized invoices over a date range, choose an invoice, then choose a specific product line.
+- Select a customer, search a date range, choose a product, then choose one of the finalized invoices containing it and its exact product line. No manual product or invoice entry is available.
 - Prefill the selected line's product, quantity, price, and line amount. Apply a fixed monetary discount to that line.
 - Recalculate the line's effective average unit price for reporting. Keep the exact discounted amount as the monetary source of truth; do not reconstruct it from a rounded unit price.
 - Record the discount as a separate transaction on the current business date. It must not rewrite the original invoice's date or gross sales history. Authorized backdated discount entries may use their selected backdate.
@@ -226,6 +228,7 @@ When editing/deleting a backdated entry, invalidate both the old and new dates. 
 ### Dates and permissions
 
 - New entry defaults to the server's current business date, including when calendar date differs.
+- The transaction-date field is visible by default and can be hidden per user in Admin Functions; a hidden field always results in the current business date, even if a client submits another date.
 - Current-date edit/delete checks `current_editing`; backdated deletion specifically checks `deleting`.
 - Backdated creation/edit checks `editing`; backdated deletion checks `deleting`.
 - Moving an entry between dates checks authorization for both dates.

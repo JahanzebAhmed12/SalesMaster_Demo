@@ -1150,6 +1150,14 @@ class CustomerDiscount(db.Model):
             'saleId': self.sale_id,
             'saleItemId': self.sale_item_id,
             'invoiceNumber': self.sale.invoice_number if self.sale else None,
+            'productId': (
+                self.sale_item.product_id or self.sale_item.non_product_id
+            ) if self.sale_item else None,
+            'productType': (
+                "regular" if self.sale_item and self.sale_item.product_id
+                else "non" if self.sale_item and self.sale_item.non_product_id
+                else None
+            ),
             'documentInvoiceNumber': self.document_invoice_number,
             'productName': (
                 self.sale_item.product.description if self.sale_item and self.sale_item.product

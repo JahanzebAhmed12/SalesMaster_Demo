@@ -5,7 +5,7 @@ import PageLayout from "@/components/common/page-layout";
 import CustomerSearch from "@/components/ui/customer-search";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { useBusinessDate } from "@/hooks/use-business-date";
-import { useBackdatePermissions } from "@/hooks/usePermissions";
+import { useBackdatePermissions, usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -15,18 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Pencil, Search, Trash2 } from "lucide-react";
-
-interface CustomerInvoice {
-  id: number;
-  invoiceNumber: string;
-  date: string;
-  totalAmount: number;
-  paidAmount: number;
-  discountAmount: number;
-  outstandingAmount: number;
-  availableDiscountAmount: number;
-  discountEligible: boolean;
-}
 
 interface DiscountLine {
   id: number;
@@ -39,6 +27,13 @@ interface DiscountLine {
   discountTotal: number;
   remainingValue: number;
   effectiveUnitPrice: number;
+}
+
+interface DiscountProductCandidate extends DiscountLine {
+  saleId: number;
+  invoiceNumber: string;
+  invoiceDate: string;
+  availableDiscountAmount: number;
 }
 
 interface DiscountInvoice {
@@ -61,6 +56,8 @@ interface CustomerDiscount {
   customerName: string;
   saleId: number;
   saleItemId: number;
+  productId: number;
+  productType: "regular" | "non";
   invoiceNumber: string;
   documentInvoiceNumber?: string | null;
   productName: string;
@@ -91,11 +88,14 @@ interface DiscountTicketGroup {
 }
 
 const money = (value: number) => `£${(Number.isFinite(value) ? value : 0).toFixed(2)}`;
+const productKey = (productType: string, productId: number) => `${productType}:${productId}`;
 
 export default function CustomerDiscountPage() {
   const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
   const { currentDate, isLoading: isLoadingBusinessDate } = useBusinessDate();
   const { canEditBackdate, canDeleteBackdate, canEditCurrentDate } = useBackdatePermissions();
+  const permissions = usePermissions();
+  const showDiscountDate = permissions.customer_discount_date !== false;
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -103,6 +103,7 @@ export default function CustomerDiscountPage() {
   const [fromDate, setFromDate] = useState("");
   const [transactionDate, setTransactionDate] = useState("");
   const [searchEnabled, setSearchEnabled] = useState(false);
+  const [selectedProductKey, setSelectedProductKey] = useState("");
   const [selectedSaleId, setSelectedSaleId] = useState("");
   const [selectedLineId, setSelectedLineId] = useState("");
   const [amount, setAmount] = useState("");
@@ -112,12 +113,13 @@ export default function CustomerDiscountPage() {
 
   useEffect(() => {
     if (!businessDateString) return;
-    setTransactionDate(previous => previous || businessDateString);
+    setTransactionDate(previous => !showDiscountDate || !previous ? businessDateString : previous);
     setFromDate(previous => previous || format(subDays(parseISO(businessDateString), 30), "yyyy-MM-dd"));
-  }, [businessDateString]);
+  }, [businessDateString, showDiscountDate]);
 
   useEffect(() => {
     setSearchEnabled(false);
+    setSelectedProductKey("");
     setSelectedSaleId("");
     setSelectedLineId("");
     setAmount("");
@@ -126,11 +128,11 @@ export default function CustomerDiscountPage() {
     setTicketLines([]);
   }, [customerId]);
 
-  const invoicesQuery = useQuery<CustomerInvoice[]>({
-    queryKey: ["customer-discount-invoices", customerId, fromDate, businessDateString],
+  const productsQuery = useQuery<DiscountProductCandidate[]>({
+    queryKey: ["customer-discount-products", customerId, fromDate, businessDateString],
     queryFn: () => apiRequest(
       "GET",
-      `/api/customers/${customerId}/invoices?fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(businessDateString)}`
+      `/api/customer-discounts/products?customerId=${customerId}&fromDate=${encodeURIComponent(fromDate)}&toDate=${encodeURIComponent(businessDateString)}`
     ),
     enabled: !!customerId && !!businessDateString && searchEnabled,
   });
@@ -149,6 +151,35 @@ export default function CustomerDiscountPage() {
     ),
     enabled: !!customerId,
   });
+
+  const productOptions = useMemo(() => {
+    const options = new Map<string, Pick<DiscountProductCandidate, "productId" | "productType" | "productName">>();
+    for (const candidate of productsQuery.data || []) {
+      options.set(productKey(candidate.productType, candidate.productId), {
+        productId: candidate.productId,
+        productType: candidate.productType,
+        productName: candidate.productName,
+      });
+    }
+    if (editingDiscount) {
+      options.set(productKey(editingDiscount.productType, editingDiscount.productId), {
+        productId: editingDiscount.productId,
+        productType: editingDiscount.productType,
+        productName: editingDiscount.productName,
+      });
+    }
+    return Array.from(options.entries()).map(([key, product]) => ({ key, ...product }));
+  }, [productsQuery.data, editingDiscount]);
+
+  const matchingInvoices = useMemo(() => {
+    const invoices = new Map<number, DiscountProductCandidate>();
+    for (const candidate of productsQuery.data || []) {
+      if (productKey(candidate.productType, candidate.productId) === selectedProductKey) {
+        invoices.set(candidate.saleId, candidate);
+      }
+    }
+    return Array.from(invoices.values());
+  }, [productsQuery.data, selectedProductKey]);
 
   const discountTickets = useMemo<DiscountTicketGroup[]>(() => {
     const groups = new Map<string, CustomerDiscount[]>();
@@ -173,8 +204,11 @@ export default function CustomerDiscountPage() {
   }, [discountsQuery.data]);
 
   const selectedLine = useMemo(
-    () => invoiceQuery.data?.items.find(line => line.id.toString() === selectedLineId),
-    [invoiceQuery.data, selectedLineId]
+    () => invoiceQuery.data?.items.find(line =>
+      line.id.toString() === selectedLineId &&
+      productKey(line.productType, line.productId) === selectedProductKey
+    ),
+    [invoiceQuery.data, selectedLineId, selectedProductKey]
   );
 
   const ticketInvoiceAmount = ticketLines
@@ -198,7 +232,7 @@ export default function CustomerDiscountPage() {
   const invalidateDiscountData = async (discount?: CustomerDiscount | null) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["customer-discounts"] }),
-      queryClient.invalidateQueries({ queryKey: ["customer-discount-invoices"] }),
+      queryClient.invalidateQueries({ queryKey: ["customer-discount-products"] }),
       queryClient.invalidateQueries({ queryKey: ["customer-discount-invoice-lines"] }),
       queryClient.invalidateQueries({ queryKey: ["daily-book-sales"] }),
       queryClient.invalidateQueries({ queryKey: ["/api/reports/daily-summary"] }),
@@ -226,6 +260,7 @@ export default function CustomerDiscountPage() {
   };
 
   const resetForm = () => {
+    setSelectedProductKey("");
     setSelectedSaleId("");
     setSelectedLineId("");
     setAmount("");
@@ -248,7 +283,7 @@ export default function CustomerDiscountPage() {
 
   const handleSearch = () => {
     if (!businessDateString) {
-      toast({ title: "Business date unavailable", description: "Wait for the business date to load before searching invoices.", variant: "destructive" });
+      toast({ title: "Business date unavailable", description: "Wait for the business date to load before searching for products.", variant: "destructive" });
       return;
     }
     if (!selectedCustomer) {
@@ -260,7 +295,16 @@ export default function CustomerDiscountPage() {
       return;
     }
     setSearchEnabled(true);
-    void invoicesQuery.refetch();
+    void productsQuery.refetch();
+  };
+
+  const handleProductChange = (value: string) => {
+    setSelectedProductKey(value);
+    setSelectedSaleId("");
+    setSelectedLineId("");
+    setAmount("");
+    setReason("");
+    setEditingDiscount(null);
   };
 
   const handleInvoiceChange = (value: string) => {
@@ -319,16 +363,17 @@ export default function CustomerDiscountPage() {
     }
     setEditingDiscount(discount);
     setTicketLines([]);
+    setSelectedProductKey(productKey(discount.productType, discount.productId));
     setSelectedSaleId(discount.saleId.toString());
     setSelectedLineId(discount.saleItemId.toString());
     setAmount(discount.amount.toFixed(2));
     setReason(discount.reason);
-    setTransactionDate(discount.date);
+    setTransactionDate(showDiscountDate ? discount.date : businessDateString);
   };
 
   const handleSave = async () => {
-    if (!selectedCustomer || (editingDiscount && (!selectedSaleId || !selectedLineId))) {
-      toast({ title: "Incomplete entry", description: "Select a customer, invoice, and invoice product line.", variant: "destructive" });
+    if (!selectedCustomer || (editingDiscount && (!selectedProductKey || !selectedSaleId || !selectedLineId))) {
+      toast({ title: "Incomplete entry", description: "Select a customer, product, invoice, and invoice product line.", variant: "destructive" });
       return;
     }
     if (!editingDiscount && ticketLines.length === 0) {
@@ -398,6 +443,9 @@ export default function CustomerDiscountPage() {
     invoiceQuery.data?.date,
     ...ticketLines.map(line => line.invoiceDate),
   ].filter((value): value is string => !!value).sort().slice(-1)[0];
+  const visibleInvoiceLines = (invoiceQuery.data?.items || []).filter(
+    line => productKey(line.productType, line.productId) === selectedProductKey
+  );
 
   const handleDelete = async (ticket: DiscountTicketGroup) => {
     const activeLine = ticket.activeLines[0];
@@ -426,7 +474,7 @@ export default function CustomerDiscountPage() {
     <PageLayout title="Customer Discount" breadcrumb="Data Entry > Customer Discount">
       <div className="space-y-6">
         <Card>
-          <CardHeader><CardTitle>Find Customer Invoices</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Find Customer Products</CardTitle></CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-[2fr_1fr_auto] md:items-end">
             <CustomerSearch
               label="Customer"
@@ -445,9 +493,9 @@ export default function CustomerDiscountPage() {
                 onChange={event => setFromDate(event.target.value)}
               />
             </div>
-            <Button onClick={handleSearch} disabled={!selectedCustomer || invoicesQuery.isFetching}>
-              {invoicesQuery.isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-              Get Invoices
+            <Button onClick={handleSearch} disabled={!selectedCustomer || productsQuery.isFetching}>
+              {productsQuery.isFetching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+              Find Products
             </Button>
           </CardContent>
         </Card>
@@ -457,30 +505,53 @@ export default function CustomerDiscountPage() {
           <CardContent className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="discount-invoice">Invoice</Label>
+                <Label htmlFor="discount-product">Product</Label>
+                <select
+                  id="discount-product"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedProductKey}
+                  onChange={event => handleProductChange(event.target.value)}
+                  disabled={editingDiscount !== null || !searchEnabled || productsQuery.isFetching}
+                >
+                  <option value="">Select a product</option>
+                  {productOptions.map(product => (
+                    <option key={product.key} value={product.key}>{product.productName}</option>
+                  ))}
+                </select>
+                {searchEnabled && !productsQuery.isFetching && !(productsQuery.data || []).length && (
+                  <p className="text-sm text-muted-foreground">No discountable products were found in finalized invoices for this date range.</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="discount-invoice">Matching invoice</Label>
                 <select
                   id="discount-invoice"
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   value={selectedSaleId}
                   onChange={event => handleInvoiceChange(event.target.value)}
-                  disabled={editingDiscount !== null || !searchEnabled}
+                  disabled={editingDiscount !== null || !selectedProductKey || productsQuery.isFetching}
                 >
                   <option value="">Select an invoice</option>
-                  {selectedSaleId && invoiceQuery.data && !invoicesQuery.data?.some(item => item.id.toString() === selectedSaleId) && (
-                    <option value={selectedSaleId}>{invoiceQuery.data.invoiceNumber}</option>
-                  )}
-                  {(invoicesQuery.data || []).map(invoice => (
-                    <option key={invoice.id} value={invoice.id} disabled={!invoice.discountEligible}>
-                      {invoice.invoiceNumber} — {format(new Date(invoice.date), "dd/MM/yyyy")} — outstanding {money(invoice.outstandingAmount)} — discountable {money(invoice.availableDiscountAmount)}
-                      {!invoice.discountEligible ? " (not eligible)" : ""}
+                  {selectedSaleId && invoiceQuery.data &&
+                    !matchingInvoices.some(invoice => invoice.saleId.toString() === selectedSaleId) && (
+                      <option value={selectedSaleId}>
+                        {invoiceQuery.data.invoiceNumber} — {format(new Date(invoiceQuery.data.date), "dd/MM/yyyy")}
+                      </option>
+                    )}
+                  {matchingInvoices.map(invoice => (
+                    <option key={invoice.saleId} value={invoice.saleId}>
+                      {invoice.invoiceNumber} — {format(new Date(invoice.invoiceDate), "dd/MM/yyyy")} — discountable {money(invoice.availableDiscountAmount)}
                     </option>
                   ))}
                 </select>
-                {searchEnabled && !invoicesQuery.isFetching && !(invoicesQuery.data || []).length && (
-                  <p className="text-sm text-muted-foreground">No finalized invoices found in this date range.</p>
+                {selectedProductKey && searchEnabled && !productsQuery.isFetching && matchingInvoices.length === 0 && !editingDiscount && (
+                  <p className="text-sm text-muted-foreground">No eligible invoice contains this product in the selected date range.</p>
                 )}
               </div>
-              <div className="space-y-2">
+            </div>
+
+            {showDiscountDate && (
+              <div className="max-w-sm space-y-2">
                 <Label htmlFor="discount-date">Discount transaction date</Label>
                 <Input
                   id="discount-date"
@@ -495,7 +566,7 @@ export default function CustomerDiscountPage() {
                   <p className="text-sm text-destructive">Backdated discount entry permission is required.</p>
                 )}
               </div>
-            </div>
+            )}
 
             {selectedSaleId && (
               <div className="rounded-md border bg-muted/30 p-3 text-sm">
@@ -514,7 +585,7 @@ export default function CustomerDiscountPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="discount-line">Invoice product line</Label>
+              <Label htmlFor="discount-line">Product line on selected invoice</Label>
               <select
                 id="discount-line"
                 className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -522,8 +593,8 @@ export default function CustomerDiscountPage() {
                 onChange={event => setSelectedLineId(event.target.value)}
                 disabled={!invoiceQuery.data}
               >
-                <option value="">Select a product line</option>
-                {(invoiceQuery.data?.items || []).map(line => (
+                <option value="">Select the invoice product line</option>
+                {visibleInvoiceLines.map(line => (
                   <option
                     key={line.id}
                     value={line.id}

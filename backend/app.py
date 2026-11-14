@@ -1742,6 +1742,20 @@ def _parse_discount_date(value, default_date):
     return parsed
 
 
+def _customer_discount_date_visible(user_id):
+    restriction = UserRestriction.query.filter_by(
+        user_id=int(user_id),
+        section="customer_discount_date",
+    ).first()
+    return restriction is None or bool(restriction.allowed)
+
+
+def _customer_discount_transaction_date(user_id, value, default_date):
+    if not _customer_discount_date_visible(user_id):
+        return get_business_date()
+    return _parse_discount_date(value, default_date)
+
+
 def _parse_discount_amount(value):
     try:
         amount = Decimal(str(value))
@@ -13823,7 +13837,8 @@ def _validate_discount_target(data, user_id, existing=None):
         raise ValueError("A reason is required for every discount.")
     if len(reason) > 500:
         raise ValueError("Reason must be 500 characters or fewer.")
-    transaction_date = _parse_discount_date(
+    transaction_date = _customer_discount_transaction_date(
+        user_id,
         data.get("date"),
         existing.date if existing else get_business_date(),
     )
@@ -13921,6 +13936,120 @@ def get_customer_discount_invoice_lines(sale_id):
     })
 
 
+@app.route('/api/customer-discounts/products', methods=['GET'])
+@jwt_required()
+def get_customer_discount_products():
+    user_id = get_jwt_identity()
+    access_error = _check_customer_discount_access(user_id)
+    if access_error:
+        return jsonify({"error": access_error}), 403
+
+    customer_id = request.args.get("customerId", type=int)
+    from_date = request.args.get("fromDate")
+    to_date = request.args.get("toDate")
+    if not customer_id or not from_date or not to_date:
+        return jsonify({"error": "customerId, fromDate, and toDate are required."}), 400
+    try:
+        start_date = date.fromisoformat(from_date)
+        end_date = date.fromisoformat(to_date)
+    except ValueError:
+        return jsonify({"error": "Dates must use YYYY-MM-DD format."}), 400
+    if start_date.isoformat() != from_date or end_date.isoformat() != to_date or start_date > end_date:
+        return jsonify({"error": "The date range is invalid."}), 400
+
+    sales = Sale.query.options(
+        db.joinedload(Sale.items).joinedload(SaleItem.product),
+        db.joinedload(Sale.items).joinedload(SaleItem.non_product),
+    ).filter(
+        Sale.customer_id == customer_id,
+        Sale.status == "finalized",
+        Sale.date >= datetime.combine(start_date, datetime.min.time()),
+        Sale.date < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+    ).order_by(Sale.date.desc(), Sale.id.desc()).all()
+    if not sales:
+        return jsonify([]), 200
+
+    sale_ids = [sale.id for sale in sales]
+    sale_items = [item for sale in sales for item in sale.items]
+    sale_item_ids = [item.id for item in sale_items]
+    discount_totals_by_sale = dict(db.session.query(
+        CustomerDiscount.sale_id,
+        func.coalesce(func.sum(CustomerDiscount.amount), 0),
+    ).filter(
+        CustomerDiscount.sale_id.in_(sale_ids),
+        CustomerDiscount.is_deleted.is_(False),
+    ).group_by(CustomerDiscount.sale_id).all())
+    return_totals_by_sale = dict(db.session.query(
+        CustomerReturn.sale_id,
+        func.coalesce(func.sum(CustomerReturn.total_value), 0),
+    ).filter(
+        CustomerReturn.sale_id.in_(sale_ids),
+        CustomerReturn.status == "completed",
+    ).group_by(CustomerReturn.sale_id).all())
+    discount_totals_by_item = dict(db.session.query(
+        CustomerDiscount.sale_item_id,
+        func.coalesce(func.sum(CustomerDiscount.amount), 0),
+    ).filter(
+        CustomerDiscount.sale_item_id.in_(sale_item_ids),
+        CustomerDiscount.is_deleted.is_(False),
+    ).group_by(CustomerDiscount.sale_item_id).all()) if sale_item_ids else {}
+
+    available_by_sale = {}
+    for sale in sales:
+        invoice_value = (
+            _money_decimal(sale.total_amount)
+            - _money_decimal(return_totals_by_sale.get(sale.id))
+            - _money_decimal(discount_totals_by_sale.get(sale.id))
+        )
+        line_value = sum(
+            max(
+                Decimal("0.00"),
+                _money_decimal(item.total_price)
+                - _money_decimal(discount_totals_by_item.get(item.id)),
+            )
+            for item in sale.items
+            if _money_decimal(item.total_price) > 0
+        )
+        available_by_sale[sale.id] = max(
+            Decimal("0.00"),
+            min(invoice_value, line_value),
+        ).quantize(CENT)
+
+    candidates = []
+    for sale in sales:
+        invoice_available = available_by_sale[sale.id]
+        if invoice_available <= 0:
+            continue
+        for item in sale.items:
+            line_total = _money_decimal(item.total_price)
+            line_discount = _money_decimal(discount_totals_by_item.get(item.id))
+            remaining_value = max(Decimal("0.00"), line_total - line_discount)
+            quantity = Decimal(str(item.quantity or 0))
+            if quantity <= 0 or line_total <= 0 or remaining_value <= 0:
+                continue
+            product = item.product or item.non_product
+            if not product:
+                continue
+            candidates.append({
+                "id": item.id,
+                "saleId": sale.id,
+                "invoiceNumber": sale.invoice_number,
+                "invoiceDate": sale.date.isoformat() if sale.date else None,
+                "availableDiscountAmount": float(invoice_available),
+                "productId": item.product_id or item.non_product_id,
+                "productType": "regular" if item.product_id else "non",
+                "productName": product.description,
+                "quantity": float(quantity),
+                "unitPrice": float(item.unit_price or 0),
+                "originalTotal": float(line_total),
+                "discountTotal": float(line_discount),
+                "remainingValue": float(remaining_value),
+                "effectiveUnitPrice": float(remaining_value / quantity),
+            })
+
+    return jsonify(candidates), 200
+
+
 @app.route('/api/customer-discounts', methods=['POST'])
 @jwt_required()
 def create_customer_discount():
@@ -13941,7 +14070,9 @@ def create_customer_discount():
                 customer_id = int(data.get("customerId"))
             except (TypeError, ValueError):
                 raise ValueError("A customer is required.")
-            transaction_date = _parse_discount_date(data.get("date"), get_business_date())
+            transaction_date = _customer_discount_transaction_date(
+                user_id, data.get("date"), get_business_date()
+            )
             permission_error = _check_discount_date_permission(user_id, transaction_date, "create")
             if permission_error:
                 return jsonify({"error": permission_error}), 403

@@ -4,7 +4,7 @@ import os
 import shutil
 import sys
 import tempfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 
@@ -23,6 +23,7 @@ from models import (  # noqa: E402
     Sale,
     SaleItem,
     User,
+    UserRestriction,
     VoidedInvoiceDocument,
 )
 
@@ -96,6 +97,23 @@ def main():
 
             client = app.test_client()
             headers = {"Authorization": f"Bearer {create_access_token(identity=str(user.id))}"}
+            candidates_response = client.get(
+                f"/api/customer-discounts/products?customerId={customer.id}"
+                f"&fromDate={date.today().isoformat()}&toDate={date.today().isoformat()}",
+                headers=headers,
+            )
+            candidates = candidates_response.get_json() or []
+            product_one_invoice_numbers = {
+                item["invoiceNumber"]
+                for item in candidates
+                if item["productId"] == products[0].id
+            }
+            assert candidates_response.status_code == 200
+            assert product_one_invoice_numbers == {
+                sale.invoice_number,
+                other_sale.invoice_number,
+            }
+
             response = client.post(
                 "/api/customer-discounts",
                 headers=headers,
@@ -216,6 +234,32 @@ def main():
             voided = VoidedInvoiceDocument.query.filter_by(invoice_number="101").first()
             assert voided is not None
             assert customer.running_balance == Decimal("0.00")
+
+            db.session.add(UserRestriction(
+                user_id=user.id,
+                section="customer_discount_date",
+                allowed=False,
+            ))
+            db.session.commit()
+            hidden_date_response = client.post(
+                "/api/customer-discounts",
+                headers=headers,
+                json={
+                    "customerId": customer.id,
+                    "saleId": sale.id,
+                    "saleItemId": sale_items[0].id,
+                    "amount": "1.00",
+                    "date": (date.today() - timedelta(days=1)).isoformat(),
+                    "reason": "Hidden date uses business date",
+                },
+            )
+            hidden_date_discount = hidden_date_response.get_json() or {}
+            assert hidden_date_response.status_code == 201, hidden_date_discount
+            assert hidden_date_discount["date"] == date.today().isoformat()
+            assert client.delete(
+                f"/api/customer-discounts/{hidden_date_discount['id']}",
+                headers=headers,
+            ).status_code == 200
         finally:
             db.session.remove()
             db.drop_all()

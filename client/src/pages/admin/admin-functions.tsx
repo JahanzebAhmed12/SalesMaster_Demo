@@ -154,6 +154,14 @@ const restrictionSections = menuSections.flatMap(section => {
       isSection: false
     }))
   ];
+
+  if (section.title === "Data Entry") {
+    sectionItems.push({
+      key: "customer_discount_date",
+      label: "Show Customer Discount Date",
+      isSection: false
+    });
+  }
   
   // Add specific permission for Daily Book Sales Totals
   if (section.title === "Daily Report") {
