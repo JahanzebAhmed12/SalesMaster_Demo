@@ -1518,16 +1518,58 @@ const SalesInvoice = () => {
         
         // IMPORTANT: Restore currentSale if it exists (for edited existing invoices)
         if ((invoice as any).currentSale) {
-          console.log('✅ Restoring existing invoice context:', (invoice as any).currentSale.invoiceNumber);
-          setCurrentSale((invoice as any).currentSale);
+          const heldSale = invoice.currentSale as SaleWithUser;
+          console.log('✅ Restoring existing invoice context:', heldSale.invoiceNumber);
+          setCurrentSale(heldSale);
           // Set the editable date when restoring existing invoice
-          if ((invoice as any).currentSale.date) {
-            setEditableDate(parseISO((invoice as any).currentSale.date));
+          if (heldSale.date) {
+            setEditableDate(parseISO(heldSale.date));
+          }
+
+          setIsReadOnly(true);
+          setOwnsEditLock(false);
+          setEditLockOwner(undefined);
+          if (lockInvoicesEnabled && !canEditInvoice) {
+            setIsReadOnly(true);
+          } else if (heldSale.id) {
+            acquireInvoiceEditLock(heldSale.id)
+              .then(lock => {
+                editLockSaleIdRef.current = heldSale.id;
+                editLockTokenRef.current = lock.lockToken;
+                setEditLockOwner(lock);
+                setOwnsEditLock(true);
+                setIsReadOnly(false);
+              })
+              .catch(error => {
+                setIsReadOnly(true);
+                if (error instanceof InvoiceEditLockConflictError) {
+                  setEditLockOwner({
+                    locked: true,
+                    userId: error.conflict.userId,
+                    username: error.conflict.username,
+                    acquiredAt: error.conflict.acquiredAt,
+                    updatedAt: error.conflict.updatedAt,
+                  });
+                  const owner = error.conflict.username ? ` Currently being edited by ${error.conflict.username}.` : '';
+                  toast({
+                    title: 'Invoice is already being edited',
+                    description: `${error.message}${owner} This held invoice has been opened in read-only mode.`,
+                    variant: 'destructive',
+                  });
+                } else {
+                  toast({
+                    title: 'Unable to resume invoice edit',
+                    description: error instanceof Error ? error.message : 'The invoice edit lock could not be acquired.',
+                    variant: 'destructive',
+                  });
+                }
+              });
           }
         } else {
           console.log('🆕 No existing invoice context found in held data - this was a new invoice or currentSale was not saved');
           console.log('🔍 Available keys in invoice:', Object.keys(invoice));
           setCurrentSale(null);
+          setIsReadOnly(false);
         }
         
         if (invoice.saleItems.length > 0) {
@@ -1575,7 +1617,7 @@ const SalesInvoice = () => {
         console.log('❌ Held invoice not found with ID:', heldInvoiceIdFromUrl);
       }
     }
-  }, [toast, regularProducts, nonProducts, heldInvoices]);
+  }, [toast, regularProducts, nonProducts, heldInvoices, canEditInvoice, lockInvoicesEnabled]);
 
   // Format sale items once products are loaded (for held invoices that were resumed before products loaded)
   useEffect(() => {
