@@ -612,6 +612,44 @@ def main() -> int:
         ledger[products["Product C"].id] += 1
         assert_current_stocks(products, ledger, "after creating a multi-invoice customer return")
 
+        updated_multi_invoice_return = api_call(
+            client,
+            "PUT",
+            f"/api/customer-returns/{multi_invoice_return[0]['id']}/document",
+            {
+                "remarks": "Edited multi-invoice return",
+                "items": [
+                    {
+                        "id": multi_invoice_return[0]["id"],
+                        "quantity": 1.001,
+                        "unitPrice": 10,
+                        "itemRemarks": "Adjusted quantity",
+                    },
+                    {
+                        "id": multi_invoice_return[1]["id"],
+                        "quantity": 1,
+                        "unitPrice": 10,
+                        "itemRemarks": None,
+                    },
+                ],
+            },
+            token=token1,
+            expected_status=200,
+        )
+        check(len(updated_multi_invoice_return) == 2, "editing a return updates every line in its document")
+        check(
+            {item["documentInvoiceNumber"] for item in updated_multi_invoice_return}
+            == {multi_invoice_return[0]["documentInvoiceNumber"]},
+            "editing a return preserves its shared document number",
+        )
+        ledger[products["Product B"].id] += 0.001
+        assert_current_stocks(products, ledger, "after editing a multi-invoice customer return")
+        check(
+            abs(number(RegularProduct.query.get(products["Product B"].id).current_stock)
+                - ledger[products["Product B"].id]) < 0.0001,
+            "editing a return applies a one-thousandth quantity stock change exactly",
+        )
+
         pending_return = api_call(
             client, "POST", "/api/customer-returns",
             return_payload(cust1, products["Product B"], 3, DAY1, "pending", sale1.id), token1, 201

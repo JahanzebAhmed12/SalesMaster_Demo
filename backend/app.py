@@ -1543,7 +1543,7 @@ def _apply_return_stock_transition(return_kind, reference_id, old_product_id,
         operations.append((new_product_id, new_product_type, new_effect))
 
     for product_id, product_type, quantity_change in operations:
-        if abs(quantity_change) <= 0.001:
+        if round(abs(quantity_change), 3) == 0:
             continue
         success, result = update_product_stock(
             product_id=product_id,
@@ -12313,6 +12313,181 @@ def update_customer_return(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/customer-returns/<int:id>/document', methods=['PUT'])
+@jwt_required()
+def update_customer_return_document(id):
+    try:
+        data = request.get_json()
+        if not isinstance(data, dict):
+            return jsonify({"error": "A customer return document is required."}), 400
+
+        selected_return = CustomerReturn.query.filter_by(id=id).with_for_update().first()
+        if not selected_return:
+            return jsonify({"error": "Customer return not found."}), 404
+        if selected_return.document_invoice_number:
+            return_items = CustomerReturn.query.filter_by(
+                document_invoice_number=selected_return.document_invoice_number
+            ).order_by(CustomerReturn.id).with_for_update().all()
+        else:
+            return_items = [selected_return]
+
+        updates = data.get("items")
+        if not isinstance(updates, list) or len(updates) != len(return_items):
+            return jsonify({"error": "All existing return lines must be included."}), 400
+
+        records_by_id = {return_item.id: return_item for return_item in return_items}
+        parsed_updates = {}
+        requested_by_source_item = {}
+        for item_data in updates:
+            if not isinstance(item_data, dict):
+                return jsonify({"error": "Each return line must be an object."}), 400
+            try:
+                return_item_id = int(item_data.get("id"))
+            except (TypeError, ValueError):
+                return jsonify({"error": "Every return line must include a valid ID."}), 400
+            if return_item_id not in records_by_id or return_item_id in parsed_updates:
+                return jsonify({"error": "The return document lines do not match."}), 400
+            try:
+                quantity = Decimal(str(item_data.get("quantity", "")))
+                unit_price = Decimal(str(item_data.get("unitPrice", "")))
+            except (InvalidOperation, TypeError, ValueError):
+                return jsonify({"error": "Return quantities and prices must be valid numbers."}), 400
+            if not quantity.is_finite() or quantity <= 0 or quantity.as_tuple().exponent < -3:
+                return jsonify({"error": "Return quantity must be positive with at most three decimal places."}), 400
+            if not unit_price.is_finite() or unit_price < 0:
+                return jsonify({"error": "Return unit price must be non-negative."}), 400
+            unit_price = unit_price.quantize(CENT, rounding=ROUND_HALF_UP)
+
+            return_item = records_by_id[return_item_id]
+            parsed_updates[return_item_id] = {
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "item_remarks": str(item_data.get("itemRemarks") or "").strip() or None,
+            }
+            if return_item.source_sale_item_id:
+                requested_by_source_item[return_item.source_sale_item_id] = (
+                    requested_by_source_item.get(return_item.source_sale_item_id, Decimal("0"))
+                    + quantity
+                )
+
+        if set(parsed_updates) != set(records_by_id):
+            return jsonify({"error": "Every existing return line must be included exactly once."}), 400
+
+        user_id = int(get_jwt_identity())
+        backdate_options = UserBackDateOption.query.filter_by(user_id=user_id).first()
+        business_date = get_business_date()
+        for return_item in return_items:
+            if return_item.date == business_date:
+                if backdate_options and not backdate_options.current_editing:
+                    return jsonify({"error": "You do not have permission to edit returns for today."}), 403
+            elif not backdate_options or not backdate_options.editing:
+                return jsonify({"error": "You do not have permission to edit back-dated returns."}), 403
+
+        source_items = {
+            source_item.id: source_item
+            for source_item in SaleItem.query.filter(
+                SaleItem.id.in_(requested_by_source_item)
+            ).with_for_update().all()
+        } if requested_by_source_item else {}
+        if set(source_items) != set(requested_by_source_item):
+            return jsonify({"error": "A source invoice product no longer exists."}), 400
+
+        source_item_details = {}
+        for return_item in return_items:
+            source_item_id = return_item.source_sale_item_id
+            if not source_item_id:
+                continue
+            source_item = source_items[source_item_id]
+            source_sale = Sale.query.filter_by(id=source_item.sale_id).first()
+            if (
+                not source_sale
+                or source_sale.status != "finalized"
+                or source_sale.customer_id != return_item.customer_id
+                or return_item.sale_id != source_sale.id
+                or source_item.product_id != (return_item.product_id if return_item.product_type == "regular" else None)
+                or source_item.non_product_id != (return_item.product_id if return_item.product_type == "non" else None)
+            ):
+                return jsonify({"error": "A return line no longer matches its finalized source invoice."}), 400
+            source_item_details[source_item_id] = source_item
+
+        document_item_ids = list(records_by_id)
+        for source_item_id, requested_quantity in requested_by_source_item.items():
+            source_item = source_item_details[source_item_id]
+            already_returned = db.session.query(
+                func.coalesce(func.sum(CustomerReturn.quantity), 0)
+            ).filter(
+                CustomerReturn.sale_id == source_item.sale_id,
+                CustomerReturn.status.in_(("pending", "approved", "completed")),
+                CustomerReturn.id.notin_(document_item_ids),
+                or_(
+                    CustomerReturn.source_sale_item_id == source_item.id,
+                    and_(
+                        CustomerReturn.source_sale_item_id.is_(None),
+                        CustomerReturn.is_manual.is_(False),
+                        CustomerReturn.product_id == (
+                            source_item.product_id or source_item.non_product_id
+                        ),
+                        CustomerReturn.product_type == (
+                            "regular" if source_item.product_id else "non"
+                        ),
+                    ),
+                ),
+            ).scalar() or 0
+            available_quantity = max(
+                Decimal("0"),
+                Decimal(str(source_item.quantity or 0)) - Decimal(str(already_returned)),
+            )
+            if requested_quantity > available_quantity:
+                return jsonify({
+                    "error": (
+                        f"Return quantity exceeds the remaining invoice quantity "
+                        f"({available_quantity})."
+                    )
+                }), 400
+
+        remarks = data.get("remarks")
+        if remarks is not None and not isinstance(remarks, str):
+            return jsonify({"error": "Return remarks must be text."}), 400
+        for return_item in return_items:
+            update = parsed_updates[return_item.id]
+            success, result = _apply_return_stock_transition(
+                return_kind="customer",
+                reference_id=return_item.id,
+                old_product_id=return_item.product_id,
+                old_product_type=return_item.product_type,
+                old_status=return_item.status,
+                old_quantity=return_item.quantity,
+                new_product_id=return_item.product_id,
+                new_product_type=return_item.product_type,
+                new_status=return_item.status,
+                new_quantity=update["quantity"],
+                user_id=user_id,
+                movement_date=return_item.date,
+                movement_type="customer_return_adjustment",
+                remarks=f"Customer return document adjusted: {return_item.ref_number}",
+            )
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock update failed: {result}"}), 400
+
+            return_item.quantity = update["quantity"]
+            return_item.unit_price = update["unit_price"]
+            return_item.total_value = (
+                update["quantity"] * update["unit_price"]
+            ).quantize(CENT, rounding=ROUND_HALF_UP)
+            return_item.item_remarks = update["item_remarks"]
+            if remarks is not None:
+                return_item.remarks = remarks
+
+        db.session.commit()
+        return jsonify([return_item.to_dict() for return_item in return_items]), 200
+    except Exception as error:
+        db.session.rollback()
+        app.logger.exception("Failed to update customer return document %s", id)
+        return jsonify({"error": str(error)}), 500
+
 
 @app.route('/api/customer-returns/<int:id>', methods=['DELETE'])
 @jwt_required()
