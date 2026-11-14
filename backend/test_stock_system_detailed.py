@@ -547,9 +547,74 @@ def main() -> int:
         # DAY 1 RETURN, DUMP, SUPPLIER RETURN WORKFLOWS.
         # ------------------------------------------------------------------
         print("\nPHASE 2 — customer returns, dumps, supplier returns, and reversals")
+        second_invoice = create_sale(
+            client, cust1, [(products["Product C"], 2, 10)], DAY1, ledger, token1
+        )
+        first_invoice_item = SaleItem.query.filter_by(
+            sale_id=sale1.id,
+            product_id=products["Product B"].id,
+        ).order_by(SaleItem.id.asc()).first()
+        second_invoice_item = SaleItem.query.filter_by(
+            sale_id=second_invoice.id,
+            product_id=products["Product C"].id,
+        ).first()
+        candidate_lines = api_call(
+            client,
+            "GET",
+            f"/api/customer-returns/products?customerId={cust1.id}&fromDate={iso(DAY1)}&toDate={iso(DAY1)}",
+            token=token1,
+            expected_status=200,
+        )
+        check(
+            {line["id"] for line in candidate_lines}
+            >= {first_invoice_item.id, second_invoice_item.id},
+            "return product search includes products from multiple invoices",
+        )
+        multi_invoice_return = api_call(
+            client,
+            "POST",
+            "/api/customer-returns",
+            {
+                "customerId": cust1.id,
+                "date": iso(DAY1),
+                "remarks": "Multi-invoice return",
+                "items": [
+                    {
+                        "productId": products["Product B"].id,
+                        "productType": "regular",
+                        "sourceSaleItemId": first_invoice_item.id,
+                        "quantity": 1,
+                        "unitPrice": 10,
+                    },
+                    {
+                        "productId": products["Product C"].id,
+                        "productType": "regular",
+                        "sourceSaleItemId": second_invoice_item.id,
+                        "quantity": 1,
+                        "unitPrice": 10,
+                    },
+                ],
+            },
+            token=token1,
+            expected_status=201,
+        )
+        check(len(multi_invoice_return) == 2, "one return ticket supports multiple invoice lines")
+        check(
+            {item["saleId"] for item in multi_invoice_return}
+            == {sale1.id, second_invoice.id},
+            "multi-invoice return lines retain their individual source invoices",
+        )
+        check(
+            len({item["documentInvoiceNumber"] for item in multi_invoice_return}) == 1,
+            "multi-invoice return lines share one return document number",
+        )
+        ledger[products["Product B"].id] += 1
+        ledger[products["Product C"].id] += 1
+        assert_current_stocks(products, ledger, "after creating a multi-invoice customer return")
+
         pending_return = api_call(
             client, "POST", "/api/customer-returns",
-            return_payload(cust2, products["Product B"], 3, DAY1, "pending", sale1.id), token1, 201
+            return_payload(cust1, products["Product B"], 3, DAY1, "pending", sale1.id), token1, 201
         )
         assert_current_stocks(products, ledger, "pending customer return has no stock effect")
         cr_id = int(pending_return["id"])
@@ -558,7 +623,7 @@ def main() -> int:
         api_call(client, "POST", f"/api/customer-returns/{cr_id}/complete", token=token1, expected_status=200)
         ledger[products["Product B"].id] += 3
         assert_current_stocks(products, ledger, "completed customer return increases stock")
-        updated_return = return_payload(cust2, products["Product B"], 5, DAY1, "completed", sale1.id)
+        updated_return = return_payload(cust1, products["Product B"], 5, DAY1, "completed", sale1.id)
         api_call(client, "PUT", f"/api/customer-returns/{cr_id}", updated_return, token=token2, expected_status=200)
         ledger[products["Product B"].id] += 2
         assert_current_stocks(products, ledger, "editing completed customer return applies only quantity delta")
@@ -710,9 +775,13 @@ def main() -> int:
         assert_current_stocks(products, ledger, "after finalizing both held invoices")
 
         # More day-2 operations while one product is already negative.
+        standalone_return_payload = return_payload(
+            cust1, products["Product A"], 4, DAY2, "completed"
+        )
+        standalone_return_payload["invoiceNumber"] = "STOCK-REGRESSION"
         standalone_return = api_call(
             client, "POST", "/api/customer-returns",
-            return_payload(cust1, products["Product A"], 4, DAY2, "completed"), token1, 201
+            standalone_return_payload, token1, 201
         )
         ledger[products["Product A"].id] += 4
         assert_current_stocks(products, ledger, "day 2 standalone completed customer return")

@@ -11595,6 +11595,111 @@ def get_customer_return_invoice_lines(sale_id):
         "items": _customer_returnable_invoice_lines(sale),
     }), 200
 
+
+@app.route('/api/customer-returns/products', methods=['GET'])
+@jwt_required()
+def get_customer_returnable_products():
+    customer_id = request.args.get("customerId", type=int)
+    from_date = request.args.get("fromDate")
+    to_date = request.args.get("toDate")
+    if not customer_id or not from_date or not to_date:
+        return jsonify({"error": "Customer and invoice date range are required."}), 400
+    try:
+        from_dt = datetime.strptime(from_date, "%Y-%m-%d")
+        to_dt = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+    except ValueError:
+        return jsonify({"error": "Invoice dates must use YYYY-MM-DD format."}), 400
+
+    sales = Sale.query.options(
+        db.selectinload(Sale.items).joinedload(SaleItem.product),
+        db.selectinload(Sale.items).joinedload(SaleItem.non_product),
+    ).filter(
+        Sale.customer_id == customer_id,
+        Sale.date >= from_dt,
+        Sale.date < to_dt,
+        Sale.status == "finalized",
+    ).order_by(Sale.date.desc(), Sale.id.desc()).all()
+
+    sale_ids = [sale.id for sale in sales]
+    sale_items = [item for sale in sales for item in sale.items]
+    if not sale_items:
+        return jsonify([]), 200
+    sale_item_ids = [item.id for item in sale_items]
+    discount_totals = dict(
+        db.session.query(
+            CustomerDiscount.sale_item_id,
+            func.sum(CustomerDiscount.amount),
+        ).filter(
+            CustomerDiscount.sale_item_id.in_(sale_item_ids),
+            CustomerDiscount.is_deleted.is_(False),
+        ).group_by(CustomerDiscount.sale_item_id).all()
+    )
+    return_totals = db.session.query(
+        CustomerReturn.source_sale_item_id,
+        CustomerReturn.sale_id,
+        CustomerReturn.product_id,
+        CustomerReturn.product_type,
+        func.sum(CustomerReturn.quantity),
+    ).filter(
+        CustomerReturn.sale_id.in_(sale_ids),
+        CustomerReturn.status.in_(("pending", "approved", "completed")),
+    ).group_by(
+        CustomerReturn.source_sale_item_id,
+        CustomerReturn.sale_id,
+        CustomerReturn.product_id,
+        CustomerReturn.product_type,
+    ).all()
+    returned_by_source = {}
+    returned_legacy = {}
+    for source_item_id, sale_id, product_id, product_type, quantity in return_totals:
+        if source_item_id is not None:
+            returned_by_source[source_item_id] = Decimal(str(quantity or 0))
+        else:
+            returned_legacy[(sale_id, product_id, product_type)] = Decimal(str(quantity or 0))
+
+    lines = []
+    for sale in sales:
+        for item in sale.items:
+            product_id = item.product_id or item.non_product_id
+            product_type = "regular" if item.product_id else "non"
+            sold_quantity = Decimal(str(item.quantity or 0))
+            returned_quantity = returned_by_source.get(item.id)
+            if returned_quantity is None:
+                returned_quantity = returned_legacy.get(
+                    (sale.id, product_id, product_type),
+                    Decimal("0"),
+                )
+            returnable_quantity = max(Decimal("0"), sold_quantity - returned_quantity)
+            discount_total = _money_decimal(discount_totals.get(item.id, 0))
+            remaining_value = max(
+                Decimal("0.00"),
+                _money_decimal(item.total_price) - discount_total,
+            )
+            product = item.product if item.product_id else item.non_product
+            product_name = product.description if product else ""
+            lines.append({
+                "id": item.id,
+                "productId": product_id,
+                "productType": product_type,
+                "productName": product_name,
+                "description": product_name,
+                "quantity": float(sold_quantity),
+                "returnedQuantity": float(returned_quantity),
+                "returnableQuantity": float(returnable_quantity),
+                "unitPrice": float(item.unit_price or 0),
+                "originalTotal": float(_money_decimal(item.total_price)),
+                "discountTotal": float(discount_total),
+                "remainingValue": float(remaining_value),
+                "effectiveUnitPrice": float(
+                    remaining_value / sold_quantity if sold_quantity else 0
+                ),
+                "saleId": sale.id,
+                "invoiceNumber": sale.invoice_number,
+                "invoiceDate": sale.date.isoformat() if sale.date else "",
+            })
+    return jsonify(lines), 200
+
+
 @app.route('/api/customer-returns/print', methods=['GET'])
 def print_customer_returns():
     """Return selected customer-return documents for the public print view."""
@@ -11759,8 +11864,6 @@ def create_customer_return():
             invoice_number = str(data.get("invoiceNumber") or "").strip()
             if sale:
                 invoice_number = sale.invoice_number
-            if not invoice_number:
-                return jsonify({"error": "Select an invoice or enter a manual invoice number"}), 400
             if len(invoice_number) > 50:
                 return jsonify({"error": "Invoice number must be 50 characters or fewer"}), 400
 
@@ -11768,6 +11871,30 @@ def create_customer_return():
                 parsed_date = datetime.strptime(data.get("date", ""), "%Y-%m-%d").date()
             except (TypeError, ValueError):
                 return jsonify({"error": "Return date must use YYYY-MM-DD format"}), 400
+
+            source_item_ids = set()
+            try:
+                source_item_ids = {
+                    int(item_data["sourceSaleItemId"])
+                    for item_data in items
+                    if isinstance(item_data, dict)
+                    and item_data.get("sourceSaleItemId") is not None
+                }
+            except (TypeError, ValueError):
+                return jsonify({"error": "Invoice product references must be valid IDs"}), 400
+            source_sale_items = {
+                item.id: item
+                for item in SaleItem.query.filter(
+                    SaleItem.id.in_(source_item_ids)
+                ).with_for_update().all()
+            } if source_item_ids else {}
+            source_sale_ids = {item.sale_id for item in source_sale_items.values()}
+            source_sales = {
+                source_sale.id: source_sale
+                for source_sale in Sale.query.filter(
+                    Sale.id.in_(source_sale_ids)
+                ).all()
+            } if source_sale_ids else {}
 
             prepared_items = []
             source_quantities = {}
@@ -11798,24 +11925,25 @@ def create_customer_return():
 
                 source_item_id = item_data.get("sourceSaleItemId")
                 source_sale_item = None
+                item_sale = sale
                 if source_item_id is not None:
-                    if not sale:
-                        return jsonify({"error": "An invoice-linked item requires a selected invoice"}), 400
-                    source_sale_item = SaleItem.query.filter_by(
-                        id=source_item_id,
-                        sale_id=sale.id,
-                    ).with_for_update().first()
+                    source_sale_item = source_sale_items.get(int(source_item_id))
+                    item_sale = source_sales.get(source_sale_item.sale_id) if source_sale_item else None
                     if (
                         not source_sale_item
+                        or not item_sale
+                        or item_sale.status != "finalized"
+                        or item_sale.customer_id != customer.id
+                        or (sale and item_sale.id != sale.id)
                         or source_sale_item.product_id != (product.id if product_type == "regular" else None)
                         or source_sale_item.non_product_id != (product.id if product_type == "non" else None)
                     ):
-                        return jsonify({"error": "Return item does not match the selected invoice"}), 400
+                        return jsonify({"error": "Return item does not match a finalized invoice for this customer"}), 400
 
                     already_returned = db.session.query(
                         func.coalesce(func.sum(CustomerReturn.quantity), 0)
                     ).filter(
-                        CustomerReturn.sale_id == sale.id,
+                        CustomerReturn.sale_id == item_sale.id,
                         CustomerReturn.status.in_(("pending", "approved", "completed")),
                         or_(
                             CustomerReturn.source_sale_item_id == source_sale_item.id,
@@ -11844,10 +11972,15 @@ def create_customer_return():
                         source_key, Decimal("0")
                     ) + quantity
 
+                item_invoice_number = item_sale.invoice_number if item_sale else invoice_number
+                if not item_invoice_number:
+                    return jsonify({"error": "Each return item must be linked to an invoice"}), 400
                 prepared_items.append({
                     "product": product,
                     "product_id": product.id,
                     "product_type": product_type,
+                    "sale_id": item_sale.id if item_sale else None,
+                    "invoice_number": item_invoice_number,
                     "description": str(item_data.get("description") or product.description)[:200],
                     "item_remarks": str(item_data.get("itemRemarks") or "").strip() or None,
                     "quantity": quantity,
@@ -11870,13 +12003,13 @@ def create_customer_return():
                     document_invoice_number=document_invoice_number,
                     date=parsed_date,
                     customer_id=customer.id,
-                    sale_id=sale.id if sale else None,
+                    sale_id=item["sale_id"],
                     source_sale_item_id=item["source_sale_item_id"],
                     is_manual=item["is_manual"],
                     product_id=item["product_id"],
                     product_type=item["product_type"],
                     description=item["description"],
-                    invoice_number=invoice_number,
+                    invoice_number=item["invoice_number"],
                     remarks=remarks,
                     item_remarks=item["item_remarks"],
                     quantity=item["quantity"],
