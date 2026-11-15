@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Pencil, Printer, Search, Trash2, Undo2, X } from "lucide-react";
+import { Loader2, Pencil, Printer, Search, Trash2, Undo2, X, ChevronDown } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface DiscountLine {
   id: number;
@@ -628,12 +629,17 @@ export default function CustomerDiscountPage() {
     }
   };
 
-  const handlePrint = (ticket: DiscountTicketGroup) => {
+  const handlePrint = (ticket: DiscountTicketGroup, format: "a4" | "a5" | "dot-matrix") => {
     const activeLine = ticket.activeLines[0];
     if (!activeLine) return;
     const ticketNumber = ticket.documentInvoiceNumber || activeLine.reference;
+    const basePath = format === "dot-matrix"
+      ? "/print/dot-matrix-invoice"
+      : format === "a5"
+        ? "/print/a5-invoice"
+        : "/print/invoice";
     window.open(
-      `/print/invoice/${encodeURIComponent(ticketNumber)}?discountId=${activeLine.id}`,
+      `${basePath}/${encodeURIComponent(ticketNumber)}?discountId=${activeLine.id}`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -1082,17 +1088,25 @@ export default function CustomerDiscountPage() {
                             <TableCell>
                               <div className="flex items-center gap-1">
                                 {ticket.activeLines.length > 0 && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0"
-                                    onClick={() => handlePrint(ticket)}
-                                    disabled={false}
-                                    title={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}
-                                    aria-label={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}
-                                  >
-                                    <Printer className="h-4 w-4 text-blue-600" />
-                                  </Button>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-8 px-1.5"
+                                        title={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}
+                                        aria-label={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}
+                                      >
+                                        <Printer className="h-4 w-4 text-blue-600" />
+                                        <ChevronDown className="h-3 w-3 text-blue-600" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => handlePrint(ticket, "a4")}>A4 Invoice</DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handlePrint(ticket, "a5")}>A5 Invoice</DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handlePrint(ticket, "dot-matrix")}>Dot Matrix</DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 )}
                                 {ticket.activeLines.length > 0 && (
                                   <Button

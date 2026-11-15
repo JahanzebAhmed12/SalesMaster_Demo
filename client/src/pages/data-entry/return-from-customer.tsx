@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Pagination } from "@/components/ui/pagination";
-import { RotateCcw, Search, Save, Trash2, Loader2, X, Pencil } from "lucide-react";
+import { RotateCcw, Search, Save, Trash2, Loader2, X, Pencil, Printer, ChevronDown } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth";
@@ -501,6 +502,27 @@ export default function ReturnFromCustomer() {
     }));
   };
 
+  const handlePrintReturn = (
+    returnDocument: CustomerReturnDocument<CustomerReturn>,
+    format: "a4" | "a5" | "dot-matrix",
+  ) => {
+    const returnId = returnDocument.items[0]?.id ?? returnDocument.id;
+    const documentNumber = returnDocument.documentInvoiceNumber
+      || returnDocument.refNumber
+      || returnDocument.invoiceNumber
+      || String(returnDocument.id);
+    const basePath = format === "dot-matrix"
+      ? "/print/dot-matrix-invoice"
+      : format === "a5"
+        ? "/print/a5-invoice"
+        : "/print/invoice";
+    window.open(
+      `${basePath}/${encodeURIComponent(documentNumber)}?returnId=${returnId}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
+  };
+
   const handleEditReturn = (returnDocument: CustomerReturnDocument<CustomerReturn>) => {
     if (!canEditReturn(returnDocument.date)) {
       toast({ title: "Permission denied", description: "You cannot edit a return for this date.", variant: "destructive" });
@@ -915,6 +937,25 @@ export default function ReturnFromCustomer() {
                         <TableCell>{returnItem.remarks || "-"}</TableCell>
                         <TableCell className="text-center">
                           <div className="inline-flex items-center gap-1">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 px-1.5"
+                                  title="Print return document"
+                                  aria-label={`Print return ${returnItem.documentInvoiceNumber || returnItem.refNumber || returnItem.id}`}
+                                >
+                                  <Printer className="h-4 w-4 text-blue-600" />
+                                  <ChevronDown className="h-3 w-3 text-blue-600" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handlePrintReturn(returnItem, "a4")}>A4 Invoice</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handlePrintReturn(returnItem, "a5")}>A5 Invoice</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handlePrintReturn(returnItem, "dot-matrix")}>Dot Matrix</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                             <Button
                               variant="ghost"
                               size="sm"
