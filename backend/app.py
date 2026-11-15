@@ -11568,16 +11568,14 @@ def _customer_returnable_invoice_lines(sale):
             Decimal("0"),
             Decimal(str(item.quantity or 0)) - returned_quantity,
         )
-        product_name = (
-            item.product.description if item.product
-            else item.non_product.description if item.non_product
-            else ""
-        )
+        product = item.product or item.non_product
+        product_name = product.description if product else ""
         lines.append({
             "id": item.id,
             "productId": item.product_id or item.non_product_id,
             "productType": "regular" if item.product_id else "non",
             "productName": product_name,
+            "productCode": getattr(product, "product_code", "") or "",
             "description": product_name,
             "quantity": float(item.quantity or 0),
             "returnedQuantity": float(returned_quantity),
@@ -14339,7 +14337,8 @@ def get_customer_discount_products():
                 "availableDiscountAmount": float(invoice_available),
                 "productId": item.product_id or item.non_product_id,
                 "productType": "regular" if item.product_id else "non",
-                "productName": product.description,
+                "productName": product.description if product else "",
+                "productCode": getattr(product, "product_code", "") or "",
                 "quantity": float(quantity),
                 "unitPrice": float(item.unit_price or 0),
                 "originalTotal": float(line_total),
@@ -14543,6 +14542,308 @@ def update_customer_discount(discount_id):
         db.session.rollback()
         app.logger.exception("Failed to update customer discount %s", discount_id)
         return jsonify({"error": "Failed to update customer discount."}), 500
+
+
+@app.route('/api/customer-discounts/document/<string:document_number>', methods=['PUT'])
+@jwt_required()
+def update_customer_discount_document(document_number):
+    """Update a whole discount ticket: edit lines, add new lines, or remove lines."""
+    user_id = int(get_jwt_identity())
+    access_error = _check_customer_discount_access(user_id)
+    if access_error:
+        return jsonify({"error": access_error}), 403
+    try:
+        data = request.get_json()
+        if not isinstance(data, dict):
+            return jsonify({"error": "A customer discount payload is required."}), 400
+        items = data.get("items")
+        if not isinstance(items, list) or not items:
+            return jsonify({"error": "At least one discount line is required."}), 400
+        try:
+            customer_id = int(data.get("customerId"))
+        except (TypeError, ValueError):
+            raise ValueError("A customer is required.")
+        customer = Customer.query.filter_by(id=customer_id).with_for_update().first()
+        if not customer:
+            return jsonify({"error": "Customer not found."}), 404
+
+        document_lines = CustomerDiscount.query.filter(
+            CustomerDiscount.document_invoice_number == document_number,
+            CustomerDiscount.customer_id == customer_id,
+            CustomerDiscount.is_deleted.is_(False),
+        ).order_by(CustomerDiscount.id.asc()).with_for_update().all()
+        if not document_lines:
+            return jsonify({"error": "Active customer discount ticket not found."}), 404
+        records_by_id = {line.id: line for line in document_lines}
+        document_ids = set(records_by_id)
+
+        transaction_date = _customer_discount_transaction_date(
+            user_id, data.get("date"), document_lines[0].date
+        )
+        permission_error = _check_discount_date_permission(
+            user_id, transaction_date, "edit", existing_date=document_lines[0].date
+        )
+        if permission_error:
+            return jsonify({"error": permission_error}), 403
+        for line in document_lines[1:]:
+            permission_error = _check_discount_date_permission(
+                user_id, transaction_date, "edit", existing_date=line.date
+            )
+            if permission_error:
+                return jsonify({"error": permission_error}), 403
+
+        parsed_updates = {}
+        new_entries = []
+        for item_data in items:
+            if not isinstance(item_data, dict):
+                return jsonify({"error": "Each discount line must be an object."}), 400
+            raw_id = item_data.get("id")
+            if raw_id is None or raw_id == "":
+                amount = _parse_discount_amount(item_data.get("amount"))
+                reason = str(item_data.get("reason") or "").strip()
+                if not reason:
+                    raise ValueError("A reason is required for every discount.")
+                if len(reason) > 500:
+                    raise ValueError("Reason must be 500 characters or fewer.")
+                try:
+                    sale_id = int(item_data.get("saleId"))
+                    sale_item_id = int(item_data.get("saleItemId"))
+                except (TypeError, ValueError):
+                    raise ValueError("Invoice and invoice product line are required.")
+                new_entries.append({
+                    "sale_id": sale_id,
+                    "sale_item_id": sale_item_id,
+                    "amount": amount,
+                    "reason": reason,
+                })
+                continue
+            try:
+                discount_id = int(raw_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Every existing discount line must include a valid ID."}), 400
+            if discount_id not in records_by_id or discount_id in parsed_updates:
+                return jsonify({"error": "The discount ticket lines do not match."}), 400
+            if item_data.get("delete"):
+                parsed_updates[discount_id] = {
+                    "delete": True,
+                    "reason": str(item_data.get("reason") or "").strip()[:500] or None,
+                }
+                continue
+            amount = _parse_discount_amount(item_data.get("amount"))
+            reason = str(item_data.get("reason") or "").strip()
+            if not reason:
+                raise ValueError("A reason is required for every discount.")
+            if len(reason) > 500:
+                raise ValueError("Reason must be 500 characters or fewer.")
+            parsed_updates[discount_id] = {"amount": amount, "reason": reason}
+
+        if set(parsed_updates) != set(records_by_id):
+            return jsonify({"error": "Every existing discount line must be included exactly once."}), 400
+
+        # Resulting lines: kept updates plus new entries, grouped for limit checks.
+        result_lines = []
+        for line in document_lines:
+            update = parsed_updates[line.id]
+            if update.get("delete"):
+                continue
+            result_lines.append({
+                "existing": line,
+                "sale_id": line.sale_id,
+                "sale_item_id": line.sale_item_id,
+                "amount": update["amount"],
+                "reason": update["reason"],
+            })
+        if not result_lines and not new_entries:
+            return jsonify({"error": "A discount ticket must keep at least one line."}), 400
+        for entry in new_entries:
+            result_lines.append({
+                "existing": None,
+                "sale_id": entry["sale_id"],
+                "sale_item_id": entry["sale_item_id"],
+                "amount": entry["amount"],
+                "reason": entry["reason"],
+            })
+
+        seen_sale_item_ids = set()
+        target_sale_ids = set()
+        target_item_ids = set()
+        for result in result_lines:
+            if result["sale_item_id"] in seen_sale_item_ids:
+                raise ValueError("A product line can only appear once in a discount ticket.")
+            seen_sale_item_ids.add(result["sale_item_id"])
+            target_sale_ids.add(result["sale_id"])
+            target_item_ids.add(result["sale_item_id"])
+
+        sales = {
+            sale.id: sale
+            for sale in Sale.query.filter(Sale.id.in_(target_sale_ids)).with_for_update().all()
+        }
+        if set(sales) != target_sale_ids:
+            raise ValueError("An invoice in the discount ticket no longer exists.")
+        sale_items = {
+            item.id: item
+            for item in SaleItem.query.filter(SaleItem.id.in_(target_item_ids)).with_for_update().all()
+        }
+        if set(sale_items) != target_item_ids:
+            raise ValueError("An invoice product line in the discount ticket no longer exists.")
+
+        for result in result_lines:
+            sale = sales[result["sale_id"]]
+            sale_item = sale_items[result["sale_item_id"]]
+            if sale.customer_id != customer_id or sale_item.sale_id != sale.id:
+                raise ValueError("A discount line does not belong to this customer's invoice.")
+            if sale.status != "finalized" or _money_decimal(sale.total_amount) <= 0:
+                raise ValueError("Discounts can only be applied to finalized invoices with a positive total.")
+            if Decimal(str(sale_item.quantity or 0)) <= 0 or _money_decimal(sale_item.total_price) <= 0:
+                raise ValueError("Discounts can only be applied to positive-quantity sale lines.")
+            if transaction_date < sale.date.date():
+                raise ValueError("Discount date cannot be before the invoice date.")
+
+        # Discounts on the affected invoices/lines excluding this whole ticket.
+        sale_discount_totals = dict(db.session.query(
+            CustomerDiscount.sale_id,
+            func.coalesce(func.sum(CustomerDiscount.amount), 0),
+        ).filter(
+            CustomerDiscount.sale_id.in_(target_sale_ids),
+            CustomerDiscount.is_deleted.is_(False),
+            ~CustomerDiscount.id.in_(list(document_ids)),
+        ).group_by(CustomerDiscount.sale_id).all())
+        item_discount_totals = dict(db.session.query(
+            CustomerDiscount.sale_item_id,
+            func.coalesce(func.sum(CustomerDiscount.amount), 0),
+        ).filter(
+            CustomerDiscount.sale_item_id.in_(target_item_ids),
+            CustomerDiscount.is_deleted.is_(False),
+            ~CustomerDiscount.id.in_(list(document_ids)),
+        ).group_by(CustomerDiscount.sale_item_id).all())
+
+        item_totals = {}
+        for result in result_lines:
+            item_totals[result["sale_item_id"]] = (
+                item_totals.get(result["sale_item_id"], Decimal("0.00")) + result["amount"]
+            )
+        for sale_item_id, total in item_totals.items():
+            sale_item = sale_items[sale_item_id]
+            available = _money_decimal(sale_item.total_price) - _money_decimal(
+                item_discount_totals.get(sale_item_id)
+            )
+            if total > available:
+                raise ValueError(
+                    "Combined discounts exceed the remaining value of an invoice product line."
+                )
+
+        sale_totals = {}
+        for result in result_lines:
+            sale_totals[result["sale_id"]] = (
+                sale_totals.get(result["sale_id"], Decimal("0.00")) + result["amount"]
+            )
+        for sale_id, total in sale_totals.items():
+            sale = sales[sale_id]
+            invoice_value = (
+                _money_decimal(sale.total_amount)
+                - _sale_return_total(sale.id)
+                - _money_decimal(sale_discount_totals.get(sale_id))
+            )
+            line_value = sum(
+                max(
+                    Decimal("0.00"),
+                    _money_decimal(item.total_price)
+                    - _money_decimal(item_discount_totals.get(item.id)),
+                )
+                for item in sale.items
+                if _money_decimal(item.total_price) > 0
+            )
+            if total > min(invoice_value, line_value):
+                raise ValueError(
+                    f"Combined discounts exceed the remaining undiscounted value of invoice {sale.invoice_number}."
+                )
+
+        now = datetime.utcnow()
+        changed_lines = []
+        for line in document_lines:
+            update = parsed_updates[line.id]
+            if update.get("delete"):
+                before_values = _discount_audit_values(line)
+                amount = _money_decimal(line.amount)
+                line.is_deleted = True
+                line.deleted_by = user_id
+                line.deleted_at = now
+                line.deletion_reason = update.get("reason") or "Removed from discount ticket"
+                line.updated_by = user_id
+                line.updated_at = now
+                customer.running_balance = _money_decimal(customer.running_balance) + amount
+                db.session.add(CustomerDiscountAudit(
+                    discount_id=line.id,
+                    action="deleted",
+                    before_values=before_values,
+                    after_values={"isDeleted": True},
+                    reason=line.deletion_reason,
+                    changed_by=user_id,
+                ))
+                changed_lines.append(line)
+                continue
+
+            before_values = _discount_audit_values(line)
+            old_amount = _money_decimal(line.amount)
+            line.amount = update["amount"]
+            line.date = transaction_date
+            line.reason = update["reason"]
+            line.updated_by = user_id
+            line.updated_at = now
+            customer.running_balance = (
+                _money_decimal(customer.running_balance) + old_amount - update["amount"]
+            )
+            db.session.add(CustomerDiscountAudit(
+                discount_id=line.id,
+                action="updated",
+                before_values=before_values,
+                after_values=_discount_audit_values(line),
+                reason=update["reason"],
+                changed_by=user_id,
+            ))
+            changed_lines.append(line)
+
+        for entry in new_entries:
+            discount = CustomerDiscount(
+                customer_id=customer_id,
+                sale_id=entry["sale_id"],
+                sale_item_id=entry["sale_item_id"],
+                document_invoice_number=document_number,
+                amount=entry["amount"],
+                date=transaction_date,
+                reason=entry["reason"],
+                created_by=user_id,
+            )
+            db.session.add(discount)
+            db.session.flush()
+            db.session.add(CustomerDiscountAudit(
+                discount_id=discount.id,
+                action="created",
+                after_values=_discount_audit_values(discount),
+                reason=entry["reason"],
+                changed_by=user_id,
+            ))
+            customer.running_balance = _money_decimal(customer.running_balance) - entry["amount"]
+            changed_lines.append(discount)
+
+        for sale in sales.values():
+            _refresh_sale_payment_status(sale)
+        db.session.commit()
+        all_lines = CustomerDiscount.query.filter(
+            CustomerDiscount.document_invoice_number == document_number,
+            CustomerDiscount.customer_id == customer_id,
+        ).order_by(CustomerDiscount.id.asc()).all()
+        return jsonify({
+            "documentInvoiceNumber": document_number,
+            "discounts": [line.to_dict() for line in all_lines],
+        }), 200
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify({"error": str(error)}), 400
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed to update customer discount document %s", document_number)
+        return jsonify({"error": "Failed to update customer discount ticket."}), 500
 
 
 @app.route('/api/customer-discounts/<int:discount_id>', methods=['DELETE'])

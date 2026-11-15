@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO, subDays } from "date-fns";
 import PageLayout from "@/components/common/page-layout";
 import CustomerSearch from "@/components/ui/customer-search";
+import ProductSearch from "@/components/ui/product-search";
+import type { RegularProduct } from "@shared/schema";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import { useBackdatePermissions, usePermissions } from "@/hooks/usePermissions";
@@ -14,13 +16,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Pencil, Printer, Search, Trash2 } from "lucide-react";
+import { Loader2, Pencil, Printer, Search, Trash2, Undo2, X } from "lucide-react";
 
 interface DiscountLine {
   id: number;
   productId: number;
   productType: "regular" | "non";
   productName: string;
+  productCode?: string;
   quantity: number;
   unitPrice: number;
   originalTotal: number;
@@ -34,6 +37,18 @@ interface DiscountProductCandidate extends DiscountLine {
   invoiceNumber: string;
   invoiceDate: string;
   availableDiscountAmount: number;
+}
+
+interface EditDiscountLine {
+  key: string;
+  discountId?: number;
+  saleId: number;
+  saleItemId: number;
+  invoiceNumber: string;
+  productName: string;
+  amount: string;
+  reason: string;
+  removed?: boolean;
 }
 
 interface DiscountInvoice {
@@ -111,7 +126,10 @@ export default function CustomerDiscountPage() {
   const [selectedLineId, setSelectedLineId] = useState("");
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
-  const [editingDiscount, setEditingDiscount] = useState<CustomerDiscount | null>(null);
+  const [editingTicket, setEditingTicket] = useState<DiscountTicketGroup | null>(null);
+  const [editLines, setEditLines] = useState<EditDiscountLine[]>([]);
+  const [productSearchKey, setProductSearchKey] = useState(0);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
   const [ticketLines, setTicketLines] = useState<DiscountTicketLine[]>([]);
 
   useEffect(() => {
@@ -129,9 +147,18 @@ export default function CustomerDiscountPage() {
     setSelectedLineId("");
     setAmount("");
     setReason("");
-    setEditingDiscount(null);
+    setEditingTicket(null);
+    setEditLines([]);
     setTicketLines([]);
+    setProductSearchKey(key => key + 1);
   }, [customerId]);
+
+  useEffect(() => {
+    const element = reasonRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [reason]);
 
   const productsQuery = useQuery<DiscountProductCandidate[]>({
     queryKey: ["customer-discount-products", customerId, fromDate, businessDateString],
@@ -158,23 +185,28 @@ export default function CustomerDiscountPage() {
   });
 
   const productOptions = useMemo(() => {
-    const options = new Map<string, Pick<DiscountProductCandidate, "productId" | "productType" | "productName">>();
+    const options = new Map<string, Pick<DiscountProductCandidate, "productId" | "productType" | "productName" | "productCode">>();
     for (const candidate of productsQuery.data || []) {
       options.set(productKey(candidate.productType, candidate.productId), {
         productId: candidate.productId,
         productType: candidate.productType,
         productName: candidate.productName,
-      });
-    }
-    if (editingDiscount) {
-      options.set(productKey(editingDiscount.productType, editingDiscount.productId), {
-        productId: editingDiscount.productId,
-        productType: editingDiscount.productType,
-        productName: editingDiscount.productName,
+        productCode: candidate.productCode || "",
       });
     }
     return Array.from(options.entries()).map(([key, product]) => ({ key, ...product }));
-  }, [productsQuery.data, editingDiscount]);
+  }, [productsQuery.data]);
+
+  const searchableDiscountProducts = useMemo(
+    () => productOptions.map((option, index) => ({
+      id: index + 1,
+      productCode: option.productCode,
+      name: option.productName,
+      description: option.productName,
+      returnKey: option.key,
+    } as unknown as RegularProduct & { returnKey: string })),
+    [productOptions],
+  );
 
   const matchingInvoices = useMemo(() => {
     const invoices = new Map<number, DiscountProductCandidate>();
@@ -228,7 +260,8 @@ export default function CustomerDiscountPage() {
   const ticketInvoiceAmount = ticketLines
     .filter(line => line.saleId.toString() === selectedSaleId)
     .reduce((total, line) => total + line.amount, 0);
-  const editingAmount = editingDiscount?.amount || 0;
+  const isLegacyTicketEdit = !!editingTicket && !editingTicket.documentInvoiceNumber;
+  const editingAmount = isLegacyTicketEdit ? (Number(editLines[0]?.amount) || 0) : 0;
   const maxLineDiscount = selectedLine
     ? selectedLine.remainingValue + editingAmount
     : 0;
@@ -280,8 +313,10 @@ export default function CustomerDiscountPage() {
     setAmount("");
     setReason("");
     setTransactionDate(businessDateString);
-    setEditingDiscount(null);
+    setEditingTicket(null);
+    setEditLines([]);
     setTicketLines([]);
+    setProductSearchKey(key => key + 1);
   };
 
   const canEditEntry = (entryDate: string) =>
@@ -291,8 +326,10 @@ export default function CustomerDiscountPage() {
   const canCreateForDate = transactionDate === businessDateString
     ? true
     : transactionDate < businessDateString && canEditBackdate;
-  const canSaveForDate = editingDiscount
-    ? canEditEntry(editingDiscount.date) && canEditEntry(transactionDate)
+  const canEditTicket = !!editingTicket
+    && editingTicket.activeLines.every(line => canEditEntry(line.date));
+  const canSaveForDate = editingTicket
+    ? canEditTicket && canEditEntry(transactionDate)
     : canCreateForDate;
 
   const handleSearch = () => {
@@ -318,14 +355,12 @@ export default function CustomerDiscountPage() {
     setSelectedLineId("");
     setAmount("");
     setReason("");
-    setEditingDiscount(null);
   };
 
   const handleInvoiceChange = (value: string) => {
     setSelectedSaleId(value);
     setSelectedLineId("");
     setAmount("");
-    setEditingDiscount(null);
   };
 
   const handleAddTicketLine = () => {
@@ -365,32 +400,93 @@ export default function CustomerDiscountPage() {
       amount: parsedAmount,
       reason: reason.trim(),
     }]);
+    setSelectedProductKey("");
+    setSelectedSaleId("");
     setSelectedLineId("");
     setAmount("");
     setReason("");
+    setProductSearchKey(key => key + 1);
   };
 
-  const handleEdit = (discount: CustomerDiscount) => {
-    if (!canEditEntry(discount.date)) {
-      toast({ title: "Permission denied", description: "You cannot edit a discount for this date.", variant: "destructive" });
+  const handleEditTicket = (ticket: DiscountTicketGroup) => {
+    if (!ticket.activeLines.every(line => canEditEntry(line.date))) {
+      toast({ title: "Permission denied", description: "You cannot edit every discount line in this ticket.", variant: "destructive" });
       return;
     }
-    setEditingDiscount(discount);
+    setEditingTicket(ticket);
+    setEditLines(ticket.activeLines.map(line => ({
+      key: `edit-${line.id}`,
+      discountId: line.id,
+      saleId: line.saleId,
+      saleItemId: line.saleItemId,
+      invoiceNumber: line.invoiceNumber,
+      productName: line.productName,
+      amount: Number(line.amount || 0).toFixed(2),
+      reason: line.reason || "",
+    })));
     setTicketLines([]);
-    setSelectedProductKey(productKey(discount.productType, discount.productId));
-    setSelectedSaleId(discount.saleId.toString());
-    setSelectedLineId(discount.saleItemId.toString());
-    setAmount(discount.amount.toFixed(2));
-    setReason(discount.reason);
-    setTransactionDate(showDiscountDate ? discount.date : businessDateString);
+    setSelectedProductKey("");
+    setSelectedSaleId("");
+    setSelectedLineId("");
+    setAmount("");
+    setReason("");
+    setTransactionDate(showDiscountDate ? (ticket.dates[0] || businessDateString) : businessDateString);
+    setProductSearchKey(key => key + 1);
+  };
+
+  const updateEditLine = (key: string, updates: Partial<EditDiscountLine>) => {
+    setEditLines(previous => previous.map(line =>
+      line.key === key ? { ...line, ...updates } : line
+    ));
+  };
+
+  const handleAddEditLine = () => {
+    const invoice = invoiceQuery.data;
+    const line = selectedLine;
+    if (!editingTicket || !invoice || !line) {
+      toast({ title: "Incomplete entry", description: "Select an invoice product line before adding it to the ticket.", variant: "destructive" });
+      return;
+    }
+    if (editLines.some(editLine => !editLine.removed && editLine.saleItemId === line.id)) {
+      toast({ title: "Product line already added", description: "A product line can only appear once in a discount ticket.", variant: "destructive" });
+      return;
+    }
+    const parsedNewAmount = Number(amount);
+    if (!Number.isFinite(parsedNewAmount) || parsedNewAmount <= 0 || !/^\d+(\.\d{1,2})?$/.test(amount)) {
+      toast({ title: "Invalid amount", description: "Enter a positive discount amount with no more than two decimal places.", variant: "destructive" });
+      return;
+    }
+    if (parsedNewAmount > maxLineDiscount || parsedNewAmount > maxInvoiceDiscount) {
+      toast({ title: "Discount exceeds the limit", description: "The amount cannot exceed the remaining line value or undiscounted invoice value.", variant: "destructive" });
+      return;
+    }
+    if (!reason.trim()) {
+      toast({ title: "Reason required", description: "Enter a reason for this discount line.", variant: "destructive" });
+      return;
+    }
+    setEditLines(previous => [...previous, {
+      key: `new-${line.id}-${Date.now()}`,
+      saleId: invoice.saleId,
+      saleItemId: line.id,
+      invoiceNumber: invoice.invoiceNumber,
+      productName: line.productName,
+      amount: parsedNewAmount.toFixed(2),
+      reason: reason.trim(),
+    }]);
+    setSelectedProductKey("");
+    setSelectedSaleId("");
+    setSelectedLineId("");
+    setAmount("");
+    setReason("");
+    setProductSearchKey(key => key + 1);
   };
 
   const handleSave = async () => {
-    if (!selectedCustomer || (editingDiscount && (!selectedProductKey || !selectedSaleId || !selectedLineId))) {
-      toast({ title: "Incomplete entry", description: "Select a customer, product, invoice, and invoice product line.", variant: "destructive" });
+    if (!selectedCustomer) {
+      toast({ title: "Incomplete entry", description: "Select a customer before saving.", variant: "destructive" });
       return;
     }
-    if (!editingDiscount && ticketLines.length === 0) {
+    if (!editingTicket && ticketLines.length === 0) {
       toast({ title: "Empty discount ticket", description: "Add at least one product line before recording the ticket.", variant: "destructive" });
       return;
     }
@@ -399,29 +495,62 @@ export default function CustomerDiscountPage() {
       return;
     }
     try {
-      if (editingDiscount) {
-        if (!Number.isFinite(parsedAmount) || parsedAmount <= 0 || !/^\d+(\.\d{1,2})?$/.test(amount)) {
-          toast({ title: "Invalid amount", description: "Enter a positive discount amount with no more than two decimal places.", variant: "destructive" });
+      if (editingTicket) {
+        const activeEditLines = editLines.filter(line => !line.removed);
+        if (activeEditLines.length === 0) {
+          toast({ title: "Empty discount ticket", description: "A discount ticket must keep at least one line.", variant: "destructive" });
           return;
         }
-        if (parsedAmount > maxLineDiscount || parsedAmount > maxInvoiceDiscount) {
-          toast({ title: "Discount exceeds the limit", description: "The amount cannot exceed the remaining line value or undiscounted invoice value.", variant: "destructive" });
-          return;
+        const seenItemIds = new Set<number>();
+        for (const line of activeEditLines) {
+          if (seenItemIds.has(line.saleItemId)) {
+            toast({ title: "Duplicate product line", description: "A product line can only appear once in a discount ticket.", variant: "destructive" });
+            return;
+          }
+          seenItemIds.add(line.saleItemId);
+          if (!Number.isFinite(Number(line.amount)) || Number(line.amount) <= 0 || !/^\d+(\.\d{1,2})?$/.test(line.amount)) {
+            toast({ title: "Invalid amount", description: `Enter a positive discount amount for ${line.productName} with no more than two decimal places.`, variant: "destructive" });
+            return;
+          }
+          if (!line.reason.trim()) {
+            toast({ title: "Reason required", description: `Enter a reason for ${line.productName}.`, variant: "destructive" });
+            return;
+          }
         }
-        if (!reason.trim()) {
-          toast({ title: "Reason required", description: "Enter a reason for this discount.", variant: "destructive" });
-          return;
+        if (editingTicket.documentInvoiceNumber) {
+          await apiRequest("PUT", `/api/customer-discounts/document/${encodeURIComponent(editingTicket.documentInvoiceNumber)}`, {
+            customerId: selectedCustomer.id,
+            date: transactionDate,
+            items: editLines.map(line => line.discountId !== undefined
+              ? (line.removed
+                ? { id: line.discountId, delete: true }
+                : { id: line.discountId, amount: Number(line.amount), reason: line.reason.trim() })
+              : {
+                saleId: line.saleId,
+                saleItemId: line.saleItemId,
+                amount: Number(line.amount),
+                reason: line.reason.trim(),
+              }),
+          });
+          await invalidateDiscountData(editingTicket.activeLines[0] || null);
+          toast({ title: "Discount ticket updated", description: `Ticket ${editingTicket.documentInvoiceNumber} was saved.` });
+        } else {
+          const line = activeEditLines[0];
+          if (activeEditLines.length !== 1 || !line.discountId) {
+            toast({ title: "Unable to edit discount", description: "This legacy ticket can only edit its single product line.", variant: "destructive" });
+            return;
+          }
+          const saved = await apiRequest<CustomerDiscount>("PUT", `/api/customer-discounts/${line.discountId}`, {
+            customerId: selectedCustomer.id,
+            saleId: line.saleId,
+            saleItemId: line.saleItemId,
+            amount: Number(line.amount),
+            date: transactionDate,
+            reason: line.reason.trim(),
+          });
+          await invalidateDiscountData(saved);
+          toast({ title: "Discount updated", description: `${saved.reference} was saved for ${saved.date}.` });
         }
-        const saved = await apiRequest<CustomerDiscount>("PUT", `/api/customer-discounts/${editingDiscount.id}`, {
-          customerId: selectedCustomer.id,
-          saleId: Number(selectedSaleId),
-          saleItemId: Number(selectedLineId),
-          amount: parsedAmount,
-          date: transactionDate,
-          reason: reason.trim(),
-        });
-        await invalidateDiscountData(editingDiscount);
-        toast({ title: "Discount updated", description: `${saved.reference} was saved for ${saved.date}.` });
       } else {
         const result = await apiRequest<{ documentInvoiceNumber: string; discounts: CustomerDiscount[] }>(
           "POST",
@@ -461,6 +590,21 @@ export default function CustomerDiscountPage() {
     line => productKey(line.productType, line.productId) === selectedProductKey
   );
 
+  useEffect(() => {
+    if (!invoiceQuery.data || selectedLineId || !selectedProductKey) return;
+    const lines = invoiceQuery.data.items.filter(
+      line => productKey(line.productType, line.productId) === selectedProductKey
+    );
+    if (lines.length === 1) {
+      setSelectedLineId(lines[0].id.toString());
+    }
+  }, [invoiceQuery.data, selectedProductKey, selectedLineId]);
+
+  const editLineItemIds = useMemo(
+    () => new Set(editLines.filter(line => !line.removed).map(line => line.saleItemId)),
+    [editLines],
+  );
+
   const handleDelete = async (ticket: DiscountTicketGroup) => {
     const activeLine = ticket.activeLines[0];
     if (!activeLine) return;
@@ -474,7 +618,7 @@ export default function CustomerDiscountPage() {
       await apiRequest("DELETE", `/api/customer-discounts/${activeLine.id}`);
       await invalidateDiscountData(activeLine);
       toast({ title: "Discount ticket deleted", description: `Ticket ${ticketNumber} was reversed.` });
-      if (ticket.activeLines.some(line => line.id === editingDiscount?.id)) resetForm();
+      if (editingTicket && ticket.key === editingTicket.key) resetForm();
     } catch (error: any) {
       toast({
         title: "Unable to delete discount",
@@ -526,23 +670,33 @@ export default function CustomerDiscountPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>{editingDiscount ? `Edit ${editingDiscount.reference}` : "Create a Discount Ticket"}</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{editingTicket ? `Edit Ticket ${editingTicket.documentInvoiceNumber || editingTicket.lines[0]?.reference || ""}` : "Create a Discount Ticket"}</CardTitle></CardHeader>
           <CardContent className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
+            {editingTicket && (
+              <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                {editingTicket.documentInvoiceNumber
+                  ? "Update the ticket lines below, or add new invoice products using the pickers. The ticket number stays unchanged."
+                  : "Update this discount line below."}
+              </p>
+            )}
+            {(!editingTicket || editingTicket.documentInvoiceNumber) && (
+            <div className="grid gap-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
               <div className="space-y-2">
-                <Label htmlFor="discount-product">Product</Label>
-                <select
-                  id="discount-product"
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                  value={selectedProductKey}
-                  onChange={event => handleProductChange(event.target.value)}
-                  disabled={editingDiscount !== null || !searchEnabled || productsQuery.isFetching}
-                >
-                  <option value="">Select a product</option>
-                  {productOptions.map(product => (
-                    <option key={product.key} value={product.key}>{product.productName}</option>
-                  ))}
-                </select>
+                <ProductSearch
+                  key={productSearchKey}
+                  label="Product"
+                  value=""
+                  products={searchableDiscountProducts}
+                  placeholder="Search product by code or name..."
+                  onProductSelect={(product) => {
+                    handleProductChange(
+                      (product as (RegularProduct & { returnKey?: string }) | null)?.returnKey || "",
+                    );
+                  }}
+                  showCode
+                  allowClear
+                  disabled={isLegacyTicketEdit || !searchEnabled || productsQuery.isFetching}
+                />
                 {searchEnabled && !productsQuery.isFetching && !(productsQuery.data || []).length && (
                   <p className="text-sm text-muted-foreground">No discountable products were found in finalized invoices for this date range.</p>
                 )}
@@ -554,7 +708,7 @@ export default function CustomerDiscountPage() {
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   value={selectedSaleId}
                   onChange={event => handleInvoiceChange(event.target.value)}
-                  disabled={editingDiscount !== null || !selectedProductKey || productsQuery.isFetching}
+                  disabled={isLegacyTicketEdit || !selectedProductKey || productsQuery.isFetching}
                 >
                   <option value="">Select an invoice</option>
                   {selectedSaleId && invoiceQuery.data &&
@@ -569,11 +723,13 @@ export default function CustomerDiscountPage() {
                     </option>
                   ))}
                 </select>
-                {selectedProductKey && searchEnabled && !productsQuery.isFetching && matchingInvoices.length === 0 && !editingDiscount && (
+                {selectedProductKey && searchEnabled && !productsQuery.isFetching && matchingInvoices.length === 0 && !editingTicket && (
                   <p className="text-sm text-muted-foreground">No eligible invoice contains this product in the selected date range.</p>
                 )}
               </div>
+              <div className="hidden md:block" />
             </div>
+            )}
 
             {showDiscountDate && (
               <div className="max-w-sm space-y-2">
@@ -585,7 +741,7 @@ export default function CustomerDiscountPage() {
                   max={businessDateString}
                   min={earliestInvoiceDate}
                   onChange={event => setTransactionDate(event.target.value)}
-                  disabled={isLoadingBusinessDate || !businessDateString || (!!editingDiscount && !canEditEntry(editingDiscount.date))}
+                  disabled={isLoadingBusinessDate || !businessDateString || (!!editingTicket && !canEditTicket)}
                 />
                 {transactionDate < businessDateString && !canEditBackdate && (
                   <p className="text-sm text-destructive">Backdated discount entry permission is required.</p>
@@ -602,37 +758,39 @@ export default function CustomerDiscountPage() {
                     <span>Outstanding: <strong>{money(invoiceQuery.data.outstandingAmount)}</strong></span>
                     <span>Discounts already applied: <strong>{money(invoiceQuery.data.discountTotal)}</strong></span>
                     <span>Remaining value available for discounts: <strong>{money(invoiceQuery.data.availableDiscountAmount)}</strong></span>
-                    <span className="text-muted-foreground sm:col-span-3">Payment status does not limit discounts. A discount on a paid invoice may create customer credit.</span>
                     {!invoiceQuery.data.discountEligible && <span className="text-destructive sm:col-span-3">This invoice has no remaining value eligible for a discount.</span>}
                   </div>
                 ) : null}
               </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="discount-line">Product line on selected invoice</Label>
-              <select
-                id="discount-line"
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={selectedLineId}
-                onChange={event => setSelectedLineId(event.target.value)}
-                disabled={!invoiceQuery.data}
-              >
-                <option value="">Select the invoice product line</option>
-                {visibleInvoiceLines.map(line => (
-                  <option
-                    key={line.id}
-                    value={line.id}
-                    disabled={
-                      (line.remainingValue <= 0 && line.id.toString() !== editingDiscount?.saleItemId.toString()) ||
-                      (!editingDiscount && ticketLines.some(ticketLine => ticketLine.saleItemId === line.id))
-                    }
-                  >
-                    {line.productName} — Qty {line.quantity} — remaining {money(line.remainingValue)}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {(!editingTicket || editingTicket.documentInvoiceNumber) && selectedSaleId && visibleInvoiceLines.length > 1 && (
+              <div className="space-y-2">
+                <Label htmlFor="discount-line">Product line on selected invoice</Label>
+                <select
+                  id="discount-line"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedLineId}
+                  onChange={event => setSelectedLineId(event.target.value)}
+                  disabled={!invoiceQuery.data}
+                >
+                  <option value="">Select the invoice product line</option>
+                  {visibleInvoiceLines.map(line => (
+                    <option
+                      key={line.id}
+                      value={line.id}
+                      disabled={
+                        (line.remainingValue <= 0 && !editLineItemIds.has(line.id)) ||
+                        (!editingTicket && ticketLines.some(ticketLine => ticketLine.saleItemId === line.id)) ||
+                        editLineItemIds.has(line.id)
+                      }
+                    >
+                      {line.productName} — Qty {line.quantity} — remaining {money(line.remainingValue)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {selectedLine && (
               <div className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -643,32 +801,37 @@ export default function CustomerDiscountPage() {
               </div>
             )}
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="discount-amount">Discount amount (£)</Label>
-                <Input
-                  id="discount-amount"
-                  type="text"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={event => setAmount(event.target.value)}
-                  disabled={!selectedLine}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Maximum: {money(Math.max(0, Math.min(maxLineDiscount, maxInvoiceDiscount)))}
-                </p>
+            {(!editingTicket || editingTicket.documentInvoiceNumber) && selectedLine && (
+              <div className="grid gap-4 md:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
+                <div className="space-y-2">
+                  <Label htmlFor="discount-amount">Discount amount (£)</Label>
+                  <Input
+                    id="discount-amount"
+                    type="text"
+                    inputMode="decimal"
+                    value={amount}
+                    onChange={event => setAmount(event.target.value)}
+                    disabled={!selectedLine}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Maximum: {money(Math.max(0, Math.min(maxLineDiscount, maxInvoiceDiscount)))}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="discount-reason">Reason</Label>
+                  <Textarea
+                    id="discount-reason"
+                    ref={reasonRef}
+                    maxLength={500}
+                    rows={1}
+                    value={reason}
+                    onChange={event => setReason(event.target.value)}
+                    placeholder="Reason for the customer discount"
+                    className="min-h-10 resize-none overflow-hidden"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="discount-reason">Reason</Label>
-                <Textarea
-                  id="discount-reason"
-                  maxLength={500}
-                  value={reason}
-                  onChange={event => setReason(event.target.value)}
-                  placeholder="Reason for the customer discount"
-                />
-              </div>
-            </div>
+            )}
 
             {selectedLine && Number.isFinite(parsedAmount) && parsedAmount > 0 && (
               <div className="rounded-md bg-blue-50 p-3 text-sm">
@@ -677,7 +840,7 @@ export default function CustomerDiscountPage() {
               </div>
             )}
 
-            {!editingDiscount && ticketLines.length > 0 && (
+            {!editingTicket && ticketLines.length > 0 && (
               <div className="space-y-3 rounded-md border p-4">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="font-medium">Discount Ticket Draft</h3>
@@ -721,28 +884,116 @@ export default function CustomerDiscountPage() {
               </div>
             )}
 
+            {editingTicket && editLines.length > 0 && (
+              <div className="space-y-3 rounded-md border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-medium">{editingTicket.documentInvoiceNumber ? `Discount Ticket ${editingTicket.documentInvoiceNumber}` : "Discount Line"}</h3>
+                  <span className="text-sm font-semibold">
+                    Total: {money(editLines.filter(line => !line.removed).reduce((total, line) => total + (Number(line.amount) || 0), 0))}
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Invoice</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead className="w-32">Amount (£)</TableHead>
+                        <TableHead className="min-w-48">Reason</TableHead>
+                        <TableHead className="w-10" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {editLines.map(line => (
+                        <TableRow key={line.key} className={line.removed ? "opacity-60" : ""}>
+                          <TableCell className="whitespace-nowrap">{line.invoiceNumber}</TableCell>
+                          <TableCell className="max-w-52">
+                            <div className={line.removed ? "line-through" : "truncate"} title={line.productName}>{line.productName}</div>
+                          </TableCell>
+                          <TableCell>
+                            {line.removed ? (
+                              <span className="text-sm text-muted-foreground line-through">{money(Number(line.amount) || 0)}</span>
+                            ) : (
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                value={line.amount}
+                                onChange={event => updateEditLine(line.key, { amount: event.target.value })}
+                                aria-label={`${line.productName} discount amount`}
+                                className="h-8 px-2 text-right"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {line.removed ? (
+                              <span className="text-sm text-muted-foreground line-through">{line.reason}</span>
+                            ) : (
+                              <Input
+                                value={line.reason}
+                                onChange={event => updateEditLine(line.key, { reason: event.target.value })}
+                                aria-label={`${line.productName} reason`}
+                                className="h-8 min-w-40 px-2 text-xs"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {line.discountId !== undefined ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => updateEditLine(line.key, { removed: !line.removed })}
+                                aria-label={line.removed ? `Restore ${line.productName}` : `Remove ${line.productName} from ticket`}
+                                title={line.removed ? "Restore line" : "Remove line from ticket"}
+                              >
+                                {line.removed
+                                  ? <Undo2 className="h-4 w-4 text-blue-600" />
+                                  : <Trash2 className="h-4 w-4 text-red-600" />}
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => setEditLines(previous => previous.filter(item => item.key !== line.key))}
+                                aria-label={`Remove ${line.productName}`}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
-              {!editingDiscount && (
+              {(!editingTicket || editingTicket.documentInvoiceNumber) && selectedLine && (
                 <Button
                   variant="outline"
-                  onClick={handleAddTicketLine}
-                  disabled={!selectedLine || !reason.trim() || !amount || !canCreateForDate || invoiceQuery.isFetching}
+                  onClick={editingTicket ? handleAddEditLine : handleAddTicketLine}
+                  disabled={!reason.trim() || !amount || (editingTicket ? !canSaveForDate : !canCreateForDate) || invoiceQuery.isFetching}
                 >
-                  Add Product to Ticket
+                  {editingTicket ? "Add Line to Ticket" : "Add Product to Ticket"}
                 </Button>
               )}
               <Button
                 onClick={handleSave}
                 disabled={
-                  editingDiscount
-                    ? !selectedLine || !reason.trim() || !amount || !canSaveForDate || invoiceQuery.isFetching
+                  editingTicket
+                    ? editLines.filter(line => !line.removed).length === 0 || !canSaveForDate || invoiceQuery.isFetching
                     : ticketLines.length === 0 || !canCreateForDate || invoiceQuery.isFetching
                 }
               >
                 {invoiceQuery.isFetching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingDiscount ? "Save Changes" : "Record Discount Ticket"}
+                {editingTicket ? "Update Ticket" : "Record Discount Ticket"}
               </Button>
-              {editingDiscount && <Button variant="outline" onClick={resetForm}>Cancel Edit</Button>}
+              {editingTicket && <Button variant="outline" onClick={resetForm}>Cancel Edit</Button>}
             </div>
           </CardContent>
         </Card>
@@ -829,20 +1080,44 @@ export default function CustomerDiscountPage() {
                                   : "Partially Deleted"}
                             </TableCell>
                             <TableCell>
-                              <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1">
                                 {ticket.activeLines.length > 0 && (
-                                  <Button size="sm" variant="outline" onClick={() => handlePrint(ticket)} aria-label={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}>
-                                    <Printer className="mr-1 h-4 w-4" />Print
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handlePrint(ticket)}
+                                    disabled={false}
+                                    title={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}
+                                    aria-label={`Print ticket ${ticket.documentInvoiceNumber || ticket.key}`}
+                                  >
+                                    <Printer className="h-4 w-4 text-blue-600" />
                                   </Button>
                                 )}
-                                {ticket.activeLines.map(line => (
-                                  <Button key={line.id} size="sm" variant="outline" onClick={() => handleEdit(line)} disabled={!canEditEntry(line.date)} aria-label={`Edit ${line.reference}`}>
-                                    <Pencil className="mr-1 h-4 w-4" />{line.productName}
-                                  </Button>
-                                ))}
                                 {ticket.activeLines.length > 0 && (
-                                  <Button size="sm" variant="destructive" onClick={() => void handleDelete(ticket)} disabled={!ticket.activeLines.every(line => canDeleteEntry(line.date))} aria-label={`Delete ticket ${ticket.documentInvoiceNumber || ticket.key}`}>
-                                    <Trash2 className="mr-1 h-4 w-4" />Delete Ticket
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handleEditTicket(ticket)}
+                                    disabled={!ticket.activeLines.every(line => canEditEntry(line.date))}
+                                    title={ticket.activeLines.every(line => canEditEntry(line.date)) ? "Edit discount ticket" : "You don't have permission to edit this ticket"}
+                                    aria-label={`Edit ticket ${ticket.documentInvoiceNumber || ticket.key}`}
+                                  >
+                                    <Pencil className={`h-4 w-4 ${ticket.activeLines.every(line => canEditEntry(line.date)) ? "text-blue-600" : "text-gray-400"}`} />
+                                  </Button>
+                                )}
+                                {ticket.activeLines.length > 0 && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => void handleDelete(ticket)}
+                                    disabled={!ticket.activeLines.every(line => canDeleteEntry(line.date))}
+                                    title={ticket.activeLines.every(line => canDeleteEntry(line.date)) ? "Delete discount ticket" : "You don't have permission to delete this ticket"}
+                                    aria-label={`Delete ticket ${ticket.documentInvoiceNumber || ticket.key}`}
+                                  >
+                                    <Trash2 className={`h-4 w-4 ${ticket.activeLines.every(line => canDeleteEntry(line.date)) ? "text-red-600" : "text-gray-400"}`} />
                                   </Button>
                                 )}
                               </div>
