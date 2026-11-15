@@ -499,8 +499,8 @@ def _release_latest_invoice_document_number(invoice_number, document_date=None):
     return True
 
 
-def _prune_trailing_customer_return_voids():
-    """Undo legacy voids for deleted returns that still occupy the series tail."""
+def _prune_trailing_invoice_document_voids(commit=False):
+    """Release deleted documents at the tail of the shared invoice series."""
     sequence = InvoiceDocumentNumber.query.filter_by(id=1).with_for_update().first()
     if not sequence:
         return
@@ -508,11 +508,11 @@ def _prune_trailing_customer_return_voids():
     changed = False
     while sequence.last_number > 0:
         number = str(sequence.last_number)
-        voided_return = VoidedInvoiceDocument.query.filter_by(
-            invoice_number=number,
-            document_type="return",
+        voided_document = VoidedInvoiceDocument.query.filter(
+            VoidedInvoiceDocument.invoice_number == number,
+            VoidedInvoiceDocument.document_type.in_(("invoice", "return", "discount")),
         ).first()
-        if not voided_return:
+        if not voided_document:
             break
         released_numbers = [
             int(value)
@@ -533,13 +533,21 @@ def _prune_trailing_customer_return_voids():
         ).first():
             break
 
-        voided_return.document_type = "released"
-        voided_return.date_unknown = False
+        voided_document.document_type = "released"
+        voided_document.date_unknown = False
         sequence.last_number -= 1
         changed = True
 
     if changed:
-        db.session.commit()
+        if commit:
+            db.session.commit()
+        else:
+            db.session.flush()
+
+
+def _prune_trailing_customer_return_voids():
+    """Backward-compatible alias for the shared document-number series."""
+    return _prune_trailing_invoice_document_voids(commit=True)
 
 
 def ensure_voided_invoice_document_schema():
@@ -681,8 +689,9 @@ with app.app_context():
     upgrade_invoice_document_numbers_schema(db.engine, InvoiceDocumentNumber.__table__)
     ensure_voided_invoice_document_schema()
     _initialize_invoice_document_numbers()
-    _prune_trailing_customer_return_voids()
+    _prune_trailing_invoice_document_voids(commit=True)
     _backfill_deleted_customer_discount_voids()
+    _prune_trailing_invoice_document_voids(commit=True)
     _backfill_missing_invoice_document_numbers()
     ensure_sale_item_highlight_column()
     ensure_print_service_settings_columns()
@@ -3226,6 +3235,8 @@ def delete_sale(id):
             db.session.delete(item)
 
         db.session.delete(sale)
+        db.session.flush()
+        _prune_trailing_invoice_document_voids()
         db.session.commit()
         return jsonify({'message': 'Sale deleted successfully'})
     except Exception as e:
@@ -12549,20 +12560,18 @@ def delete_customer_return(id):
                     )
 
         db.session.flush()
-        if not _release_latest_invoice_document_number(
+        _record_voided_invoice_document(
             customer_return.document_invoice_number,
+            "return",
             customer_return.date,
-        ):
-            _record_voided_invoice_document(
-                customer_return.document_invoice_number,
-                "return",
-                customer_return.date,
-                customer_return.customer.customer_name if customer_return.customer else None,
-                customer_return.invoice_number,
-                customer_return.user.username if customer_return.user else None,
-            )
+            customer_return.customer.customer_name if customer_return.customer else None,
+            customer_return.invoice_number,
+            customer_return.user.username if customer_return.user else None,
+        )
         for return_item in returns_to_delete:
             db.session.delete(return_item)
+        db.session.flush()
+        _prune_trailing_invoice_document_voids()
         db.session.commit()
         return jsonify({"message": "Customer return deleted successfully"}), 200
     except Exception as e:
@@ -14487,6 +14496,7 @@ def delete_customer_discount(discount_id):
                 discount.sale.invoice_number if discount.sale else None,
                 discount.creator.username if discount.creator else None,
             )
+            _prune_trailing_invoice_document_voids()
         db.session.commit()
         return jsonify({"message": "Customer discount ticket deleted successfully."})
     except Exception:

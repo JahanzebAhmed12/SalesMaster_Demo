@@ -27,6 +27,7 @@ from models import (  # noqa: E402
     CustomerReturn,
     InvoiceDocumentNumber,
     RegularProduct,
+    User,
     VoidedInvoiceDocument,
 )
 from flask_jwt_extended import create_access_token  # noqa: E402
@@ -44,6 +45,7 @@ def main():
                 customer_name="Print Test Customer",
                 address="2 Customer Road",
             )
+            user = User(username="return-print-test", password="test", user_type="admin")
             products = [
                 RegularProduct(
                     product_code=f"PROD-RETURN-PRINT-{index}",
@@ -51,7 +53,7 @@ def main():
                 )
                 for index in (1, 2)
             ]
-            db.session.add_all([company, customer, *products])
+            db.session.add_all([company, customer, user, *products])
             db.session.flush()
 
             db.session.add(InvoiceDocumentNumber(id=1, last_number=7430))
@@ -187,6 +189,39 @@ def main():
 
             invalid_response = client.get("/api/customer-returns/print?ids=not-an-id")
             assert invalid_response.status_code == 400
+
+            latest_return = CustomerReturn(
+                ref_number="CRPRINT-LATEST",
+                document_invoice_number="7432",
+                date=date.today(),
+                customer_id=customer.id,
+                product_id=products[0].id,
+                product_type="regular",
+                description=products[0].description,
+                invoice_number="INV-LATEST",
+                quantity=Decimal("1"),
+                unit_price=Decimal("12.50"),
+                total_value=Decimal("12.50"),
+                status="completed",
+                created_by=user.id,
+            )
+            products[0].current_stock = Decimal("1.000")
+            InvoiceDocumentNumber.query.get(1).last_number = 7432
+            db.session.add(latest_return)
+            db.session.commit()
+            return_headers = {
+                "Authorization": f"Bearer {create_access_token(identity=str(user.id))}"
+            }
+            delete_response = client.delete(
+                f"/api/customer-returns/{latest_return.id}",
+                headers=return_headers,
+            )
+            assert delete_response.status_code == 200, delete_response.get_json()
+            released_latest = VoidedInvoiceDocument.query.filter_by(
+                invoice_number="7432"
+            ).first()
+            assert released_latest and released_latest.document_type == "released"
+            assert InvoiceDocumentNumber.query.get(1).last_number == 7431
         finally:
             db.session.remove()
             db.drop_all()

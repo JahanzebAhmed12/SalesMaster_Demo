@@ -232,7 +232,51 @@ def main():
             assert delete_response.status_code == 200, delete_response.get_json()
             assert CustomerDiscount.query.filter_by(is_deleted=False).count() == 0
             voided = VoidedInvoiceDocument.query.filter_by(invoice_number="101").first()
-            assert voided is not None
+            assert voided is not None and voided.document_type == "released"
+            assert InvoiceDocumentNumber.query.get(1).last_number == 100
+            assert customer.running_balance == Decimal("0.00")
+
+            latest_discount_response = client.post(
+                "/api/customer-discounts",
+                headers=headers,
+                json={
+                    "customerId": customer.id,
+                    "date": date.today().isoformat(),
+                    "items": [{
+                        "saleId": sale.id,
+                        "saleItemId": sale_items[0].id,
+                        "amount": "5.00",
+                        "reason": "Latest ticket deletion check",
+                    }],
+                },
+            )
+            latest_discount = latest_discount_response.get_json() or {}
+            assert latest_discount_response.status_code == 201, latest_discount
+            assert latest_discount["documentInvoiceNumber"] == "101"
+
+            later_sale = Sale(
+                invoice_number="102",
+                customer_id=customer.id,
+                customer_type="account",
+                payment_status="unpaid",
+                subtotal=Decimal("10.00"),
+                total_amount=Decimal("10.00"),
+                status="finalized",
+                date=datetime.combine(date.today(), datetime.min.time()),
+                created_by=user.id,
+            )
+            db.session.add(later_sale)
+            InvoiceDocumentNumber.query.get(1).last_number = 102
+            db.session.commit()
+
+            later_record_delete_response = client.delete(
+                f"/api/customer-discounts/{latest_discount['discounts'][0]['id']}",
+                headers=headers,
+            )
+            assert later_record_delete_response.status_code == 200, later_record_delete_response.get_json()
+            voided = VoidedInvoiceDocument.query.filter_by(invoice_number="101").first()
+            assert voided is not None and voided.document_type == "discount"
+            assert InvoiceDocumentNumber.query.get(1).last_number == 102
             assert customer.running_balance == Decimal("0.00")
 
             db.session.add(UserRestriction(
