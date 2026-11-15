@@ -7678,6 +7678,10 @@ def product_sales_history():
             else line.non_product.description if line and line.non_product
             else ''
         )
+        discount_amount = float(discount.amount or 0)
+        line_quantity = float(line.quantity or 0) if line else 0
+        per_unit_discount = discount_amount / line_quantity if line_quantity > 0 else discount_amount
+        original_unit_price = float(line.unit_price or 0) if line else 0
         result.append({
             'invoiceNo': discount.sale.invoice_number if discount.sale else '',
             'date': discount.date.isoformat(),
@@ -7686,12 +7690,12 @@ def product_sales_history():
             'gateNumber': discount.sale.gate_number if discount.sale else None,
             'productDescription': product_name,
             'quantity': 0,
-            'unitPrice': 0,
-            'originalUnitPrice': 0,
-            'total': -float(discount.amount or 0),
-            'discountTotal': float(discount.amount or 0),
-            'effectiveTotal': -float(discount.amount or 0),
-            'effectiveUnitPrice': 0,
+            'unitPrice': -per_unit_discount,
+            'originalUnitPrice': original_unit_price,
+            'total': -discount_amount,
+            'discountTotal': discount_amount,
+            'effectiveTotal': -discount_amount,
+            'effectiveUnitPrice': original_unit_price - per_unit_discount,
             'discountReference': discount.reference,
             'isCustomerDiscount': True,
             'isCompany': bool(discount.customer.is_company) if discount.customer else False,
@@ -15467,6 +15471,9 @@ def product_history_report():
         CustomerDiscount.date.asc(), CustomerDiscount.id.asc()
     ).all():
         sale_item = discount.sale_item
+        discount_amount = float(discount.amount or 0)
+        line_quantity = float(sale_item.quantity or 0) if sale_item else 0
+        per_unit_discount = discount_amount / line_quantity if line_quantity > 0 else discount_amount
         sales_data.append({
             'date': discount.date.isoformat(),
             'invoiceNo': f"{discount.sale.invoice_number} / {discount.reference}" if discount.sale else discount.reference,
@@ -15477,8 +15484,8 @@ def product_history_report():
                 else ''
             ),
             'quantity': 0,
-            'unitPrice': 0,
-            'total': -float(discount.amount or 0),
+            'unitPrice': -per_unit_discount,
+            'total': -discount_amount,
             'notes': discount.reason or '',
             'isCompany': bool(discount.customer.is_company) if discount.customer else False,
             'isCustomerDiscount': True,
