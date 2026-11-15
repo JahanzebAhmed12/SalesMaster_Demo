@@ -17,6 +17,8 @@ import { useAuth } from "@/lib/auth";
 import { formatQuantity } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import CustomerSearch from "@/components/ui/customer-search";
+import ProductSearch from "@/components/ui/product-search";
+import type { RegularProduct } from "@shared/schema";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { groupCustomerReturnDocuments, type CustomerReturnDocument } from "@/lib/customer-return-documents";
@@ -29,6 +31,7 @@ interface ReturnableInvoiceLine {
   productId: number;
   productType: "regular" | "non";
   productName: string;
+  productCode?: string;
   quantity: number;
   unitPrice: number;
   originalTotal: number;
@@ -45,8 +48,8 @@ interface DraftReturnItem {
   productId: number;
   productType: "regular" | "non";
   description: string;
-  quantity: number;
-  unitPrice: number;
+  quantity: string;
+  unitPrice: string;
   sourceSaleItemId: number | null;
   availableQuantity?: number;
   itemRemarks?: string;
@@ -54,6 +57,7 @@ interface DraftReturnItem {
   invoiceDate: string;
   soldQuantity?: number;
   returnedQuantity?: number;
+  originalQuantity?: number;
 }
 
 interface CustomerReturn {
@@ -105,6 +109,7 @@ export default function ReturnFromCustomer() {
   const [invoicesFetched, setInvoicesFetched] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [selectedProductKey, setSelectedProductKey] = useState("");
+  const [productSearchKey, setProductSearchKey] = useState(0);
   const [selectedInvoiceLineId, setSelectedInvoiceLineId] = useState("");
   const [returnsFromDate, setReturnsFromDate] = useState(format(subDays(new Date(businessDateString), 30), "yyyy-MM-dd"));
   const [returnsToDate, setReturnsToDate] = useState(businessDateString);
@@ -117,6 +122,7 @@ export default function ReturnFromCustomer() {
   useEffect(() => {
     setInvoicesFetched(false);
     setSelectedProductKey("");
+    setProductSearchKey((key) => key + 1);
     setSelectedInvoiceLineId("");
     setSelectedInvoiceLines({});
     setEditingReturn(null);
@@ -143,10 +149,16 @@ export default function ReturnFromCustomer() {
     },
     enabled: !!customerId && customerSearched,
   });
-  const returnDocuments = useMemo(
-    () => groupCustomerReturnDocuments(returns),
-    [returns],
-  );
+  const returnDocuments = useMemo(() => {
+    const documents = groupCustomerReturnDocuments(returns);
+    return documents.sort((a, b) => {
+      const dateDiff = String(b.date || "").localeCompare(String(a.date || ""));
+      if (dateDiff !== 0) return dateDiff;
+      const invoiceDiff = String(b.invoiceNumber || "").localeCompare(String(a.invoiceNumber || ""));
+      if (invoiceDiff !== 0) return invoiceDiff;
+      return b.id - a.id;
+    });
+  }, [returns]);
 
   const {
     data: returnableInvoiceLines = [],
@@ -162,23 +174,90 @@ export default function ReturnFromCustomer() {
     enabled: false,
   });
 
-  const activeInvoiceItems = Object.values(selectedInvoiceLines);
+  const {
+    data: editReturnableLines = [],
+    isLoading: editReturnableLinesLoading,
+    isFetched: editReturnableLinesFetched,
+    error: editReturnableLinesError,
+  } = useQuery<ReturnableInvoiceLine[]>({
+    queryKey: ["customer-returnable-products-edit", customerId, businessDateString],
+    queryFn: () => apiRequest(
+      "GET",
+      `/api/customer-returns/products?customerId=${customerId}&fromDate=2000-01-01&toDate=${encodeURIComponent(businessDateString)}`,
+    ),
+    enabled: !!editingReturn && !!customerId,
+  });
+
+  const editSourceLineMap = useMemo(() => {
+    const map = new Map<number, ReturnableInvoiceLine>();
+    editReturnableLines.forEach((line) => map.set(line.id, line));
+    return map;
+  }, [editReturnableLines]);
+
+  const pickerLines = editingReturn ? editReturnableLines : returnableInvoiceLines;
+  const pickerLoading = editingReturn ? editReturnableLinesLoading : returnableInvoiceLinesLoading;
+  const pickerError = editingReturn ? editReturnableLinesError : returnableInvoiceLinesError;
+  const pickerReady = editingReturn ? editReturnableLinesFetched : invoicesFetched;
+
+  const activeInvoiceItems = Object.values(selectedInvoiceLines).filter(
+    (item) => item.returnId !== undefined || item.sourceSaleItemId != null,
+  );
   const itemsToSubmit = activeInvoiceItems;
-  const estimatedTotal = itemsToSubmit.reduce((total, item) => total + item.quantity * item.unitPrice, 0);
-  const selectedProductLines = returnableInvoiceLines.filter((line) =>
+  const estimatedTotal = itemsToSubmit.reduce(
+    (total, item) => total + (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0),
+    0,
+  );
+  const usedSourceItemIds = new Set(
+    Object.values(selectedInvoiceLines)
+      .map((item) => item.sourceSaleItemId)
+      .filter((value): value is number => value != null),
+  );
+  const selectedProductLines = pickerLines.filter((line) =>
     `${line.productType}:${line.productId}` === selectedProductKey
     && line.returnableQuantity > 0
-    && !selectedInvoiceLines[line.id]
+    && !usedSourceItemIds.has(line.id)
   );
-  const availableProductLines = returnableInvoiceLines.filter((line) =>
-    line.returnableQuantity > 0 && !selectedInvoiceLines[line.id]
+  const availableProductLines = pickerLines.filter((line) =>
+    line.returnableQuantity > 0 && !usedSourceItemIds.has(line.id)
   );
   const productOptions = Array.from(new Map(
     availableProductLines.map((line) => [
       `${line.productType}:${line.productId}`,
-      { key: `${line.productType}:${line.productId}`, name: line.productName },
+      { key: `${line.productType}:${line.productId}`, name: line.productName, productCode: line.productCode || "" },
     ]),
   ).values());
+  const searchableReturnProducts = useMemo(
+    () => productOptions.map((option, index) => ({
+      id: index + 1,
+      productCode: option.productCode,
+      name: option.name,
+      description: option.name,
+      returnKey: option.key,
+    } as unknown as RegularProduct & { returnKey: string })),
+    [productOptions],
+  );
+
+  const storedReturnQtyBySource = useMemo(() => {
+    const totals = new Map<number, number>();
+    Object.values(selectedInvoiceLines).forEach((item) => {
+      if (item.returnId === undefined || item.sourceSaleItemId == null) return;
+      totals.set(
+        item.sourceSaleItemId,
+        (totals.get(item.sourceSaleItemId) || 0) + (item.originalQuantity ?? (Number(item.quantity) || 0)),
+      );
+    });
+    return totals;
+  }, [selectedInvoiceLines]);
+
+  const quantityLimitFor = (item: DraftReturnItem): number | undefined => {
+    if (item.returnId !== undefined) {
+      if (item.sourceSaleItemId == null) return undefined;
+      const sourceLine = editSourceLineMap.get(item.sourceSaleItemId);
+      if (!sourceLine) return undefined;
+      return sourceLine.returnableQuantity + (storedReturnQtyBySource.get(item.sourceSaleItemId) || 0);
+    }
+    return item.availableQuantity;
+  };
   const returnsTotalPages = Math.max(1, Math.ceil(returnDocuments.length / returnsPageSize));
   const paginatedReturns = returnDocuments.slice((returnsPage - 1) * returnsPageSize, returnsPage * returnsPageSize);
 
@@ -210,6 +289,7 @@ export default function ReturnFromCustomer() {
           ["/api/reports/stock-check"],
           ["/api/customers"],
           ["customer-returnable-products"],
+          ["customer-returnable-products-edit"],
           ["customer-returns"],
           ["stock-check"],
           ["product-history"],
@@ -256,6 +336,7 @@ export default function ReturnFromCustomer() {
         ["/api/reports/stock-check"],
         ["/api/customers"],
         ["customer-returnable-products"],
+        ["customer-returnable-products-edit"],
         ["customer-returns"],
         ["stock-check"],
         ["product-history"],
@@ -281,7 +362,16 @@ export default function ReturnFromCustomer() {
     mutationFn: (data: {
       id: number;
       remarks: string;
-      items: Array<{ id: number; quantity: number; unitPrice: number; itemRemarks?: string }>;
+      items: Array<{
+        id?: number;
+        productId?: number;
+        productType?: "regular" | "non";
+        description?: string;
+        quantity: number;
+        unitPrice: number;
+        sourceSaleItemId?: number;
+        itemRemarks?: string;
+      }>;
     }) => apiRequest(
       "PUT",
       `/api/customer-returns/${data.id}/document`,
@@ -304,6 +394,7 @@ export default function ReturnFromCustomer() {
           ["/api/reports/stock-check"],
           ["/api/customers"],
           ["customer-returnable-products"],
+          ["customer-returnable-products-edit"],
           ["customer-returns"],
           ["stock-check"],
           ["product-history"],
@@ -346,17 +437,17 @@ export default function ReturnFromCustomer() {
   };
 
   const addInvoiceLine = (lineId: string) => {
-    const line = returnableInvoiceLines.find((item) => item.id.toString() === lineId);
+    const line = pickerLines.find((item) => item.id.toString() === lineId);
     if (!line || line.returnableQuantity <= 0) return;
     setSelectedInvoiceLines((current) => ({
       ...current,
-      [String(line.id)]: {
+      [`invoice-${line.id}`]: {
         key: `invoice-${line.id}`,
         productId: line.productId,
         productType: line.productType,
         description: line.productName,
-        quantity: line.returnableQuantity,
-        unitPrice: roundMoney(line.effectiveUnitPrice),
+        quantity: String(line.returnableQuantity),
+        unitPrice: roundMoney(line.effectiveUnitPrice).toFixed(2),
         sourceSaleItemId: line.id,
         availableQuantity: line.returnableQuantity,
         invoiceNumber: line.invoiceNumber,
@@ -367,6 +458,7 @@ export default function ReturnFromCustomer() {
       },
     }));
     setSelectedProductKey("");
+    setProductSearchKey((key) => key + 1);
     setSelectedInvoiceLineId("");
   };
 
@@ -385,6 +477,7 @@ export default function ReturnFromCustomer() {
     }
     setInvoicesFetched(false);
     setSelectedProductKey("");
+    setProductSearchKey((key) => key + 1);
     setSelectedInvoiceLineId("");
     setSelectedInvoiceLines({});
     setEditingReturn(null);
@@ -422,17 +515,19 @@ export default function ReturnFromCustomer() {
         productId: item.productId,
         productType: item.productType,
         description: item.productDescription || item.description,
-        quantity: item.quantity,
-        unitPrice: Number(item.unitPrice || 0),
+        quantity: String(item.quantity),
+        unitPrice: String(item.unitPrice ?? 0),
         sourceSaleItemId: item.sourceSaleItemId,
         itemRemarks: item.itemRemarks || "",
         invoiceNumber: item.invoiceNumber || "",
         invoiceDate: item.date,
+        originalQuantity: item.quantity,
       }];
     }));
     setEditingReturn(returnDocument);
     setSelectedInvoiceLines(lines);
     setSelectedProductKey("");
+    setProductSearchKey((key) => key + 1);
     setSelectedInvoiceLineId("");
     setRemarks(returnDocument.remarks || "");
   };
@@ -457,34 +552,59 @@ export default function ReturnFromCustomer() {
       toast({ title: "No items selected", description: "Add at least one product from an invoice to return.", variant: "destructive" });
       return;
     }
-    const invalidQuantity = itemsToSubmit.some((item) =>
-      !Number.isFinite(item.quantity)
-      || item.quantity <= 0
-      || (item.availableQuantity !== undefined && item.quantity > item.availableQuantity)
-      || !Number.isFinite(item.unitPrice)
-      || item.unitPrice < 0,
-    );
+    const invalidQuantity = itemsToSubmit.some((item) => {
+      const quantity = Number(item.quantity);
+      const unitPrice = Number(item.unitPrice);
+      const limit = quantityLimitFor(item);
+      return !/^\d+(?:\.\d{1,3})?$/.test(item.quantity)
+      || !Number.isFinite(quantity)
+      || quantity <= 0
+      || (limit !== undefined && quantity > limit)
+      || !/^\d+(?:\.\d{1,2})?$/.test(item.unitPrice)
+      || !Number.isFinite(unitPrice)
+      || unitPrice < 0;
+    });
     if (invalidQuantity) {
       toast({ title: "Invalid return item", description: "Check each quantity and unit price. Invoice quantities cannot exceed the remaining returnable amount.", variant: "destructive" });
       return;
     }
     if (editingReturn) {
-      const editableItems = itemsToSubmit.filter(
+      const existingItems = itemsToSubmit.filter(
         (item): item is DraftReturnItem & { returnId: number } => item.returnId !== undefined,
       );
-      if (editableItems.length !== editingReturn.items.length) {
+      const newItems = itemsToSubmit.filter((item) => item.returnId === undefined);
+      const existingIds = new Set(existingItems.map((item) => item.returnId));
+      if (
+        existingItems.length !== editingReturn.items.length
+        || editingReturn.items.some((item) => !existingIds.has(item.id))
+      ) {
         toast({ title: "Unable to edit return", description: "The complete return document must be loaded before saving.", variant: "destructive" });
+        return;
+      }
+      if (newItems.some((item) => item.sourceSaleItemId == null)) {
+        toast({ title: "Invoice product required", description: "Every new customer return item must come from an invoice.", variant: "destructive" });
         return;
       }
       updateReturnMutation.mutate({
         id: editingReturn.items[0].id,
         remarks,
-        items: editableItems.map((item) => ({
-          id: item.returnId,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          itemRemarks: item.itemRemarks?.trim(),
-        })),
+        items: [
+          ...existingItems.map((item) => ({
+            id: item.returnId,
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice),
+            itemRemarks: item.itemRemarks?.trim(),
+          })),
+          ...newItems.map((item) => ({
+            productId: item.productId,
+            productType: item.productType,
+            description: item.description,
+            quantity: Number(item.quantity),
+            unitPrice: Number(item.unitPrice),
+            sourceSaleItemId: item.sourceSaleItemId ?? undefined,
+            itemRemarks: item.itemRemarks?.trim(),
+          })),
+        ],
       });
       return;
     }
@@ -500,8 +620,8 @@ export default function ReturnFromCustomer() {
         productId: item.productId,
         productType: item.productType,
         description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPrice),
         ...(item.sourceSaleItemId === null ? {} : { sourceSaleItemId: item.sourceSaleItemId }),
         itemRemarks: item.itemRemarks?.trim(),
       })),
@@ -552,64 +672,63 @@ export default function ReturnFromCustomer() {
             <CardHeader><CardTitle>{editingReturn ? `Edit Return ${editingReturn.documentInvoiceNumber || editingReturn.items[0]?.refNumber}` : "Step 2: Add New Return"}</CardTitle></CardHeader>
             <CardContent>
               <form onSubmit={onSubmit} className="space-y-5">
-                {editingReturn ? (
+                {editingReturn && (
                   <p className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                    Update the existing product quantities, prices, and remarks. The return date and invoice links stay unchanged.
+                    Update the existing product quantities, prices, and remarks, or add new invoice products below. The return date and invoice links stay unchanged.
                   </p>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-                    <div>
-                      <Label>Product</Label>
-                      <Select
-                        value={selectedProductKey}
-                        onValueChange={(value) => {
-                          setSelectedProductKey(value);
-                          setSelectedInvoiceLineId("");
-                        }}
-                        disabled={!invoicesFetched || returnableInvoiceLinesLoading || productOptions.length === 0}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Select a product" /></SelectTrigger>
-                        <SelectContent>
-                          {productOptions.map((product) => (
-                            <SelectItem key={product.key} value={product.key}>{product.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Invoice containing product</Label>
-                      <Select
-                        value={selectedInvoiceLineId}
-                        onValueChange={setSelectedInvoiceLineId}
-                        disabled={!selectedProductKey || selectedProductLines.length === 0}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Select an invoice" /></SelectTrigger>
-                        <SelectContent>
-                          {selectedProductLines.map((line) => (
-                            <SelectItem key={line.id} value={line.id.toString()}>
-                              {line.invoiceNumber} — {format(new Date(line.invoiceDate), "dd/MM/yyyy")} · Available {formatQuantity(line.returnableQuantity)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => addInvoiceLine(selectedInvoiceLineId)}
-                      disabled={!selectedInvoiceLineId}
-                    >
-                      Add product
-                    </Button>
-                  </div>
                 )}
-                {!editingReturn && returnableInvoiceLinesLoading ? (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                  <div>
+                    <ProductSearch
+                      key={productSearchKey}
+                      label="Product"
+                      value=""
+                      products={searchableReturnProducts}
+                      placeholder="Search product by code or name..."
+                      onProductSelect={(product) => {
+                        setSelectedProductKey(
+                          (product as (RegularProduct & { returnKey?: string }) | null)?.returnKey || "",
+                        );
+                        setSelectedInvoiceLineId("");
+                      }}
+                      showCode
+                      allowClear
+                      disabled={!pickerReady || pickerLoading || productOptions.length === 0}
+                    />
+                  </div>
+                  <div>
+                    <Label>Invoice containing product</Label>
+                    <Select
+                      value={selectedInvoiceLineId}
+                      onValueChange={setSelectedInvoiceLineId}
+                      disabled={!selectedProductKey || selectedProductLines.length === 0}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Select an invoice" /></SelectTrigger>
+                      <SelectContent>
+                        {selectedProductLines.map((line) => (
+                          <SelectItem key={line.id} value={line.id.toString()}>
+                            {line.invoiceNumber} — {format(new Date(line.invoiceDate), "dd/MM/yyyy")} · Available {formatQuantity(line.returnableQuantity)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => addInvoiceLine(selectedInvoiceLineId)}
+                    disabled={!selectedInvoiceLineId}
+                  >
+                    Add product
+                  </Button>
+                </div>
+                {pickerLoading ? (
                   <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
                     <Loader2 className="h-4 w-4 animate-spin" />Loading invoices and returnable products...
                   </div>
-                ) : !editingReturn && returnableInvoiceLinesError ? (
+                ) : pickerError ? (
                   <p className="text-sm text-red-600">Failed to load invoice products. Please search again.</p>
-                ) : !editingReturn && invoicesFetched && availableProductLines.length === 0 && activeInvoiceItems.length === 0 ? (
+                ) : pickerReady && availableProductLines.length === 0 && activeInvoiceItems.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No returnable products were found in this invoice date range.</p>
                 ) : null}
 
@@ -635,37 +754,52 @@ export default function ReturnFromCustomer() {
                               <div className="text-[11px] text-muted-foreground">{item.invoiceNumber}</div>
                             </TableCell>
                             <TableCell className="whitespace-nowrap text-right text-xs">
-                              {item.soldQuantity !== undefined && item.returnedQuantity !== undefined
-                                ? `${formatQuantity(item.soldQuantity)} / ${formatQuantity(item.returnedQuantity)}`
-                                : `Current return ${formatQuantity(item.quantity)}`}
+                              {(() => {
+                                const sourceLine = item.sourceSaleItemId != null
+                                  ? editSourceLineMap.get(item.sourceSaleItemId)
+                                  : undefined;
+                                if (sourceLine) {
+                                  const maxQty = sourceLine.returnableQuantity
+                                    + (storedReturnQtyBySource.get(item.sourceSaleItemId as number) || 0);
+                                  return (
+                                    <>
+                                      <div>{`${formatQuantity(sourceLine.quantity)} / ${formatQuantity(sourceLine.returnedQuantity)}`}</div>
+                                      <div className="text-[11px] text-muted-foreground">Invoice max {formatQuantity(maxQty)}</div>
+                                    </>
+                                  );
+                                }
+                                if (item.soldQuantity !== undefined && item.returnedQuantity !== undefined) {
+                                  return `${formatQuantity(item.soldQuantity)} / ${formatQuantity(item.returnedQuantity)}`;
+                                }
+                                return `Current return ${formatQuantity(Number(item.quantity) || 0)}`;
+                              })()}
                               {item.availableQuantity !== undefined && (
                                 <div className="text-[11px] text-muted-foreground">Available {formatQuantity(item.availableQuantity)}</div>
                               )}
                             </TableCell>
                             <TableCell className="w-24">
                               <Input
-                                type="number"
-                                min="0.001"
-                                max={item.availableQuantity}
-                                step="0.001"
+                                type="text"
+                                inputMode="decimal"
                                 value={item.quantity}
-                                onChange={(event) => updateInvoiceLine(item.key, { quantity: Number(event.target.value) })}
+                                onChange={(event) => updateInvoiceLine(item.key, { quantity: event.target.value })}
                                 aria-label={`${item.description} return quantity`}
                                 className="h-8 px-2 text-right"
                               />
                             </TableCell>
                             <TableCell className="w-28">
                               <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.unitPrice.toFixed(2)}
-                                onChange={(event) => updateInvoiceLine(item.key, { unitPrice: roundMoney(Number(event.target.value)) })}
+                                type="text"
+                                inputMode="decimal"
+                                value={item.unitPrice}
+                                onChange={(event) => updateInvoiceLine(item.key, { unitPrice: event.target.value })}
                                 aria-label={`${item.description} unit price`}
                                 className="h-8 px-2 text-right"
                               />
                             </TableCell>
-                            <TableCell className="whitespace-nowrap text-right text-sm">{money(item.quantity * item.unitPrice)}</TableCell>
+                            <TableCell className="whitespace-nowrap text-right text-sm">
+                              {money((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0))}
+                            </TableCell>
                             <TableCell>
                               <Input
                                 value={item.itemRemarks || ""}
@@ -676,7 +810,7 @@ export default function ReturnFromCustomer() {
                               />
                             </TableCell>
                             <TableCell>
-                              {!editingReturn && (
+                              {item.returnId === undefined && (
                                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeInvoiceLine(item.key)} aria-label={`Remove ${item.description}`}>
                                   <X className="h-4 w-4" />
                                 </Button>
@@ -706,7 +840,7 @@ export default function ReturnFromCustomer() {
                       disabled={
                         createReturnMutation.isPending
                         || updateReturnMutation.isPending
-                        || (!editingReturn && returnableInvoiceLinesLoading)
+                        || pickerLoading
                       }
                       className="bg-green-600 hover:bg-green-700"
                     >

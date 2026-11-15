@@ -11692,6 +11692,7 @@ def get_customer_returnable_products():
                 "productId": product_id,
                 "productType": product_type,
                 "productName": product_name,
+                "productCode": getattr(product, "product_code", "") or "",
                 "description": product_name,
                 "quantity": float(sold_quantity),
                 "returnedQuantity": float(returned_quantity),
@@ -12330,21 +12331,16 @@ def update_customer_return_document(id):
             return_items = [selected_return]
 
         updates = data.get("items")
-        if not isinstance(updates, list) or len(updates) != len(return_items):
-            return jsonify({"error": "All existing return lines must be included."}), 400
+        if not isinstance(updates, list) or not updates:
+            return jsonify({"error": "At least one return line is required."}), 400
 
         records_by_id = {return_item.id: return_item for return_item in return_items}
         parsed_updates = {}
         requested_by_source_item = {}
+        new_item_entries = []
         for item_data in updates:
             if not isinstance(item_data, dict):
                 return jsonify({"error": "Each return line must be an object."}), 400
-            try:
-                return_item_id = int(item_data.get("id"))
-            except (TypeError, ValueError):
-                return jsonify({"error": "Every return line must include a valid ID."}), 400
-            if return_item_id not in records_by_id or return_item_id in parsed_updates:
-                return jsonify({"error": "The return document lines do not match."}), 400
             try:
                 quantity = Decimal(str(item_data.get("quantity", "")))
                 unit_price = Decimal(str(item_data.get("unitPrice", "")))
@@ -12355,6 +12351,37 @@ def update_customer_return_document(id):
             if not unit_price.is_finite() or unit_price < 0:
                 return jsonify({"error": "Return unit price must be non-negative."}), 400
             unit_price = unit_price.quantize(CENT, rounding=ROUND_HALF_UP)
+
+            raw_id = item_data.get("id")
+            if raw_id is None or raw_id == "":
+                product_type = item_data.get("productType")
+                if product_type not in ("regular", "non"):
+                    return jsonify({"error": "Return product type must be regular or non"}), 400
+                product_model = RegularProduct if product_type == "regular" else NonProduct
+                product = product_model.query.get(item_data.get("productId"))
+                if not product:
+                    return jsonify({"error": f"Product {item_data.get('productId')} was not found"}), 404
+                try:
+                    source_sale_item_id = int(item_data.get("sourceSaleItemId"))
+                except (TypeError, ValueError):
+                    return jsonify({"error": "New return lines must be linked to an invoice product."}), 400
+                new_item_entries.append({
+                    "product": product,
+                    "product_type": product_type,
+                    "source_sale_item_id": source_sale_item_id,
+                    "description": str(item_data.get("description") or product.description)[:200],
+                    "quantity": quantity,
+                    "unit_price": unit_price,
+                    "item_remarks": str(item_data.get("itemRemarks") or "").strip() or None,
+                })
+                continue
+
+            try:
+                return_item_id = int(raw_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Every existing return line must include a valid ID."}), 400
+            if return_item_id not in records_by_id or return_item_id in parsed_updates:
+                return jsonify({"error": "The return document lines do not match."}), 400
 
             return_item = records_by_id[return_item_id]
             parsed_updates[return_item_id] = {
@@ -12381,35 +12408,60 @@ def update_customer_return_document(id):
             elif not backdate_options or not backdate_options.editing:
                 return jsonify({"error": "You do not have permission to edit back-dated returns."}), 403
 
+        all_source_ids = set(requested_by_source_item) | {
+            entry["source_sale_item_id"] for entry in new_item_entries
+        }
         source_items = {
             source_item.id: source_item
             for source_item in SaleItem.query.filter(
-                SaleItem.id.in_(requested_by_source_item)
+                SaleItem.id.in_(all_source_ids)
             ).with_for_update().all()
-        } if requested_by_source_item else {}
-        if set(source_items) != set(requested_by_source_item):
+        } if all_source_ids else {}
+        if set(source_items) != all_source_ids:
             return jsonify({"error": "A source invoice product no longer exists."}), 400
 
+        source_sales = {
+            source_sale.id: source_sale
+            for source_sale in Sale.query.filter(
+                Sale.id.in_({source_item.sale_id for source_item in source_items.values()})
+            ).all()
+        }
+
         source_item_details = {}
+        for source_item_id in all_source_ids:
+            source_item = source_items[source_item_id]
+            source_sale = source_sales.get(source_item.sale_id)
+            if not source_sale or source_sale.status != "finalized":
+                return jsonify({"error": "A return line no longer matches its finalized source invoice."}), 400
+            source_item_details[source_item_id] = source_item
+
         for return_item in return_items:
             source_item_id = return_item.source_sale_item_id
             if not source_item_id:
                 continue
-            source_item = source_items[source_item_id]
-            source_sale = Sale.query.filter_by(id=source_item.sale_id).first()
+            source_item = source_item_details[source_item_id]
+            source_sale = source_sales[source_item.sale_id]
             if (
-                not source_sale
-                or source_sale.status != "finalized"
-                or source_sale.customer_id != return_item.customer_id
+                source_sale.customer_id != return_item.customer_id
                 or return_item.sale_id != source_sale.id
                 or source_item.product_id != (return_item.product_id if return_item.product_type == "regular" else None)
                 or source_item.non_product_id != (return_item.product_id if return_item.product_type == "non" else None)
             ):
                 return jsonify({"error": "A return line no longer matches its finalized source invoice."}), 400
-            source_item_details[source_item_id] = source_item
+
+        for entry in new_item_entries:
+            source_item = source_item_details[entry["source_sale_item_id"]]
+            source_sale = source_sales[source_item.sale_id]
+            if (
+                source_sale.customer_id != selected_return.customer_id
+                or source_item.product_id != (entry["product"].id if entry["product_type"] == "regular" else None)
+                or source_item.non_product_id != (entry["product"].id if entry["product_type"] == "non" else None)
+            ):
+                return jsonify({"error": "A new return line does not match a finalized invoice for this customer."}), 400
 
         document_item_ids = list(records_by_id)
-        for source_item_id, requested_quantity in requested_by_source_item.items():
+        available_by_source = {}
+        for source_item_id in all_source_ids:
             source_item = source_item_details[source_item_id]
             already_returned = db.session.query(
                 func.coalesce(func.sum(CustomerReturn.quantity), 0)
@@ -12431,15 +12483,37 @@ def update_customer_return_document(id):
                     ),
                 ),
             ).scalar() or 0
-            available_quantity = max(
+            available_by_source[source_item_id] = max(
                 Decimal("0"),
                 Decimal(str(source_item.quantity or 0)) - Decimal(str(already_returned)),
             )
+
+        for source_item_id, requested_quantity in requested_by_source_item.items():
+            available_quantity = available_by_source[source_item_id]
             if requested_quantity > available_quantity:
                 return jsonify({
                     "error": (
                         f"Return quantity exceeds the remaining invoice quantity "
                         f"({available_quantity})."
+                    )
+                }), 400
+
+        requested_new_by_source = {}
+        for entry in new_item_entries:
+            source_id = entry["source_sale_item_id"]
+            requested_new_by_source[source_id] = (
+                requested_new_by_source.get(source_id, Decimal("0")) + entry["quantity"]
+            )
+        for source_item_id, requested_quantity in requested_new_by_source.items():
+            remaining = (
+                available_by_source[source_item_id]
+                - requested_by_source_item.get(source_item_id, Decimal("0"))
+            )
+            if requested_quantity > remaining:
+                return jsonify({
+                    "error": (
+                        f"Return quantity exceeds the remaining invoice quantity "
+                        f"({max(remaining, Decimal('0'))})."
                     )
                 }), 400
 
@@ -12476,6 +12550,64 @@ def update_customer_return_document(id):
             return_item.item_remarks = update["item_remarks"]
             if remarks is not None:
                 return_item.remarks = remarks
+
+        if new_item_entries:
+            document_invoice_number = selected_return.document_invoice_number
+            if not document_invoice_number:
+                document_invoice_number = _allocate_invoice_document_number()
+                for return_item in return_items:
+                    return_item.document_invoice_number = document_invoice_number
+
+            effective_remarks = remarks if remarks is not None else selected_return.remarks
+            last_return = CustomerReturn.query.order_by(CustomerReturn.id.desc()).first()
+            next_return_number = (last_return.id if last_return else 0) + 1
+            for entry in new_item_entries:
+                ref_number = f"CR{next_return_number:04d}"
+                next_return_number += 1
+                source_item = source_item_details[entry["source_sale_item_id"]]
+                source_sale = source_sales[source_item.sale_id]
+                customer_return = CustomerReturn(
+                    ref_number=ref_number,
+                    document_invoice_number=document_invoice_number,
+                    date=selected_return.date,
+                    customer_id=selected_return.customer_id,
+                    sale_id=source_sale.id,
+                    source_sale_item_id=source_item.id,
+                    is_manual=False,
+                    product_id=entry["product"].id,
+                    product_type=entry["product_type"],
+                    description=entry["description"],
+                    invoice_number=source_sale.invoice_number,
+                    remarks=effective_remarks,
+                    item_remarks=entry["item_remarks"],
+                    quantity=entry["quantity"],
+                    unit_price=entry["unit_price"],
+                    total_value=(
+                        entry["quantity"] * entry["unit_price"]
+                    ).quantize(CENT, rounding=ROUND_HALF_UP),
+                    return_reason=effective_remarks,
+                    credit_note_issued=False,
+                    credit_note_amount=Decimal("0.00"),
+                    status="completed",
+                    created_by=user_id,
+                )
+                db.session.add(customer_return)
+                db.session.flush()
+                success, result = update_product_stock(
+                    product_id=entry["product"].id,
+                    product_type=entry["product_type"],
+                    quantity_change=float(entry["quantity"]),
+                    movement_type="customer_return",
+                    reference_id=customer_return.id,
+                    reference_type="customer_return",
+                    remarks=f"Customer return: {ref_number}",
+                    user_id=user_id,
+                    movement_date=selected_return.date,
+                )
+                if not success:
+                    db.session.rollback()
+                    return jsonify({"error": f"Stock update failed: {result}"}), 400
+                return_items.append(customer_return)
 
         db.session.commit()
         return jsonify([return_item.to_dict() for return_item in return_items]), 200

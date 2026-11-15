@@ -648,10 +648,8 @@ export default function CustomerDiscountPage() {
                 <Label htmlFor="discount-amount">Discount amount (£)</Label>
                 <Input
                   id="discount-amount"
-                  type="number"
-                  min="0.01"
-                  max={Math.min(maxLineDiscount, maxInvoiceDiscount)}
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={amount}
                   onChange={event => setAmount(event.target.value)}
                   disabled={!selectedLine}
