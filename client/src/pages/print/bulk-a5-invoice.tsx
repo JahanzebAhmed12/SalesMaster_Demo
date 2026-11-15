@@ -60,6 +60,7 @@ interface InvoiceData {
     notes?: string;
     originalQuantity?: number;
     averagePriceAfterDiscount?: number;
+    discountPerBox?: number;
     hasMultipleDiscountLines?: boolean;
   };
   items?: InvoiceItem[];
@@ -191,7 +192,7 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
       </div>
       {sale.isCustomerDiscount && !sale.hasMultipleDiscountLines && (
         <div className="discount-details">
-          Original quantity: {formatQuantity(sale.originalQuantity ?? 0)} | Average price after discount: £{Number(sale.averagePriceAfterDiscount ?? 0).toFixed(2)}
+          Each box: £{Number(sale.discountPerBox ?? 0).toFixed(2)}
         </div>
       )}
 

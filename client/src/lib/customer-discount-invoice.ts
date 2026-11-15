@@ -40,6 +40,7 @@ export interface CustomerDiscountInvoiceData {
     originalInvoiceDate?: string;
     originalQuantity: number;
     averagePriceAfterDiscount: number;
+    discountPerBox: number;
     hasMultipleDiscountLines: boolean;
   };
   items: Array<Record<string, unknown> & {
@@ -88,12 +89,13 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
     const hasMultipleDiscountLines = discounts.length > 1;
     const items = discounts.map(discount => {
       const amount = Number(discount.amount || 0);
+      const quantity = Number(discount.quantity || discount.originalQuantity || 0) || 1;
+      const perBox = quantity > 0 ? amount / quantity : amount;
       const lineNotes = hasMultipleDiscountLines
         ? [
             `Invoice ${discount.originalInvoiceNumber || "-"}`,
             discount.originalInvoiceDate ? formatInvoiceDate(discount.originalInvoiceDate) : "",
-            `Original quantity: ${Number(discount.originalQuantity ?? discount.quantity ?? 0)}`,
-            `Average price after discount: £${Number(discount.averagePriceAfterDiscount ?? 0).toFixed(2)}`,
+            `Each box: £${perBox.toFixed(2)}`,
             discount.reason,
           ].filter(Boolean).join(" · ")
         : discount.reason;
@@ -102,8 +104,8 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
         id: discount.id,
         productName: discount.productName || "Customer discount",
         description: discount.productName || "Customer discount",
-        quantity: 1,
-        unitPrice: amount,
+        quantity,
+        unitPrice: perBox,
         totalPrice: -amount,
         total_price: -amount,
         notes: lineNotes,
@@ -132,6 +134,12 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
         averagePriceAfterDiscount: hasMultipleDiscountLines
           ? 0
           : Number(discounts[0].averagePriceAfterDiscount ?? 0),
+        discountPerBox: hasMultipleDiscountLines
+          ? 0
+          : (() => {
+              const qty = Number(discounts[0]?.quantity ?? discounts[0]?.originalQuantity ?? 0);
+              return qty > 0 ? totalAmount / qty : 0;
+            })(),
         hasMultipleDiscountLines,
       },
       items,

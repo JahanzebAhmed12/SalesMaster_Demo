@@ -346,7 +346,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   if (invoiceData.sale?.isCustomerDiscount) {
     doc.setFont("helvetica", "bold");
     doc.text(
-      `Original quantity: ${formatQuantity(invoiceData.sale.originalQuantity || 0)} | Average price after discount: £${Number(invoiceData.sale.averagePriceAfterDiscount || 0).toFixed(2)}`,
+      `Each box: £${Number(invoiceData.sale.discountPerBox ?? 0).toFixed(2)}`,
       20,
       yPos,
       { maxWidth: pageWidth - 40 },

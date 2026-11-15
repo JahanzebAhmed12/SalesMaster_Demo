@@ -1268,7 +1268,7 @@ export default function DotMatrixInvoicePrintPage({
                   padding: '0',
                   whiteSpace: 'normal',
                 }}>
-                  Original quantity: {formatQuantity(Number(sale.originalQuantity || 0))} | Average price after discount: £{Number(sale.averagePriceAfterDiscount || 0).toFixed(2)}
+                  Each box: £{Number(sale.discountPerBox || 0).toFixed(2)}
                 </div>
               )}
               {page.isLastPage && sale?.notes?.trim() && (

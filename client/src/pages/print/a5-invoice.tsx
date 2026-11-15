@@ -199,8 +199,7 @@ export default function A5InvoicePrintPage() {
       </div>
       {data.sale?.isCustomerDiscount && !data.sale.hasMultipleDiscountLines && (
         <div style={{ marginTop: 4, fontSize: 10, fontWeight: "bold" }}>
-          Original quantity: {formatQuantity(data.sale.originalQuantity ?? 0)}{" "}
-          | Average price after discount: £{(data.sale.averagePriceAfterDiscount ?? 0).toFixed(2)}
+          Each box: £{(data.sale.discountPerBox ?? 0).toFixed(2)}
         </div>
       )}
 

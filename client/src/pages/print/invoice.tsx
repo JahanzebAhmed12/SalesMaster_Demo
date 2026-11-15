@@ -66,6 +66,7 @@ interface Sale {
   notes?: string;
   originalQuantity?: number;
   averagePriceAfterDiscount?: number;
+  discountPerBox?: number;
   hasMultipleDiscountLines?: boolean;
 }
 interface Item {
@@ -268,8 +269,7 @@ export default function InvoicePrintPage() {
       </div>
       {data.sale?.isCustomerDiscount && !data.sale.hasMultipleDiscountLines && (
         <div style={{ marginTop: 6, fontSize: 13, fontWeight: "bold" }}>
-          Original quantity: {formatQuantity(data.sale.originalQuantity ?? 0)}{" "}
-          | Average price after discount: £{(data.sale.averagePriceAfterDiscount ?? 0).toFixed(2)}
+          Each box: £{(data.sale.discountPerBox ?? 0).toFixed(2)}
         </div>
       )}
       {showCashPaid && (
