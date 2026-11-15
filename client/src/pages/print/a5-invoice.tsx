@@ -84,8 +84,8 @@ export default function A5InvoicePrintPage() {
   return (
     <div className="invoice-container" style={{ maxWidth: 460, margin: "0 auto", fontFamily: "Arial, sans-serif", background: "#fff", padding: 16, position: "relative" }}>
       {(isPaid || data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount) && (
-        <div className={`paid-watermark${data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
-          {data.sale?.isCustomerReturn || data.sale?.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
+        <div className={`paid-watermark${data.sale?.isCustomerReturn ? " credit-note-watermark" : data.sale?.isCustomerDiscount ? " credit-adjustment-watermark" : ""}`}>
+          {data.sale?.isCustomerReturn ? "CREDIT NOTE" : data.sale?.isCustomerDiscount ? "CREDIT ADJUSTMENT" : "PAID"}
         </div>
       )}
       {/* Header: Company Details and Logo */}
@@ -251,6 +251,7 @@ export default function A5InvoicePrintPage() {
           -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
         .credit-note-watermark { width: max-content; max-width: none; white-space: nowrap; font-size: 24px; letter-spacing: 1px; padding: 3px 8px; }
+        .credit-adjustment-watermark { width: max-content; max-width: none; white-space: nowrap; font-size: 17px; letter-spacing: 1px; padding: 2px 6px; }
         @media print {
           @page {
             size: A5 portrait;

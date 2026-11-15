@@ -96,8 +96,8 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
   return (
     <article className="bulk-a4-invoice">
       {(isPaid || sale.isCustomerReturn || sale.isCustomerDiscount) && (
-        <div className={`paid-watermark${sale.isCustomerReturn || sale.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
-          {sale.isCustomerReturn || sale.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
+        <div className={`paid-watermark${sale.isCustomerReturn ? " credit-note-watermark" : sale.isCustomerDiscount ? " credit-adjustment-watermark" : ""}`}>
+          {sale.isCustomerReturn ? "CREDIT NOTE" : sale.isCustomerDiscount ? "CREDIT ADJUSTMENT" : "PAID"}
         </div>
       )}
       <div className="invoice-header">
@@ -282,6 +282,7 @@ export default function BulkA4InvoicePrintPage() {
         .bulk-a4-invoice { box-sizing: border-box; max-width: 794px; min-height: 1080px; margin: 0 auto 20px; padding: 28px; background: #fff; font-family: Arial, sans-serif; color: #111; position: relative; }
         .bulk-a4-invoice .paid-watermark { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%) rotate(-22deg); border: 2.5px solid rgba(200,0,0,0.28); color: rgba(200,0,0,0.28); font-size: 54px; font-weight: 800; letter-spacing: 8px; padding: 4px 20px 4px 28px; border-radius: 10px; pointer-events: none; z-index: 10; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .bulk-a4-invoice .credit-note-watermark { width: max-content; max-width: none; white-space: nowrap; font-size: 36px; letter-spacing: 2px; padding: 4px 10px; }
+        .bulk-a4-invoice .credit-adjustment-watermark { width: max-content; max-width: none; white-space: nowrap; font-size: 26px; letter-spacing: 1px; padding: 3px 8px; }
         .invoice-header, .billing-grid, .totals-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
         .invoice-header { font-size: 13px; line-height: 1.35; }
         .company-name { font-size: 20px; font-weight: 700; margin-bottom: 4px; }

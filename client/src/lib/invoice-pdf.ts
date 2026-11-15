@@ -173,6 +173,14 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     doc.setFont("helvetica", "normal");
   }
 
+  if (invoiceData.sale?.isCustomerDiscount) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.rect(20, 97, 62, 7);
+    doc.text("CREDIT ADJUSTMENT", 51, 101.8, { align: "center" });
+    doc.setFont("helvetica", "normal");
+  }
+
   yPos = 106;
   const tableStartX = 20;
   const tableWidth = pageWidth - 40;

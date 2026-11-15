@@ -96,8 +96,8 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
   return (
     <article className="bulk-a5-invoice">
       {(isPaid || sale.isCustomerReturn || sale.isCustomerDiscount) && (
-        <div className={`paid-watermark${sale.isCustomerReturn || sale.isCustomerDiscount ? " credit-note-watermark" : ""}`}>
-          {sale.isCustomerReturn || sale.isCustomerDiscount ? "CREDIT NOTE" : "PAID"}
+        <div className={`paid-watermark${sale.isCustomerReturn ? " credit-note-watermark" : sale.isCustomerDiscount ? " credit-adjustment-watermark" : ""}`}>
+          {sale.isCustomerReturn ? "CREDIT NOTE" : sale.isCustomerDiscount ? "CREDIT ADJUSTMENT" : "PAID"}
         </div>
       )}
       <div className="invoice-header">
@@ -282,6 +282,7 @@ export default function BulkA5InvoicePrintPage() {
         .bulk-a5-invoice { box-sizing: border-box; max-width: 480px; margin: 0 auto 20px; padding: 16px; background: #fff; font-family: Arial, sans-serif; color: #111; position: relative; }
         .bulk-a5-invoice .paid-watermark { position: absolute; top: 36%; left: 50%; transform: translate(-50%, -50%) rotate(-22deg); border: 2px solid rgba(200,0,0,0.28); color: rgba(200,0,0,0.28); font-size: 40px; font-weight: 800; letter-spacing: 6px; padding: 3px 14px 3px 20px; border-radius: 8px; pointer-events: none; z-index: 10; background: transparent; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         .bulk-a5-invoice .credit-note-watermark { width: max-content; max-width: none; white-space: nowrap; font-size: 25px; letter-spacing: 1px; padding: 3px 8px; }
+        .bulk-a5-invoice .credit-adjustment-watermark { width: max-content; max-width: none; white-space: nowrap; font-size: 17px; letter-spacing: 1px; padding: 2px 6px; }
         .invoice-header, .billing-grid, .totals-grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
         .invoice-header { font-size: 11px; line-height: 1.35; }
         .company-name { font-size: 15px; font-weight: 700; margin-bottom: 3px; }

@@ -564,6 +564,10 @@ export default function DotMatrixInvoicePrintPage({
           pointer-events: none;
           z-index: 5;
         }
+        .paid-stamp.credit-adjustment-stamp {
+          font-size: 9pt;
+          letter-spacing: 1px;
+        }
         .paid-stamp span {
           border: 1.5pt solid #000 !important;
           padding: 1mm 4mm 1mm 6mm;
@@ -933,11 +937,13 @@ export default function DotMatrixInvoicePrintPage({
             >
               {/* PAID stamp on last page only — sits beside the totals */}
               {(isPaid || sale?.isCustomerReturn || sale?.isCustomerDiscount) && page.isLastPage && (
-                <div className="paid-stamp">
+                <div className={`paid-stamp${sale?.isCustomerDiscount ? ' credit-adjustment-stamp' : ''}`}>
                   <span>
-                    {sale?.isCustomerReturn || sale?.isCustomerDiscount
+                    {sale?.isCustomerReturn
                       ? 'CREDIT NOTE'
-                      : 'PAID'}
+                      : sale?.isCustomerDiscount
+                        ? 'CREDIT ADJUSTMENT'
+                        : 'PAID'}
                   </span>
                 </div>
               )}
