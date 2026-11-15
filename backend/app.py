@@ -7696,6 +7696,45 @@ def product_sales_history():
             'isCustomerDiscount': True,
             'isCompany': bool(discount.customer.is_company) if discount.customer else False,
         })
+
+    returns_query = CustomerReturn.query.filter(
+        CustomerReturn.status == 'completed',
+        CustomerReturn.date >= from_dt.date(),
+        CustomerReturn.date < to_dt.date(),
+        CustomerReturn.product_id == product_id,
+    )
+    # Disambiguate product type when the id exists in only one product table
+    regular_exists = RegularProduct.query.get(product_id) is not None
+    non_exists = NonProduct.query.get(product_id) is not None
+    if regular_exists != non_exists:
+        returns_query = returns_query.filter(
+            CustomerReturn.product_type == ('regular' if regular_exists else 'non')
+        )
+    if customer_id:
+        returns_query = returns_query.filter(CustomerReturn.customer_id == customer_id)
+    for customer_return in returns_query.order_by(CustomerReturn.date.asc(), CustomerReturn.id.asc()).all():
+        result.append({
+            'invoiceNo': (
+                customer_return.sale.invoice_number
+                if customer_return.sale
+                else (customer_return.document_invoice_number or customer_return.ref_number)
+            ),
+            'date': customer_return.date.isoformat() if customer_return.date else '',
+            'customerName': customer_return.customer.customer_name if customer_return.customer else '',
+            'customerType': customer_return.sale.customer_type if customer_return.sale else '',
+            'gateNumber': customer_return.sale.gate_number if customer_return.sale else None,
+            'productDescription': customer_return.description or '',
+            'quantity': -float(customer_return.quantity or 0),
+            'unitPrice': float(customer_return.unit_price or 0),
+            'originalUnitPrice': float(customer_return.unit_price or 0),
+            'total': -float(customer_return.total_value or 0),
+            'discountTotal': 0,
+            'effectiveTotal': -float(customer_return.total_value or 0),
+            'effectiveUnitPrice': float(customer_return.unit_price or 0),
+            'returnReference': customer_return.document_invoice_number or customer_return.ref_number,
+            'isCustomerReturn': True,
+            'isCompany': bool(customer_return.customer.is_company) if customer_return.customer else False,
+        })
     return jsonify(result)
 
 @app.route('/api/reports/product-purchase-full-view', methods=['GET'])
