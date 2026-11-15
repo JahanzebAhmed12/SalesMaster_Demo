@@ -7875,6 +7875,8 @@ def customer_statement():
             'discountAdj': 0,
             'balance': sale_amount,  # Positive for invoices, negative for credits
             'sale_id': sale.id,
+            'transaction_id': sale.id,
+            'ref': sale.invoice_number,
             'sort_priority': 1,  # Sales get priority 1
             'timestamp': sale.date.timestamp() if hasattr(sale.date, 'timestamp') else sale.date.replace(tzinfo=None).timestamp()
         })
@@ -7920,6 +7922,8 @@ def customer_statement():
             'discountAdj': 0,
             'balance': -return_amount,
             'sale_id': customer_return.sale_id,
+            'transaction_id': customer_return.id,
+            'ref': document_number,
             'sort_priority': 2,
             'timestamp': return_datetime.timestamp(),
         })
@@ -7958,14 +7962,15 @@ def customer_statement():
             'discountAdj': total_amount,
             'balance': -total_amount,
             'sale_id': discount.sale_id,
+            'transaction_id': discount.id,
+            'ref': ticket_number,
             'sourceInvoiceNumbers': ', '.join(invoice_numbers),
             'sort_priority': 2,
             'timestamp': discount_datetime.timestamp(),
         })
     
     # Customer Payment may split one method across several invoices. Show one
-    # statement row per method for the batch, rather than one row per invoice.
-    batch_payment_groups = {}
+    # statement row per payment so each payment keeps its own reference.
     payment_method_labels = {
         'cash': 'Cash',
         'bank': 'Card',
@@ -7998,20 +8003,15 @@ def customer_statement():
             (payment.payment_mode or 'Payment').replace('_', ' ').title(),
         )
 
-        if is_customer_payment_batch:
-            group_key = (payment.batch_id, payment.payment_date, payment_mode)
-            group = batch_payment_groups.setdefault(group_key, {
-                'amount': 0.0,
-                'payment_method': payment_method,
-            })
-            group['amount'] += float(payment.amount)
-            continue
-        
         if payment.sale_id:
             # Payment linked to specific invoice
             invoice_no = payment.sale.invoice_number if payment.sale else f'INV-{payment.sale_id}'
             description = f'Payment Received - {invoice_no}'
             sort_priority = 2  # Invoice payments get priority 2
+        elif is_customer_payment_batch:
+            invoice_no = str(payment.batch_id)
+            description = f'Payment Received - {payment_method}'
+            sort_priority = 2
         else:
             # On-account payment (creates credit balance)
             invoice_no = ''
@@ -8030,31 +8030,12 @@ def customer_statement():
             'discountAdj': 0,
             'balance': -float(payment.amount),  # Payments reduce balance (negative)
             'sale_id': payment.sale_id,
+            'transaction_id': payment.id,
             'payment_id': payment.id,
-            'batch_id': None,
+            'ref': str(payment.batch_id if payment.batch_id is not None else payment.id),
+            'batch_id': payment.batch_id,
             'sort_priority': sort_priority,
             'timestamp': payment_datetime.timestamp()
-        })
-
-    for (batch_id, payment_date, _payment_mode), group in batch_payment_groups.items():
-        payment_datetime = datetime.combine(payment_date, datetime.min.time())
-        amount = group['amount']
-        entries.append({
-            'date': payment_datetime,
-            'type': 'payment',
-            'invoiceNo': str(batch_id),
-            'description': f"Payment Received - {group['payment_method']}",
-            'accountInv': 0,
-            'cashInv': 0,
-            'paid': amount,
-            'accountAdj': 0,
-            'discountAdj': 0,
-            'balance': -amount,
-            'sale_id': None,
-            'payment_id': None,
-            'batch_id': batch_id,
-            'sort_priority': 2,
-            'timestamp': payment_datetime.timestamp(),
         })
     
     # Sort by date, then by priority (sales first, then invoice payments, then on-account)
@@ -8077,7 +8058,11 @@ def customer_statement():
             'discountAdj': entry['discountAdj'],
             'balance': entry['balance'],
             'runningBalance': running_balance,
-            'batchId': entry.get('batch_id')
+            'batchId': entry.get('batch_id'),
+            'transactionType': entry.get('type'),
+            'transactionId': entry.get('transaction_id'),
+            'paymentId': entry.get('payment_id'),
+            'ref': entry.get('ref', entry.get('invoiceNo', '')),
         })
         sl_no += 1
 
@@ -18874,6 +18859,7 @@ def customer_aging_report():
     try:
         # --- Query Params ---
         as_of_date = request.args.get('asOfDate')
+        customer_id_filter = request.args.get('customerId', type=int)
         customer_filter = request.args.get('customerFilter', 'All Customer')
         search_term = request.args.get('search', '')
         currency_filter = request.args.get('currency', '')
@@ -18890,6 +18876,8 @@ def customer_aging_report():
 
         # --- Build Customer Query ---
         customer_query = Customer.query
+        if customer_id_filter:
+            customer_query = customer_query.filter(Customer.id == customer_id_filter)
         if search_term:
             customer_query = customer_query.filter(
                 or_(

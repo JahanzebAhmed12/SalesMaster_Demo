@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { CalendarIcon, FileText, Download, Copy, Printer, Search, Mail, Receipt } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
@@ -28,6 +28,10 @@ interface StatementData {
   id: number;
   slNo: number;
   batchId?: number | null;
+  transactionType?: string;
+  transactionId?: number | null;
+  paymentId?: number | null;
+  ref?: string;
   date: string;
   invoiceNo: string;
   description: string;
@@ -39,6 +43,24 @@ interface StatementData {
   balance: number;
   runningBalance: number;
 }
+
+interface CustomerAgingResponse {
+  data: Array<{
+    id: number;
+    current: number;
+    days30: number;
+    days60: number;
+    days90: number;
+  }>;
+}
+
+const formatStatementAmount = (value: number) =>
+  Math.abs(Number(value) || 0) < 0.005 ? "-" : `£${Number(value).toFixed(2)}`;
+
+const formatSignedStatementAmount = (value: number) =>
+  Math.abs(Number(value) || 0) < 0.005
+    ? "-"
+    : `${value < 0 ? "-£" : "£"}${Math.abs(Number(value)).toFixed(2)}`;
 
 export default function CustomerStatement() {
   const { selectedCustomer, handleCustomerSelect, customerId } = useCustomerSearch();
@@ -482,169 +504,216 @@ export default function CustomerStatement() {
     XLSX.writeFile(wb, `customer_statement_${customerName}_${dateStr}.xlsx`);
   };
 
-  const handlePDF = () => {
+  const handlePDF = async () => {
     if (processedStatementData.length === 0) {
       alert('No data to export. Please generate the statement first.');
       return;
     }
 
-    // Initialize PDF with margins
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
-    
-    // Set margins
-    const margin = 15; // 15mm margin on all sides
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const contentWidth = pageWidth - (2 * margin);
-    
-    // Add title
-    doc.setFontSize(16);
-    doc.text('CUSTOMER STATEMENT', pageWidth / 2, margin + 10, { align: 'center' });
-    
-    // Add company info
-    doc.setFontSize(10);
-    if (companyDetails) {
-      const companyInfo = `${companyDetails.companyName}, ${companyDetails.address1}${companyDetails.address2 ? ', ' + companyDetails.address2 : ''}`;
-      doc.text(companyInfo, pageWidth / 2, margin + 20, { 
-        align: 'center',
-        maxWidth: contentWidth
+    if (!selectedCustomer || !customerId) {
+      alert('Select a customer before exporting the statement.');
+      return;
+    }
+
+    try {
+      const startDate = format(fromDate, "yyyy-MM-dd");
+      const endDate = format(toDate, "yyyy-MM-dd");
+      const priorEndDate = format(subDays(fromDate, 1), "yyyy-MM-dd");
+      const [openingRows, fullPeriodRows, agingResponse] = await Promise.all([
+        apiRequest<StatementData[]>(
+          "GET",
+          `/api/reports/customer-statement?customerId=${customerId}&fromDate=1900-01-01&toDate=${priorEndDate}&type=Full%20Statement`
+        ),
+        apiRequest<StatementData[]>(
+          "GET",
+          `/api/reports/customer-statement?customerId=${customerId}&fromDate=${startDate}&toDate=${endDate}&type=Full%20Statement`
+        ),
+        apiRequest<CustomerAgingResponse>(
+          "GET",
+          `/api/reports/customer-aging?asOfDate=${endDate}&customerId=${customerId}&perPage=1&page=1`
+        ),
+      ]);
+
+      const broughtForward = openingRows.reduce((total, row) => total + Number(row.balance || 0), 0);
+      const amountDue = broughtForward +
+        fullPeriodRows.reduce((total, row) => total + Number(row.balance || 0), 0);
+      const aging = agingResponse.data.find(item => item.id === Number(customerId));
+      const periodBalances = [
+        Number(aging?.current || 0),
+        Number(aging?.days30 || 0),
+        Number(aging?.days60 || 0),
+        Number(aging?.days90 || 0),
+      ];
+      const olderBalance = amountDue - periodBalances.reduce((total, value) => total + value, 0);
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
+      const rightColumnX = 112;
+      let headerY = 16;
+      const companyAddress = [
+        companyDetails?.address1,
+        companyDetails?.address2,
+      ].filter(Boolean).flatMap(line => String(line).split(/\s*,\s*/));
+      const customerAddress = (selectedCustomer.address || "")
+        .split(/\s*,\s*|\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(15);
+      doc.text("Statement", margin, headerY);
+      headerY += 9;
+      doc.setFontSize(9);
+      doc.text("From:", margin, headerY);
+      doc.text("To:", rightColumnX, headerY);
+      doc.setFont("helvetica", "normal");
+      headerY += 5;
+
+      doc.setFont("helvetica", "bold");
+      doc.text(companyDetails?.companyName || "", margin, headerY);
+      doc.text(selectedCustomer.customer_name || "", rightColumnX, headerY);
+      doc.setFont("helvetica", "normal");
+      headerY += 4.5;
+
+      companyAddress.forEach(line => {
+        doc.text(line, margin, headerY);
+        headerY += 4;
       });
+      customerAddress.forEach(line => {
+        doc.text(line, rightColumnX, headerY);
+        headerY += 4;
+      });
+
+      const detailsY = Math.max(headerY, 42);
+      doc.setFont("helvetica", "bold");
+      doc.text(`A/c Ref.  ${selectedCustomer.sage_code || selectedCustomer.customer_code || customerId}`, rightColumnX, detailsY);
+      doc.text("Date", pageWidth - margin - 31, 25);
+      doc.setFont("helvetica", "normal");
+      doc.text(format(businessDate || toDate, "dd/MM/yyyy"), pageWidth - margin, 25, { align: "right" });
+      doc.text("NOTE: All values are shown in Pound Sterling", margin, detailsY + 8);
+      doc.setFont("helvetica", "bold");
+      doc.text("Transactions", margin, detailsY + 17);
+      doc.setFont("helvetica", "normal");
+
+      const transactionRows: Array<Array<string>> = [[
+        format(subDays(fromDate, 1), "dd/MM/yyyy"),
+        "",
+        "Brought Forward",
+        broughtForward > 0.004 ? `£${broughtForward.toFixed(2)}` : "-",
+        broughtForward < -0.004 ? `£${Math.abs(broughtForward).toFixed(2)}` : "-",
+      ]];
+      statementData.forEach(row => {
+        const isPayment = row.transactionType === "payment" ||
+          row.description.toLowerCase().includes("payment received");
+        const isDiscount = row.transactionType === "customer_discount" ||
+          row.description.toLowerCase().includes("customer discount");
+        const isReturn = row.transactionType === "customer_return" ||
+          row.description.toLowerCase().includes("customer return");
+        const debit = Math.max(0, Number(row.accountInv || 0)) +
+          Math.max(0, Number(row.cashInv || 0));
+        const credit = Math.max(0, Number(row.paid || 0)) +
+          Math.max(0, Number(row.accountAdj || 0)) +
+          Math.max(0, Number(row.discountAdj || 0));
+        const reference = isPayment
+          ? String(row.batchId ?? row.paymentId ?? row.transactionId ?? row.ref ?? "")
+          : String(row.ref || row.invoiceNo || "");
+        const details = isPayment
+          ? "Payment"
+          : isDiscount
+            ? row.description.replace(/^Customer Discount/i, "Discount")
+            : isReturn
+              ? row.description.replace(/^Customer Return/i, "Return")
+              : debit > 0
+                ? "Goods/Services"
+                : "Credit";
+
+        transactionRows.push([
+          row.date ? format(new Date(`${row.date}T00:00:00`), "dd/MM/yyyy") : "",
+          reference,
+          details,
+          debit > 0.004 ? `£${debit.toFixed(2)}` : "-",
+          credit > 0.004 ? `£${credit.toFixed(2)}` : "-",
+        ]);
+      });
+
+      autoTable(doc, {
+        head: [["Date", "Ref.", "Details", "Debit", "Credit"]],
+        body: transactionRows,
+        startY: detailsY + 20,
+        margin: { left: margin, right: margin },
+        styles: {
+          font: "helvetica",
+          fontSize: 8,
+          cellPadding: 1.8,
+          textColor: [0, 0, 0],
+          lineColor: [110, 110, 110],
+          lineWidth: 0.1,
+          overflow: "linebreak",
+        },
+        headStyles: {
+          fontStyle: "bold",
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          lineWidth: 0.15,
+        },
+        columnStyles: {
+          0: { cellWidth: 27 },
+          1: { cellWidth: 27 },
+          2: { cellWidth: "auto" },
+          3: { cellWidth: 34, halign: "right" },
+          4: { cellWidth: 34, halign: "right" },
+        },
+        didParseCell: data => {
+          if (data.section === "body" && data.row.index === 0) {
+            data.cell.styles.fontStyle = "bold";
+          }
+        },
+      });
+
+      let summaryY = ((doc as any).lastAutoTable?.finalY || detailsY + 20) + 8;
+      if (summaryY > doc.internal.pageSize.getHeight() - 34) {
+        doc.addPage();
+        summaryY = 18;
+      }
+      autoTable(doc, {
+        head: [["Current", "Period 1", "Period 2", "Period 3", "Older"]],
+        body: [[
+          formatStatementAmount(periodBalances[0]),
+          formatStatementAmount(periodBalances[1]),
+          formatStatementAmount(periodBalances[2]),
+          formatStatementAmount(periodBalances[3]),
+          formatSignedStatementAmount(olderBalance),
+        ]],
+        startY: summaryY,
+        margin: { left: margin, right: margin },
+        styles: {
+          font: "helvetica",
+          fontSize: 8,
+          cellPadding: 2,
+          textColor: [0, 0, 0],
+          lineColor: [110, 110, 110],
+          lineWidth: 0.1,
+          halign: "right",
+        },
+        headStyles: {
+          fontStyle: "bold",
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          halign: "center",
+        },
+      });
+      const dueY = ((doc as any).lastAutoTable?.finalY || summaryY) + 8;
+      doc.setFont("helvetica", "bold");
+      doc.text("Amount Due", pageWidth - margin - 55, dueY);
+      doc.text(formatSignedStatementAmount(amountDue), pageWidth - margin, dueY, { align: "right" });
+
+      const fileName = `customer-statement-${selectedCustomer.customer_name?.replace(/[^a-zA-Z0-9]/g, "_") || "customer"}-${format(toDate, "yyyy-MM-dd")}.pdf`;
+      doc.save(fileName);
+    } catch (error) {
+      console.error("Unable to create customer statement PDF:", error);
+      alert(error instanceof Error ? `Unable to create PDF: ${error.message}` : "Unable to create the customer statement PDF.");
     }
-    
-    // Add customer info
-    doc.setFontSize(12);
-    doc.text('Customer Information:', margin, margin + 35);
-    doc.setFontSize(10);
-    if (selectedCustomer) {
-      doc.text(`Name: ${selectedCustomer.customer_name || ''}`, margin, margin + 45, { maxWidth: contentWidth });
-      if (selectedCustomer.address) {
-        doc.text(`Address: ${selectedCustomer.address}`, margin, margin + 55, { maxWidth: contentWidth });
-      }
-      if (selectedCustomer.telephone || selectedCustomer.email) {
-        const contactInfo = [];
-        if (selectedCustomer.telephone) contactInfo.push(`Phone: ${selectedCustomer.telephone}`);
-        if (selectedCustomer.email) contactInfo.push(`Email: ${selectedCustomer.email}`);
-        doc.text(contactInfo.join(' | '), margin, margin + 65, { maxWidth: contentWidth });
-      }
-    }
-    
-    // Add period info
-    doc.setFontSize(12);
-    doc.text(`Period: ${format(fromDate, "dd/MM/yyyy")} to ${format(toDate, "dd/MM/yyyy")}`, margin, margin + 80);
-    // doc.text(`Type: ${statementType}`, margin + 50, margin + 80);
-    
-    // Prepare table data
-    const tableColumn = [
-      'Sl.No', 
-      'Date', 
-      'Invoice #', 
-      'Description', 
-      'Credit Inv.', 
-      'Cash Inv.', 
-      'Paid', 
-      'Credit',
-      'Credit/Adj', 
-      'Balance', 
-      'Running Balance'
-    ];
-    
-    const tableRows = processedStatementData.map(row => [
-      row.slNo || '',
-      row.date ? format(new Date(row.date), 'dd/MM/yyyy') : '',
-      row.invoiceNo || '',
-      row.description || '',
-      Number(row.accountInv || 0).toFixed(2),
-      Number(row.cashInv || 0).toFixed(2),
-      Number(row.paid || 0).toFixed(2),
-      Number(row.accountAdj || 0).toFixed(2),
-      Number(row.discountAdj || 0).toFixed(2),
-      Number(row.balance || 0).toFixed(2),
-      Number(row.runningBalance || 0).toFixed(2)
-    ]);
-    
-    // Add totals row
-    tableRows.push([
-      '',
-      'TOTAL',
-      '',
-      '',
-      Number(totals.accountInv.toString()).toFixed(2),
-      Number(totals.cashInv.toString()).toFixed(2),
-      Number(totals.paid.toString()).toFixed(2),
-      Number(totals.accountAdj.toString()).toFixed(2),
-      Number(totals.discountAdj.toString()).toFixed(2),
-      Number(totals.balance.toString()).toFixed(2),
-      processedStatementData.length > 0 ? Number(processedStatementData[processedStatementData.length - 1].runningBalance || 0).toFixed(2) : '0.00'
-    ]);
-    
-    // Add table to PDF with proper margins
-    autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: margin + 90,
-      margin: { left: margin, right: margin },
-      styles: {
-        fontSize: 8,
-        cellPadding: 2,
-        overflow: 'linebreak',
-        lineWidth: 0.1,
-        cellWidth: 'wrap',
-        valign: 'middle',
-        textColor: [0, 0, 0]
-      },
-      headStyles: {
-        fillColor: [66, 139, 202],
-        textColor: 255,
-        fontStyle: 'bold',
-        lineWidth: 0.1,
-        fontSize: 7
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245]
-      },
-      columnStyles: {
-        0: { cellWidth: 8, halign: 'center' },  // Sl.No
-        1: { cellWidth: 20, halign: 'center' }, // Date
-        2: { cellWidth: 17, halign: 'center' }, // Invoice #
-        3: { cellWidth: 25 },  // Description
-        4: { cellWidth: 15, halign: 'right' },  // Credit Inv.
-        5: { cellWidth: 15, halign: 'right' },  // Cash Inv.
-        6: { cellWidth: 15, halign: 'right' },  // Paid
-        7: { cellWidth: 15, halign: 'right' },  // Credit
-        8: { cellWidth: 15, halign: 'right' },  // Credit/Adj
-        9: { cellWidth: 15, halign: 'right' },  // Balance
-        10: { cellWidth: 20, halign: 'right' }  // Running Balance
-      },
-      tableWidth: 'auto',
-      tableLineColor: [0, 0, 0],
-      tableLineWidth: 0.1,
-      didDrawPage: function(data) {
-        // Footer on each page
-        doc.setFontSize(8);
-        doc.text(
-          'stand100', 
-          pageWidth - margin, 
-          pageHeight - margin, 
-          { align: 'right' }
-        );
-        
-        // Page number
-        doc.text(
-          `Page ${data.pageNumber} of ${doc.getNumberOfPages()}`,
-          pageWidth / 2, 
-          pageHeight - margin,
-          { align: 'center' }
-        );
-      }
-    });
-    
-    // Save the PDF
-    const fileName = `customer-statement-${selectedCustomer?.customer_name?.replace(/[^a-zA-Z0-9]/g, '_') || 'customer'}-${format(new Date(), 'yyyy-MM-dd')}.pdf`;
-    doc.save(fileName);
   };
 
   const handleCopy = async () => {
@@ -866,16 +935,16 @@ export default function CustomerStatement() {
                       <TableCell>{format(new Date(statement.date), "dd/MM/yyyy")}</TableCell>
                       <TableCell>{statement.invoiceNo}</TableCell>
                       <TableCell>{statement.description}</TableCell>
-                      <TableCell className="text-center">£{(statement.accountInv || 0).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{(statement.cashInv || 0).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{(statement.paid || 0).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{(statement.accountAdj || 0).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">£{(statement.discountAdj || 0).toFixed(2)}</TableCell>
+                      <TableCell className="text-center">{formatStatementAmount(statement.accountInv)}</TableCell>
+                      <TableCell className="text-center">{formatStatementAmount(statement.cashInv)}</TableCell>
+                      <TableCell className="text-center">{formatStatementAmount(statement.paid)}</TableCell>
+                      <TableCell className="text-center">{formatStatementAmount(statement.accountAdj)}</TableCell>
+                      <TableCell className="text-center">{formatStatementAmount(statement.discountAdj)}</TableCell>
                       <TableCell className={`text-center font-medium ${(statement.balance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {(statement.balance || 0) >= 0 ? '£' : '-£'}{Math.abs(statement.balance || 0).toFixed(2)}
+                        {formatSignedStatementAmount(statement.balance)}
                       </TableCell>
                       <TableCell className={`text-center font-bold ${(statement.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {(statement.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(statement.runningBalance || 0).toFixed(2)}
+                        {formatSignedStatementAmount(statement.runningBalance)}
                         {(statement.runningBalance || 0) < 0 && (
                           <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">CREDIT</span>
                         )}
@@ -889,14 +958,14 @@ export default function CustomerStatement() {
                     <TableCell className="font-bold">TOTAL</TableCell>
                     <TableCell></TableCell>
                     <TableCell></TableCell>
-                    <TableCell className="text-center font-bold">£{totals.accountInv.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£{totals.cashInv.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£{totals.paid.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£{totals.accountAdj.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£{totals.discountAdj.toFixed(2)}</TableCell>
-                    <TableCell className="text-center font-bold">£{totals.balance.toFixed(2)}</TableCell>
+                    <TableCell className="text-center font-bold">{formatStatementAmount(totals.accountInv)}</TableCell>
+                    <TableCell className="text-center font-bold">{formatStatementAmount(totals.cashInv)}</TableCell>
+                    <TableCell className="text-center font-bold">{formatStatementAmount(totals.paid)}</TableCell>
+                    <TableCell className="text-center font-bold">{formatStatementAmount(totals.accountAdj)}</TableCell>
+                    <TableCell className="text-center font-bold">{formatStatementAmount(totals.discountAdj)}</TableCell>
+                    <TableCell className="text-center font-bold">{formatSignedStatementAmount(totals.balance)}</TableCell>
                     <TableCell className={`text-center font-bold ${(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) >= 0 ? '£' : '-£'}{Math.abs(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0).toFixed(2)}
+                      {formatSignedStatementAmount(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0)}
                       {(processedStatementData[processedStatementData.length - 1]?.runningBalance || 0) < 0 && (
                         <span className="ml-1 text-xs bg-green-100 text-green-800 px-1 rounded">CREDIT</span>
                       )}

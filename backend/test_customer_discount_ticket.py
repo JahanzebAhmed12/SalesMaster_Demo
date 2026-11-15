@@ -19,6 +19,7 @@ from models import (  # noqa: E402
     Customer,
     CustomerDiscount,
     InvoiceDocumentNumber,
+    Payment,
     RegularProduct,
     Sale,
     SaleItem,
@@ -178,6 +179,26 @@ def main():
             assert CustomerDiscount.query.filter_by(is_deleted=False).count() == 3
             assert customer.running_balance == Decimal("-15.00")
 
+            db.session.add_all([
+                Payment(
+                    customer_id=customer.id,
+                    sale_id=sale.id,
+                    amount=Decimal("1.00"),
+                    payment_mode="cash",
+                    payment_date=date.today(),
+                    batch_id=35607,
+                ),
+                Payment(
+                    customer_id=customer.id,
+                    sale_id=sale.id,
+                    amount=Decimal("2.00"),
+                    payment_mode="cheque",
+                    payment_date=date.today(),
+                    batch_id=35607,
+                ),
+            ])
+            db.session.commit()
+
             print_response = client.get(
                 f"/api/customer-discounts/print?ids={discounts[0].id}"
             )
@@ -208,9 +229,15 @@ def main():
             )
             statement = statement_response.get_json() or []
             statement_tickets = [row for row in statement if row.get("invoiceNo") == "101"]
+            statement_payments = [row for row in statement if row.get("transactionType") == "payment"]
             assert statement_response.status_code == 200
             assert len(statement_tickets) == 1
             assert statement_tickets[0]["discountAdj"] == 15
+            assert statement_tickets[0]["transactionType"] == "customer_discount"
+            assert statement_tickets[0]["ref"] == "101"
+            assert len(statement_payments) == 2
+            assert len({row["paymentId"] for row in statement_payments}) == 2
+            assert {row["ref"] for row in statement_payments} == {"35607"}
             assert "DISCOUNT-TICKET-OTHER-INVOICE" in statement_tickets[0]["description"]
 
             history_response = client.get(
@@ -224,6 +251,15 @@ def main():
             assert history_tickets[0]["invoiceNo"] == "101"
             assert history_tickets[0]["balance"] == -15
             assert "DISCOUNT-TICKET-OTHER-INVOICE" in history_tickets[0]["sourceInvoiceNumbers"]
+
+            aging_response = client.get(
+                f"/api/reports/customer-aging?asOfDate={date.today().isoformat()}&customerId={customer.id}&perPage=1&page=1",
+                headers=headers,
+            )
+            aging_data = (aging_response.get_json() or {}).get("data", [])
+            assert aging_response.status_code == 200
+            assert len(aging_data) == 1
+            assert aging_data[0]["id"] == customer.id
 
             delete_response = client.delete(
                 f"/api/customer-discounts/{discounts[2].id}",
