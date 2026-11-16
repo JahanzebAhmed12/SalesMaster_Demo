@@ -7683,7 +7683,11 @@ def product_sales_history():
         per_unit_discount = discount_amount / line_quantity if line_quantity > 0 else discount_amount
         original_unit_price = float(line.unit_price or 0) if line else 0
         result.append({
-            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'invoiceNo': (
+                discount.document_invoice_number
+                or discount.reference
+                or (discount.sale.invoice_number if discount.sale else '')
+            ),
             'date': discount.date.isoformat(),
             'customerName': discount.customer.customer_name if discount.customer else '',
             'customerType': discount.sale.customer_type if discount.sale else '',
@@ -7696,6 +7700,7 @@ def product_sales_history():
             'discountTotal': discount_amount,
             'effectiveTotal': -discount_amount,
             'effectiveUnitPrice': original_unit_price - per_unit_discount,
+            'discountId': discount.id,
             'discountReference': discount.reference,
             'isCustomerDiscount': True,
             'isCompany': bool(discount.customer.is_company) if discount.customer else False,
@@ -7719,9 +7724,9 @@ def product_sales_history():
     for customer_return in returns_query.order_by(CustomerReturn.date.asc(), CustomerReturn.id.asc()).all():
         result.append({
             'invoiceNo': (
-                customer_return.sale.invoice_number
-                if customer_return.sale
-                else (customer_return.document_invoice_number or customer_return.ref_number)
+                customer_return.document_invoice_number
+                or customer_return.ref_number
+                or (customer_return.sale.invoice_number if customer_return.sale else '')
             ),
             'date': customer_return.date.isoformat() if customer_return.date else '',
             'customerName': customer_return.customer.customer_name if customer_return.customer else '',
@@ -7735,6 +7740,7 @@ def product_sales_history():
             'discountTotal': 0,
             'effectiveTotal': -float(customer_return.total_value or 0),
             'effectiveUnitPrice': float(customer_return.unit_price or 0),
+            'returnId': customer_return.id,
             'returnReference': customer_return.document_invoice_number or customer_return.ref_number,
             'isCustomerReturn': True,
             'isCompany': bool(customer_return.customer.is_company) if customer_return.customer else False,

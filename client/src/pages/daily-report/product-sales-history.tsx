@@ -17,6 +17,7 @@ import PageLayout from "@/components/common/page-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useInvoicePermissions } from "@/hooks/useInvoicePermissions";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { CreditDocumentDetailsDialog } from "@/components/common/credit-document-details-dialog";
 
 export default function ProductSalesHistoryPage() {
   const [productId, setProductId] = useState<string>("");
@@ -25,6 +26,10 @@ export default function ProductSalesHistoryPage() {
   const [productName, setProductName] = useState<string>("");
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
+  const [creditDetailsTarget, setCreditDetailsTarget] = useState<{
+    kind: "discount" | "return";
+    lineId: number;
+  } | null>(null);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { canEditInvoice } = useInvoicePermissions();
@@ -391,6 +396,20 @@ export default function ProductSalesHistoryPage() {
                     sales.map((row: any, idx: number) => (
                       <tr key={idx} className={`${idx % 2 === 0 ? "bg-white" : "bg-gray-50"} ${row.isCompany ? 'bg-amber-50' : ''}`}>
                         <td className="border border-gray-200 px-3 py-2">
+                          {row.isCustomerDiscount || row.isCustomerReturn ? (
+                            <Button
+                              variant="link"
+                              className="p-0 h-auto text-blue-600 underline text-sm"
+                              onClick={() => setCreditDetailsTarget(
+                                row.isCustomerDiscount
+                                  ? { kind: "discount", lineId: Number(row.discountId) }
+                                  : { kind: "return", lineId: Number(row.returnId) },
+                              )}
+                              title="View details"
+                            >
+                              {row.invoiceNo}
+                            </Button>
+                          ) : (
                           <Button 
                             variant="link" 
                             className="p-0 h-auto text-blue-600 underline text-sm" 
@@ -404,6 +423,7 @@ export default function ProductSalesHistoryPage() {
                           >
                             {row.invoiceNo}
                           </Button>
+                          )}
                         </td>
                         <td className="border border-gray-200 px-3 py-2">{row.date}</td>
                         <td className="border border-gray-200 px-3 py-2">
@@ -445,6 +465,13 @@ export default function ProductSalesHistoryPage() {
           </CardContent>
         </Card>
       </div>
+
+      <CreditDocumentDetailsDialog
+        open={!!creditDetailsTarget}
+        onOpenChange={(open) => { if (!open) setCreditDetailsTarget(null); }}
+        kind={creditDetailsTarget?.kind ?? "discount"}
+        lineId={creditDetailsTarget?.lineId ?? null}
+      />
     </PageLayout>
   );
 } 
