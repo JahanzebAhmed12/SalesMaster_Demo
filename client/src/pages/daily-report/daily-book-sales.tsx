@@ -36,6 +36,7 @@ import {
   sendInvoicePdfEmail,
 } from "@/lib/invoice-pdf";
 import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
+import { CreditDocumentDetailsDialog } from "@/components/common/credit-document-details-dialog";
 
 interface SalesEntry {
   id: number;
@@ -226,6 +227,11 @@ export default function DailyBookSales() {
     cashAmount: 0,
     cardAmount: 0
   });
+
+  const [creditDetailsTarget, setCreditDetailsTarget] = useState<{
+    kind: "discount" | "return";
+    lineId: number;
+  } | null>(null);
 
   // Fetch users for the salesman dropdown
   const { data: users, isLoading: isLoadingUsers } = useQuery<User[]>({
@@ -1455,7 +1461,19 @@ export default function DailyBookSales() {
                           {sale.isUnknownDate ? 'Unknown' : formatDateForDisplay(sale.date, 'MM/dd/yy')}
                         </TableCell>
                         <TableCell className="text-xs sm:text-sm">
-                          {sale.invoiceNo}
+                          {sale.isCustomerReturn || sale.isCustomerDiscount ? (
+                            <button
+                              type="button"
+                              className="text-blue-600 underline"
+                              onClick={() => setCreditDetailsTarget(
+                                sale.isCustomerDiscount
+                                  ? { kind: "discount", lineId: -(sale.id + 1_000_000_000) }
+                                  : { kind: "return", lineId: Math.abs(sale.id) },
+                              )}
+                            >
+                              {sale.invoiceNo}
+                            </button>
+                          ) : sale.invoiceNo}
                           {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
                           {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Credit/Adj)</span>}
                           {sale.isVoid && (
@@ -1475,6 +1493,16 @@ export default function DailyBookSales() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="start" className="w-48">
+                                <DropdownMenuItem
+                                  className="text-sm py-2"
+                                  onClick={() => setCreditDetailsTarget(
+                                    sale.isCustomerDiscount
+                                      ? { kind: "discount", lineId: -(sale.id + 1_000_000_000) }
+                                      : { kind: "return", lineId: Math.abs(sale.id) },
+                                  )}
+                                >
+                                  <Eye className="mr-2 h-4 w-4" /> View Details
+                                </DropdownMenuItem>
                                 <DropdownMenuItem className="text-sm py-2" onClick={() => handlePrintTicket(sale)}>
                                   <Printer className="mr-2 h-4 w-4" /> Print
                                 </DropdownMenuItem>
@@ -1823,6 +1851,13 @@ export default function DailyBookSales() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <CreditDocumentDetailsDialog
+          open={!!creditDetailsTarget}
+          onOpenChange={(open) => { if (!open) setCreditDetailsTarget(null); }}
+          kind={creditDetailsTarget?.kind ?? "discount"}
+          lineId={creditDetailsTarget?.lineId ?? null}
+        />
       </div>
     </PageLayout>
   );
