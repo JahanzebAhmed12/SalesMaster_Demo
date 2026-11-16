@@ -87,7 +87,10 @@ export default function ProdCustomerHistory() {
   // Totals
   const totalQuantity = historyData.reduce((sum: number, row: any) => sum + (row.quantity || 0), 0);
   const totalAmount = historyData.reduce((sum: number, row: any) => sum + (row.total || 0), 0);
-  const averagePrice = totalQuantity > 0 ? totalAmount / totalQuantity : 0;
+  const totalDiscountQuantity = historyData.reduce((sum: number, row: any) => sum + (row.discountQuantity || 0), 0);
+  const averagePrice = totalQuantity > 0
+    ? totalAmount / totalQuantity
+    : totalDiscountQuantity > 0 ? totalAmount / totalDiscountQuantity : 0;
 
   const loading = loadingHistory;
 

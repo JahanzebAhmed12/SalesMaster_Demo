@@ -16317,6 +16317,7 @@ def prod_customer_history():
             "slNo": len(data) + 1,
             "product": product_name,
             "quantity": 0,
+            "discountQuantity": discount_info['qty'],
             "avgPrice": -per_unit_discount,
             "total": -discount_total,
             "grossTotal": 0,
