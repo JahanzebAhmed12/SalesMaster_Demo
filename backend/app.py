@@ -16245,6 +16245,8 @@ def prod_customer_history():
     discount_query = db.session.query(
         func.coalesce(RegularProduct.description, NonProduct.description, 'Unknown').label('product'),
         func.sum(CustomerDiscount.amount).label('discount_total'),
+        SaleItem.id.label('sale_item_id'),
+        SaleItem.quantity.label('item_quantity'),
     ).join(
         Sale, CustomerDiscount.sale_id == Sale.id
     ).join(
@@ -16282,16 +16284,21 @@ def prod_customer_history():
         discount_query = discount_query.filter(
             CustomerDiscount.date < (datetime.strptime(to_date, "%Y-%m-%d").date() + timedelta(days=1))
         )
-    discount_by_product = {
-        row.product: float(row.discount_total or 0)
-        for row in discount_query.group_by(
-            RegularProduct.description, NonProduct.description
-        ).all()
-    }
+    discount_by_product = {}
+    for row in discount_query.group_by(
+        RegularProduct.description,
+        NonProduct.description,
+        SaleItem.id,
+        SaleItem.quantity,
+    ).all():
+        entry = discount_by_product.setdefault(row.product, {'total': 0.0, 'qty': 0.0})
+        entry['total'] += float(row.discount_total or 0)
+        entry['qty'] += float(row.item_quantity or 0)
 
     data = []
     for idx, row in enumerate(results, 1):
-        discount_total = discount_by_product.pop(row.product, 0)
+        discount_info = discount_by_product.pop(row.product, {'total': 0.0, 'qty': 0.0})
+        discount_total = discount_info['total']
         net_total = float(row.total or 0) - discount_total
         quantity = float(row.quantity) if row.quantity else 0
         data.append({
@@ -16303,12 +16310,14 @@ def prod_customer_history():
             "grossTotal": float(row.total or 0),
             "discountTotal": discount_total,
         })
-    for product_name, discount_total in discount_by_product.items():
+    for product_name, discount_info in discount_by_product.items():
+        discount_total = discount_info['total']
+        per_unit_discount = discount_total / discount_info['qty'] if discount_info['qty'] > 0 else 0
         data.append({
             "slNo": len(data) + 1,
             "product": product_name,
             "quantity": 0,
-            "avgPrice": 0,
+            "avgPrice": -per_unit_discount,
             "total": -discount_total,
             "grossTotal": 0,
             "discountTotal": discount_total,
