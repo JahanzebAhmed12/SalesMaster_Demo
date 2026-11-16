@@ -1458,9 +1458,6 @@ export default function DailyBookSales() {
                           {sale.invoiceNo}
                           {sale.isCustomerReturn && <span className="ml-1 text-xs text-red-600">(Return)</span>}
                           {sale.isCustomerDiscount && <span className="ml-1 text-xs text-orange-700">(Credit/Adj)</span>}
-                          {sale.isCustomerDiscount && sale.originalInvoiceNo && (
-                            <span className="block text-xs text-muted-foreground">Invoices: {sale.originalInvoiceNo}</span>
-                          )}
                           {sale.isVoid && (
                             <span className="ml-1 text-xs font-semibold text-gray-600">
                               {sale.isUnknownDate ? "(VOID - DATE UNKNOWN)" : "(VOID)"}

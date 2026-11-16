@@ -15476,7 +15476,7 @@ def product_history_report():
         per_unit_discount = discount_amount / line_quantity if line_quantity > 0 else discount_amount
         sales_data.append({
             'date': discount.date.isoformat(),
-            'invoiceNo': f"{discount.sale.invoice_number} / {discount.reference}" if discount.sale else discount.reference,
+            'invoiceNo': discount.sale.invoice_number if discount.sale else discount.reference,
             'customerName': discount.customer.customer_name if discount.customer else '',
             'product': (
                 sale_item.product.description if sale_item and sale_item.product
