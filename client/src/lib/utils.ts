@@ -69,3 +69,16 @@ export function formatPrice(price: number | string | null | undefined): string {
   
   return num.toFixed(2);
 }
+
+/**
+ * Format a GBP amount with the minus sign before the pound symbol
+ * @param value - The amount to format
+ * @returns e.g. "£12.50" or "-£12.50"
+ */
+export function formatMoney(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '£0.00';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return '£0.00';
+  const abs = Math.abs(num).toFixed(2);
+  return num < 0 ? `-£${abs}` : `£${abs}`;
+}

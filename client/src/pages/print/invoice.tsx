@@ -3,7 +3,7 @@ import { useRoute, useSearch } from "wouter";
 import logo from "@/public/printlogo.png";
 import { apiRequest } from "@/lib/queryClient";
 import { getApiUrl } from "@/lib/config";
-import { formatQuantity } from "@/lib/utils";
+import { formatMoney, formatQuantity } from "@/lib/utils";
 import { isInvoicePaid } from "@/lib/invoice-paid";
 import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
 import { fetchCustomerDiscountInvoices } from "@/lib/customer-discount-invoice";
@@ -238,14 +238,14 @@ export default function InvoicePrintPage() {
               </td>
               <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(item.quantity)}</td>
               <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{item.unitPrice?.toFixed(2) ?? "-"}</td>
-              <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>£{item.totalPrice?.toFixed(2) ?? "-"}</td>
+              <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{item.totalPrice != null ? formatMoney(item.totalPrice) : "-"}</td>
             </tr>
           ))}
           <tr style={{ fontWeight: "bold" }}>
             <td style={{ border: "1px solid #ccc", padding: "1px 4px" }}>SUB TOTAL</td>
             <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{formatQuantity(data.items.reduce((a, b) => a + Number(b.quantity || 0), 0))}</td>
             <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>X</td>
-            <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>£{data.sale?.subtotal?.toFixed(2) ?? "-"}</td>
+            <td style={{ border: "1px solid #ccc", padding: "1px 4px", textAlign: "center" }}>{data.sale?.subtotal != null ? formatMoney(data.sale.subtotal) : "-"}</td>
           </tr>
         </tbody>
       </table>
@@ -258,25 +258,25 @@ export default function InvoicePrintPage() {
         <div style={{ flex: 1, border: "1px solid #ccc", borderLeft: "none", borderTop: "none", fontSize: 13 }}>
           {(data.sale?.porterage ?? 0) > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 4px" }}>
-              <span>Porterage</span><span>£{data.sale?.porterage?.toFixed(2) ?? "0.00"}</span>
+              <span>Porterage</span><span>{formatMoney(data.sale?.porterage ?? 0)}</span>
             </div>
           )}
           <div style={{ display: "flex", justifyContent: "space-between", padding: "1px 4px", fontWeight: "bold" }}>
             <span>TOTAL</span>
-            <span>£{(data.sale?.total_amount ?? data.sale?.totalAmount ?? 0).toFixed(2)}</span>
+            <span>{formatMoney(data.sale?.total_amount ?? data.sale?.totalAmount ?? 0)}</span>
           </div>
         </div>
       </div>
       {data.sale?.isCustomerDiscount && !data.sale.hasMultipleDiscountLines && (
         <div style={{ marginTop: 6, fontSize: 13, fontWeight: "bold" }}>
-          Each box: £{(data.sale.discountPerBox ?? 0).toFixed(2)}
+          Each box: {formatMoney(data.sale.discountPerBox ?? 0)}
         </div>
       )}
       {showCashPaid && (
-        <div style={{ fontSize: 15, color: '#1a237e', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Cash Paid: £{Number(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}</div>
+        <div style={{ fontSize: 15, color: '#1a237e', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Cash Paid: {formatMoney(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0)}</div>
       )}
       {showBankPaid && (
-        <div style={{ fontSize: 15, color: '#1976d2', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Bank Paid: £{Number(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0).toFixed(2)}</div>
+        <div style={{ fontSize: 15, color: '#1976d2', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Bank Paid: {formatMoney(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0)}</div>
       )}
       {/* Footer */}
       <div style={{ marginTop: 16, fontSize: 13, color: "#444", textAlign: "right" }}>

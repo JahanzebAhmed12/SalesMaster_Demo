@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearch } from "wouter";
 import logo from "@/public/printlogo.png";
 import { getApiUrl } from "@/lib/config";
-import { formatQuantity } from "@/lib/utils";
+import { formatMoney, formatQuantity } from "@/lib/utils";
 import { isInvoicePaid } from "@/lib/invoice-paid";
 import { getBulkPrintInvoiceNumbers } from "@/lib/bulk-print";
 import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
@@ -164,14 +164,14 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
               </td>
               <td>{formatQuantity(Number(item.quantity || 0))}</td>
               <td>{Number(item.unitPrice || 0).toFixed(2)}</td>
-              <td>£{Number(item.totalPrice || 0).toFixed(2)}</td>
+              <td>{formatMoney(item.totalPrice)}</td>
             </tr>
           ))}
           <tr className="subtotal-row">
             <td>SUB TOTAL</td>
             <td>{formatQuantity(items.reduce((sum, item) => sum + Number(item.quantity || 0), 0))}</td>
             <td>X</td>
-            <td>£{subtotal.toFixed(2)}</td>
+            <td>{formatMoney(subtotal)}</td>
           </tr>
         </tbody>
       </table>
@@ -182,17 +182,17 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
           {data.invoiceFooter && <div className={sale.notes?.trim() ? "invoice-footer-notes" : ""}>{data.invoiceFooter}</div>}
         </div>
         <div className="totals-box">
-          {vatAmount > 0 && <div><span>Vat</span><span>£{vatAmount.toFixed(2)}</span></div>}
-          {porterage > 0 && <div><span>Porterage</span><span>£{porterage.toFixed(2)}</span></div>}
-          <div className="grand-total"><span>TOTAL</span><span>£{totalAmount.toFixed(2)}</span></div>
+          {vatAmount > 0 && <div><span>Vat</span><span>{formatMoney(vatAmount)}</span></div>}
+          {porterage > 0 && <div><span>Porterage</span><span>{formatMoney(porterage)}</span></div>}
+          <div className="grand-total"><span>TOTAL</span><span>{formatMoney(totalAmount)}</span></div>
           {(sale.customer_type === "cash" || sale.customerType === "cash") && paidAmount > 0 && (
-            <div><span>PAID</span><span>£{paidAmount.toFixed(2)}</span></div>
+            <div><span>PAID</span><span>{formatMoney(paidAmount)}</span></div>
           )}
         </div>
       </div>
       {sale.isCustomerDiscount && !sale.hasMultipleDiscountLines && (
         <div className="discount-details">
-          Each box: £{Number(sale.discountPerBox ?? 0).toFixed(2)}
+          Each box: {formatMoney(sale.discountPerBox)}
         </div>
       )}
 

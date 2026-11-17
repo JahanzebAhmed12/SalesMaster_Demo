@@ -15473,6 +15473,7 @@ def product_history_report():
                 NonProduct.description.ilike(f'%{product_like}%'),
             )
         )
+    discounts_data = []
     for discount in discounts_query.order_by(
         CustomerDiscount.date.asc(), CustomerDiscount.id.asc()
     ).all():
@@ -15480,21 +15481,34 @@ def product_history_report():
         discount_amount = float(discount.amount or 0)
         line_quantity = float(sale_item.quantity or 0) if sale_item else 0
         per_unit_discount = discount_amount / line_quantity if line_quantity > 0 else discount_amount
+        product_name = (
+            sale_item.product.description if sale_item and sale_item.product
+            else sale_item.non_product.description if sale_item and sale_item.non_product
+            else ''
+        )
         sales_data.append({
             'date': discount.date.isoformat(),
             'invoiceNo': discount.sale.invoice_number if discount.sale else discount.reference,
             'customerName': discount.customer.customer_name if discount.customer else '',
-            'product': (
-                sale_item.product.description if sale_item and sale_item.product
-                else sale_item.non_product.description if sale_item and sale_item.non_product
-                else ''
-            ),
+            'product': product_name,
             'quantity': 0,
             'unitPrice': -per_unit_discount,
             'total': -discount_amount,
             'notes': discount.reason or '',
             'isCompany': bool(discount.customer.is_company) if discount.customer else False,
             'isCustomerDiscount': True,
+        })
+        discounts_data.append({
+            'date': discount.date.isoformat(),
+            'ticketNo': discount.document_invoice_number or discount.reference,
+            'invoiceNo': discount.sale.invoice_number if discount.sale else '',
+            'customerName': discount.customer.customer_name if discount.customer else '',
+            'product': product_name,
+            'quantity': line_quantity,
+            'unitPrice': -per_unit_discount,
+            'total': -discount_amount,
+            'reason': discount.reason or '',
+            'isCompany': bool(discount.customer.is_company) if discount.customer else False,
         })
 
     # Customer Returns
@@ -15556,6 +15570,7 @@ def product_history_report():
         'supplierReturns': supplier_returns_data,
         'sales': sales_data,
         'customerReturns': customer_returns_data,
+        'discounts': discounts_data,
         'dumps': dumps_data
     })
 
@@ -15694,22 +15709,28 @@ def product_history_pdf():
                 NonProduct.description.ilike(f'%{product_like}%'),
             )
         )
+    discounts = []
     for discount in discounts_query.order_by(
         CustomerDiscount.date.asc(), CustomerDiscount.id.asc()
     ).all():
         line = discount.sale_item
-        sales.append(SimpleNamespace(
+        discount_amount = float(discount.amount or 0)
+        line_quantity = float(line.quantity or 0) if line else 0
+        per_unit_discount = discount_amount / line_quantity if line_quantity > 0 else discount_amount
+        discounts.append(SimpleNamespace(
             date=discount.date,
-            invoice_number=f"{discount.sale.invoice_number} / {discount.reference}" if discount.sale else discount.reference,
+            ticket_no=discount.document_invoice_number or discount.reference,
+            invoice_number=discount.sale.invoice_number if discount.sale else '',
             customer_name=discount.customer.customer_name if discount.customer else '',
             product=(
                 line.product.description if line and line.product
                 else line.non_product.description if line and line.non_product
                 else ''
             ),
-            quantity=0,
-            unit_price=0,
-            total_price=-float(discount.amount or 0),
+            quantity=line_quantity,
+            unit_price=-per_unit_discount,
+            total_price=-discount_amount,
+            reason=discount.reason or '',
         ))
 
     # Create PDF
@@ -15809,6 +15830,38 @@ def product_history_pdf():
             ('GRID', (0, 0), (-1, -1), 1, colors.black)
         ]))
         elements.append(sales_table)
+    
+    # Add customer discounts table if there's data
+    if discounts:
+        elements.append(Paragraph("Customer Discounts", styles['Heading2']))
+        discounts_data = [['Sl.No', 'Date', 'Ticket No', 'Invoice No', 'Customer', 'Product', 'Qty', 'Each Box', 'Discount', 'Reason']]
+        for idx, row in enumerate(discounts, 1):
+            discounts_data.append([
+                str(idx),
+                row.date.strftime('%Y-%m-%d') if row.date else '',
+                row.ticket_no or '',
+                row.invoice_number or '',
+                row.customer_name or '',
+                row.product or '',
+                str(int(row.quantity)) if row.quantity else '0',
+                f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
+                f"{float(row.total_price):.2f}",
+                row.reason or ''
+            ])
+        
+        discounts_table = Table(discounts_data)
+        discounts_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('FONTSIZE', (0, 1), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        elements.append(discounts_table)
     
     # Build PDF
     doc.build(elements)
@@ -16032,23 +16085,28 @@ def product_history_email():
                     NonProduct.description.ilike(f'%{product_like}%'),
                 )
             )
+        discounts = []
         for discount in discounts_query.order_by(
             CustomerDiscount.date.asc(), CustomerDiscount.id.asc()
         ).all():
             line = discount.sale_item
-            sales.append(SimpleNamespace(
+            discount_amount = float(discount.amount or 0)
+            line_quantity = float(line.quantity or 0) if line else 0
+            per_unit_discount = discount_amount / line_quantity if line_quantity > 0 else discount_amount
+            discounts.append(SimpleNamespace(
                 date=discount.date,
-                invoice_number=f"{discount.sale.invoice_number} / {discount.reference}" if discount.sale else discount.reference,
+                ticket_no=discount.document_invoice_number or discount.reference,
+                invoice_number=discount.sale.invoice_number if discount.sale else '',
                 customer_name=discount.customer.customer_name if discount.customer else '',
                 product=(
                     line.product.description if line and line.product
                     else line.non_product.description if line and line.non_product
                     else ''
                 ),
-                quantity=0,
-                unit_price=0,
-                total_price=-float(discount.amount or 0),
-                notes=discount.reason or '',
+                quantity=line_quantity,
+                unit_price=-per_unit_discount,
+                total_price=-discount_amount,
+                reason=discount.reason or '',
             ))
         customer_returns = customer_returns_query.all()
         dumps = dumps_query.all()
@@ -16096,6 +16154,7 @@ def product_history_email():
             ('FROM SUPPLIER', purchases, ['Sl.No', 'Date', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
             ('SUPPLIER RETURNS', supplier_returns, ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
             ('SALES', sales, ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
+            ('CUSTOMER DISCOUNTS', discounts, ['Sl.No', 'Date', 'Ticket No', 'Invoice No', 'Customer', 'Product', 'Qty', 'Each Box', 'Discount', 'Reason']),
             ('CUSTOMER RETURNS', customer_returns, ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total']),
             ('DUMPS', dumps, ['Sl.No', 'Date', 'Product', 'Notes', 'Total Qty'])
         ]
@@ -16115,6 +16174,19 @@ def product_history_email():
                             str(row.product or ''),
                             str(row.notes or ''),
                             str(int(row.total_qty)) if row.total_qty else '0'
+                        ])
+                    elif title == 'CUSTOMER DISCOUNTS':
+                        table_data.append([
+                            str(idx),
+                            row.date.strftime('%Y-%m-%d') if row.date else '',
+                            str(row.ticket_no or ''),
+                            str(row.invoice_number or ''),
+                            str(row.customer_name or ''),
+                            str(row.product or ''),
+                            str(int(row.quantity)) if row.quantity else '0',
+                            f"{float(row.unit_price):.2f}" if row.unit_price else '0.00',
+                            f"{float(row.total_price):.2f}",
+                            str(row.reason or '')
                         ])
                     else:
                         table_data.append([

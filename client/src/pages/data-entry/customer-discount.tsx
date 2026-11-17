@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Pencil, Printer, Search, Trash2, Undo2, X, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CreditDocumentDetailsDialog } from "@/components/common/credit-document-details-dialog";
 
 interface DiscountLine {
   id: number;
@@ -128,6 +129,7 @@ export default function CustomerDiscountPage() {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [editingTicket, setEditingTicket] = useState<DiscountTicketGroup | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<{ kind: "discount" | "return"; lineId: number } | null>(null);
   const [editLines, setEditLines] = useState<EditDiscountLine[]>([]);
   const [productSearchKey, setProductSearchKey] = useState(0);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
@@ -1061,7 +1063,17 @@ export default function CustomerDiscountPage() {
                           <TableRow key={ticket.key} className={ticket.activeLines.length === 0 ? "opacity-60" : ""}>
                             <TableCell>{ticket.dates.join(", ")}</TableCell>
                             <TableCell>{ticket.lines.map(line => line.reference).join(", ")}</TableCell>
-                            <TableCell>{ticket.documentInvoiceNumber || "-"}</TableCell>
+                            <TableCell>
+                              {ticket.activeLines.length > 0 ? (
+                                <button
+                                  type="button"
+                                  className="text-blue-600 underline"
+                                  onClick={() => setDetailsTarget({ kind: "discount", lineId: ticket.activeLines[0].id })}
+                                >
+                                  {ticket.documentInvoiceNumber || "-"}
+                                </button>
+                              ) : (ticket.documentInvoiceNumber || "-")}
+                            </TableCell>
                             <TableCell>{ticket.invoiceNumbers.join(", ") || "-"}</TableCell>
                             <TableCell className="whitespace-normal">
                               {ticket.lines.map(line => (
@@ -1150,6 +1162,13 @@ export default function CustomerDiscountPage() {
           </CardContent>
         </Card>
       </div>
+
+      <CreditDocumentDetailsDialog
+        open={!!detailsTarget}
+        onOpenChange={(open) => { if (!open) setDetailsTarget(null); }}
+        kind={detailsTarget?.kind ?? "discount"}
+        lineId={detailsTarget?.lineId ?? null}
+      />
     </PageLayout>
   );
 }

@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import logo from "@/public/printlogo.png";
-import { formatQuantity } from "./utils";
+import { formatMoney, formatQuantity } from "./utils";
 import { apiRequest } from "./queryClient";
 import { fetchCustomerReturnInvoices } from "./customer-return-invoice";
 import { fetchCustomerDiscountInvoices } from "./customer-discount-invoice";
@@ -251,7 +251,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
     doc.setFontSize(11);
     doc.text(formatQuantity(item.quantity || 0), tableStartX + colWidths[0] + colWidths[1] / 2, textCenterY, { align: 'center' });
     doc.text(`${(item.unitPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, textCenterY, { align: 'center' });
-    doc.text(`£${(item.totalPrice || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, textCenterY, { align: 'center' });
+    doc.text(formatMoney(item.totalPrice), tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, textCenterY, { align: 'center' });
 
     let rowX = tableStartX;
     colWidths.forEach((width, colIndex) => {
@@ -270,7 +270,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   doc.text("SUB TOTAL", tableStartX + 2, yPos + 6);
   doc.text(formatQuantity(invoiceData.items.reduce((a: number, b: any) => a + (Number(b.quantity) || 0), 0)), tableStartX + colWidths[0] + colWidths[1] / 2, yPos + 6, { align: 'center' });
   doc.text("X", tableStartX + colWidths[0] + colWidths[1] + colWidths[2] / 2, yPos + 6, { align: 'center' });
-  doc.text(`£${(invoiceData.sale?.subtotal || 0).toFixed(2)}`, tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, yPos + 6, { align: 'center' });
+  doc.text(formatMoney(invoiceData.sale?.subtotal), tableStartX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] / 2, yPos + 6, { align: 'center' });
 
   let subtotalX = tableStartX;
   colWidths.forEach((width, colIndex) => {
@@ -320,12 +320,12 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
 
   doc.rect(totalsX, yPos, totalsWidth, 10);
   doc.text("Porterage", totalsX + 2, yPos + 7);
-  doc.text(`£${(invoiceData.sale?.porterage || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 7, { align: 'right' });
+  doc.text(formatMoney(invoiceData.sale?.porterage), totalsX + totalsWidth - 2, yPos + 7, { align: 'right' });
 
   doc.setFont("helvetica", "bold");
   doc.rect(totalsX, yPos + 10, totalsWidth, 10);
   doc.text("TOTAL", totalsX + 2, yPos + 17);
-  doc.text(`£${((invoiceData.sale?.total_amount || invoiceData.sale?.totalAmount) || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 17, { align: 'right' });
+  doc.text(formatMoney(invoiceData.sale?.total_amount || invoiceData.sale?.totalAmount), totalsX + totalsWidth - 2, yPos + 17, { align: 'right' });
 
   doc.setFont("helvetica", "normal");
   if (invoiceData.sale?.customer_type === "cash") {
@@ -336,7 +336,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
           paymentMode === 'cheque' ? 'Cheque' : paymentMode;
     doc.rect(totalsX, yPos + 20, totalsWidth, 10);
     doc.text("PAID", totalsX + 2, yPos + 27);
-    doc.text(`${displayMode} £${(invoiceData.sale?.paid_amount || invoiceData.sale?.paidAmount || 0).toFixed(2)}`, totalsX + totalsWidth - 2, yPos + 27, { align: 'right' });
+    doc.text(`${displayMode} ${formatMoney(invoiceData.sale?.paid_amount || invoiceData.sale?.paidAmount)}`, totalsX + totalsWidth - 2, yPos + 27, { align: 'right' });
   }
 
   yPos += notesBoxHeight + 30;
@@ -346,7 +346,7 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   if (invoiceData.sale?.isCustomerDiscount) {
     doc.setFont("helvetica", "bold");
     doc.text(
-      `Each box: £${Number(invoiceData.sale.discountPerBox ?? 0).toFixed(2)}`,
+      `Each box: ${formatMoney(invoiceData.sale.discountPerBox)}`,
       20,
       yPos,
       { maxWidth: pageWidth - 40 },

@@ -15,7 +15,7 @@ import SupplierSearch from "@/components/ui/supplier-search";
 import CustomerSearch from "@/components/ui/customer-search";
 import { CalendarIcon, FileText, Download, Mail, Copy, Printer, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react";
 import { format, subWeeks } from "date-fns";
-import { cn, formatQuantity } from "@/lib/utils";
+import { cn, formatQuantity, formatMoney } from "@/lib/utils";
 import { useBusinessDate } from "@/hooks/use-business-date";
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -28,6 +28,7 @@ type ProductHistoryAPI = {
   supplierReturns: any[];
   sales: Array<any>;
   customerReturns: any[];
+  discounts: any[];
   dumps: any[];
 };
 
@@ -86,7 +87,7 @@ export default function ProductHistory() {
 
   // Fetch product history only when Search is clicked
   const {
-    data: historyData = { purchases: [], supplierReturns: [], sales: [], customerReturns: [], dumps: [] },
+    data: historyData = { purchases: [], supplierReturns: [], sales: [], customerReturns: [], discounts: [], dumps: [] },
     isLoading: loadingHistory,
     error: historyError
   } = useQuery<ProductHistoryAPI>({
@@ -101,7 +102,7 @@ export default function ProductHistory() {
       searchClicked
     ],
     queryFn: async () => {
-      if (!searchClicked) return { purchases: [], supplierReturns: [], sales: [], customerReturns: [], dumps: [] };
+      if (!searchClicked) return { purchases: [], supplierReturns: [], sales: [], customerReturns: [], discounts: [], dumps: [] };
       const params = new URLSearchParams();
       if (productId && productId !== "All") params.append("productId", productId);
       if (productLike) params.append("productLike", productLike);
@@ -182,7 +183,10 @@ export default function ProductHistory() {
   const supplierReturns = historyData.supplierReturns;
   const sales = historyData.sales;
   const customerReturns = historyData.customerReturns;
+  const discounts = historyData.discounts || [];
   const dumps = historyData.dumps;
+  // Discount rows are shown in their own dedicated table, not mixed into sales
+  const salesRows = sales.filter((s: any) => !s.isCustomerDiscount);
   const hasProductFilter = Boolean(
     (productId && productId !== "All") || productLike.trim()
   );
@@ -193,12 +197,13 @@ export default function ProductHistory() {
   const visibleSupplierReturns = showSupplierRecords ? supplierReturns : [];
 
   // Per-table sorting — default: date ascending. Persists across searches.
-  type SortTableId = "sales" | "customerReturns" | "purchases" | "supplierReturns" | "dumps";
+  type SortTableId = "sales" | "discounts" | "customerReturns" | "purchases" | "supplierReturns" | "dumps";
   type SortKey = "date" | "invoice";
   type SortDir = "asc" | "desc";
 
   const [sortConfig, setSortConfig] = useState<Record<SortTableId, { key: SortKey; dir: SortDir }>>({
     sales: { key: "date", dir: "asc" },
+    discounts: { key: "date", dir: "asc" },
     customerReturns: { key: "date", dir: "asc" },
     purchases: { key: "date", dir: "asc" },
     supplierReturns: { key: "date", dir: "asc" },
@@ -235,6 +240,7 @@ export default function ProductHistory() {
 
   const getInvoiceValue = (table: SortTableId, row: any): string => {
     if (table === "sales") return String(row?.invoiceNo ?? row?.invoice ?? "");
+    if (table === "discounts") return String(row?.invoiceNo ?? row?.ticketNo ?? "");
     if (table === "customerReturns" || table === "supplierReturns") return String(row?.invoice ?? row?.invoiceNo ?? "");
     return "";
   };
@@ -255,7 +261,8 @@ export default function ProductHistory() {
   };
 
   // Sorted views — these feed the on-screen tables AND all exports, so Search + sort always agree
-  const sortedSales = useMemo(() => sortRows(sales, "sales"), [sales, sortConfig]);
+  const sortedSales = useMemo(() => sortRows(salesRows, "sales"), [salesRows, sortConfig]);
+  const sortedDiscounts = useMemo(() => sortRows(discounts, "discounts"), [discounts, sortConfig]);
   const sortedCustomerReturns = useMemo(() => sortRows(customerReturns, "customerReturns"), [customerReturns, sortConfig]);
   const sortedPurchases = useMemo(() => sortRows(visiblePurchases, "purchases"), [visiblePurchases, sortConfig]);
   const sortedSupplierReturns = useMemo(() => sortRows(visibleSupplierReturns, "supplierReturns"), [visibleSupplierReturns, sortConfig]);
@@ -291,6 +298,14 @@ export default function ProductHistory() {
       ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'],
       ...sortedSales.map((row: any, idx: number) => [
         idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total
+      ]),
+      [''],
+      
+      // Customer Discounts Section
+      ['CUSTOMER DISCOUNTS'],
+      ['Sl.No', 'Date', 'Ticket No', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Each Box', 'Discount', 'Reason'],
+      ...sortedDiscounts.map((row: any, idx: number) => [
+        idx + 1, row.date, row.ticketNo, row.invoiceNo, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total, row.reason
       ]),
       [''],
       
@@ -355,6 +370,7 @@ export default function ProductHistory() {
     // Add all tables
     const tables = [
       { title: 'SALES', data: sortedSales, headers: ['Sl.No', 'Date', 'Invoice', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
+      { title: 'CUSTOMER DISCOUNTS', data: sortedDiscounts, headers: ['Sl.No', 'Date', 'Ticket No', 'Invoice No', 'Customer', 'Product', 'Qty', 'Each Box', 'Discount', 'Reason'] },
       { title: 'CUSTOMER RETURNS', data: sortedCustomerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
       { title: 'FROM SUPPLIER', data: sortedPurchases, headers: ['Sl.No', 'Date', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
       { title: 'SUPPLIER RETURNS', data: sortedSupplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier', 'Product', 'Notes', 'Qty', 'Unit Price', 'Total'] },
@@ -379,6 +395,8 @@ export default function ProductHistory() {
             return [idx + 1, row.date, row.invoice, row.supplierName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total];
           } else if (table.title === 'SALES') {
             return [idx + 1, row.date, row.invoiceNo, row.customerName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total];
+          } else if (table.title === 'CUSTOMER DISCOUNTS') {
+            return [idx + 1, row.date, row.ticketNo, row.invoiceNo, row.customerName, row.product, formatQuantity(row.quantity), row.unitPrice, row.total, row.reason];
           } else { // Customer Returns
             return [idx + 1, row.date, row.invoice, row.customerName, row.product, row.notes, formatQuantity(row.quantity), row.unitPrice, row.total];
           }
@@ -403,6 +421,17 @@ export default function ProductHistory() {
             2: { cellWidth: 65, halign: 'left' },
             3: { cellWidth: 90, halign: 'left' },
             4: { cellWidth: 25, halign: 'center' }
+          } : table.title === 'CUSTOMER DISCOUNTS' ? {
+            0: { cellWidth: 12, halign: 'center' },
+            1: { cellWidth: 22, halign: 'center' },
+            2: { cellWidth: 24, halign: 'center' },
+            3: { cellWidth: 22, halign: 'center' },
+            4: { cellWidth: 40, halign: 'left' },
+            5: { cellWidth: 42, halign: 'left' },
+            6: { cellWidth: 16, halign: 'center' },
+            7: { cellWidth: 20, halign: 'right' },
+            8: { cellWidth: 22, halign: 'right' },
+            9: { cellWidth: 55, halign: 'left' }
           } : {
             0: { cellWidth: 12, halign: 'center' },
             1: { cellWidth: 22, halign: 'center' },
@@ -451,6 +480,15 @@ export default function ProductHistory() {
       text += 'Sl.No\tDate\tInvoice\tCustomer\tProduct\tNotes\tQty\tUnit Price\tTotal\n';
       sortedSales.forEach((row: any, idx: number) => {
         text += `${idx + 1}\t${row.date}\t${row.invoiceNo}\t${row.customerName}\t${row.product}\t${row.notes || ''}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (sortedDiscounts.length > 0) {
+      text += 'CUSTOMER DISCOUNTS\n';
+      text += 'Sl.No\tDate\tTicket No\tInvoice No\tCustomer\tProduct\tQty\tEach Box\tDiscount\tReason\n';
+      sortedDiscounts.forEach((row: any, idx: number) => {
+        text += `${idx + 1}\t${row.date}\t${row.ticketNo}\t${row.invoiceNo}\t${row.customerName}\t${row.product}\t${formatQuantity(row.quantity)}\t${row.unitPrice}\t${row.total}\t${row.reason || ''}\n`;
       });
       text += '\n';
     }
@@ -510,6 +548,7 @@ export default function ProductHistory() {
     // Add all sections
     const sections = [
       { title: 'SALES', data: sortedSales, headers: ['Sl.No', 'Date', 'Invoice No', 'Customer Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
+      { title: 'CUSTOMER DISCOUNTS', data: sortedDiscounts, headers: ['Sl.No', 'Date', 'Ticket No', 'Invoice No', 'Customer Name', 'Product', 'Quantity', 'Each Box', 'Discount', 'Reason'] },
       { title: 'CUSTOMER RETURNS', data: sortedCustomerReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Customer Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
       { title: 'FROM SUPPLIER', data: sortedPurchases, headers: ['Sl.No', 'Date', 'Supplier Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
       { title: 'SUPPLIER RETURNS', data: sortedSupplierReturns, headers: ['Sl.No', 'Date', 'Invoice#', 'Supplier Name', 'Product', 'Notes', 'Quantity', 'Unit Price', 'Total'] },
@@ -535,6 +574,15 @@ export default function ProductHistory() {
             html += `<td>${row.product}</td>`;
             html += `<td>${row.notes || ''}</td>`;
             html += `<td>${row.totalQty}</td>`;
+          } else if (section.title === 'CUSTOMER DISCOUNTS') {
+            html += `<td>${row.ticketNo || ''}</td>`;
+            html += `<td>${row.invoiceNo || ''}</td>`;
+            html += `<td>${row.customerName || ''}</td>`;
+            html += `<td>${row.product}</td>`;
+            html += `<td>${formatQuantity(row.quantity)}</td>`;
+            html += `<td>${row.unitPrice}</td>`;
+            html += `<td>${row.total}</td>`;
+            html += `<td>${row.reason || ''}</td>`;
           } else {
             if (section.title === 'FROM SUPPLIER' || section.title === 'SUPPLIER RETURNS') {
               if (section.title === 'SUPPLIER RETURNS') {
@@ -816,15 +864,95 @@ export default function ProductHistory() {
                       </TableCell>
                       <TableCell className="text-center">
                         £{(() => {
-                          const ncSales = sales.filter((s: any) => !s.isCompany);
+                          const ncSales = salesRows.filter((s: any) => !s.isCompany);
                           const totalQty = ncSales.reduce((sum: number, s: any) => sum + (Number(s.quantity) || 0), 0);
                           const totalVal = ncSales.reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0);
                           return (totalVal / (totalQty || 1)).toFixed(2);
                         })()}
                       </TableCell>
                       <TableCell className="text-center">
-                        £{sales.filter((s: any) => !s.isCompany).reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0).toFixed(2)}
+                        £{salesRows.filter((s: any) => !s.isCompany).reduce((sum: number, s: any) => sum + (Number(s.total) || 0), 0).toFixed(2)}
                       </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Customer Discounts Section */}
+        <Card>
+          <CardContent className="p-6">
+            <h3 className="text-lg font-semibold mb-4 text-orange-600 border-b-2 border-orange-300 pb-2">Customer Discounts</h3>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-orange-50">
+                    <TableHead className="text-center min-w-[60px]">Sl.No</TableHead>
+                    <TableHead className="text-center min-w-[100px]">
+                      <button type="button" onClick={() => toggleSort("discounts", "date")} className="inline-flex items-center gap-1 hover:text-orange-700" title="Sort by date">
+                        Date {renderSortIcon("discounts", "date")}
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center min-w-[110px]">Ticket No</TableHead>
+                    <TableHead className="text-center min-w-[100px]">
+                      <button type="button" onClick={() => toggleSort("discounts", "invoice")} className="inline-flex items-center gap-1 hover:text-orange-700" title="Sort by invoice">
+                        Invoice No {renderSortIcon("discounts", "invoice")}
+                      </button>
+                    </TableHead>
+                    <TableHead className="text-center min-w-[150px]">Customer Name</TableHead>
+                    <TableHead className="text-center min-w-[120px]">Product</TableHead>
+                    <TableHead className="text-center min-w-[80px]">Quantity</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Each Box</TableHead>
+                    <TableHead className="text-center min-w-[100px]">Discount</TableHead>
+                    <TableHead className="text-center min-w-[150px]">Reason</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loadingHistory ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-4">Loading...</TableCell>
+                    </TableRow>
+                  ) : sortedDiscounts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-4">No Records found</TableCell>
+                    </TableRow>
+                  ) : (
+                    sortedDiscounts.map((discount, idx) => (
+                      <TableRow key={`discount-${idx}`} className={cn(discount.isCompany && "bg-amber-50")}>
+                        <TableCell className="text-center">{idx + 1}</TableCell>
+                        <TableCell className="text-center whitespace-nowrap">{discount.date}</TableCell>
+                        <TableCell className="text-center">{discount.ticketNo}</TableCell>
+                        <TableCell className="text-center">{discount.invoiceNo}</TableCell>
+                        <TableCell className="text-center">
+                          <span className="flex items-center gap-1 justify-center">
+                            {discount.customerName}
+                            {discount.isCompany && (
+                              <span className="text-xs bg-amber-100 text-amber-700 border border-amber-300 rounded px-1 font-medium">CO</span>
+                            )}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">{discount.product}</TableCell>
+                        <TableCell className="text-center">{formatQuantity(discount.quantity)}</TableCell>
+                        <TableCell className="text-center">{formatMoney(discount.unitPrice)}</TableCell>
+                        <TableCell className="text-center">{formatMoney(discount.total)}</TableCell>
+                        <TableCell className="text-left whitespace-pre-wrap">{discount.reason || ""}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                  {sortedDiscounts.length > 0 && (
+                    <TableRow className="bg-muted/50 font-bold">
+                      <TableCell className="text-left">Total</TableCell>
+                      <TableCell colSpan={5}></TableCell>
+                      <TableCell className="text-center">
+                        {formatQuantity(sortedDiscounts.reduce((sum, d) => sum + (Number(d.quantity) || 0), 0))}
+                      </TableCell>
+                      <TableCell></TableCell>
+                      <TableCell className="text-center">
+                        {formatMoney(discounts.reduce((sum: number, d: any) => sum + (Number(d.total) || 0), 0))}
+                      </TableCell>
+                      <TableCell></TableCell>
                     </TableRow>
                   )}
                 </TableBody>

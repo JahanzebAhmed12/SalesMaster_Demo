@@ -23,6 +23,7 @@ import type { RegularProduct } from "@shared/schema";
 import { useCustomerSearch } from "@/hooks/useCustomerSearch";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 import { groupCustomerReturnDocuments, type CustomerReturnDocument } from "@/lib/customer-return-documents";
+import { CreditDocumentDetailsDialog } from "@/components/common/credit-document-details-dialog";
 
 interface ReturnableInvoiceLine {
   id: number;
@@ -112,13 +113,14 @@ export default function ReturnFromCustomer() {
   const [selectedProductKey, setSelectedProductKey] = useState("");
   const [productSearchKey, setProductSearchKey] = useState(0);
   const [selectedInvoiceLineId, setSelectedInvoiceLineId] = useState("");
-  const [returnsFromDate, setReturnsFromDate] = useState(format(subDays(new Date(businessDateString), 30), "yyyy-MM-dd"));
+  const [returnsFromDate, setReturnsFromDate] = useState(businessDateString);
   const [returnsToDate, setReturnsToDate] = useState(businessDateString);
   const [returnsInvoiceSearch, setReturnsInvoiceSearch] = useState("");
   const [returnsPage, setReturnsPage] = useState(1);
   const [returnsPageSize, setReturnsPageSize] = useState(10);
   const [selectedInvoiceLines, setSelectedInvoiceLines] = useState<Record<string, DraftReturnItem>>({});
   const [editingReturn, setEditingReturn] = useState<CustomerReturnDocument<CustomerReturn> | null>(null);
+  const [detailsTarget, setDetailsTarget] = useState<{ kind: "discount" | "return"; lineId: number } | null>(null);
 
   useEffect(() => {
     setInvoicesFetched(false);
@@ -682,9 +684,7 @@ export default function ReturnFromCustomer() {
                   Get Invoices
                 </Button>
               </div>
-              <div className="md:col-span-3 -mt-2 text-sm text-muted-foreground">
-                The button loads this customer's invoices from the selected date and shows their existing returns below.
-              </div>
+
             </div>
           </CardContent>
         </Card>
@@ -929,7 +929,20 @@ export default function ReturnFromCustomer() {
                       <TableRow key={returnItem.id}>
                         <TableCell>{format(new Date(returnItem.date), "dd/MM/yyyy")}</TableCell>
                         <TableCell>{returnItem.productDescription}</TableCell>
-                        <TableCell>{returnItem.invoiceNumber || "-"}</TableCell>
+                        <TableCell>
+                          {returnItem.invoiceNumber ? (
+                            <button
+                              type="button"
+                              className="text-blue-600 underline"
+                              onClick={() => setDetailsTarget({
+                                kind: "return",
+                                lineId: returnItem.items[0]?.id ?? returnItem.id,
+                              })}
+                            >
+                              {returnItem.invoiceNumber}
+                            </button>
+                          ) : "-"}
+                        </TableCell>
                         <TableCell className="text-center">{formatQuantity(returnItem.quantity)}</TableCell>
                         <TableCell className="text-center">{money(returnItem.unitPrice)}</TableCell>
                         <TableCell className="text-center">{money(returnItem.totalValue)}</TableCell>
@@ -1007,6 +1020,13 @@ export default function ReturnFromCustomer() {
           </Card>
         )}
       </div>
+
+      <CreditDocumentDetailsDialog
+        open={!!detailsTarget}
+        onOpenChange={(open) => { if (!open) setDetailsTarget(null); }}
+        kind={detailsTarget?.kind ?? "return"}
+        lineId={detailsTarget?.lineId ?? null}
+      />
     </PageLayout>
   );
 }

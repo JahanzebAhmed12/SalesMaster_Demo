@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRoute } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
-import { formatQuantity } from '@/lib/utils';
+import { formatMoney, formatQuantity } from '@/lib/utils';
 import { API_BASE_URL, useRelativeUrls } from '@/lib/config';
 import { isInvoicePaid } from '@/lib/invoice-paid';
 import { generateInvoicePdfBlob } from '@/lib/invoice-pdf';
@@ -1230,7 +1230,7 @@ export default function DotMatrixInvoicePrintPage({
                     padding: '0',
                     whiteSpace: 'nowrap'
                   }}>
-                    £{porterage.toFixed(2)}
+                    {formatMoney(porterage)}
                   </div>
                 </>
               )}
@@ -1344,7 +1344,7 @@ export default function DotMatrixInvoicePrintPage({
                     padding: '0',
                     whiteSpace: 'nowrap'
                   }}>
-                    £{(totalAmount + vatAmount + porterage).toFixed(2)}
+                    {formatMoney(totalAmount + vatAmount + porterage)}
                   </div>
                 </>
               )}

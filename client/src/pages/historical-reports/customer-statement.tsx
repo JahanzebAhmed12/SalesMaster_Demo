@@ -342,7 +342,7 @@ export default function CustomerStatement() {
       'Date', 
       'Invoice #', 
       'Description', 
-      'Credit Inv.', 
+      'Account Inv.', 
       'Cash Inv.', 
       'Paid', 
       'Credit',
@@ -421,7 +421,7 @@ export default function CustomerStatement() {
       { wch: 12 },  // Date
       { wch: 15 },  // Invoice #
       { wch: 40 },  // Description
-      { wch: 12 },  // Credit Inv.
+      { wch: 12 },  // Account Inv.
       { wch: 12 },  // Cash Inv.
       { wch: 12 },  // Paid
       { wch: 12 },  // Credit
@@ -717,7 +717,7 @@ export default function CustomerStatement() {
   };
 
   const handleCopy = async () => {
-    let text = 'Sl.No\tDate\tInvoice #\tDescription\tCredit Inv.\tCash Inv.\tPaid\tCredit\tCredit/Adj\tBalance\tRunning Balance\n';
+    let text = 'Sl.No\tDate\tInvoice #\tDescription\tAccount Inv.\tCash Inv.\tPaid\tCredit\tCredit/Adj\tBalance\tRunning Balance\n';
     text += processedStatementData.map((row: StatementData) => [
       row.slNo,
       row.date,
@@ -919,7 +919,7 @@ export default function CustomerStatement() {
                     <TableHead>Date</TableHead>
                     <TableHead>Invoice #</TableHead>
                     <TableHead>Description</TableHead>
-                    <TableHead className="text-center">Credit Inv.</TableHead>
+                    <TableHead className="text-center">Account Inv.</TableHead>
                     <TableHead className="text-center">Cash Inv.</TableHead>
                     <TableHead className="text-center">Paid</TableHead>
                     <TableHead className="text-center">Credit</TableHead>
