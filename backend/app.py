@@ -8387,6 +8387,8 @@ def product_sales_report():
     discount_query = db.session.query(
         SaleItem.product_id,
         SaleItem.non_product_id,
+        SaleItem.id.label('sale_item_id'),
+        SaleItem.quantity.label('item_qty'),
         func.sum(CustomerDiscount.amount),
     ).join(
         Sale, CustomerDiscount.sale_id == Sale.id
@@ -8414,12 +8416,14 @@ def product_sales_report():
                 NonProduct.description.ilike(f'%{search}%'),
             )
         )
-    discount_totals = {
-        (product_id, non_product_id): float(amount or 0)
-        for product_id, non_product_id, amount in discount_query.group_by(
-            SaleItem.product_id, SaleItem.non_product_id
-        ).all()
-    }
+    discount_totals = {}
+    discount_quantities = {}
+    for product_id, non_product_id, _sale_item_id, item_qty, amount in discount_query.group_by(
+        SaleItem.product_id, SaleItem.non_product_id, SaleItem.id, SaleItem.quantity
+    ).all():
+        key = (product_id, non_product_id)
+        discount_totals[key] = discount_totals.get(key, 0) + float(amount or 0)
+        discount_quantities[key] = discount_quantities.get(key, 0) + float(item_qty or 0)
 
     # Format for frontend
     sales_data = []
@@ -8441,6 +8445,7 @@ def product_sales_report():
             'total': total_amt,
             'grossTotal': gross_total,
             'discountTotal': discount_total,
+            'discountQuantity': discount_quantities.get(product_key, 0),
         })
     for (product_id, non_product_id), discount_total in discount_totals.items():
         product = (
@@ -8448,16 +8453,18 @@ def product_sales_report():
             else NonProduct.query.get(non_product_id) if non_product_id
             else None
         )
+        discounted_qty = discount_quantities.get((product_id, non_product_id), 0)
         sales_data.append({
             'id': product_id or non_product_id,
             'slNo': len(sales_data) + 1,
             'sageCode': product.sage_code if product else '',
             'productDescription': product.description if product else '',
             'quantity': 0,
-            'avgPrice': 0,
+            'avgPrice': -(discount_total / discounted_qty) if discounted_qty > 0 else 0,
             'total': -discount_total,
             'grossTotal': 0,
             'discountTotal': discount_total,
+            'discountQuantity': discounted_qty,
         })
     return jsonify(sales_data)
 

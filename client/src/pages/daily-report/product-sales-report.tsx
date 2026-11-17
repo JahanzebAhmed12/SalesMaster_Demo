@@ -26,6 +26,7 @@ interface SalesReportData {
   quantity: number;
   avgPrice: number;
   total: number;
+  discountQuantity?: number;
 }
 
 export default function ProductSalesReport() {
@@ -103,7 +104,10 @@ export default function ProductSalesReport() {
 
   const totalAmount = salesData.reduce((sum: number, item: SalesReportData) => sum + item.total, 0);
   const totalQuantity = salesData.reduce((sum: number, item: SalesReportData) => sum + item.quantity, 0);
-  const averagePrice = salesData.length > 0 ? totalAmount / totalQuantity : 0;
+  const totalDiscountQuantity = salesData.reduce((sum: number, item: SalesReportData) => sum + (Number(item.discountQuantity) || 0), 0);
+  const averagePrice = totalQuantity > 0
+    ? totalAmount / totalQuantity
+    : (totalDiscountQuantity > 0 ? totalAmount / totalDiscountQuantity : 0);
   const numberOfProducts = salesData.length;
 
   const sortedData = useMemo(() => {
