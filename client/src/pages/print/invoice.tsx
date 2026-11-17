@@ -267,11 +267,6 @@ export default function InvoicePrintPage() {
           </div>
         </div>
       </div>
-      {data.sale?.isCustomerDiscount && !data.sale.hasMultipleDiscountLines && (
-        <div style={{ marginTop: 6, fontSize: 13, fontWeight: "bold" }}>
-          Each box: {formatMoney(data.sale.discountPerBox ?? 0)}
-        </div>
-      )}
       {showCashPaid && (
         <div style={{ fontSize: 15, color: '#1a237e', fontWeight: 'bold', marginTop: 16, marginBottom: 8, textAlign: 'right' }}>Cash Paid: {formatMoney(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0)}</div>
       )}

@@ -343,17 +343,6 @@ export function generateInvoicePdfBlob(invoiceData: InvoicePdfData): Blob {
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(68, 68, 68);
-  if (invoiceData.sale?.isCustomerDiscount) {
-    doc.setFont("helvetica", "bold");
-    doc.text(
-      `Each box: ${formatMoney(invoiceData.sale.discountPerBox)}`,
-      20,
-      yPos,
-      { maxWidth: pageWidth - 40 },
-    );
-    doc.setFont("helvetica", "normal");
-    yPos += 12;
-  }
   doc.text(`Invoice Time: ${invoiceData.sale?.date ? new Date(invoiceData.sale.date).toLocaleString() : "-"}`, pageWidth - 20, yPos, { align: 'right' });
   doc.text(`Current Time: ${new Date().toLocaleString()}`, pageWidth - 20, yPos + 10, { align: 'right' });
 

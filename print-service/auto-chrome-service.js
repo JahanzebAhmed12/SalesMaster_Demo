@@ -437,15 +437,9 @@ class AutoChromePrintService {
     // Constants matching dot-matrix-invoice.tsx for dynamic line-wrap pagination
     const CHARS_PER_LINE = 30;
     const ROW_HEIGHT_MM = 4;
-    const ITEMS_START_TOP_MM = 95;
-    const ITEMS_AVAILABLE_HEIGHT_MM = 72;
+    const ITEMS_START_TOP_MM = 90;
+    const ITEMS_AVAILABLE_HEIGHT_MM = 68;
     const NOTES_EXTRA_GAP_MM = 3.5;
-
-    const getItemDisplayText = (item) => {
-      const name = item.product_name || item.productName || item.description || '';
-      const note = item.notes || item.remarks;
-      return note ? `${name} (${note})` : name;
-    };
 
     const estimateLines = (text) => {
       if (!text) return 1;
@@ -463,7 +457,7 @@ class AutoChromePrintService {
       date:            { top: '77mm',  left: '60mm' },
       time:            { top: '77mm',  left: '95mm' },
       pageNumber:      { top: '77mm',  left: '125mm' },
-      itemsStartTop:   95,   // mm (numeric for arithmetic)
+      itemsStartTop:   90,   // mm (numeric for arithmetic)
       itemsRowHeight:  4,    // mm per row
       columns: {
         quantity:    { left: '4mm',   width: '7mm'  },
@@ -474,7 +468,7 @@ class AutoChromePrintService {
       totals: {
         goods: { top: '167mm', left: '108mm', width: '25mm', align: 'right' },
         vat:   { top: '177mm', left: '108mm', width: '25mm', align: 'right' },
-        total: { top: '185mm', left: '108mm', width: '25mm', align: 'right' },
+        total: { top: '181mm', left: '108mm', width: '25mm', align: 'right' },
       },
     };
 
@@ -486,11 +480,45 @@ class AutoChromePrintService {
       return n % 1 === 0 ? n.toString() : parseFloat(n.toFixed(3)).toString();
     };
 
+    // Negative amounts render as -£X.XX (minus before pound), matching formatMoney in utils.ts
+    const formatMoney = (v) => {
+      const n = Number(v) || 0;
+      const abs = Math.abs(n).toFixed(2);
+      return n < 0 ? `-£${abs}` : `£${abs}`;
+    };
+
+    const escapeHtml = (s) => String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    const formatInvoiceDate = (value) => {
+      if (!value) return '';
+      const d = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+      return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-GB');
+    };
+
+    const isReturn = !!sale?.isCustomerReturn;
+    const isDiscount = !!sale?.isCustomerDiscount;
+    const returnInvoiceNumber = isReturn ? (sale?.originalInvoiceNumber || '') : '';
+    const returnInvoiceDate = isReturn ? formatInvoiceDate(sale?.originalInvoiceDate) : '';
+
+    // Mirrors getItemDisplayText in dot-matrix-invoice.tsx (used for line-wrap estimation)
+    const getItemDisplayTextFull = (item) => {
+      const name = item.product_name || item.productName || item.description || '';
+      const note = item.notes || item.remarks;
+      const details = [
+        returnInvoiceDate,
+        returnInvoiceNumber ? `Invoice: ${returnInvoiceNumber}` : '',
+        note || '',
+      ].filter(Boolean);
+      return `${name}${details.length ? ` (${details.join(', ')})` : ''}`;
+    };
+
     // --- Dynamic pagination based on estimated line wraps ---
     const itemLineEntries = [];
     if (items) {
       for (const item of items) {
-        const lines = estimateLines(getItemDisplayText(item));
+        const lines = estimateLines(getItemDisplayTextFull(item));
         const hasNotes = !!(item.notes || item.remarks);
         const height = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
         itemLineEntries.push({ item, lines, height });
@@ -542,34 +570,50 @@ class AutoChromePrintService {
       // Items rows — cumulative positioning based on estimated line wraps
       let cumulativeTop = ITEMS_START_TOP_MM;
       const itemRowsHTML = page.items.map((item) => {
-        const lines = estimateLines(getItemDisplayText(item));
+        const lines = estimateLines(getItemDisplayTextFull(item));
         const hasNotes = !!(item.notes || item.remarks);
         const itemHeight = lines * ROW_HEIGHT_MM + (hasNotes ? NOTES_EXTRA_GAP_MM : 0);
         const top = cumulativeTop;
         cumulativeTop += itemHeight;
         const notes = item.notes || item.remarks;
-        const description = `${item.product_name || item.productName || item.description || ''}${notes ? ` <span style="font-style:italic;font-weight:normal;">(${notes})</span>` : ''}`;
+        const name = item.product_name || item.productName || item.description || '';
+        // Mirror the React description spans: returns show "(date, Invoice: N, notes)",
+        // discounts show "(notes)" in normal weight, normal items use italic notes.
+        let description;
+        if (isReturn && returnInvoiceNumber) {
+          const noteText = notes ? `, ${escapeHtml(notes)}` : '';
+          description = `${escapeHtml(name)} <span style="font-weight:normal;">(${returnInvoiceDate ? `${returnInvoiceDate}, ` : ''}Invoice: ${escapeHtml(returnInvoiceNumber)}${noteText})</span>`;
+        } else if (isDiscount && notes) {
+          description = `${escapeHtml(name)} <span style="font-weight:normal;">(${escapeHtml(notes)})</span>`;
+        } else {
+          description = `${escapeHtml(name)}${notes ? ` <span style="font-style:italic;font-weight:normal;">(${escapeHtml(notes)})</span>` : ''}`;
+        }
         return `
           <div class="ft" style="top:${top}mm;left:${fp.columns.quantity.left};width:${fp.columns.quantity.width};white-space:nowrap;font-weight:bold;">${formatQty(item.quantity)}</div>
           <div class="ft" style="top:${top}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};overflow:hidden;white-space:normal;word-wrap:break-word;font-weight:bold;">${description}</div>
           <div class="ft" style="top:${top}mm;left:${fp.columns.price.left};width:${fp.columns.price.width};text-align:right;white-space:nowrap;font-weight:bold;">${(item.unit_price || item.unitPrice || 0).toFixed(2)}</div>
-          <div class="ft" style="top:${top}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;white-space:nowrap;font-weight:bold;">£${(item.total_price || item.totalPrice || 0).toFixed(2)}</div>`;
+          <div class="ft" style="top:${top}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;white-space:nowrap;font-weight:bold;">${formatMoney(item.total_price || item.totalPrice || 0)}</div>`;
       }).join('');
 
       // Porterage row — last page only, after items
       const porterageHTML = (page.isLastPage && porterage > 0) ? `
         <div class="ft" style="top:${ITEMS_START_TOP_MM + page.itemsHeight}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">Porterage</div>
-        <div class="ft" style="top:${ITEMS_START_TOP_MM + page.itemsHeight}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;font-weight:bold;">£${porterage.toFixed(2)}</div>` : '';
+        <div class="ft" style="top:${ITEMS_START_TOP_MM + page.itemsHeight}mm;left:${fp.columns.value.left};width:${fp.columns.value.width};text-align:right;font-weight:bold;">${formatMoney(porterage)}</div>` : '';
 
       // Packages line — last page only
       const packagesTop = ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0);
       const packagesHTML = page.isLastPage ? `<div class="ft" style="top:${packagesTop}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-weight:bold;">(${formatQty(totalQuantity)} packages)</div>` : '';
 
+      // Document remarks — last page only, one row below the packages line (matches React)
+      const remarksTop = packagesTop + ROW_HEIGHT_MM;
+      const remarksHTML = (page.isLastPage && sale?.notes && String(sale.notes).trim()) ? `
+        <div class="ft" style="top:${remarksTop}mm;left:${fp.columns.description.left};width:${fp.columns.description.width};font-size:9pt;font-weight:normal;line-height:1.1;white-space:pre-wrap;word-wrap:break-word;">Remarks: ${escapeHtml(sale.notes)}</div>` : '';
+
       // Totals — last page only
       const totalsHTML = page.isLastPage ? `
-        <div class="ft" style="top:${fp.totals.goods.top};left:${fp.totals.goods.left};width:${fp.totals.goods.width};text-align:right;font-size:11pt;font-weight:bold;">£${totalAmount.toFixed(2)}</div>
-        <div class="ft" style="top:${fp.totals.vat.top};left:${fp.totals.vat.left};width:${fp.totals.vat.width};text-align:right;font-size:11pt;font-weight:bold;">£${vatAmount.toFixed(2)}</div>
-        <div class="ft" style="top:${fp.totals.total.top};left:${fp.totals.total.left};width:${fp.totals.total.width};text-align:right;font-size:11pt;font-weight:bold;">£${(totalAmount + vatAmount + porterage).toFixed(2)}</div>` : '';
+        <div class="ft" style="top:${fp.totals.goods.top};left:${fp.totals.goods.left};width:${fp.totals.goods.width};text-align:right;font-size:11pt;font-weight:bold;">${formatMoney(totalAmount)}</div>
+        <div class="ft" style="top:${fp.totals.vat.top};left:${fp.totals.vat.left};width:${fp.totals.vat.width};text-align:right;font-size:11pt;font-weight:bold;">${formatMoney(vatAmount)}</div>
+        <div class="ft" style="top:${fp.totals.total.top};left:${fp.totals.total.left};width:${fp.totals.total.width};text-align:right;font-size:11pt;font-weight:bold;">${formatMoney(totalAmount + vatAmount + porterage)}</div>` : '';
 
       const isLast = page.pageNumber === totalPages;
       return `
@@ -587,6 +631,7 @@ class AutoChromePrintService {
         ${itemRowsHTML}
         ${porterageHTML}
         ${packagesHTML}
+        ${remarksHTML}
         ${totalsHTML}
         </div>
       </div>`;

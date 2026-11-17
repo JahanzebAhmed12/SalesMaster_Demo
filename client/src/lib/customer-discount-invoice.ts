@@ -91,14 +91,12 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
       const amount = Number(discount.amount || 0);
       const quantity = Number(discount.quantity || discount.originalQuantity || 0) || 1;
       const perBox = quantity > 0 ? amount / quantity : amount;
-      const lineNotes = hasMultipleDiscountLines
-        ? [
-            `Invoice ${discount.originalInvoiceNumber || "-"}`,
-            discount.originalInvoiceDate ? formatInvoiceDate(discount.originalInvoiceDate) : "",
-            `Each box: £${perBox.toFixed(2)}`,
-            discount.reason,
-          ].filter(Boolean).join(" · ")
-        : discount.reason;
+      const lineNotes = [
+        `Invoice ${discount.originalInvoiceNumber || "-"}`,
+        discount.originalInvoiceDate ? formatInvoiceDate(discount.originalInvoiceDate) : "",
+        `Each box: £${perBox.toFixed(2)}`,
+        discount.reason,
+      ].filter(Boolean).join(" · ");
 
       return {
         id: discount.id,

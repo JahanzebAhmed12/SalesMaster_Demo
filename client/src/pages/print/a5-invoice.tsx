@@ -197,12 +197,6 @@ export default function A5InvoicePrintPage() {
           </div>
         </div>
       </div>
-      {data.sale?.isCustomerDiscount && !data.sale.hasMultipleDiscountLines && (
-        <div style={{ marginTop: 4, fontSize: 10, fontWeight: "bold" }}>
-          Each box: {formatMoney(data.sale.discountPerBox ?? 0)}
-        </div>
-      )}
-
       {showCashPaid && (
         <div style={{ fontSize: 11, color: '#1a237e', fontWeight: 'bold', marginTop: 8, marginBottom: 4, textAlign: 'right' }}>Cash Paid: {formatMoney(data.sale?.paid_amount ?? data.sale?.paidAmount ?? 0)}</div>
       )}

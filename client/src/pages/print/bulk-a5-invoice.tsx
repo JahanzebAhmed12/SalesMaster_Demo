@@ -190,12 +190,6 @@ function InvoiceDocument({ data }: { data: InvoiceData }) {
           )}
         </div>
       </div>
-      {sale.isCustomerDiscount && !sale.hasMultipleDiscountLines && (
-        <div className="discount-details">
-          Each box: {formatMoney(sale.discountPerBox)}
-        </div>
-      )}
-
       <div className="invoice-footer">
         <div>Invoice Time: {sale.date ? new Date(sale.date).toLocaleString() : "-"}</div>
         <div>Current Time: {new Date().toLocaleString()}</div>

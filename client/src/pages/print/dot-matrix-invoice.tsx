@@ -1254,27 +1254,10 @@ export default function DotMatrixInvoicePrintPage({
                   ({formatQuantity(totalQuantity)} packages)
                 </div>
               )}
-              {page.isLastPage && sale?.isCustomerDiscount && !sale?.hasMultipleDiscountLines && (
-                <div className="field-text" style={{
-                  position: 'absolute',
-                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM}mm`,
-                  left: fieldPositions.columns.description.left,
-                  width: fieldPositions.columns.description.width,
-                  fontFamily: '"Courier New", "Courier", monospace',
-                  fontSize: '10pt',
-                  fontWeight: 'bold',
-                  lineHeight: '1',
-                  margin: '0',
-                  padding: '0',
-                  whiteSpace: 'normal',
-                }}>
-                  Each box: £{Number(sale.discountPerBox || 0).toFixed(2)}
-                </div>
-              )}
               {page.isLastPage && sale?.notes?.trim() && (
                 <div className="field-text" style={{
                   position: 'absolute',
-                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM * (sale?.isCustomerDiscount && !sale?.hasMultipleDiscountLines ? 2 : 1)}mm`,
+                  top: `${ITEMS_START_TOP_MM + page.itemsHeight + (porterage > 0 ? ROW_HEIGHT_MM : 0) + ROW_HEIGHT_MM}mm`,
                   left: fieldPositions.columns.description.left,
                   width: fieldPositions.columns.description.width,
                   fontFamily: '"Courier New", "Courier", monospace',
