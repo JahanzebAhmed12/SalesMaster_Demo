@@ -7,6 +7,7 @@ interface CustomerDiscountPrintRecord {
     documentInvoiceNumber: string | null;
     originalInvoiceNumber?: string | null;
     date: string;
+    createdAt?: string | null;
     productName: string;
     originalInvoiceDate?: string;
     quantity: number;
@@ -116,7 +117,7 @@ export async function fetchCustomerDiscountInvoices(ids: string[]): Promise<Cust
       sale: {
         invoice_number: firstRecord.discount.documentInvoiceNumber || "",
         invoiceNumber: firstRecord.discount.documentInvoiceNumber || "",
-        date: firstRecord.discount.date,
+        date: firstRecord.discount.createdAt || firstRecord.discount.date,
         subtotal: -totalAmount,
         total_amount: -totalAmount,
         totalAmount: -totalAmount,

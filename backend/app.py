@@ -11874,6 +11874,7 @@ def print_customer_discounts():
                         else None
                     ),
                     'date': discount.date.isoformat(),
+                    'createdAt': discount.created_at.isoformat() if discount.created_at else None,
                     'productName': product,
                     'quantity': float(original_quantity),
                     'originalQuantity': float(original_quantity),

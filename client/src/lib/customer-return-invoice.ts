@@ -10,6 +10,7 @@ interface CustomerReturnPrintRecord {
     documentInvoiceNumber?: string;
     sourceSaleItemId?: number;
     date: string;
+    createdAt?: string;
     invoiceNumber?: string;
     description: string;
     quantity: number;
@@ -74,6 +75,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
     customer: Record<string, unknown>;
     documentNumber: string;
     date: string;
+    createdAt?: string;
     originalInvoiceNumber?: string;
     originalInvoiceDate?: string;
     items: CustomerReturnInvoiceData["items"];
@@ -90,6 +92,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
       customer,
       documentNumber,
       date: returnItem.date,
+      createdAt: returnItem.createdAt,
       originalInvoiceNumber: returnItem.invoiceNumber,
       originalInvoiceDate,
       items: [],
@@ -125,7 +128,7 @@ export async function fetchCustomerReturnInvoices(ids: string[]): Promise<Custom
     sale: {
       invoice_number: group.documentNumber,
       invoiceNumber: group.documentNumber,
-      date: group.date,
+      date: group.createdAt || group.date,
       subtotal: group.total,
       total_amount: group.total,
       totalAmount: group.total,
