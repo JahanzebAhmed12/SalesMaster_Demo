@@ -24,15 +24,15 @@ interface SupplierReturnPrintData {
   supplier: any;
   product: any;
   returnItem: any;
-  items: any[];
 }
 
 const money = (value: unknown) => `£${Number(value || 0).toFixed(2)}`;
 const displayDate = (value: unknown) => value ? new Date(String(value)).toLocaleDateString() : "-";
 
 function SupplierReturnTemplate({ data }: { data: SupplierReturnPrintData }) {
-  const { company, supplier, returnItem } = data;
-  const items = data.items || [];
+  const { company, supplier, product, returnItem } = data;
+  const productName = returnItem.productName || product?.description || returnItem.description || "-";
+  const productCode = product?.productCode || "-";
 
   return (
     <div className="supplier-return-print">
@@ -50,8 +50,8 @@ function SupplierReturnTemplate({ data }: { data: SupplierReturnPrintData }) {
         <div className="document-title-block">
           <div className="document-title">RETURN TO SUPPLIER</div>
           <div><strong>Return Date:</strong> {displayDate(returnItem.date)}</div>
-          <div><strong>Return No:</strong> {returnItem.documentRefNumber || returnItem.refNumber || "-"}</div>
-          <div><strong>Products:</strong> {items.length}</div>
+          <div><strong>Return No:</strong> {returnItem.refNumber || "-"}</div>
+          <div><strong>Product Type:</strong> {returnItem.productType === "non" ? "Non-Product" : "Regular Product"}</div>
         </div>
       </div>
 
@@ -76,6 +76,7 @@ function SupplierReturnTemplate({ data }: { data: SupplierReturnPrintData }) {
       <table className="items-table">
         <thead>
           <tr>
+            <th>Product Code</th>
             <th>Product</th>
             <th>Description</th>
             <th>Quantity</th>
@@ -84,18 +85,17 @@ function SupplierReturnTemplate({ data }: { data: SupplierReturnPrintData }) {
           </tr>
         </thead>
         <tbody>
-          {items.map((item: any) => (
-            <tr key={item.id}>
-              <td>{item.productName || "-"}</td>
-              <td>{item.description || "-"}</td>
-              <td className="numeric">{formatQuantity(item.quantity)}</td>
-              <td className="numeric">{money(item.unitPrice)}</td>
-              <td className="numeric">{money(item.totalValue)}</td>
-            </tr>
-          ))}
+          <tr>
+            <td>{productCode}</td>
+            <td>{productName}</td>
+            <td>{returnItem.description || "-"}</td>
+            <td className="numeric">{formatQuantity(returnItem.quantity)}</td>
+            <td className="numeric">{money(returnItem.unitPrice)}</td>
+            <td className="numeric">{money(returnItem.totalValue)}</td>
+          </tr>
           <tr className="total-row">
-            <td colSpan={2}>TOTAL</td>
-            <td className="numeric">{formatQuantity(returnItem.totalQuantity ?? returnItem.quantity)}</td>
+            <td colSpan={3}>TOTAL</td>
+            <td className="numeric">{formatQuantity(returnItem.quantity)}</td>
             <td />
             <td className="numeric">{money(returnItem.totalValue)}</td>
           </tr>
