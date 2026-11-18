@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Search, X } from "lucide-react";
@@ -78,10 +79,44 @@ export default function EntityCombobox<T>({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const lastExternalValueRef = useRef(value);
 
+
   const filteredItems = useMemo(
     () => filterItems(items, searchTerm),
     [filterItems, items, searchTerm],
   );
+
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties | null>(null);
+
+  // Position the portaled dropdown under the input, flipping upward when
+  // there isn't enough room below (escapes overflow-clipped containers).
+  useEffect(() => {
+    if (!showDropdown) {
+      setDropdownStyle(null);
+      return;
+    }
+    const updatePosition = () => {
+      const rect = inputRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const height = dropdownRef.current?.offsetHeight || 240;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const openUp = spaceBelow < height + 8 && rect.top > spaceBelow;
+      setDropdownStyle({
+        position: "fixed",
+        top: openUp ? rect.top - height - 4 : rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    };
+    const raf = requestAnimationFrame(updatePosition);
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [showDropdown, filteredItems.length]);
 
   const sizeClasses = {
     sm: "h-8 text-sm",
@@ -246,11 +281,12 @@ export default function EntityCombobox<T>({
           )}
         </div>
 
-        {showDropdown && (
+        {showDropdown && dropdownStyle && createPortal(
           <div
             ref={dropdownRef}
+            style={dropdownStyle}
             className={cn(
-              "absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg",
+              "z-50 max-h-60 overflow-y-auto rounded-md border border-gray-200 bg-white shadow-lg",
               dropdownSizeClasses[size],
               dropdownClassName,
             )}
@@ -302,7 +338,8 @@ export default function EntityCombobox<T>({
                 <span className="ml-2">{idleText}</span>
               </div>
             )}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>

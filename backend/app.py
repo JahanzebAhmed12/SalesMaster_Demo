@@ -12965,20 +12965,58 @@ def get_supplier_returns():
 
 @app.route('/api/supplier-returns/<int:return_id>/print', methods=['GET'])
 def print_supplier_return(return_id):
-    """Return a complete supplier return for the public A4 print view."""
+    """Return all lines in a supplier return document for the A4 print view."""
     try:
         return_item = SupplierReturn.query.get_or_404(return_id)
         supplier = Supplier.query.get(return_item.supplier_id)
-        product_model = RegularProduct if return_item.product_type == 'regular' else NonProduct
-        product = product_model.query.get(return_item.product_id)
+        document_ref = return_item.document_ref_number or return_item.ref_number
+        document_items = SupplierReturn.query.filter(
+            or_(
+                SupplierReturn.document_ref_number == document_ref,
+                and_(
+                    SupplierReturn.document_ref_number.is_(None),
+                    SupplierReturn.ref_number == document_ref,
+                ),
+            )
+        ).order_by(SupplierReturn.id.asc()).all()
         company = Company.query.first()
         return_data = return_item.to_dict()
-        return_data['productName'] = product.description if product else return_item.description
+        items = []
+        total_quantity = 0
+        total_value = 0
+        credit_note_amount = 0
+        for line in document_items:
+            product_model = RegularProduct if line.product_type == 'regular' else NonProduct
+            product = product_model.query.get(line.product_id)
+            line_data = line.to_dict()
+            line_data['productName'] = (
+                f"{product.product_code} - {product.description}"
+                if product and product.product_code
+                else product.description if product
+                else line.description
+            )
+            line_data['productCode'] = product.product_code if product else ""
+            items.append(line_data)
+            total_quantity += safe_float(line.quantity)
+            total_value += safe_float(line.total_value)
+            if line.credit_note_issued:
+                credit_note_amount += safe_float(line.credit_note_amount)
+
+        first_product_model = (
+            RegularProduct if document_items[0].product_type == 'regular' else NonProduct
+        )
+        first_product = first_product_model.query.get(document_items[0].product_id)
+        return_data['documentRefNumber'] = document_ref
+        return_data['totalQuantity'] = total_quantity
+        return_data['totalValue'] = total_value
+        return_data['creditNoteIssued'] = any(line.credit_note_issued for line in document_items)
+        return_data['creditNoteAmount'] = credit_note_amount
         return jsonify({
             'company': company.to_dict() if company else {},
             'supplier': supplier.to_dict() if supplier else {},
-            'product': product.to_dict() if product else {},
+            'product': first_product.to_dict() if first_product else {},
             'returnItem': return_data,
+            'items': items,
         }), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -12990,7 +13028,7 @@ def create_supplier_return():
         data = request.get_json()
         user_id = get_jwt_identity()
         from datetime import datetime
-        
+
         # Parse date string to date object first to check permissions
         business_date = get_business_date()
         parsed_date = business_date
@@ -13000,13 +13038,13 @@ def create_supplier_return():
                 parsed_date = datetime.strptime(date_str, "%Y-%m-%d").date()
             except ValueError:
                 parsed_date = business_date
-        
+
         # Get user's backdate options
         backdate_opt = UserBackDateOption.query.filter_by(user_id=user_id).first()
-        
+
         # Get today's date
         today = get_business_date()
-        
+
         # Check permissions based on return date
         if parsed_date == today:
             # For current date entries, check current_editing permission
@@ -13016,120 +13054,131 @@ def create_supplier_return():
             # For back date entries, check editing permission
             if not backdate_opt or not backdate_opt.editing:
                 return jsonify({'error': 'You do not have permission to create back-dated returns.'}), 403
-        # Generate reference number
-        last_return = SupplierReturn.query.order_by(SupplierReturn.id.desc()).first()
-        ref_number = f"SR{1 if not last_return else last_return.id + 1:04d}"
-        # Calculate total value
-        quantity = float(data.get('quantity', 0))
-        unit_price = float(data.get('unitPrice', 0))
-        total_value = quantity * unit_price
+
         # Validate supplier exists
         supplier = Supplier.query.get(data.get('supplierId'))
-        print(f"[DEBUG] Supplier: {supplier}")  # Debug log
         if not supplier:
-            print("[ERROR] Supplier not found")
             return jsonify({"error": "Supplier not found"}), 404
-        
-        # Validate product exists
-        product_type = data.get('productType')
-        if product_type == 'regular':
-            product = RegularProduct.query.get(data.get('productId'))
-        else:
-            product = NonProduct.query.get(data.get('productId'))
-        print(f"[DEBUG] Product: {product}")  # Debug log
-        if not product:
-            print("[ERROR] Product not found")
-            return jsonify({"error": "Product not found"}), 404
-        
-        # Validate purchase invoice exists if provided
-        purchase_invoice = None
-        if data.get('purchaseInvoiceId'):
-            purchase_invoice = PurchaseInvoice.query.get(data.get('purchaseInvoiceId'))
-            print(f"[DEBUG] Purchase Invoice: {purchase_invoice}")  # Debug log
-            if not purchase_invoice:
-                print("[ERROR] Purchase invoice not found")
-                return jsonify({"error": "Purchase invoice not found"}), 404
-        
-        supplier_return_data = SupplierReturnSchema(**{
-            **data,
-            'refNumber': ref_number,
-            'totalValue': total_value,
-            'date': parsed_date
-        })
-        
-        supplier_return = SupplierReturn(
-            ref_number=ref_number,
-            date=parsed_date,
-            supplier_id=supplier_return_data.supplierId,
-            purchase_invoice_id=supplier_return_data.purchaseInvoiceId,
-            product_id=supplier_return_data.productId,
-            product_type=supplier_return_data.productType,
-            description=supplier_return_data.description,
-            invoice_number=supplier_return_data.invoiceNumber,
-            remarks=supplier_return_data.remarks,
-            quantity=quantity,
-            unit_price=unit_price,
-            total_value=total_value,
-            return_reason=supplier_return_data.returnReason,
-            credit_note_issued=supplier_return_data.creditNoteIssued,
-            credit_note_amount=supplier_return_data.creditNoteAmount,
-            status=supplier_return_data.status,
-            created_by=user_id
-        )
-        
-        db.session.add(supplier_return)
-        db.session.flush()  # Get supplier_return.id before commit
 
-        # Update stock immediately — supplier return reduces stock
-        success, result = update_product_stock(
-            product_id=supplier_return_data.productId,
-            product_type=supplier_return_data.productType,
-            quantity_change=-quantity,  # Negative: stock leaves when returned to supplier
-            movement_type='supplier_return',
-            reference_id=supplier_return.id,
-            reference_type='supplier_return',
-            remarks=f"Supplier return: {ref_number}",
-            user_id=user_id,
-            movement_date=parsed_date
-        )
-        if not success:
-            db.session.rollback()
-            return jsonify({"error": f"Stock update failed: {result}"}), 400
+        # Accept either a legacy single-item payload or an items array
+        # so one submission can create returns for multiple products.
+        raw_items = data.get('items')
+        item_payloads = raw_items if isinstance(raw_items, list) and raw_items else [data]
 
-        db.session.commit()
-        
-        # If credit note is issued, update supplier balance
-        if supplier_return_data.creditNoteIssued and supplier_return_data.creditNoteAmount > 0:
-            # Create a supplier payment record to reduce supplier balance
-            credit_payment = SupplierPayment(
+        created_returns = []
+        for item_payload in item_payloads:
+            if not isinstance(item_payload, dict):
+                return jsonify({"error": "Each return item must be an object."}), 400
+            merged = {k: v for k, v in {**data, **item_payload}.items() if k not in ('items', 'documentRef')}
+
+            # Calculate total value
+            quantity = float(merged.get('quantity', 0) or 0)
+            unit_price = float(merged.get('unitPrice', 0) or 0)
+            total_value = quantity * unit_price
+
+            # Validate product exists
+            product_type = merged.get('productType')
+            if product_type == 'regular':
+                product = RegularProduct.query.get(merged.get('productId'))
+            else:
+                product = NonProduct.query.get(merged.get('productId'))
+            if not product:
+                return jsonify({"error": "Product not found"}), 404
+
+            # Validate purchase invoice exists if provided
+            purchase_invoice = None
+            if merged.get('purchaseInvoiceId'):
+                purchase_invoice = PurchaseInvoice.query.get(merged.get('purchaseInvoiceId'))
+                if not purchase_invoice:
+                    return jsonify({"error": "Purchase invoice not found"}), 404
+
+            # Generate reference number (queried inside the loop so ids stay current)
+            last_return = SupplierReturn.query.order_by(SupplierReturn.id.desc()).first()
+            ref_number = f"SR{1 if not last_return else last_return.id + 1:04d}"
+
+            supplier_return_data = SupplierReturnSchema(**{
+                **merged,
+                'refNumber': ref_number,
+                'totalValue': total_value,
+                'date': parsed_date
+            })
+
+            supplier_return = SupplierReturn(
+                ref_number=ref_number,
+                date=parsed_date,
                 supplier_id=supplier_return_data.supplierId,
                 purchase_invoice_id=supplier_return_data.purchaseInvoiceId,
-                amount=-supplier_return_data.creditNoteAmount,  # Negative amount for credit
-                payment_mode='credit_note',
-                payment_date=supplier_return_data.date,
-                remarks=f"Credit note for return: {ref_number}"
+                product_id=supplier_return_data.productId,
+                product_type=supplier_return_data.productType,
+                description=supplier_return_data.description,
+                invoice_number=supplier_return_data.invoiceNumber,
+                remarks=supplier_return_data.remarks,
+                quantity=quantity,
+                unit_price=unit_price,
+                total_value=total_value,
+                return_reason=supplier_return_data.returnReason,
+                credit_note_issued=supplier_return_data.creditNoteIssued,
+                credit_note_amount=supplier_return_data.creditNoteAmount,
+                status=supplier_return_data.status,
+                created_by=user_id
             )
-            db.session.add(credit_payment)
-            
-            # Update purchase invoice's paid amount if linked
-            if purchase_invoice:
-                current_paid = float(purchase_invoice.paid_amount or 0)
-                new_paid = current_paid - supplier_return_data.creditNoteAmount
-                purchase_invoice.paid_amount = max(0, new_paid)  # Ensure it doesn't go negative
-                if new_paid <= 0:
-                    purchase_invoice.payment_status = 'pending'
-                else:
-                    purchase_invoice.payment_status = 'partial'
-                db.session.add(purchase_invoice)
-        
+
+            db.session.add(supplier_return)
+            db.session.flush()  # Get supplier_return.id before commit
+
+            # Update stock immediately — supplier return reduces stock
+            success, result = update_product_stock(
+                product_id=supplier_return_data.productId,
+                product_type=supplier_return_data.productType,
+                quantity_change=-quantity,  # Negative: stock leaves when returned to supplier
+                movement_type='supplier_return',
+                reference_id=supplier_return.id,
+                reference_type='supplier_return',
+                remarks=f"Supplier return: {ref_number}",
+                user_id=user_id,
+                movement_date=parsed_date
+            )
+            if not success:
+                db.session.rollback()
+                return jsonify({"error": f"Stock update failed: {result}"}), 400
+
+            # If credit note is issued, update supplier balance
+            if supplier_return_data.creditNoteIssued and supplier_return_data.creditNoteAmount > 0:
+                credit_payment = SupplierPayment(
+                    supplier_id=supplier_return_data.supplierId,
+                    purchase_invoice_id=supplier_return_data.purchaseInvoiceId,
+                    amount=-supplier_return_data.creditNoteAmount,  # Negative amount for credit
+                    payment_mode='credit_note',
+                    payment_date=supplier_return_data.date,
+                    remarks=f"Credit note for return: {ref_number}"
+                )
+                db.session.add(credit_payment)
+
+                # Update purchase invoice's paid amount if linked
+                if purchase_invoice:
+                    current_paid = float(purchase_invoice.paid_amount or 0)
+                    new_paid = current_paid - supplier_return_data.creditNoteAmount
+                    purchase_invoice.paid_amount = max(0, new_paid)  # Ensure it doesn't go negative
+                    if new_paid <= 0:
+                        purchase_invoice.payment_status = 'pending'
+                    else:
+                        purchase_invoice.payment_status = 'partial'
+                    db.session.add(purchase_invoice)
+
+            created_returns.append(supplier_return)
+
+        # Group all lines created in this submission under one document reference
+        document_ref = data.get('documentRef') or (created_returns[0].ref_number if created_returns else None)
+        if document_ref:
+            for r in created_returns:
+                r.document_ref_number = document_ref
+
         db.session.commit()
-        return jsonify(supplier_return.to_dict()), 201
+        return jsonify({'returns': [r.to_dict() for r in created_returns]}), 201
     except Exception as e:
         db.session.rollback()
-        print(f"[ERROR] Exception occurred: {str(e)}")  # Debug log
-        import traceback
-        print(f"[ERROR] Full traceback: {traceback.format_exc()}")  # Debug log
         return jsonify({"error": str(e)}), 500
+
 @app.route('/api/supplier-returns/<int:id>', methods=['PUT'])
 @jwt_required()
 def update_supplier_return(id):

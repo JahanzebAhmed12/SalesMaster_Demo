@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -15,6 +15,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import Pagination from "@/components/ui/pagination";
+import { usePagination } from "@/hooks/usePagination";
 import SupplierSearch from "@/components/ui/supplier-search";
 import ProductSearch from "@/components/ui/product-search";
 import { useSupplierSearch } from "@/hooks/useSupplierSearch";
@@ -34,7 +36,7 @@ import {
   Eye,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, formatSmartQuantity } from "@/lib/utils";
 import { SupplierReturn, Supplier, RegularProduct, NonProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -48,25 +50,64 @@ import { copyToClipboard, printHtmlTable } from "@/lib/export-utils";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
 import { useCrossTabSync } from "@/hooks/useCrossTabSync";
 
-// Form validation schema
+// Form validation schema — document-level fields; per-product fields live on item rows
 const supplierReturnSchema = z.object({
   date: z.string().min(1, "Date is required"),
   supplierId: z.number().min(1, "Supplier is required"),
-  purchaseInvoiceId: z.number().optional(),
-  productId: z.number().min(1, "Product is required"),
-  productType: z.enum(["regular", "non"]),
-  description: z.string().min(1, "Description is required"),
-  invoiceNumber: z.string().optional(),
   remarks: z.string().optional(),
-  quantity: z.number().min(1, "Quantity must be at least 1"),
-  unitPrice: z.number().min(0, "Unit price must be non-negative"),
-  returnReason: z.string().optional(),
-  creditNoteIssued: z.boolean().default(false),
-  creditNoteAmount: z.number().min(0, "Credit note amount must be non-negative"),
-  status: z.enum(["pending", "approved", "rejected", "completed"]).default("completed")
 });
 
 type SupplierReturnFormData = z.infer<typeof supplierReturnSchema>;
+
+// One product line inside a multi-product return — keeps every original field
+interface ReturnItemDraft {
+  key: number;
+  id?: number;
+  productType: 'regular' | 'non';
+  productId: number;
+  productLabel: string;
+  description: string;
+  quantity: number | '';
+  unitPrice: number | '';
+  purchaseInvoiceId?: number;
+  invoiceNumber: string;
+  returnReason: string;
+  creditNoteIssued: boolean;
+  creditNoteAmount: number;
+}
+
+interface SupplierReturnItemInput {
+  productType: 'regular' | 'non';
+  productId: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  purchaseInvoiceId?: number;
+  invoiceNumber?: string;
+  returnReason?: string;
+  creditNoteIssued?: boolean;
+  creditNoteAmount?: number;
+  status?: string;
+}
+
+type CreateSupplierReturnPayload = SupplierReturnFormData & { items: SupplierReturnItemInput[] };
+type UpdateSupplierReturnPayload = SupplierReturnFormData & SupplierReturnItemInput;
+
+let returnItemKeyCounter = 0;
+const createEmptyItem = (): ReturnItemDraft => ({
+  key: ++returnItemKeyCounter,
+  productType: 'regular',
+  productId: 0,
+  productLabel: '',
+  description: '',
+  quantity: 1,
+  unitPrice: 0,
+  purchaseInvoiceId: undefined,
+  invoiceNumber: '',
+  returnReason: '',
+  creditNoteIssued: false,
+  creditNoteAmount: 0,
+});
 
 // API functions
 const fetchSupplierReturns = async (params: {
@@ -97,11 +138,11 @@ const fetchPurchaseInvoices = async (supplierId: number, fromDate: string, toDat
   return apiRequest('GET', `/api/suppliers/${supplierId}/outstanding_invoices?fromDate=${fromDate}&toDate=${toDate}`);
 };
 
-const createSupplierReturn = async (data: SupplierReturnFormData): Promise<SupplierReturn> => {
+const createSupplierReturn = async (data: CreateSupplierReturnPayload): Promise<{ returns: SupplierReturn[] }> => {
   return apiRequest('POST', '/api/supplier-returns', data);
 };
 
-const updateSupplierReturn = async ({ id, data }: { id: number; data: SupplierReturnFormData }): Promise<SupplierReturn> => {
+const updateSupplierReturn = async ({ id, data }: { id: number; data: UpdateSupplierReturnPayload }): Promise<SupplierReturn> => {
   return apiRequest('PUT', `/api/supplier-returns/${id}`, data);
 };
 
@@ -133,8 +174,11 @@ export default function ReturnToSupplier() {
   const [invoiceFromDate, setInvoiceFromDate] = useState(() => format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [invoiceToDate, setInvoiceToDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const invoiceDatesInitializedRef = useRef(false);
-  const [productSearchValue, setProductSearchValue] = useState("");
-  const [productSearchKey, setProductSearchKey] = useState(0);
+  const [editingLines, setEditingLines] = useState<SupplierReturn[]>([]);
+  const [returnItems, setReturnItems] = useState<ReturnItemDraft[]>(() => [createEmptyItem()]);
+  const [sameInvoiceNumber, setSameInvoiceNumber] = useState(false);
+  const [sharedInvoiceNumber, setSharedInvoiceNumber] = useState('');
+  const [isSavingDoc, setIsSavingDoc] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
   
   // Sync supplierId with selectedSupplier
@@ -173,12 +217,7 @@ export default function ReturnToSupplier() {
     resolver: zodResolver(supplierReturnSchema),
     defaultValues: {
       date: businessDate ? format(new Date(businessDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-      productType: 'regular',
-      quantity: 1,
-      unitPrice: 0,
-      creditNoteIssued: false,
-      creditNoteAmount: 0,
-      status: 'completed'
+      remarks: ''
     }
   });
 
@@ -231,10 +270,6 @@ export default function ReturnToSupplier() {
       )
     };
   }, [productsData]);
-
-  const searchableProducts = form.watch('productType') === 'regular'
-    ? products.regularProducts
-    : products.nonProducts;
 
   const getProductLabel = (productId: number, productType: 'regular' | 'non') => {
     const product = (productType === 'regular' ? products.regularProducts : products.nonProducts)
@@ -298,64 +333,36 @@ export default function ReturnToSupplier() {
   };
 
   // Mutations
+  const resetDialog = () => {
+    setIsDialogOpen(false);
+    setEditingReturn(null);
+    setEditingLines([]);
+    setReturnItems([createEmptyItem()]);
+    setSameInvoiceNumber(false);
+    setSharedInvoiceNumber('');
+    form.reset();
+  };
+
   const createMutation = useMutation({
     mutationFn: createSupplierReturn,
-    onSuccess: (newReturn) => {
-      notifyInventoryMutation({
-        source: 'supplier-return',
-        productId: newReturn?.productId,
-        productType: newReturn?.productType as 'regular' | 'non' | undefined,
-      });
+    onSuccess: (result) => {
+      const createdReturns: SupplierReturn[] = result?.returns || [];
+      createdReturns.forEach((r) =>
+        notifyInventoryMutation({
+          source: 'supplier-return',
+          productId: r?.productId,
+          productType: r?.productType as 'regular' | 'non' | undefined,
+        })
+      );
       queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
-        if (!old) return [newReturn];
-        return [newReturn, ...old];
+        if (!old) return createdReturns;
+        return [...createdReturns, ...old];
       });
-      toast({ title: "Success", description: "Supplier return created successfully" });
-      setIsDialogOpen(false);
-      setProductSearchValue('');
-      setProductSearchKey((key) => key + 1);
-      form.reset();
+      toast({ title: "Success", description: `Supplier return${createdReturns.length > 1 ? 's' : ''} created successfully` });
+      resetDialog();
     },
     onError: (error: any) => {
       const errorMessage = error?.error || error?.message || "Failed to create supplier return";
-      toast({ title: "Error", description: errorMessage, variant: "destructive" });
-    }
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: updateSupplierReturn,
-    onSuccess: (updatedReturn) => {
-      notifyInventoryMutation({
-        source: 'supplier-return',
-        productId: updatedReturn?.productId,
-        productType: updatedReturn?.productType as 'regular' | 'non' | undefined,
-      });
-      queryClient.setQueryData(['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }], (old: any) => {
-        if (!old) return [updatedReturn];
-        return old.map((item: any) => item.id === updatedReturn.id ? updatedReturn : item);
-      });
-      toast({ title: "Success", description: "Supplier return updated successfully" });
-      setIsDialogOpen(false);
-      setEditingReturn(null);
-      setProductSearchValue('');
-      setProductSearchKey((key) => key + 1);
-      form.reset();
-    },
-    onError: (error: any) => {
-      const errorMessage = error?.error || error?.message || "Failed to update supplier return";
-      toast({ title: "Error", description: errorMessage, variant: "destructive" });
-    }
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteSupplierReturn,
-    onSuccess: () => {
-      notifyInventoryMutation({ source: 'supplier-return' });
-      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
-      toast({ title: "Success", description: "Supplier return deleted successfully" });
-    },
-    onError: (error: any) => {
-      const errorMessage = error?.error || error?.message || "Failed to delete supplier return";
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
   });
@@ -378,6 +385,41 @@ export default function ReturnToSupplier() {
     });
     return counts;
   }, [supplierReturns]);
+
+  const documentGroups = useMemo(() => {
+    const map = new Map<string, SupplierReturn[]>();
+    supplierReturns.forEach((r) => {
+      const key = ((r as any).documentRefNumber as string) || r.refNumber;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(r);
+    });
+    return Array.from(map.entries()).map(([key, items]) => {
+      const first = items[0];
+      return {
+        key,
+        date: first.date,
+        refNumber: key,
+        supplierId: first.supplierId,
+        supplierName: first.supplierName,
+        items,
+        totalQuantity: items.reduce((s, i) => s + Number(i.quantity || 0), 0),
+        totalValue: items.reduce((s, i) => s + Number(i.totalValue || 0), 0),
+      };
+    });
+  }, [supplierReturns]);
+
+  const pagination = usePagination({ data: documentGroups, initialItemsPerPage: 10 });
+
+  // Flat rows for exports — one row per document
+  const exportRows = useMemo(() => documentGroups.map((g) => ({
+    date: g.date,
+    refNumber: g.refNumber,
+    supplierName: g.supplierName,
+    productLabel: `${g.items.length} product${g.items.length > 1 ? 's' : ''}`,
+    description: Array.from(new Set(g.items.map((i) => i.description).filter(Boolean))).join(', '),
+    quantity: g.totalQuantity,
+    totalValue: g.totalValue,
+  })), [documentGroups]);
 
   // Export handlers
   const cardTitle = 'Supplier Returns';
@@ -423,16 +465,15 @@ export default function ReturnToSupplier() {
       html += `<th>${h}</th>`;
     });
     html += '</tr></thead><tbody>';
-    supplierReturns.forEach(item => {
-      const productLabel = getProductLabel((item as any).productId, (item as any).productType as 'regular' | 'non') || '-';
+    exportRows.forEach(item => {
       html += '<tr>';
       html += `<td>${format(new Date(item.date), 'dd/MM/yyyy')}</td>`;
       html += `<td>${item.refNumber}</td>`;
       html += `<td>${item.supplierName}</td>`;
-      html += `<td>${productLabel}</td>`;
+      html += `<td>${item.productLabel}</td>`;
       html += `<td>${item.description}</td>`;
       html += `<td>${item.quantity}</td>`;
-      html += `<td>£${item.unitPrice.toFixed(2)}</td>`;
+      html += `<td>-</td>`;
       html += `<td>£${item.totalValue.toFixed(2)}</td>`;
       html += '</tr>';
     });
@@ -444,19 +485,16 @@ export default function ReturnToSupplier() {
     const wsData = [
       [cardTitle],
       ['Date', 'Reference', 'Supplier', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total Value'],
-      ...supplierReturns.map((item: any) => {
-        const productLabel = getProductLabel(item.productId, item.productType as 'regular' | 'non') || '-';
-        return [
-          format(new Date(item.date), 'dd/MM/yyyy'),
-          item.refNumber,
-          item.supplierName,
-          productLabel,
-          item.description,
-          item.quantity,
-          item.unitPrice,
-          item.totalValue,
-        ];
-      }),
+      ...exportRows.map((item: any) => [
+        format(new Date(item.date), 'dd/MM/yyyy'),
+        item.refNumber,
+        item.supplierName,
+        item.productLabel,
+        item.description,
+        item.quantity,
+        '-',
+        item.totalValue,
+      ]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
@@ -515,19 +553,16 @@ export default function ReturnToSupplier() {
       head: [[
         'Date', 'Reference', 'Supplier', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total Value'
       ]],
-      body: supplierReturns.map((item: any) => {
-        const productLabel = getProductLabel(item.productId, item.productType as 'regular' | 'non') || '-';
-        return [
-          format(new Date(item.date), 'dd/MM/yyyy'),
-          item.refNumber,
-          item.supplierName,
-          productLabel,
-          item.description,
-          item.quantity,
-          `£${item.unitPrice.toFixed(2)}`,
-          `£${item.totalValue.toFixed(2)}`,
-        ];
-      }),
+      body: exportRows.map((item: any) => [
+        format(new Date(item.date), 'dd/MM/yyyy'),
+        item.refNumber,
+        item.supplierName,
+        item.productLabel,
+        item.description,
+        item.quantity,
+        '-',
+        `£${item.totalValue.toFixed(2)}`,
+      ]),
       startY: yPosition,
       styles: {
         fontSize: 7,
@@ -550,34 +585,124 @@ export default function ReturnToSupplier() {
 
   const handleCopy = () => {
     const header = ['Date', 'Reference', 'Supplier', 'Product', 'Description', 'Quantity', 'Unit Price', 'Total Value'];
-    const rows = supplierReturns.map((item: any) => {
-      const productLabel = getProductLabel(item.productId, item.productType as 'regular' | 'non') || '-';
-      return [
-        format(new Date(item.date), 'dd/MM/yyyy'),
-        item.refNumber,
-        item.supplierName,
-        productLabel,
-        item.description,
-        item.quantity,
-        item.unitPrice,
-        item.totalValue,
-      ];
-    });
+    const rows = exportRows.map((item: any) => [
+      format(new Date(item.date), 'dd/MM/yyyy'),
+      item.refNumber,
+      item.supplierName,
+      item.productLabel,
+      item.description,
+      item.quantity,
+      '-',
+      item.totalValue,
+    ]);
     const tsv = [cardTitle, header.join('\t'), ...rows.map(row => row.join('\t'))].join('\n');
     copyToClipboard(tsv, { toast });
   };
 
   // Handlers
-  const handleSubmit = (data: SupplierReturnFormData) => {
-    if (editingReturn) {
-      updateMutation.mutate({ id: editingReturn.id, data });
-    } else {
-      createMutation.mutate(data);
+  const updateItem = (key: number, patch: Partial<ReturnItemDraft>) => {
+    setReturnItems((prev) => prev.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+  };
+
+  const handleItemProductSelect = (item: ReturnItemDraft, product: RegularProduct | NonProduct | null) => {
+    if (!product) {
+      updateItem(item.key, { productId: 0, productType: 'regular', productLabel: '', description: '' });
+      return;
+    }
+    const productType = item.productType;
+    const isNonList = products.nonProducts.some((p) => p === product);
+    const resolvedType = isNonList ? 'non' : 'regular';
+    const label = `${product.productCode ? `${product.productCode} - ` : ''}${product.description || product.name || ''}`;
+    updateItem(item.key, {
+      productId: product.id,
+      productType: resolvedType || productType,
+      productLabel: label,
+      description: '',
+    });
+  };
+
+  const handleItemInvoiceSelect = (item: ReturnItemDraft, value: string) => {
+    if (value === 'none') {
+      updateItem(item.key, { purchaseInvoiceId: undefined, invoiceNumber: '' });
+      return;
+    }
+    const invId = parseInt(value);
+    const inv = purchaseInvoices.find((i) => i.id === invId);
+    updateItem(item.key, { purchaseInvoiceId: invId, invoiceNumber: inv ? String(inv.id) : '' });
+  };
+
+  const toItemInput = (item: ReturnItemDraft): SupplierReturnItemInput => ({
+    productType: item.productType,
+    productId: item.productId,
+    description: item.description || item.productLabel,
+    quantity: Number(item.quantity) || 0,
+    unitPrice: Number(item.unitPrice) || 0,
+    purchaseInvoiceId: item.purchaseInvoiceId,
+    invoiceNumber: sameInvoiceNumber && sharedInvoiceNumber.trim()
+      ? sharedInvoiceNumber.trim()
+      : item.invoiceNumber || undefined,
+    returnReason: item.returnReason || undefined,
+    creditNoteIssued: item.creditNoteIssued,
+    creditNoteAmount: item.creditNoteIssued ? item.creditNoteAmount : 0,
+    status: 'completed',
+  });
+
+  const saveDocumentEdit = async (data: SupplierReturnFormData) => {
+    const drafts = returnItems.filter((item) => item.productId > 0);
+    const draftIds = new Set(drafts.filter((d) => d.id).map((d) => d.id));
+    const docRef = ((editingReturn as any)?.documentRefNumber as string) || editingReturn?.refNumber;
+
+    // Update existing lines
+    for (const d of drafts.filter((d) => d.id)) {
+      await apiRequest('PUT', `/api/supplier-returns/${d.id}`, { ...data, ...toItemInput(d) });
+    }
+    // Create brand-new lines under the same document reference
+    const newDrafts = drafts.filter((d) => !d.id);
+    if (newDrafts.length) {
+      await apiRequest('POST', '/api/supplier-returns', {
+        ...data,
+        documentRef: docRef,
+        items: newDrafts.map(toItemInput),
+      });
+    }
+    // Delete lines removed from the document
+    for (const line of editingLines.filter((l) => !draftIds.has(l.id))) {
+      await apiRequest('DELETE', `/api/supplier-returns/${line.id}`);
     }
   };
 
-  const handleEdit = (returnItem: SupplierReturn) => {
-    if (!canEditReturn(returnItem.date)) {
+  const handleSubmit = async (data: SupplierReturnFormData) => {
+    const selectedItems = returnItems.filter((item) => item.productId > 0);
+    if (selectedItems.length === 0) {
+      toast({ title: "Error", description: "Add at least one product to the return", variant: "destructive" });
+      return;
+    }
+    if (selectedItems.some((item) => Number(item.quantity) < 1 || Number(item.unitPrice) < 0)) {
+      toast({ title: "Error", description: "Each product needs a quantity of at least 1 and a valid unit price", variant: "destructive" });
+      return;
+    }
+
+    if (editingReturn) {
+      setIsSavingDoc(true);
+      try {
+        await saveDocumentEdit(data);
+        notifyInventoryMutation({ source: 'supplier-return' });
+        queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
+        toast({ title: "Success", description: "Supplier return updated successfully" });
+        resetDialog();
+      } catch (error: any) {
+        toast({ title: "Error", description: error?.error || error?.message || "Failed to update supplier return", variant: "destructive" });
+      } finally {
+        setIsSavingDoc(false);
+      }
+      return;
+    }
+    createMutation.mutate({ ...data, items: selectedItems.map(toItemInput) });
+  };
+
+  const handleEditGroup = (group: { date: string; items: SupplierReturn[] }) => {
+    const first = group.items[0];
+    if (!canEditReturn(group.date)) {
       toast({
         title: "Permission Denied",
         description: "You don't have permission to edit this return",
@@ -585,25 +710,28 @@ export default function ReturnToSupplier() {
       });
       return;
     }
-    
-    setEditingReturn(returnItem);
-    setProductSearchValue(getProductLabel(returnItem.productId, returnItem.productType as 'regular' | 'non'));
-    setProductSearchKey((key) => key + 1);
+
+    setEditingReturn(first);
+    setEditingLines(group.items);
+    setReturnItems(group.items.map((line) => ({
+      key: ++returnItemKeyCounter,
+      id: line.id,
+      productType: line.productType as 'regular' | 'non',
+      productId: line.productId,
+      productLabel: getProductLabel(line.productId, line.productType as 'regular' | 'non'),
+      description: line.description,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice,
+      purchaseInvoiceId: line.purchaseInvoiceId || undefined,
+      invoiceNumber: line.invoiceNumber || "",
+      returnReason: line.returnReason || "",
+      creditNoteIssued: line.creditNoteIssued,
+      creditNoteAmount: line.creditNoteAmount,
+    })));
     form.reset({
-      date: returnItem.date,
-      supplierId: returnItem.supplierId,
-      purchaseInvoiceId: returnItem.purchaseInvoiceId || undefined,
-      productId: returnItem.productId,
-      productType: returnItem.productType as "regular" | "non",
-      description: returnItem.description,
-      invoiceNumber: returnItem.invoiceNumber || "",
-      remarks: returnItem.remarks || "",
-      quantity: returnItem.quantity,
-      unitPrice: returnItem.unitPrice,
-      returnReason: returnItem.returnReason || "",
-      creditNoteIssued: returnItem.creditNoteIssued,
-      creditNoteAmount: returnItem.creditNoteAmount,
-      status: "completed" as "pending" | "approved" | "rejected" | "completed"
+      date: group.date,
+      supplierId: first.supplierId,
+      remarks: first.remarks || ""
     });
     setIsDialogOpen(true);
   };
@@ -612,8 +740,8 @@ export default function ReturnToSupplier() {
     window.open(`/print/supplier-return/${returnId}`, '_blank');
   };
 
-  const handleDelete = (returnItem: SupplierReturn) => {
-    if (!canDeleteReturn(returnItem.date)) {
+  const handleDeleteGroup = async (group: { date: string; items: SupplierReturn[] }) => {
+    if (!canDeleteReturn(group.date)) {
       toast({
         title: "Permission Denied",
         description: "You don't have permission to delete this return",
@@ -621,9 +749,22 @@ export default function ReturnToSupplier() {
       });
       return;
     }
-    
-    if (confirm("Are you sure you want to delete this supplier return?")) {
-      deleteMutation.mutate(returnItem.id);
+
+    if (!confirm(`Are you sure you want to delete this supplier return (${group.items.length} item${group.items.length > 1 ? 's' : ''})?`)) {
+      return;
+    }
+    setIsSavingDoc(true);
+    try {
+      for (const line of group.items) {
+        await apiRequest('DELETE', `/api/supplier-returns/${line.id}`);
+      }
+      notifyInventoryMutation({ source: 'supplier-return' });
+      queryClient.invalidateQueries({ queryKey: ['supplier-returns'] });
+      toast({ title: "Success", description: "Supplier return deleted successfully" });
+    } catch (error: any) {
+      toast({ title: "Error", description: error?.error || error?.message || "Failed to delete supplier return", variant: "destructive" });
+    } finally {
+      setIsSavingDoc(false);
     }
   };
 
@@ -714,7 +855,13 @@ export default function ReturnToSupplier() {
                     className="pl-10 w-48"
                   />
                 </div>
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <Dialog open={isDialogOpen} onOpenChange={(open) => {
+                  setIsDialogOpen(open);
+                  if (open && !editingReturn) {
+                    form.reset();
+                    setReturnItems([createEmptyItem()]);
+                  }
+                }}>
                   <DialogTrigger asChild>
                     <Button className="flex items-center gap-2">
                       <Plus size={16} />
@@ -728,14 +875,14 @@ export default function ReturnToSupplier() {
                   >
                     Close
                   </Button>
-                  <DialogContent className="max-w-2xl" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+                  <DialogContent className="max-w-[1400px] w-[95vw]" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
                     <DialogHeader>
                       <DialogTitle>
                         {editingReturn ? 'Edit Supplier Return' : 'Add New Supplier Return'}
                       </DialogTitle>
                     </DialogHeader>
                     <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-4 gap-4">
                         <div>
                           <Label htmlFor="date">Date</Label>
                           <Input
@@ -767,101 +914,8 @@ export default function ReturnToSupplier() {
                             <p className="text-red-500 text-sm">{form.formState.errors.supplierId.message}</p>
                           )}
                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label htmlFor="productType">Product Type</Label>
-                          <Select
-                            value={form.watch('productType')}
-                            onValueChange={(value) => {
-                              const productType = value as 'regular' | 'non';
-                              form.setValue('productType', productType);
-                              form.setValue('productId', 0, { shouldValidate: true });
-                              setProductSearchValue('');
-                              setProductSearchKey((key) => key + 1);
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="regular">Regular Product</SelectItem>
-                              <SelectItem value="non">Non-Product</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <ProductSearch
-                            key={productSearchKey}
-                            label="Product"
-                            value={productSearchValue}
-                            products={searchableProducts}
-                            placeholder="Search product by code or name..."
-                            onProductSelect={(product) => {
-                              if (!product) {
-                                form.setValue('productId', 0, { shouldValidate: true });
-                                setProductSearchValue('');
-                                return;
-                              }
-                              form.setValue('productId', product.id, { shouldValidate: true });
-                              setProductSearchValue(
-                                `${product.productCode || ''}${product.productCode ? ' - ' : ''}${product.description || ''}`
-                              );
-                            }}
-                            required
-                            showCode
-                            allowClear
-                          />
-                          {form.formState.errors.productId && (
-                            <p className="text-red-500 text-sm">{form.formState.errors.productId.message}</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="description">Description</Label>
-                        <Input
-                          {...form.register('description')}
-                          placeholder="Return description"
-                          className={form.formState.errors.description ? 'border-red-500' : ''}
-                        />
-                        {form.formState.errors.description && (
-                          <p className="text-red-500 text-sm">{form.formState.errors.description.message}</p>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="quantity">Quantity</Label>
-                          <Input
-                            type="number"
-                            {...form.register('quantity', { valueAsNumber: true })}
-                            min="1"
-                            className={form.formState.errors.quantity ? 'border-red-500' : ''}
-                          />
-                          {form.formState.errors.quantity && (
-                            <p className="text-red-500 text-sm">{form.formState.errors.quantity.message}</p>
-                          )}
-                        </div>
-                        <div>
-                          <Label htmlFor="unitPrice">Unit Price</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            {...form.register('unitPrice', { valueAsNumber: true })}
-                            min="0"
-                            className={form.formState.errors.unitPrice ? 'border-red-500' : ''}
-                          />
-                          {form.formState.errors.unitPrice && (
-                            <p className="text-red-500 text-sm">{form.formState.errors.unitPrice.message}</p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="invoiceFromDate">Invoice From Date</Label>
+                          <Label htmlFor="invoiceFromDate">Invoice From</Label>
                           <Input
                             type="date"
                             value={invoiceFromDate}
@@ -872,7 +926,7 @@ export default function ReturnToSupplier() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="invoiceToDate">Invoice To Date</Label>
+                          <Label htmlFor="invoiceToDate">Invoice To</Label>
                           <Input
                             type="date"
                             value={invoiceToDate}
@@ -885,80 +939,169 @@ export default function ReturnToSupplier() {
                       </div>
 
                       <div>
-                        <Label htmlFor="purchaseInvoiceId">Purchase Invoice</Label>
-                        <Select
-                          value={form.watch('purchaseInvoiceId')?.toString() || 'none'}
-                          onValueChange={(value) => {
-                            if (value !== 'none') {
-                              form.setValue('purchaseInvoiceId', parseInt(value));
-                              const selectedInvoice = purchaseInvoices.find(inv => inv.id === parseInt(value));
-                              if (selectedInvoice) {
-                                form.setValue('invoiceNumber', selectedInvoice.id.toString());
-                              }
-                            } else {
-                              form.setValue('purchaseInvoiceId', undefined);
-                              form.setValue('invoiceNumber', '');
-                            }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select invoice" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">No Invoice</SelectItem>
-                            {purchaseInvoices.map((inv) => (
-                              <SelectItem key={inv.id} value={inv.id.toString()}>
-                                {inv.id} - {inv.date} - £{inv.totalAmount}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <Label>Products</Label>
+                            <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+                              <Checkbox
+                                checked={sameInvoiceNumber}
+                                onCheckedChange={(checked) => setSameInvoiceNumber(checked as boolean)}
+                              />
+                              Same invoice no. for all
+                            </label>
+                            {sameInvoiceNumber && (
+                              <Input
+                                value={sharedInvoiceNumber}
+                                onChange={(e) => setSharedInvoiceNumber(e.target.value)}
+                                placeholder="Invoice number for all items"
+                                className="h-8 w-44"
+                              />
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="flex items-center gap-1"
+                            onClick={() => setReturnItems((prev) => [...prev, createEmptyItem()])}
+                          >
+                            <Plus size={14} />
+                            Add Product
+                          </Button>
+                        </div>
+                        <div className="border rounded-md max-h-[320px] overflow-y-scroll">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="min-w-[240px]">Product</TableHead>
+                                <TableHead className="min-w-[130px]">Description</TableHead>
+                                <TableHead className="w-[70px]">Qty</TableHead>
+                                <TableHead className="w-[95px]">Unit Price</TableHead>
+                                <TableHead className="min-w-[160px]">Purchase Invoice</TableHead>
+                                <TableHead className="w-[95px]">Invoice No</TableHead>
+                                <TableHead className="min-w-[110px]">Reason</TableHead>
+                                <TableHead className="w-[45px] text-center">CN</TableHead>
+                                <TableHead className="w-[95px]">Credit £</TableHead>
+                                <TableHead className="w-[45px]"></TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {returnItems.map((item) => (
+                                <TableRow key={item.key}>
+                                  <TableCell className="py-2">
+                                    <ProductSearch
+                                      key={`${item.key}-${item.productId}`}
+                                      value={item.productLabel}
+                                      products={products.regularProducts}
+                                      placeholder="Search product..."
+                                      onProductSelect={(product) => handleItemProductSelect(item, product)}
+                                      showCode={false}
+                                      size="sm"
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    <Input
+                                      value={item.description}
+                                      onChange={(e) => updateItem(item.key, { description: e.target.value })}
+                                      className="h-8"
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      value={item.quantity}
+                                      onChange={(e) => updateItem(item.key, { quantity: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
+                                      className="h-8 w-16"
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={item.unitPrice}
+                                      onChange={(e) => updateItem(item.key, { unitPrice: e.target.value === '' ? '' : parseFloat(e.target.value) || 0 })}
+                                      className="h-8 w-24"
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    <Select
+                                      value={item.purchaseInvoiceId ? String(item.purchaseInvoiceId) : 'none'}
+                                      onValueChange={(value) => handleItemInvoiceSelect(item, value)}
+                                    >
+                                      <SelectTrigger className="h-8">
+                                        <SelectValue placeholder="No Invoice" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">No Invoice</SelectItem>
+                                        {purchaseInvoices.map((inv) => (
+                                          <SelectItem key={inv.id} value={inv.id.toString()}>
+                                            {inv.id} - {inv.date} - £{inv.totalAmount}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    <Input
+                                      value={item.invoiceNumber}
+                                      onChange={(e) => updateItem(item.key, { invoiceNumber: e.target.value })}
+                                      placeholder="Inv #"
+                                      disabled={sameInvoiceNumber}
+                                      className="h-8 w-24"
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    <Textarea
+                                      value={item.returnReason}
+                                      onChange={(e) => {
+                                        updateItem(item.key, { returnReason: e.target.value });
+                                        e.target.style.height = 'auto';
+                                        e.target.style.height = `${e.target.scrollHeight}px`;
+                                      }}
+                                      placeholder="Reason"
+                                      rows={1}
+                                      className="min-h-8 w-full resize-none py-1 text-sm"
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-2 text-center">
+                                    <Checkbox
+                                      checked={item.creditNoteIssued}
+                                      onCheckedChange={(checked) => updateItem(item.key, { creditNoteIssued: checked as boolean })}
+                                    />
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    {item.creditNoteIssued ? (
+                                      <Input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={item.creditNoteAmount || ''}
+                                        onChange={(e) => updateItem(item.key, { creditNoteAmount: parseFloat(e.target.value) || 0 })}
+                                        className="h-8 w-24"
+                                      />
+                                    ) : null}
+                                  </TableCell>
+                                  <TableCell className="py-2">
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      disabled={returnItems.length === 1}
+                                      onClick={() => setReturnItems((prev) => prev.filter((i) => i.key !== item.key))}
+                                    >
+                                      <Trash2 size={14} />
+                                    </Button>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="invoiceNumber">Invoice Number</Label>
-                          <Input
-                            {...form.register('invoiceNumber')}
-                            placeholder="Original invoice number"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="returnReason">Return Reason</Label>
-                          <Input
-                            {...form.register('returnReason')}
-                            placeholder="Reason for return"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        <Checkbox
-                          id="creditNoteIssued"
-                          checked={form.watch('creditNoteIssued')}
-                          onCheckedChange={(checked) => form.setValue('creditNoteIssued', checked as boolean)}
-                        />
-                        <Label htmlFor="creditNoteIssued">Issue Credit Note</Label>
-                      </div>
-
-                      {form.watch('creditNoteIssued') && (
-                        <div>
-                          <Label htmlFor="creditNoteAmount">Credit Note Amount</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            {...form.register('creditNoteAmount', { valueAsNumber: true })}
-                            min="0"
-                            placeholder="Credit note amount"
-                            className={form.formState.errors.creditNoteAmount ? 'border-red-500' : ''}
-                          />
-                          {form.formState.errors.creditNoteAmount && (
-                            <p className="text-red-500 text-sm">{form.formState.errors.creditNoteAmount.message}</p>
-                          )}
-                        </div>
-                      )}
-
-                      <div>
+<div>
                         <Label htmlFor="remarks">Remarks</Label>
                         <Textarea
                           {...form.register('remarks')}
@@ -971,19 +1114,13 @@ export default function ReturnToSupplier() {
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => {
-                            setIsDialogOpen(false);
-                            setEditingReturn(null);
-                            setProductSearchValue('');
-                            setProductSearchKey((key) => key + 1);
-                            form.reset();
-                          }}
+                          onClick={resetDialog}
                         >
                           Cancel
                         </Button>
                         <Button
                           type="submit"
-                          disabled={createMutation.isPending || updateMutation.isPending}
+                          disabled={createMutation.isPending || isSavingDoc}
                         >
                           {editingReturn ? 'Update' : 'Create'} Return
                         </Button>
@@ -1017,38 +1154,41 @@ export default function ReturnToSupplier() {
                         Loading...
                       </TableCell>
                     </TableRow>
-                  ) : supplierReturns.length === 0 ? (
+                  ) : documentGroups.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                         No supplier returns found
                       </TableCell>
                     </TableRow>
                   ) : (
-                    supplierReturns.map((returnItem) => (
-                      <TableRow key={returnItem.id}>
-                        <TableCell>{format(new Date(returnItem.date), 'dd/MM/yyyy')}</TableCell>
-                        <TableCell className="font-mono">{returnItem.refNumber}</TableCell>
-                        <TableCell>{returnItem.supplierName}</TableCell>
-                        <TableCell>{getProductLabel(returnItem.productId, returnItem.productType as 'regular' | 'non') || returnItem.description}</TableCell>
-                        <TableCell>{returnItem.description}</TableCell>
-                        <TableCell className="text-center">{returnItem.quantity}</TableCell>
-                        <TableCell className="text-center">£{returnItem.unitPrice.toFixed(2)}</TableCell>
-                        <TableCell className="text-center">£{returnItem.totalValue.toFixed(2)}</TableCell>
+                    pagination.paginatedData.map((group) => (
+                      <Fragment key={group.key}>
+                      <TableRow>
+                        <TableCell>{format(new Date(group.date), 'dd/MM/yyyy')}</TableCell>
+                        <TableCell className="font-mono">{group.refNumber}</TableCell>
+                        <TableCell>{group.supplierName}</TableCell>
+                        <TableCell>
+                          {group.items.length} product{group.items.length > 1 ? 's' : ''}
+                        </TableCell>
+                        <TableCell></TableCell>
+                        <TableCell className="text-center">{formatSmartQuantity(group.totalQuantity)}</TableCell>
+                        <TableCell className="text-center">-</TableCell>
+                        <TableCell className="text-center">£{group.totalValue.toFixed(2)}</TableCell>
                         <TableCell>
                           <div className="flex gap-1">
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handlePrintReturn(returnItem.id)}
+                              onClick={() => handlePrintReturn(group.items[0].id)}
                               title="Print A4 supplier return"
                             >
                               <Printer className="w-3 h-3" />
                             </Button>
-                            {canEditReturn(returnItem.date) ? (
+                            {canEditReturn(group.date) ? (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleEdit(returnItem)}
+                                onClick={() => handleEditGroup(group)}
                                 title="Edit return"
                               >
                                 <Edit className="w-3 h-3" />
@@ -1064,12 +1204,12 @@ export default function ReturnToSupplier() {
                                 <Edit className="w-3 h-3" />
                               </Button>
                             )}
-                            {canDeleteReturn(returnItem.date) ? (
+                            {canDeleteReturn(group.date) ? (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => handleDelete(returnItem)}
-                                disabled={deleteMutation.isPending}
+                                onClick={() => handleDeleteGroup(group)}
+                                disabled={isSavingDoc}
                                 title="Delete return"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -1088,10 +1228,39 @@ export default function ReturnToSupplier() {
                           </div>
                         </TableCell>
                       </TableRow>
+                      {group.items.map((line) => (
+                        <TableRow key={line.id} className="bg-gray-50/60">
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell></TableCell>
+                          <TableCell className="pl-6 text-sm">
+                            {getProductLabel(line.productId, line.productType as 'regular' | 'non') || line.description}
+                          </TableCell>
+                          <TableCell className="text-sm">{line.description}</TableCell>
+                          <TableCell className="text-center text-sm">{formatSmartQuantity(line.quantity)}</TableCell>
+                          <TableCell className="text-center text-sm">£{Number(line.unitPrice || 0).toFixed(2)}</TableCell>
+                          <TableCell className="text-center text-sm">£{Number(line.totalValue || 0).toFixed(2)}</TableCell>
+                          <TableCell></TableCell>
+                        </TableRow>
+                      ))}
+                      </Fragment>
                     ))
                   )}
                 </TableBody>
               </Table>
+              {pagination.totalPages > 1 && (
+                <div className="mt-4">
+                  <Pagination
+                    currentPage={pagination.currentPage}
+                    totalPages={pagination.totalPages}
+                    totalItems={pagination.totalItems}
+                    itemsPerPage={pagination.itemsPerPage}
+                    onPageChange={pagination.goToPage}
+                    onItemsPerPageChange={pagination.setItemsPerPage}
+                    itemsPerPageOptions={[10, 25, 50, 100]}
+                  />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

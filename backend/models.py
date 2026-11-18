@@ -1200,6 +1200,7 @@ class SupplierReturn(db.Model):
     """Tracks supplier returns"""
     id = db.Column(db.Integer, primary_key=True)
     ref_number = db.Column(db.String(50), unique=True, nullable=False)
+    document_ref_number = db.Column(db.String(50), index=True)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow().date)
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=False)
     purchase_invoice_id = db.Column(db.Integer, db.ForeignKey('purchase_invoice.id'))  # Optional, link to original purchase
@@ -1235,6 +1236,7 @@ class SupplierReturn(db.Model):
             'productId': self.product_id,
             'productType': self.product_type,
             'description': self.description,
+            'documentRefNumber': self.document_ref_number,
             'invoiceNumber': self.invoice_number,
             'remarks': self.remarks,
             'quantity': self.quantity,
