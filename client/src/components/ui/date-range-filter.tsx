@@ -31,7 +31,7 @@ export function DateRangeFilter({
   onToChange,
   fromLabel = "From Date:",
   toLabel = "To Date:",
-  dateFormat = "yyyyMMdd",
+  dateFormat = "dd/MM/yyyy",
   disabled = false,
   fromManuallyChanged,
   toManuallyChanged,
