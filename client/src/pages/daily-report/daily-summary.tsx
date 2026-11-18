@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Download, FileText, Printer, Mail, Receipt, FileCheck, Pencil } from "lucide-react";
+import { CalendarIcon, Download, FileText, Printer, Mail, Receipt, FileCheck, Pencil, Eye } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import { cn, formatQuantity, formatSmartQuantity } from "@/lib/utils";
@@ -25,6 +25,7 @@ import {
 } from "@/lib/invoice-pdf";
 import { fetchCustomerReturnInvoices } from "@/lib/customer-return-invoice";
 import { fetchCustomerDiscountInvoices } from "@/lib/customer-discount-invoice";
+import { CreditDocumentDetailsDialog } from "@/components/common/credit-document-details-dialog";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import "./styles.css";
@@ -287,6 +288,7 @@ export default function DailySummary() {
   const { toast } = useToast();
   const [emails, setEmails] = useState('');
   const [isEmailSending, setIsEmailSending] = useState(false);
+  const [creditDetailsTarget, setCreditDetailsTarget] = useState<{ kind: 'discount' | 'return'; lineId: number } | null>(null);
 
   // Update selectedDate when businessDate changes
   useEffect(() => {
@@ -689,7 +691,7 @@ export default function DailySummary() {
           `${s.invoice_no || '-'}${s.is_void
             ? (s.is_unknown_date ? ' (VOID - DATE UNKNOWN)' : ' (VOID)')
             : s.is_customer_discount
-              ? ` (Credit/Adj${s.original_invoice_numbers ? `; invoices ${s.original_invoice_numbers}` : ''})`
+              ? ' (Credit/Adj)' 
               : s.is_customer_return ? ' (Return)' : ''}`,
           s.cash_sales > 0 ? s.cash_sales.toFixed(2) : '-',
           s.card_paid > 0 ? s.card_paid.toFixed(2) : '-',
@@ -1416,13 +1418,22 @@ export default function DailySummary() {
                                               {sale.is_customer_discount ? "(Credit/Adj)" : "(Return)"}
                                             </span>
                                           </span>
-                                          {sale.is_customer_discount && sale.original_invoice_numbers && (
-                                            <span className="text-xs text-muted-foreground">Invoices: {sale.original_invoice_numbers}</span>
-                                          )}
                                         </span>
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="start" className="w-56">
+                                      {((sale.is_customer_discount && sale.customer_discount_id) || (sale.is_customer_return && sale.customer_return_id)) && (
+                                        <DropdownMenuItem
+                                          className="text-sm py-2"
+                                          onClick={() => setCreditDetailsTarget({
+                                            kind: sale.is_customer_discount ? 'discount' : 'return',
+                                            lineId: (sale.is_customer_discount ? sale.customer_discount_id : sale.customer_return_id)!,
+                                          })}
+                                        >
+                                          <Eye className="mr-2 h-4 w-4" />
+                                          Show Details
+                                        </DropdownMenuItem>
+                                      )}
                                       <DropdownMenuSub>
                                         <DropdownMenuSubTrigger className="text-sm py-2">
                                           <Download className="mr-2 h-4 w-4" />
@@ -2243,6 +2254,13 @@ export default function DailySummary() {
 
       {/* Footer text for print */}
       <div className="footer-text">Stand-100</div>
+
+      <CreditDocumentDetailsDialog
+        open={!!creditDetailsTarget}
+        onOpenChange={(open) => { if (!open) setCreditDetailsTarget(null); }}
+        kind={creditDetailsTarget?.kind ?? "discount"}
+        lineId={creditDetailsTarget?.lineId ?? null}
+      />
     </PageLayout>
   );
 }
