@@ -26,6 +26,7 @@ from users import verify_password, create_admin_user
 from migrations.customer_discount_v1 import upgrade as upgrade_customer_discount_schema
 from migrations.customer_return_sale_item_v1 import upgrade as upgrade_customer_return_sale_item_schema
 from migrations.invoice_document_numbers_v1 import upgrade as upgrade_invoice_document_numbers_schema
+from migrations.supplier_return_document_ref_v1 import upgrade as upgrade_supplier_return_document_ref_schema
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 from flask_jwt_extended import create_access_token, jwt_required, JWTManager, get_jwt_identity
@@ -685,6 +686,7 @@ with app.app_context():
     )
     upgrade_customer_return_sale_item_schema(db.engine)
     upgrade_invoice_document_numbers_schema(db.engine, InvoiceDocumentNumber.__table__)
+    upgrade_supplier_return_document_ref_schema(db.engine)
     ensure_voided_invoice_document_schema()
     _initialize_invoice_document_numbers()
     _prune_trailing_invoice_document_voids(commit=True)
