@@ -233,8 +233,8 @@ export default function ReturnToSupplier() {
     queryKey: ['supplier-returns', { selectedSupplier, fromDate, toDate, searchTerm, statusFilter }],
     queryFn: () => fetchSupplierReturns({
       supplierId: selectedSupplier,
-      fromDate: fromDate?.toISOString().split('T')[0],
-      toDate: toDate?.toISOString().split('T')[0],
+      fromDate: fromDate ? format(fromDate, 'yyyy-MM-dd') : undefined,
+      toDate: toDate ? format(toDate, 'yyyy-MM-dd') : undefined,
       search: searchTerm,
       status: statusFilter !== 'all' ? statusFilter : undefined
     })

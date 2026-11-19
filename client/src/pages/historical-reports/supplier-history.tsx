@@ -640,8 +640,8 @@ export default function SupplierHistory() {
     try {
       const response = await apiRequest("POST", "/api/send/supplier-statement", {
         supplierId: selectedSupplier!,
-        fromDate: fromDate.toISOString().split('T')[0],
-        toDate: toDate.toISOString().split('T')[0],
+        fromDate: format(fromDate, 'yyyy-MM-dd'),
+        toDate: format(toDate, 'yyyy-MM-dd'),
         type: statementType
       });
 
