@@ -301,42 +301,52 @@ def handle_preflight():
 
 # Database configuration
 # DATABASE_URL env var allows running tests / deployments against an isolated database.
-# For Turso, either set DATABASE_URL to a sqlite+libsql:// URL (with authToken &
-# secure params), or set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN and the URL is
-# built automatically.
+# For Turso/libsql, accepts any of:
+#   DATABASE_URL=libsql://<host>            (+ TURSO_AUTH_TOKEN env)
+#   DATABASE_URL=sqlite+libsql://<host>     (+ TURSO_AUTH_TOKEN env)
+#   DATABASE_URL=sqlite+libsql://<host>/?authToken=<token>&secure=true
+#   TURSO_DATABASE_URL + TURSO_AUTH_TOKEN   (no DATABASE_URL)
+# Auth is passed via connect_args['auth_token'] — sqlalchemy-libsql does NOT
+# read authToken from the URL query string.
 _db_url = os.getenv('DATABASE_URL')
 _turso_token = os.getenv('TURSO_AUTH_TOKEN')
 _turso_url = os.getenv('TURSO_DATABASE_URL')
 if not _db_url and _turso_url:
     _db_url = _turso_url
-# Normalize Turso/libsql URLs into the sqlalchemy-libsql dialect form:
-#   libsql://host            -> sqlite+libsql://host/?authToken=...&secure=true
-#   sqlite+libsql://host     -> ensure authToken & secure params are present
+
+_libsql_connect_args = {}
 if _db_url and 'libsql' in _db_url:
-    if _db_url.startswith('libsql://'):
-        _db_url = 'sqlite+' + _db_url
     if '?' in _db_url:
         _base, _query = _db_url.split('?', 1)
-        _params = _query.split('&')
+        _params = [p for p in _query.split('&') if p]
     else:
         _base, _params = _db_url, []
-    # ensure path '/' exists: sqlite+libsql://host -> sqlite+libsql://host/
-    _after_scheme = _base.split('://', 1)
-    if len(_after_scheme) == 2 and '/' not in _after_scheme[1]:
-        _base += '/'
-    # libsql-client also accepts auth_token= in some clients; normalize to authToken
-    _params = [p.replace('auth_token=', 'authToken=', 1) if p.startswith('auth_token=') else p for p in _params]
-    if _turso_token and not any(p.startswith('authToken=') for p in _params):
-        _params.append(f'authToken={_turso_token}')
-    if not any(p.startswith('secure=') for p in _params):
-        _params.append('secure=true')
-    _db_url = _base + ('?' + '&'.join(_params) if _params else '')
+    # pull an embedded token out of the URL into connect_args instead
+    for _p in list(_params):
+        if _p.startswith('authToken=') or _p.startswith('auth_token='):
+            if not _turso_token:
+                _turso_token = _p.split('=', 1)[1]
+            _params.remove(_p)
+    # reduce to bare host[:port] and rebuild in dialect form
+    # (skip when it's a local file path like sqlite+libsql:///local.db)
+    _rest = _base.split('://', 1)[-1]
+    if not _rest.startswith('/'):
+        _host = _rest.strip('/')
+        _db_url = f'sqlite+libsql://{_host}/'
+        if not any(p.startswith('secure=') for p in _params):
+            _params.append('secure=true')
+        if _params:
+            _db_url += '?' + '&'.join(_params)
+    if _turso_token:
+        _libsql_connect_args['auth_token'] = _turso_token
+
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url or (
     f'sqlite:///{os.path.join(os.path.dirname(__file__), "instance", "salesmaster.db")}'
 )
 # Log the DB target with secrets masked for deploy debugging
 import re as _re
-print('[DB] Using database:', _re.sub(r'(authToken=)[^&]+', r'\1***', app.config['SQLALCHEMY_DATABASE_URI']))
+print('[DB] Using database:', _re.sub(r'(auth_token=)[^&]+', r'\1***', app.config['SQLALCHEMY_DATABASE_URI']),
+      '| auth_token:', 'set' if _libsql_connect_args.get('auth_token') else 'MISSING')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 _db_uri = app.config['SQLALCHEMY_DATABASE_URI']
@@ -351,9 +361,9 @@ if _db_uri.startswith('sqlite') and '+' not in _db_uri.split('://')[0]:
             'cached_statements': 128,  # Cache prepared statements
         }
     }
+elif _libsql_connect_args:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'connect_args': _libsql_connect_args}
 else:
-    # Non-SQLite dialects (e.g. sqlite+libsql:// for Turso) manage their own
-    # connection options via DATABASE_URL query params / connect args.
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
 # File upload configuration
