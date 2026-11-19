@@ -362,7 +362,13 @@ if _db_uri.startswith('sqlite') and '+' not in _db_uri.split('://')[0]:
         }
     }
 elif _libsql_connect_args:
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'connect_args': _libsql_connect_args}
+    # Turso/hrana connections go stale when idle — the pool hands back dead
+    # sockets and queries hang. NullPool opens a fresh connection per request.
+    from sqlalchemy.pool import NullPool
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'poolclass': NullPool,
+        'connect_args': _libsql_connect_args,
+    }
 else:
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
