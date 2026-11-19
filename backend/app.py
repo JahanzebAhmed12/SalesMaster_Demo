@@ -1872,8 +1872,15 @@ def health_check():
     try:
         # Test database connection using SQLAlchemy ORM
         from sqlalchemy import text
-        db.session.execute(text("SELECT 1"))
-        db.session.commit()
+        import time as _time
+        _t0 = _time.time()
+        print('[HEALTH] acquiring connection...', flush=True)
+        conn = db.engine.connect()
+        print(f'[HEALTH] connected in {_time.time()-_t0:.2f}s', flush=True)
+        _t1 = _time.time()
+        conn.execute(text("SELECT 1"))
+        print(f'[HEALTH] query in {_time.time()-_t1:.2f}s', flush=True)
+        conn.close()
         return jsonify({"status": "healthy", "database": "connected"}), 200
     except Exception as e:
         db.session.rollback()
