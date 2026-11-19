@@ -305,11 +305,30 @@ def handle_preflight():
 # secure params), or set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN and the URL is
 # built automatically.
 _db_url = os.getenv('DATABASE_URL')
-if not _db_url:
-    _turso_url = os.getenv('TURSO_DATABASE_URL')
-    _turso_token = os.getenv('TURSO_AUTH_TOKEN')
-    if _turso_url and _turso_token:
-        _db_url = f"sqlite+{_turso_url}/?authToken={_turso_token}&secure=true"
+_turso_token = os.getenv('TURSO_AUTH_TOKEN')
+_turso_url = os.getenv('TURSO_DATABASE_URL')
+if not _db_url and _turso_url:
+    _db_url = _turso_url
+# Normalize Turso/libsql URLs into the sqlalchemy-libsql dialect form:
+#   libsql://host            -> sqlite+libsql://host/?authToken=...&secure=true
+#   sqlite+libsql://host     -> ensure authToken & secure params are present
+if _db_url and 'libsql' in _db_url:
+    if _db_url.startswith('libsql://'):
+        _db_url = 'sqlite+' + _db_url
+    if '?' in _db_url:
+        _base, _query = _db_url.split('?', 1)
+        _params = _query.split('&')
+    else:
+        _base, _params = _db_url, []
+    # ensure path '/' exists: sqlite+libsql://host -> sqlite+libsql://host/
+    _after_scheme = _base.split('://', 1)
+    if len(_after_scheme) == 2 and '/' not in _after_scheme[1]:
+        _base += '/'
+    if _turso_token and not any(p.startswith('authToken=') for p in _params):
+        _params.append(f'authToken={_turso_token}')
+    if not any(p.startswith('secure=') for p in _params):
+        _params.append('secure=true')
+    _db_url = _base + ('?' + '&'.join(_params) if _params else '')
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url or (
     f'sqlite:///{os.path.join(os.path.dirname(__file__), "instance", "salesmaster.db")}'
 )
