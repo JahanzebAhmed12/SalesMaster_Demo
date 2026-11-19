@@ -301,21 +301,36 @@ def handle_preflight():
 
 # Database configuration
 # DATABASE_URL env var allows running tests / deployments against an isolated database.
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URL',
+# For Turso, either set DATABASE_URL to a sqlite+libsql:// URL (with authToken &
+# secure params), or set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN and the URL is
+# built automatically.
+_db_url = os.getenv('DATABASE_URL')
+if not _db_url:
+    _turso_url = os.getenv('TURSO_DATABASE_URL')
+    _turso_token = os.getenv('TURSO_AUTH_TOKEN')
+    if _turso_url and _turso_token:
+        _db_url = f"sqlite+{_turso_url}/?authToken={_turso_token}&secure=true"
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url or (
     f'sqlite:///{os.path.join(os.path.dirname(__file__), "instance", "salesmaster.db")}'
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_size': 10,
-    'max_overflow': 20,
-    'connect_args': {
-        'timeout': 60,  # Increased timeout to 60 seconds
-        'check_same_thread': False,  # Allow multiple threads
-        # Keep SQLite transactions enabled so request-level rollback is real.
-        'cached_statements': 128,  # Cache prepared statements
+
+_db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+if _db_uri.startswith('sqlite') and '+' not in _db_uri.split('://')[0]:
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_size': 10,
+        'max_overflow': 20,
+        'connect_args': {
+            'timeout': 60,  # Increased timeout to 60 seconds
+            'check_same_thread': False,  # Allow multiple threads
+            # Keep SQLite transactions enabled so request-level rollback is real.
+            'cached_statements': 128,  # Cache prepared statements
+        }
     }
-}
+else:
+    # Non-SQLite dialects (e.g. sqlite+libsql:// for Turso) manage their own
+    # connection options via DATABASE_URL query params / connect args.
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {}
 
 # File upload configuration
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads', 'employee_documents')
