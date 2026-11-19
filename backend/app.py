@@ -324,6 +324,8 @@ if _db_url and 'libsql' in _db_url:
     _after_scheme = _base.split('://', 1)
     if len(_after_scheme) == 2 and '/' not in _after_scheme[1]:
         _base += '/'
+    # libsql-client also accepts auth_token= in some clients; normalize to authToken
+    _params = [p.replace('auth_token=', 'authToken=', 1) if p.startswith('auth_token=') else p for p in _params]
     if _turso_token and not any(p.startswith('authToken=') for p in _params):
         _params.append(f'authToken={_turso_token}')
     if not any(p.startswith('secure=') for p in _params):
@@ -332,6 +334,9 @@ if _db_url and 'libsql' in _db_url:
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url or (
     f'sqlite:///{os.path.join(os.path.dirname(__file__), "instance", "salesmaster.db")}'
 )
+# Log the DB target with secrets masked for deploy debugging
+import re as _re
+print('[DB] Using database:', _re.sub(r'(authToken=)[^&]+', r'\1***', app.config['SQLALCHEMY_DATABASE_URI']))
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 _db_uri = app.config['SQLALCHEMY_DATABASE_URI']
